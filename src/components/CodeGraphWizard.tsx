@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
 import { ServicesData } from "@/components/stakgraph/types";
 import ReviewPoolEnvironmentStep from "@/components/wizard/ReviewPoolEnvironmentStep";
+import { WizardStepRenderer } from "@/components/wizard/WizardStepRenderer";
 
 function IngestCodeStep({ status, onStart, onContinue, onBack }: { status: 'idle' | 'pending' | 'complete'; onStart: () => void; onContinue: () => void; onBack: () => void }) {
   const isPending = status === 'pending';
@@ -105,6 +106,176 @@ function IngestCodeStep({ status, onStart, onContinue, onBack }: { status: 'idle
   );
 }
 
+// Define a type for the renderCurrentStep props
+interface RenderStepProps {
+  repositories: Repository[];
+  selectedRepo: Repository | null;
+  searchTerm: string;
+  loading: boolean;
+  projectName: string;
+  repoName: string;
+  ingestStepStatus: 'idle' | 'pending' | 'complete';
+  servicesData: ServicesData;
+  envVars: ReturnType<typeof useEnvironmentVars>["envVars"];
+  swarmStatus: 'idle' | 'pending' | 'active' | 'error';
+  onSearchChange: (term: string) => void;
+  onRepoSelect: (repo: Repository | null) => void;
+  onProjectNameChange: (name: string) => void;
+  onIngestStart: () => void;
+  onIngestContinue: () => void;
+  onServicesChange: (partial: Partial<ServicesData>) => void;
+  onEnvChange: (key: string, value: string) => void;
+  onAddEnv: () => void;
+  onRemoveEnv: (key: string) => void;
+  onCreateSwarm: () => void;
+  onSwarmContinue: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  onStepBack: (targetStep: WizardStep) => void;
+  onFinish: () => void;
+}
+
+function renderCurrentStep(
+  step: WizardStep,
+  props: RenderStepProps
+) {
+  const {
+    repositories,
+    selectedRepo,
+    searchTerm,
+    loading,
+    projectName,
+    repoName,
+    ingestStepStatus,
+    servicesData,
+    envVars,
+    swarmStatus,
+    onSearchChange,
+    onRepoSelect,
+    onProjectNameChange,
+    onIngestStart,
+    onIngestContinue,
+    onServicesChange,
+    onEnvChange,
+    onAddEnv,
+    onRemoveEnv,
+    onCreateSwarm,
+    onSwarmContinue,
+    onNext,
+    onBack,
+    onStepBack,
+    onFinish,
+  } = props;
+  switch (step) {
+    case 1:
+      return <WelcomeStep onNext={onNext} />;
+    case 2:
+      return (
+        <RepositorySelectionStep
+          repositories={repositories}
+          selectedRepo={selectedRepo}
+          searchTerm={searchTerm}
+          loading={loading}
+          onSearchChange={onSearchChange}
+          onRepoSelect={onRepoSelect}
+          onNext={onNext}
+          onBack={onBack}
+        />
+      );
+    case 3:
+      return (
+        <ProjectNameStep
+          projectName={projectName}
+          onProjectNameChange={onProjectNameChange}
+          onNext={onNext}
+          onBack={onBack}
+        />
+      );
+    case 4:
+      return (
+        <GraphInfrastructureStep
+          graphDomain={sanitizeWorkspaceName(projectName)}
+          status={swarmStatus === 'idle' ? 'idle' : swarmStatus === 'pending' ? 'pending' : 'complete'}
+          onCreate={onCreateSwarm}
+          onComplete={onSwarmContinue}
+          onBack={onBack}
+        />
+      );
+    case 5:
+      return (
+        <IngestCodeStep
+          status={ingestStepStatus}
+          onStart={onIngestStart}
+          onContinue={onIngestContinue}
+          onBack={() => onStepBack(4)}
+        />
+      );
+    case 6:
+      return (
+        <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center mx-auto mb-4">
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="12" y="20" width="40" height="24" rx="6" fill="#F3F4F6" stroke="#60A5FA" strokeWidth="2" />
+                <path d="M24 32h16" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="32" cy="32" r="4" fill="#60A5FA" />
+              </svg>
+            </div>
+            <CardTitle className="text-2xl">Add Services</CardTitle>
+            <CardDescription>Define your services, ports, and scripts for your project.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ServicesForm
+              data={servicesData}
+              loading={false}
+              onChange={onServicesChange}
+            />
+            <div className="flex justify-between pt-6">
+              <Button variant="outline" type="button" onClick={() => onStepBack(5)}>
+                Back
+              </Button>
+              <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={onNext}>
+                Next
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    case 7:
+      return (
+        <EnvironmentSetupStep
+          envVars={envVars}
+          onEnvChange={onEnvChange}
+          onAddEnv={onAddEnv}
+          onRemoveEnv={onRemoveEnv}
+          onNext={onNext}
+          onBack={onBack}
+        />
+      );
+    case 8:
+      return (
+        <ReviewPoolEnvironmentStep
+          repoName={repoName}
+          projectName={projectName}
+          servicesData={servicesData}
+          envVars={envVars}
+          onConfirm={onNext}
+          onBack={onBack}
+        />
+      );
+    case 9:
+      return (
+        <StakworkSetupStep
+          workspaceName={projectName}
+          onFinish={onFinish}
+          onBack={onBack}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
 export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
   const [step, setStep] = useState<WizardStep>(1);
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
@@ -185,10 +356,6 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
     setSwarmStatus('idle');
   };
 
-  const handleRepoSelect = (repo: Repository) => {
-    setSelectedRepo(repo);
-  };
-
   const handleNext = () => {
     if (step < 9) {
       setStep((step + 1) as WizardStep);
@@ -201,126 +368,46 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
     }
   };
 
-  const renderCurrentStep = () => {
-    switch (step) {
-      case 1:
-        return <WelcomeStep onNext={handleNext} />;
-      case 2:
-        return (
-          <RepositorySelectionStep
-            repositories={repositories}
-            selectedRepo={selectedRepo}
-            searchTerm={searchTerm}
-            loading={loading}
-            onSearchChange={setSearchTerm}
-            onRepoSelect={handleRepoSelect}
-            onNext={handleNext}
-            onBack={handleBack}
-          />
-        );
-      case 3:
-        return (
-          <ProjectNameStep
-            projectName={projectName}
-            onProjectNameChange={setProjectName}
-            onNext={handleNext}
-            onBack={handleBack}
-          />
-        );
-      case 4:
-        return (
-          <GraphInfrastructureStep
-            graphDomain={sanitizeWorkspaceName(projectName)}
-            status={swarmStatus === 'idle' ? 'idle' : swarmStatus === 'pending' ? 'pending' : 'complete'}
-            onCreate={handleCreateSwarm}
-            onComplete={handleSwarmContinue}
-            onBack={handleBack}
-          />
-        );
-      case 5:
-        return (
-          <IngestCodeStep
-            status={ingestStepStatus}
-            onStart={() => setIngestStepStatus('pending')}
-            onContinue={() => { setIngestStepStatus('complete'); handleNext(); }}
-            onBack={() => {
-              setStep(4);
-              setSwarmId(null);
-              setSwarmStatus('idle');
-            }}
-          />
-        );
-      case 6:
-        return (
-          <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
-            <CardHeader className="text-center">
-              <div className="flex items-center justify-center mx-auto mb-4">
-                {/* Service icon */}
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="12" y="20" width="40" height="24" rx="6" fill="#F3F4F6" stroke="#60A5FA" strokeWidth="2" />
-                  <path d="M24 32h16" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" />
-                  <circle cx="32" cy="32" r="4" fill="#60A5FA" />
-                </svg>
-              </div>
-              <CardTitle className="text-2xl">Add Services</CardTitle>
-              <CardDescription>Define your services, ports, and scripts for your project.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ServicesForm
-                data={servicesData}
-                loading={false}
-                onChange={partial => setServicesData(prev => ({ ...prev, ...partial, services: partial.services ?? prev.services }))}
-              />
-              <div className="flex justify-between pt-6">
-                <Button variant="outline" type="button" onClick={() => setStep(5)}>
-                  Back
-                </Button>
-                <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={handleNext}>
-                  Next
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      case 7:
-        return (
-          <EnvironmentSetupStep
-            envVars={envVars}
-            onEnvChange={handleEnvChange}
-            onAddEnv={handleAddEnv}
-            onRemoveEnv={handleRemoveEnv}
-            onNext={handleNext}
-            onBack={handleBack}
-          />
-        );
-      case 8:
-        return (
-          <ReviewPoolEnvironmentStep
-            repoName={repoName}
-            projectName={projectName}
-            servicesData={servicesData}
-            envVars={envVars}
-            onConfirm={handleNext}
-            onBack={handleBack}
-          />
-        );
-      case 9:
-        return (
-          <StakworkSetupStep
-            workspaceName={projectName}
-            onFinish={handleNext}
-            onBack={handleBack}
-          />
-        );
-      default:
-        return null;
+  const handleStepBack = (targetStep: WizardStep) => {
+    setStep(targetStep);
+    if (targetStep === 4) {
+      setSwarmId(null);
+      setSwarmStatus('idle');
     }
   };
 
   return (
     <div className="space-y-6">
       <WizardProgress currentStep={step} totalSteps={9} />
-      {renderCurrentStep()}
+      <WizardStepRenderer step={step}>
+        {renderCurrentStep(step, {
+          repositories,
+          selectedRepo,
+          searchTerm,
+          loading,
+          projectName,
+          repoName,
+          ingestStepStatus,
+          servicesData,
+          envVars,
+          swarmStatus,
+          onSearchChange: setSearchTerm,
+          onRepoSelect: setSelectedRepo,
+          onProjectNameChange: setProjectName,
+          onIngestStart: () => setIngestStepStatus('pending'),
+          onIngestContinue: () => { setIngestStepStatus('complete'); handleNext(); },
+          onServicesChange: (partial: Partial<ServicesData>) => setServicesData(prev => ({ ...prev, ...partial, services: partial.services ?? prev.services })),
+          onEnvChange: handleEnvChange,
+          onAddEnv: handleAddEnv,
+          onRemoveEnv: handleRemoveEnv,
+          onCreateSwarm: handleCreateSwarm,
+          onSwarmContinue: handleSwarmContinue,
+          onNext: handleNext,
+          onBack: handleBack,
+          onStepBack: handleStepBack,
+          onFinish: handleNext,
+        })}
+      </WizardStepRenderer>
     </div>
   );
 } 
