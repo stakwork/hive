@@ -1,18 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Repository } from "@/types/wizard";
 import { mockRepositories } from "@/data/mockRepositories";
 
-interface UseRepositoriesProps {
-  username?: string;
-}
-
+// Removed username from props
 interface UseRepositoriesReturn {
   repositories: Repository[];
   loading: boolean;
   fetchRepositories: () => Promise<void>;
 }
 
-export function useRepositories({ username }: UseRepositoriesProps): UseRepositoriesReturn {
+export function useRepositories(): UseRepositoriesReturn {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -35,13 +32,6 @@ export function useRepositories({ username }: UseRepositoriesProps): UseReposito
       setLoading(false);
     }
   };
-
-  // Automatically fetch repositories when username is available
-  useEffect(() => {
-    if (username) {
-      fetchRepositories();
-    }
-  }, [username]);
 
   return {
     repositories,

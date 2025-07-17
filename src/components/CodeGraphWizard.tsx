@@ -39,7 +39,8 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
   } = useWizardOperations({ workspaceSlug: workspace?.slug || "" });
 
   // Use custom hooks
-  const { repositories, loading } = useRepositories({ username: user.github?.username });
+  const { repositories, loading, fetchRepositories } = useRepositories();
+  const [reposFetched, setReposFetched] = useState(false);
   const {
     envVars,
     handleEnvChange,
@@ -122,6 +123,22 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
       stopPolling();
     };
   }, [swarmId, swarmStatus, startPolling, stopPolling]);
+
+  // Only fetch repositories when on step 2 and username is available
+  useEffect(() => {
+    if (
+      step === 2 &&
+      user.github?.username &&
+      !reposFetched
+    ) {
+      fetchRepositories();
+      setReposFetched(true);
+    }
+    // Reset reposFetched if we go back to step 1
+    if (step !== 2 && reposFetched) {
+      setReposFetched(false);
+    }
+  }, [step, user.github?.username, fetchRepositories, reposFetched]);
 
   // Handler to create swarm (use hook)
   const handleCreateSwarm = async () => {
