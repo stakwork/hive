@@ -700,7 +700,11 @@ end`,
                         transition={{
                             duration: 0.8,
                             ease: [0.4, 0.0, 0.2, 1],
-                            layout: true,
+                            layout: {
+                                type: "spring",
+                                stiffness: 100,
+                                damping: 20,
+                            },
                         }}
                     >
                         {/* Header */}
@@ -821,7 +825,11 @@ end`,
                                 transition={{
                                     duration: 0.8,
                                     ease: [0.4, 0.0, 0.2, 1],
-                                    layout: true,
+                                    layout: {
+                                        type: "spring",
+                                        stiffness: 100,
+                                        damping: 20,
+                                    },
                                 }}
                                 className="bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
                             >
