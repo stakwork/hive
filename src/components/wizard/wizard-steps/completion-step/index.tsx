@@ -62,7 +62,7 @@ const CompletionStep = ({ onCreateTask }: CompletionStepProps) => {
             className="w-full max-w-xs bg-black hover:bg-gray-800 text-white p-4 flex items-center justify-center gap-2"
           >
             <Activity className="h-4 w-4" />
-            Create new task
+            Create Task
           </Button>
         </div>
       </CardContent>
