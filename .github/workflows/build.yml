@@ -28,16 +28,17 @@ jobs:
     - name: Install Dependencies
       run: npm install
 
-    - name: Generate Prisma Client
+    - name: Generate Prisma Client with Retry
       run: |
-        for i in 1 2 3; do
-          npx prisma generate && break
-          echo "Retrying..."
-          sleep 5
+        npm install @prisma/client@5.12.0 prisma@5.12.0
+        for i in {1..5}; do
+          npx prisma generate --no-engine && break || (echo "Retry $i failed, retrying..." && sleep 10)
         done
       env:
         PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
-        PRISMA_CLI_BINARY_TARGETS: debian-openssl-3.0.x,linux-static-x64
+        PRISMA_CLI_BINARY_TARGETS: linux-static-x64,linux-glibc-libssl3,debian-openssl-3.0.x
+        PRISMA_CLIENT_ENGINE_TYPE: binary
+        PRISMA_GENERATE_SKIP_AUTODETECT: true
 
     - name: Build Next.js App
       run: npm run build
