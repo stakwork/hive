@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         } = body;
 
         // Validate required fields
-        if (!name) {
+        if (!pool_name) {
             return NextResponse.json(
                 { error: "Missing required field: name" },
                 { status: 400 }
