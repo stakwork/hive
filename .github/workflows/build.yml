@@ -29,9 +29,15 @@ jobs:
       run: npm install
 
     - name: Generate Prisma Client
-      run: npx prisma generate
+      run: |
+        for i in 1 2 3; do
+          npx prisma generate && break
+          echo "Retrying..."
+          sleep 5
+        done
       env:
         PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
+        PRISMA_CLI_BINARY_TARGETS: debian-openssl-3.0.x,linux-static-x64
 
     - name: Build Next.js App
       run: npm run build
