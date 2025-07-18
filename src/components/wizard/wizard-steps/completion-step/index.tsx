@@ -23,35 +23,28 @@ const CompletionStep = ({ onCreateTask }: CompletionStepProps) => {
           </div>
         </div>
         <CardTitle className="text-2xl text-foreground">
-            You&apos;re All Set — Start Building
+          You're All Set — Start Building
         </CardTitle>
-        <CardDescription className="text-lg">
-            Your workspace is ready and your code graph is fully set up.
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="text-center">
-          <p className="text-muted-foreground mb-6">
-          Everything’s connected and good to go — you can now kick off your first task.
-          </p>
-          
-          {/* Success indicators */}
-          <div className="space-y-3 max-w-sm mx-auto mb-8">
-            <div className="flex items-center gap-3 text-sm">
-              <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Repository connected</span>
+          {/* Success indicators - centered as a group with aligned checkmarks */}
+          <div className="flex flex-col items-center space-y-3 mb-8">
+            <div className="flex items-center gap-3 text-sm w-48">
+              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span className="text-left">Repository connected</span>
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Code ingested</span>
+            <div className="flex items-center gap-3 text-sm w-48">
+              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span className="text-left">Codebase ingested</span>
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Environment setup</span>
+            <div className="flex items-center gap-3 text-sm w-48">
+              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span className="text-left">Environment setup</span>
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Workspace ready</span>
+            <div className="flex items-center gap-3 text-sm w-48">
+              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span className="text-left">Workspace ready</span>
             </div>
           </div>
         </div>
