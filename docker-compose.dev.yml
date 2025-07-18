@@ -27,10 +27,12 @@ services:
     container_name: hive-app-dev
     environment:
       - DATABASE_URL=postgresql://hive_user:hive_password@postgres:5432/hive_db
-      - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=your-secret-key-here
-      - JWT_SECRET=your-64-character-hex-secret-here
-      - NODE_ENV=development
+      - NEXTAUTH_URL=http://100.97.107.124:3000
+      - NEXTAUTH_SECRET=bywYKt/K8MWQbRZQpUeujcTCzGctEsS0G8kfy1kqyDs=
+      - JWT_SECRET=eb68e8048db53877963f8b4beb1fd55e72e1c6826777cd5a8694b28c21cd7f61f485bf3a6136293152584180f717fc840a10c27659ed1c14a29de07eb5e52148
+      - NODE_ENV=production
+      - GITHUB_CLIENT_ID=Ov23li5LywKlITZ6eSzJ
+      - GITHUB_CLIENT_SECRET=2ee2e8a84251ee787a8729369535f12f3f7ae7dd
     ports:
       - "3000:3000"
     volumes:

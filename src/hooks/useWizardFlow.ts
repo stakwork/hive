@@ -166,7 +166,7 @@ export function useWizardFlow({
     );
 
     // Ingest code and start persisting state
-    useCallback(async () => {
+    const ingestCode = useCallback(async () => {
         console.log("ingestCode endpoint being called......");
         try {
             // First update the wizard progress to create the swarm record
@@ -298,6 +298,7 @@ export function useWizardFlow({
         resetLocalState,
         createSwarm,
         updateWizardProgress,
+        ingestCode,
         refresh,
     };
 }

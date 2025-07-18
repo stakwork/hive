@@ -14,7 +14,7 @@ import { isFakeMode, createFakeSwarm } from "@/services/swarm/fake";
 
 export async function POST(request: NextRequest) {
     if (isFakeMode) {
-        const { id, swarm_id } = await createFakeSwarm(request);
+        const { id, swarm_id } = await createFakeSwarm();
         return NextResponse.json({
             success: true,
             message: "Swarm (FAKE) was created successfully",

@@ -69,7 +69,7 @@ export function CreateWorkspaceDialog({
             setFormData({ name: "", description: "", slug: "" });
             setErrors({});
             onOpenChange(false);
-        } catch (err: object) {
+        } catch (err: any) {
             setApiError(err.message || "Unknown error");
         } finally {
             setLoading(false);

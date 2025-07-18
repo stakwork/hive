@@ -547,14 +547,14 @@ export default function CodeGraphPage() {
 
                     {/* Progress Indicator */}
                     <WizardProgress
-                        currentStep={currentStep}
+                        currentStep={currentStep as WizardStep}
                         totalSteps={9}
                         stepStatus={currentStepStatus}
                     />
 
                     {/* Step Renderer */}
                     <WizardStepRenderer
-                        step={currentStep}
+                        step={currentStep as WizardStep}
                         repositories={repositories}
                         selectedRepo={localState.selectedRepo}
                         searchTerm={localState.searchTerm}
@@ -564,7 +564,7 @@ export default function CodeGraphPage() {
                         ingestStepStatus={ingestStepStatus}
                         servicesData={localState.servicesData}
                         swarmStatus={swarmCreationStatus}
-                        swarmName={swarmName}
+                        swarmName={swarmName || ""}
                         envVars={localState.envVars}
                         onSearchChange={handleSearchChange}
                         onRepoSelect={handleRepoSelect}

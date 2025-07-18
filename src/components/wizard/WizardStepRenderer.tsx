@@ -22,6 +22,7 @@ import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
 import ReviewPoolEnvironmentStep from "@/components/wizard/ReviewPoolEnvironmentStep";
 import { sanitizeWorkspaceName } from "@/utils/repositoryParser";
 import { useState } from "react";
+import { StepStatus } from "@prisma/client";
 
 interface WizardStepRendererProps {
     step: WizardStep;
@@ -50,7 +51,7 @@ interface WizardStepRendererProps {
     onNext: () => void;
     onBack: () => void;
     onStepChange: (step: WizardStep) => void;
-    stepStatus?: string;
+    stepStatus?: StepStatus;
     onStatusChange?: (
         status: "PENDING" | "STARTED" | "PROCESSING" | "COMPLETED" | "FAILED"
     ) => void;
@@ -376,7 +377,7 @@ export function WizardStepRenderer({
                               ? "pending"
                               : "complete"
                     }
-                    onCreate={onCreateSwarm}
+                    onCreate={onCreateSwarm as () => Promise<void>}
                     onComplete={onSwarmContinue}
                     onBack={onBack}
                     stepStatus={stepStatus}
@@ -471,7 +472,13 @@ export function WizardStepRenderer({
             return (
                 <EnvironmentSetupStep
                     envVars={envVars}
-                    onEnvChange={onEnvChange}
+                    onEnvChange={
+                        onEnvChange as (
+                            index: number,
+                            field: keyof EnvironmentVariable,
+                            value: string | boolean
+                        ) => void
+                    }
                     onAddEnv={onAddEnv}
                     onRemoveEnv={onRemoveEnv}
                     onNext={onNext}
