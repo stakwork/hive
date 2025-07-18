@@ -1,35 +1,47 @@
-name: Next.js CI
+name: Build
 
 on:
+  push:
+    branches:
+      - master
   pull_request:
     branches:
-      - "*"
+      - *
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
 
-    - name: Cache Prisma Binaries
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/prisma
-        key: ${{ runner.os }}-prisma-${{ hashFiles('package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-prisma-
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-    - name: Install Dependencies
-      run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Generate Prisma Client with Retry
-      run: npx prisma migrate dev
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
-    - name: Build Next.js App
-      run: npm run build
+      - name: Build the application
+        run: npm run build
+        env:
+          NEXTAUTH_URL: "http://localhost:3000"
+          NEXTAUTH_SECRET: "dummy-secret"
+          JWT_SECRET: "dummy-jwt-secret"
+          GITHUB_CLIENT_ID: "dummy-id"
+          GITHUB_CLIENT_SECRET: "dummy-secret"
