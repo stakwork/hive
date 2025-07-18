@@ -17,8 +17,21 @@ jobs:
       with:
         node-version: '22'
 
+    - name: Cache Prisma Binaries
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/prisma
+        key: ${{ runner.os }}-prisma-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-prisma-
+
     - name: Install Dependencies
       run: npm ci
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+      env:
+        PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
 
     - name: Build Next.js App
       run: npm run build
