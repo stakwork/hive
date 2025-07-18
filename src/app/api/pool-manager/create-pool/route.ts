@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
             branch_name,
             github_pat,
             github_username,
-            envvars,
+            env_vars,
         } = body;
 
         // Validate required fields
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
             branch_name,
             github_pat,
             github_username,
-            envvars,
+            env_vars,
         });
 
         return NextResponse.json({ pool }, { status: 201 });
