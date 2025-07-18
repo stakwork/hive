@@ -18,7 +18,8 @@ const WIZARD_STEP_ORDER: SwarmWizardStep[] = [
   SwarmWizardStep.ADD_SERVICES,
   SwarmWizardStep.ENVIRONMENT_SETUP,
   SwarmWizardStep.REVIEW_POOL_ENVIRONMENT,
-  SwarmWizardStep.STAKWORK_SETUP
+  SwarmWizardStep.STAKWORK_SETUP,
+  SwarmWizardStep.COMPLETION
 ];
 
 // Valid step status transitions

@@ -7,6 +7,7 @@ import ReviewPoolEnvironmentStep from "./review-pool-environment-step";
 import ServicesStep from "./services-step";
 import StakworkSetupStep from "./stakwork-setup-step";
 import WelcomeStep from "./welcome-step";
+import CompletionStep from "./completion-step";
 
 export const componentsMap: Record<number, React.ComponentType<any>> = {
     1: WelcomeStep,
@@ -18,4 +19,5 @@ export const componentsMap: Record<number, React.ComponentType<any>> = {
     7: EnvironmentSetupStep,
     8: ReviewPoolEnvironmentStep,
     9: StakworkSetupStep,
+    10: CompletionStep,
 }

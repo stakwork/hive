@@ -3,6 +3,8 @@
 import { WizardStep, Repository, EnvironmentVariable } from "@/types/wizard";
 import { ServicesData } from "@/components/stakgraph/types";
 import { sanitizeWorkspaceName } from "@/utils/repositoryParser";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useRouter } from "next/navigation";
 import { DefaultStep } from "./wizard-steps/default-step";
 import { componentsMap } from "./wizard-steps";
 
@@ -69,6 +71,8 @@ export function WizardStepRenderer({
   stepStatus,
   onStatusChange,
 }: WizardStepRendererProps) {
+  const { slug: workspaceSlug } = useWorkspace();
+  const router = useRouter();
 
     const StepComponent = componentsMap[step]
 
@@ -137,6 +141,13 @@ export function WizardStepRenderer({
       9: {
         workspaceName: projectName,
         onFinish: onNext,
+        onStepChange,
+      },
+      10: {
+        onCreateTask: () => {
+          // Navigate to task creation page using workspace context
+          router.push(`/w/${workspaceSlug}/tasks/new`);
+        },
       },
     }
 
