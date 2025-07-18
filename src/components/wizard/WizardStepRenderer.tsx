@@ -137,6 +137,13 @@ export function WizardStepRenderer({
       9: {
         workspaceName: projectName,
         onFinish: onNext,
+        onStepChange,
+      },
+      10: {
+        onCreateTask: () => {
+          // Navigate to task creation page
+          window.location.href = `/w/${projectName}/tasks/new`;
+        },
       },
     }
 

@@ -72,6 +72,7 @@ export default function CodeGraphPage() {
     'ENVIRONMENT_SETUP': 7,
     'REVIEW_POOL_ENVIRONMENT': 8,
     'STAKWORK_SETUP': 9,
+    'COMPLETION': 10,
   }), []);
   
   const reverseStepMapping = useMemo(() => ({
@@ -84,6 +85,7 @@ export default function CodeGraphPage() {
     7: 'ENVIRONMENT_SETUP',
     8: 'REVIEW_POOL_ENVIRONMENT',
     9: 'STAKWORK_SETUP',
+    10: 'COMPLETION',
   }), []);
 
   // Determine current step based on swarm state or local state
@@ -455,7 +457,7 @@ export default function CodeGraphPage() {
           </div>
 
           {/* Progress Indicator */}
-          <WizardProgress currentStep={currentStep} totalSteps={9} stepStatus={currentStepStatus} />
+          <WizardProgress currentStep={currentStep} totalSteps={10} stepStatus={currentStepStatus} />
 
           {/* Step Renderer */}
           <WizardStepRenderer

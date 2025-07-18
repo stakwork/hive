@@ -44,7 +44,7 @@ export interface WizardState {
   envVars: EnvironmentVariable[];
 }
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 // Canonical wizard step keys for backend/frontend sync
 export type WizardStepKey =
@@ -56,7 +56,8 @@ export type WizardStepKey =
   | 'ADD_SERVICES'
   | 'ENVIRONMENT_SETUP'
   | 'REVIEW_POOL_ENVIRONMENT'
-  | 'STAKWORK_SETUP';
+  | 'STAKWORK_SETUP'
+  | 'COMPLETION';
 
 // API Response Types
 export interface WizardStateResponse {
@@ -133,6 +134,7 @@ export const STEP_MAPPING = {
   ENVIRONMENT_SETUP: 7,
   REVIEW_POOL_ENVIRONMENT: 8,
   STAKWORK_SETUP: 9,
+  COMPLETION: 10,
 }
 
 export const REVERSE_STEP_MAPPING = {
@@ -144,5 +146,6 @@ export const REVERSE_STEP_MAPPING = {
   6: "ADD_SERVICES",
   7: "ENVIRONMENT_SETUP",
   8: "REVIEW_POOL_ENVIRONMENT",
-  9: "STAKWORK_SETUP"
+  9: "STAKWORK_SETUP",
+  10: "COMPLETION"
 }

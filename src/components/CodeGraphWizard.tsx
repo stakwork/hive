@@ -59,6 +59,7 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
       ENVIRONMENT_SETUP: 7,
       REVIEW_POOL_ENVIRONMENT: 8,
       STAKWORK_SETUP: 9,
+      COMPLETION: 10,
     }),
     []
   );
@@ -74,6 +75,7 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
       7: "ENVIRONMENT_SETUP",
       8: "REVIEW_POOL_ENVIRONMENT",
       9: "STAKWORK_SETUP",
+      10: "COMPLETION",
     }) as Record<WizardStep, WizardStepKey>,
     []
   );
@@ -257,7 +259,7 @@ export function CodeGraphWizard({ user }: CodeGraphWizardProps) {
 
   return (
     <div className="space-y-6">
-      <WizardProgress currentStep={step} totalSteps={9} />
+      <WizardProgress currentStep={step} totalSteps={10} />
       <WizardStepRenderer
         step={step}
         repositories={repositories}

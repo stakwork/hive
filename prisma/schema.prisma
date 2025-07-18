@@ -605,6 +605,7 @@ enum SwarmWizardStep {
   ENVIRONMENT_SETUP
   REVIEW_POOL_ENVIRONMENT
   STAKWORK_SETUP
+  COMPLETION
 }
 
 enum StepStatus {

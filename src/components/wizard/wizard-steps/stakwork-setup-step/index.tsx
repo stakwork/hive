@@ -8,6 +8,7 @@ interface StakworkSetupStepProps {
   workspaceName: string;
   onFinish: () => void;
   onBack: () => void;
+  onStepChange?: (step: number) => void;
   stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
@@ -15,7 +16,7 @@ const StakworkSetupStep = ({
   workspaceName,
   onFinish,
   onBack,
-  stepStatus: _stepStatus,
+  onStepChange,
 }: StakworkSetupStepProps) => {
   return (
     <Card className="max-w-2xl mx-auto">
@@ -69,7 +70,7 @@ const StakworkSetupStep = ({
           <Button variant="outline" type="button" onClick={onBack}>
             Back
           </Button>
-          <Button className="px-8 bg-green-600 hover:bg-green-700" type="button" onClick={onFinish}>
+          <Button className="px-8 bg-green-600 hover:bg-green-700" type="button" onClick={() => onStepChange?.(10) || onFinish()}>
             Finish
             <CheckCircle className="w-4 h-4 ml-2" />
           </Button>
