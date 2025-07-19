@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions, getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
+import { authOptions } from '@/lib/auth/nextauth';
 import { db } from '@/lib/db';
-import { swarmApiRequest } from '@/services/swarm/api/swarm';
+import { swarmApiRequestAuth } from '@/services/swarm/api/swarm';
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { workspaceId, swarmId } = body;
-    if (!workspaceId && !swarmId) {
+
+    const { searchParams } = new URL(request.url);
+    const workspaceId = searchParams.get('workspaceId');
+    const swarmId = searchParams.get('swarmId');
+    if (!workspaceId || !swarmId) {
       return NextResponse.json({ success: false, message: 'Missing required fields: workspaceId or swarmId' }, { status: 400 });
     }
 
@@ -21,6 +23,7 @@ export async function POST(request: NextRequest) {
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
     const swarm = await db.swarm.findFirst({ where });
+
     if (!swarm) {
       return NextResponse.json({ success: false, message: 'Swarm not found' }, { status: 404 });
     }
@@ -28,9 +31,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Swarm URL or API key not set' }, { status: 400 });
     }
 
+
     // Proxy to stakgraph microservice
-    const apiResult = await swarmApiRequest({
-      swarmUrl: `https://repo2graph.${swarm.name}.sphinx.chat`,
+    const apiResult = await swarmApiRequestAuth({
+      swarmUrl: `https://repo2graph.${swarm.name}`,
       endpoint: '/services',
       method: 'GET',
       apiKey: swarm.swarmApiKey
@@ -41,7 +45,7 @@ export async function POST(request: NextRequest) {
       status: apiResult.status,
       data: apiResult.data
     }, { status: apiResult.status });
-  } catch {
+  } catch(error) {
     return NextResponse.json({ success: false, message: 'Failed to ingest code' }, { status: 500 });
   }
-} 
+}

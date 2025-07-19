@@ -4,30 +4,51 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Github, CheckCircle, ArrowRight, Search, Star, Eye } from "lucide-react";
 import { Repository } from "@/types/wizard";
+import { useEffect, useState } from "react";
+import { mockRepositories } from "@/data/mockRepositories";
+import { useWizardStore } from "@/stores/useWizardStore";
 
 interface RepositorySelectionStepProps {
-    repositories: Repository[];
-    selectedRepo: Repository | null;
-    searchTerm: string;
-    loading: boolean;
-    onSearchChange: (term: string) => void;
-    onRepoSelect: (repo: Repository) => void;
     onNext: () => void;
     onBack: () => void;
     stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export function RepositorySelectionStep({
-    repositories,
-    selectedRepo,
-    searchTerm,
-    loading,
-    onSearchChange,
-    onRepoSelect,
     onNext,
     onBack,
     stepStatus: _stepStatus,
 }: RepositorySelectionStepProps) {
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { selectedRepo, setSelectedRepo } = useWizardStore((s) => s);
+
+  useEffect(() => {
+    const fetchRepositories = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch("/api/github/repositories");
+        if (response.ok) {
+          const data = await response.json();
+          setRepositories(data.repositories || []);
+        } else {
+          // Fallback to mock data for testing
+          setRepositories(mockRepositories);
+        }
+      } catch (error) {
+        console.error("Failed to fetch repositories:", error);
+        // Fallback to mock data for testing
+        setRepositories(mockRepositories);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchRepositories();
+  }, []);
+
+
     const filteredRepositories = repositories.filter(repo =>
         repo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         repo.description?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -51,14 +72,14 @@ export function RepositorySelectionStep({
                     <Input
                         placeholder="Search repositories..."
                         value={searchTerm}
-                        onChange={(e) => onSearchChange(e.target.value)}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-10"
                     />
                 </div>
 
                 {/* Repository List */}
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {loading ? (
+                  {isLoading ? (
                         <div className="text-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                             <p className="text-muted-foreground mt-2">Loading repositories...</p>
@@ -76,7 +97,7 @@ export function RepositorySelectionStep({
                                         ? "border-accent bg-accent text-accent-foreground"
                                         : "border-muted hover:border-accent"
                                     }`}
-                                onClick={() => onRepoSelect(repo)}
+                                onClick={() => setSelectedRepo(repo)}
                             >
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
@@ -139,4 +160,4 @@ export function RepositorySelectionStep({
             </CardContent>
         </Card>
     );
-} 
+}

@@ -65,10 +65,12 @@ export async function swarmApiRequest({
 }): Promise<{ ok: boolean; data?: unknown; status: number }> {
   try {
     const url = `${swarmUrl.replace(/\/$/, '')}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     };
+
     const response = await fetch(url, {
       method,
       headers,
@@ -77,9 +79,53 @@ export async function swarmApiRequest({
     let responseData: unknown = undefined;
     try {
       responseData = await response.json();
-    } catch {}
+
+    } catch (error) {
+      console.error("swarmApiRequest error", error)
+    }
     return { ok: response.ok, data: responseData, status: response.status };
-  } catch {
+  } catch (error) {
+    console.error("swarmApiRequest", error)
     return { ok: false, status: 500 };
   }
 } 
+
+export async function swarmApiRequestAuth({
+  swarmUrl,
+  endpoint,
+  method = 'GET',
+  apiKey,
+  data
+}: {
+  swarmUrl: string;
+  endpoint: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  apiKey: string;
+  data?: unknown;
+}): Promise<{ ok: boolean; data?: unknown; status: number }> {
+  try {
+    const url = `${swarmUrl.replace(/\/$/, '')}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+
+    const headers: Record<string, string> = {
+      'x-api-token': `${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      ...(data ? { body: JSON.stringify(data) } : {}),
+    });
+    let responseData: unknown = undefined;
+    try {
+      responseData = await response.json();
+
+    } catch (error) {
+      console.error("swarmApiRequest error", error)
+    }
+    return { ok: response.ok, data: responseData, status: response.status };
+  } catch (error) {
+    console.error("swarmApiRequest", error)
+    return { ok: false, status: 500 };
+  }
+}

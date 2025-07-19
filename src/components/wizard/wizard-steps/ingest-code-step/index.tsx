@@ -3,37 +3,108 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useWizardStore } from "@/stores/useWizardStore";
+import { sanitizeWorkspaceName } from "@/utils/repositoryParser";
+
+interface IngestCodeStepStepProps {
+  onNext: () => void;
+  onBack: () => void;
+}
 
 export function IngestCodeStep({
-  status,
-  onStart,
-  onContinue,
+
+  onNext,
   onBack,
-  onStatusChange
-}: {
-  status: 'idle' | 'pending' | 'complete';
-  onStart: () => void;
-  onContinue: () => void;
-  onBack: () => void;
-  onStatusChange?: (status: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED') => void;
-}) {
-  const isPending = status === 'pending';
-  const [countdown, setCountdown] = useState(5);
+}: IngestCodeStepStepProps) {
+  const swarmId = useWizardStore((s) => s.swarmId);
+  const workspaceId = useWizardStore((s) => s.workspaceId);
+  const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
+  const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
 
-  const handleStart = () => {
-    console.log("CALLED handleStart")
-    onStatusChange?.('PROCESSING');
-    console.log("CALLING onStart()")
-    onStart();
-  };
+  const setServices = useWizardStore((s) => s.setServices);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleContinue = () => {
-    onStatusChange?.('COMPLETED');
-    onContinue();
-  };
+  const isProcessing = currentStepStatus === "PROCESSING";
+  const isPending = currentStepStatus === "PENDING";
 
-  const canContinue = isPending;
+  const handleIngestStart = useCallback(async () => {
+    setCurrentStepStatus("PROCESSING");
+
+    try {
+      const res = await fetch("/api/swarm/stakgraph/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ swarmId }),
+      });
+
+      const data = await res.json();
+      console.log("response from handleIngestStart", data);
+    } catch (error) {
+      console.error("Failed to ingest code:", error);
+      setCurrentStepStatus("FAILED");
+    }
+  }, [swarmId, setCurrentStepStatus]);
+
+  const handleComplete = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    setCurrentStepStatus("COMPLETED");
+    onNext();
+  }, [onNext, setCurrentStepStatus]);
+
+  const startPollingServices = useCallback(() => {
+    if (pollIntervalRef.current) {
+
+      return; // avoid multiple intervals
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
+            workspaceId
+          )}&swarmId=${encodeURIComponent(swarmId!)}`
+        );
+        const data = await res.json();
+
+        if (data.success || data.status === "ACTIVE") {
+          console.log("poll success", data);
+          setServices(data.data)
+          handleComplete();
+        } else {
+          console.log("polling response (not ready):", data);
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+        setCurrentStepStatus("FAILED");
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      }
+    }, 3000);
+  }, [workspaceId, swarmId, handleComplete, setCurrentStepStatus]);
+
+  useEffect(() => {
+    if (isProcessing && swarmId && workspaceId) {
+      startPollingServices();
+    }
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [isProcessing, swarmId, workspaceId, startPollingServices]);
+
+  useEffect(() => {
+    handleIngestStart();
+  }, [handleIngestStart]);
+
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
@@ -86,29 +157,6 @@ export function IngestCodeStep({
           )}
         </AnimatePresence>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex justify-between pt-4">
-          {/* {!isPending && (
-            <Button variant="outline" type="button" onClick={onBack}>Back</Button>
-          )} */}
-          {status === 'idle' && (
-            <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={handleStart}>
-              Start Ingest
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          )}
-          {status === 'pending' && (
-            <Button
-              className={`ml-auto px-8 ${canContinue ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-muted text-muted-foreground'}`}
-              type="button"
-              onClick={handleContinue}
-              disabled={!canContinue}
-            >
-              {canContinue ? 'Continue' : `Continue (${countdown})`}
-            </Button>
-          )}
-        </div>
-      </CardContent>
     </Card>
   );
 }

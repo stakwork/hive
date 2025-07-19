@@ -1,20 +1,22 @@
+import { STEPS_ARRAY, TWizardStep } from "@/stores/useWizardStore";
 import { WizardStep } from "@/types/wizard";
 import { CheckCircle, Circle, Loader2 } from "lucide-react";
 
 interface WizardProgressProps {
-  currentStep: WizardStep;
+  currentStep: TWizardStep;
   totalSteps?: number;
   stepStatus?: string;
 }
 
 export function WizardProgress({ currentStep, totalSteps = 9, stepStatus }: WizardProgressProps) {
   const steps = Array.from({ length: totalSteps }, (_, i) => i + 1);
+  const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
 
   const getStepIcon = (stepNumber: number) => {
-    if (stepNumber < currentStep) {
+    if (stepNumber < currentStepIndex) {
       return <CheckCircle className="w-5 h-5 text-white" />;
     }
-    if (stepNumber === currentStep) {
+    if (stepNumber === currentStepIndex) {
       if (stepStatus === 'PROCESSING' || stepStatus === 'STARTED') {
         return <Loader2 className="w-5 h-5 text-white animate-spin" />;
       }
@@ -27,10 +29,10 @@ export function WizardProgress({ currentStep, totalSteps = 9, stepStatus }: Wiza
   };
 
   const getStepStyle = (stepNumber: number) => {
-    if (stepNumber < currentStep) {
+    if (stepNumber < currentStepIndex) {
       return "bg-green-600 text-white border-green-600";
     }
-    if (stepNumber === currentStep) {
+    if (stepNumber === currentStepIndex) {
       if (stepStatus === 'PROCESSING' || stepStatus === 'STARTED') {
         return "bg-blue-600 text-white border-blue-600";
       }
@@ -58,7 +60,7 @@ export function WizardProgress({ currentStep, totalSteps = 9, stepStatus }: Wiza
             {stepNumber < totalSteps && (
               <div
                 className={`w-8 sm:w-12 h-1 mx-1 sm:mx-2 ${
-                  currentStep > stepNumber ? "bg-green-600" : "bg-gray-200"
+                  currentStepIndex > stepNumber ? "bg-green-600" : "bg-gray-200"
                 }`}
               />
             )}

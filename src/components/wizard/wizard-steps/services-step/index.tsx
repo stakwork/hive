@@ -1,26 +1,31 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
-import { ServicesData } from "@/components/stakgraph/types";
+import {  ServicesData } from "@/components/stakgraph/types";
 import { WizardStep } from "@/types/wizard";
+import { useWizardStore } from "@/stores/useWizardStore";
+import { useCallback } from "react";
+import { ServiceConfig } from "@/types";
 
 interface ServicesStepProps {
-  servicesData: ServicesData;
-  onServicesChange: (data: Partial<ServicesData>) => void;
   onNext: () => void;
   onBack: () => void;
-  onStepChange: (step: WizardStep) => void;
 }
 
 const ServicesStep = ({
-  servicesData,
-  onServicesChange,
   onNext,
   onBack,
-  onStepChange,
 }: ServicesStepProps) => {
-  const handleBackToStep = (targetStep: WizardStep) => {
-    onStepChange(targetStep);
+
+  const services = useWizardStore((s) => s.services);
+
+  const onServicesChange = useCallback((data: Partial<ServiceConfig>) => {
+    useWizardStore.setState({ services: { ...services, ...data } });
+  }, [services]);
+
+
+  const servicesData = {
+    services: services,
   };
 
   return (
@@ -40,10 +45,10 @@ const ServicesStep = ({
         <ServicesForm
           data={servicesData}
           loading={false}
-          onChange={partial => onServicesChange({ ...servicesData, ...partial, services: partial.services ?? servicesData.services })}
+          onChange={partial => onServicesChange({ ...services, ...partial, services: partial.services ?? services.services })}
         />
         <div className="flex justify-between pt-6">
-          <Button variant="outline" type="button" onClick={() => handleBackToStep(5)}>
+          <Button variant="outline" type="button" onClick={() => onBack()}>
             Back
           </Button>
           <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={onNext}>

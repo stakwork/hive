@@ -3,22 +3,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight } from "lucide-react";
+import { useWizardStore } from "@/stores/useWizardStore";
 
 interface ProjectNameStepProps {
-  projectName: string;
-  onProjectNameChange: (name: string) => void;
   onNext: () => void;
   onBack: () => void;
   stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export function ProjectNameStep({
-  projectName,
-  onProjectNameChange,
   onNext,
   onBack,
-  stepStatus: _stepStatus,
 }: ProjectNameStepProps) {
+  const projectName = useWizardStore((s) => s.projectName);
+  const setProjectName = useWizardStore((s) => s.setProjectName);
+
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
@@ -29,7 +28,7 @@ export function ProjectNameStep({
             <rect x="12" y="16" width="40" height="32" rx="4" fill="#F3F4F6" stroke="#D1D5DB" strokeWidth="2" filter="url(#shadow)" />
             <defs>
               <filter id="shadow" x="0" y="0" width="64" height="64" filterUnits="userSpaceOnUse">
-                <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.10" />
+                <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#000" floodOpacity="0.10" />
               </filter>
             </defs>
             {/* Pen body */}
@@ -63,7 +62,7 @@ export function ProjectNameStep({
           <Input
             id="projectName"
             value={projectName}
-            onChange={(e) => onProjectNameChange(e.target.value)}
+            onChange={(e) => setProjectName(e.target.value)}
             placeholder="e.g. my-awesome-project"
             className="mt-2"
             autoFocus
@@ -81,4 +80,4 @@ export function ProjectNameStep({
       </CardContent>
     </Card>
   );
-} 
+}

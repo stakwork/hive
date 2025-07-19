@@ -4,7 +4,6 @@ import { authOptions } from '@/lib/auth/nextauth';
 import { db } from '@/lib/db';
 import { validateUserWorkspaceAccess } from '@/lib/auth/workspace-resolver';
 import { WizardStateResponse, WizardStateError } from '@/types/wizard';
-import { StepStatus } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -103,7 +102,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         wizardStep: swarm.wizardStep,
-        stepStatus: swarm.stepStatus || ('PENDING' as StepStatus),
+        stepStatus: swarm.stepStatus || ('PENDING'),
         wizardData,
         swarmId: swarm.swarmId || undefined,
         swarmStatus: swarm.status,

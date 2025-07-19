@@ -5,46 +5,76 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useWizardStore } from "@/stores/useWizardStore";
+import { sanitizeWorkspaceName } from "@/utils/repositoryParser";
 
 interface GraphInfrastructureStepProps {
-  swarmName: string;
-  graphDomain: string;
-  status: "idle" | "pending" | "complete";
-  onCreate: () => Promise<void>;
-  onComplete: () => void;
+  onNext: () => void;
   onBack: () => void;
   stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-  onStatusChange?: (status: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED') => void;
 }
 
 export function GraphInfrastructureStep({
-  swarmName,
-  graphDomain,
-  status,
-  onCreate,
-  onComplete,
+  onNext,
   onBack,
-  stepStatus: _stepStatus,
-  onStatusChange,
+  stepStatus,
 }: GraphInfrastructureStepProps) {
-  const isPending = status === "pending";
-  const isComplete = status === "complete";
+  const swarmId = useWizardStore((s) => s.swarmId);
+  const swarmName = useWizardStore((s) => s.swarmName);
+  const projectName = useWizardStore((s) => s.projectName);
+  const graphDomain = sanitizeWorkspaceName(projectName);
+  const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
+  const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
+  const createSwarm = useWizardStore((s) => s.createSwarm);
+
+  const isPending = currentStepStatus === "PENDING";
+
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleCreate = async () => {
-    onStatusChange?.('PROCESSING');
     try {
-      await onCreate();
-      onStatusChange?.('COMPLETED');
+      await createSwarm();
     } catch (error) {
-      onStatusChange?.('FAILED');
+      setCurrentStepStatus('FAILED');
       throw error;
     }
   };
 
-  const handleComplete = () => {
-    onStatusChange?.('COMPLETED');
-    onComplete();
-  };
+  const handleComplete = useCallback(() => {
+    setCurrentStepStatus('COMPLETED');
+    onNext();
+  }, [onNext, setCurrentStepStatus]);
+
+  // Swarm polling effect
+  useEffect(() => {
+    if (swarmId && (currentStepStatus === 'PROCESSING')) {
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/swarm/poll?id=${swarmId}`);
+          const data = await res.json();
+          if (data.status === 'ACTIVE') {
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+            }
+            handleComplete()
+          }
+        } catch {
+          setCurrentStepStatus('FAILED');
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        }
+      }, 3000);
+      return () => {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      };
+    }
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [swarmId, currentStepStatus, handleComplete]);
+
+
+
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
@@ -112,18 +142,20 @@ export function GraphInfrastructureStep({
           />
         </div>
         <div className="flex justify-between pt-4">
-          {!isPending && (
-            <Button variant="outline" type="button" onClick={onBack}>
-              Back
-            </Button>
-          )}
-          {status === "idle" && (
-            <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={handleCreate}>
-              Create
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          )}
+
+
           {isPending && (
+            <>
+              <Button variant="outline" type="button" onClick={onBack}>
+                Back
+              </Button>
+              <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={handleCreate}>
+                Create
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </>
+          )}
+          {!isPending && (
             <div className="flex flex-col items-end gap-2 w-full">
               <Button
                 className={`mt-2 ml-auto px-8 bg-muted text-muted-foreground`}
@@ -132,28 +164,10 @@ export function GraphInfrastructureStep({
               >
                 Generating Swarm...
               </Button>
-              {isComplete && (
-                <Button
-                  className="mt-2 ml-auto px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                  type="button"
-                  onClick={handleComplete}
-                >
-                  Continue
-                </Button>
-              )}
             </div>
-          )}
-          {isComplete && !isPending && (
-            <Button
-              className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-              type="button"
-              onClick={handleComplete}
-            >
-              Continue
-            </Button>
           )}
         </div>
       </CardContent>
     </Card>
   );
-} 
+}

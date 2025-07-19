@@ -1,9 +1,9 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Github, TrendingUp, BarChart3, GitBranch, ArrowRight } from "lucide-react";
+import { TWizardStep } from "@/stores/useWizardStore";
 
 interface WelcomeStepProps {
-    step: number;
+    step: TWizardStep;
     handleBackToStep: () => void;
 }
 

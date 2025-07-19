@@ -8,14 +8,14 @@ import ServicesStep from "./services-step";
 import StakworkSetupStep from "./stakwork-setup-step";
 import WelcomeStep from "./welcome-step";
 
-export const componentsMap: Record<number, React.ComponentType<any>> = {
-    1: WelcomeStep,
-    2: RepositorySelectionStep,
-    3: ProjectNameStep,
-    4: GraphInfrastructureStep,
-    5: IngestCodeStep,
-    6: ServicesStep,
-    7: EnvironmentSetupStep,
-    8: ReviewPoolEnvironmentStep,
-    9: StakworkSetupStep,
+export const componentsMap: Record<string, React.ComponentType<any>> = {
+    'WELCOME': WelcomeStep,
+    'REPOSITORY_SELECT': RepositorySelectionStep,
+    'PROJECT_NAME': ProjectNameStep,
+    'GRAPH_INFRASTRUCTURE': GraphInfrastructureStep,
+    'INGEST_CODE': IngestCodeStep,
+    'ADD_SERVICES': ServicesStep,
+    'ENVIRONMENT_SETUP': EnvironmentSetupStep,
+    'REVIEW_POOL_ENVIRONMENT': ReviewPoolEnvironmentStep,
+    'STAKWORK_SETUP': StakworkSetupStep,
 }

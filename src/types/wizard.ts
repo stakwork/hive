@@ -59,25 +59,28 @@ export type WizardStepKey =
   | 'STAKWORK_SETUP';
 
 // API Response Types
+
+export type WizardStateData = {
+  wizardStep: string;
+  stepStatus: string;
+  wizardData: Record<string, unknown>;
+  swarmId?: string;
+  swarmName?: string;
+  swarmStatus?: string;
+  workspaceId: string;
+  workspaceSlug: string;
+  workspaceName: string;
+  user: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  };
+}
+
 export interface WizardStateResponse {
   success: boolean;
-  data: {
-    wizardStep: string;
-    stepStatus: string;
-    wizardData: Record<string, unknown>;
-    swarmId?: string;
-    swarmName?: string;
-    swarmStatus?: string;
-    workspaceId: string;
-    workspaceSlug: string;
-    workspaceName: string;
-    user: {
-      id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-    };
-  };
+  data: WizardStateData
   message?: string;
 }
 

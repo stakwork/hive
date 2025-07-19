@@ -3,26 +3,37 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { EnvironmentVariable } from "@/types/wizard";
+import { useWizardStore } from "@/stores/useWizardStore";
+import { useCallback } from "react";
 
 interface EnvironmentSetupStepProps {
-  envVars: EnvironmentVariable[];
-  onEnvChange: (index: number, field: keyof EnvironmentVariable, value: string | boolean) => void;
-  onAddEnv: () => void;
-  onRemoveEnv: (index: number) => void;
   onNext: () => void;
   onBack: () => void;
-  stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export function EnvironmentSetupStep({
-  envVars,
-  onEnvChange,
-  onAddEnv,
-  onRemoveEnv,
+
   onNext,
   onBack,
-  stepStatus: _stepStatus,
 }: EnvironmentSetupStepProps) {
+
+  const envVars = useWizardStore((s) => s.envVars);
+
+  const onEnvChange = useCallback((index: number, field: keyof EnvironmentVariable, value: string | boolean) => {
+    useWizardStore.setState({ envVars: envVars.map((env, i) => i === index ? { ...env, [field]: value } : env) });
+  }, [envVars]);
+
+  const onAddEnv = useCallback(() => {
+    useWizardStore.setState({ envVars: [...envVars, { key: '', value: '', show: false }] });
+  }, [envVars]);
+
+  const onRemoveEnv = useCallback((index: number) => {
+    useWizardStore.setState({ envVars: envVars.filter((_, i) => i !== index) });
+  }, [envVars]);
+
+  console.log(envVars)
+
+
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader className="text-center">
@@ -102,4 +113,4 @@ export function EnvironmentSetupStep({
       </CardContent>
     </Card>
   );
-} 
+}

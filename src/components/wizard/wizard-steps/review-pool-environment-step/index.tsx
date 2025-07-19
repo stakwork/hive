@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { EnvironmentVariable } from "@/types/wizard";
 import { ServicesData } from "@/components/stakgraph/types";
+import { useWizardStore } from "@/stores/useWizardStore";
 
 // Helper function to generate containerEnv from environment variables
 const generateContainerEnv = (envVars: EnvironmentVariable[]) => {
@@ -239,18 +240,23 @@ interface ReviewPoolEnvironmentStepProps {
   stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
+interface ReviewPoolEnvironmentStepProps {
+  onNext: () => void;
+  onBack: () => void;
+}
+
 const ReviewPoolEnvironmentStep = ({ 
-  repoName,
-  projectName,
-  servicesData,
-  envVars,
-  onConfirm, 
+  onNext,
   onBack,
-  stepStatus: _stepStatus
 }: ReviewPoolEnvironmentStepProps) => {
   const [activeTab, setActiveTab] = useState("devcontainer");
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [originalContents, setOriginalContents] = useState<Record<string, string>>({});
+
+  const repoName = useWizardStore((s) => s.repoName);
+  const projectName = useWizardStore((s) => s.projectName);
+  const servicesData = useWizardStore((s) => s.servicesData);
+  const envVars = useWizardStore((s) => s.envVars);
 
   const files = getFiles(repoName, projectName, servicesData, envVars);
 
@@ -381,7 +387,7 @@ const ReviewPoolEnvironmentStep = ({
           <Button 
             className="px-8 bg-green-600 hover:bg-green-700" 
             type="button" 
-            onClick={onConfirm}
+            onClick={onNext}
           >
             Confirm Setup
             <ArrowRight className="w-4 h-4 ml-2" />
