@@ -153,6 +153,7 @@ model Workspace {
   
   // PM Structure
   products Product[]
+  tasks    Task[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -260,6 +261,7 @@ model Product {
   @@map("products")
 }
 
+// Goal / Objective
 model Feature {
   id          String        @id @default(cuid())
   title       String
@@ -290,7 +292,6 @@ model Feature {
   
   userStories  UserStory[]
   requirements Requirement[]
-  tasks        Task[]
   roadmapItems RoadmapItem[]
   comments     Comment[]     @relation("FeatureComments")
   
@@ -326,7 +327,6 @@ model UserStory {
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
   
-  tasks               Task[]
   comments            Comment[]   @relation("UserStoryComments")
   
   @@index([featureId])
@@ -362,16 +362,15 @@ model Requirement {
   @@map("requirements")
 }
 
+// Chat
 model Task {
   id            String      @id @default(cuid())
   title         String
   description   String?
   
-  // Flexible assignment - can be to user story OR directly to feature
-  userStoryId   String?     @map("user_story_id")
-  userStory     UserStory?  @relation(fields: [userStoryId], references: [id], onDelete: Cascade)
-  featureId     String?     @map("feature_id")
-  feature       Feature?    @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  // Direct workspace relationship
+  workspaceId   String      @map("workspace_id")
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   
   // Assignment and repository linking
   assigneeId    String?     @map("assignee_id")
@@ -396,13 +395,80 @@ model Task {
   updatedAt     DateTime    @updatedAt @map("updated_at")
   
   comments      Comment[]   @relation("TaskComments")
-  
-  @@index([userStoryId])
-  @@index([featureId])
+  chatMessages  ChatMessage[] 
+
+  @@index([workspaceId])
   @@index([assigneeId])
   @@index([status])
   @@index([deleted])
   @@map("tasks")
+}
+
+// =============================================
+// CHAT & ARTIFACTS
+// =============================================
+
+model ChatMessage {
+  id                  String      @id @default(cuid())
+  taskId              String?     @map("task_id")
+  task                Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  message             String
+  role                ChatRole
+  timestamp           DateTime    @default(now())
+  contextTags         Json        @default("[]") // stores ContextTag[]
+  status              ChatStatus  @default(SENDING)
+  sourceWebsocketID   String?     @map("source_websocket_id")
+  
+  artifacts           Artifact[]
+  
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  
+  @@index([taskId])
+  @@index([timestamp])
+  @@map("chat_messages")
+}
+
+model Artifact {
+  id            String        @id @default(cuid())
+  messageId     String        @map("message_id")
+  message       ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type          ArtifactType
+  content       Json?         // stores FormContent | CodeContent | BrowserContent
+  
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  
+  @@index([messageId])
+  @@index([type])
+  @@map("artifacts")
+}
+
+// Add these enums to your existing enums section:
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+enum ChatStatus {
+  SENDING
+  SENT
+  ERROR
+}
+
+enum ContextTagType {
+  PRODUCT_BRIEF
+  FEATURE_BRIEF
+  SCHEMATIC
+}
+
+enum ArtifactType {
+  FORM
+  CODE
+  BROWSER
+  IDE
+  MEDIA
+  STREAM
 }
 
 // =============================================

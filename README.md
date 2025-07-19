@@ -15,6 +15,7 @@ Hive Platform is an AI-first product development platform that helps teams solve
 ## 🏗️ Architecture
 
 ### Frontend
+
 - **Framework**: Next.js 15 with App Router and Turbopack
 - **Styling**: Tailwind CSS v4
 - **UI Components**: shadcn/ui with Radix UI primitives
@@ -23,6 +24,7 @@ Hive Platform is an AI-first product development platform that helps teams solve
 - **State Management**: React Query for server state
 
 ### Backend
+
 - **API Routes**: Next.js API routes for serverless functions
 - **Database**: PostgreSQL with Prisma ORM
 - **Validation**: Zod schemas for type-safe API requests
@@ -30,6 +32,7 @@ Hive Platform is an AI-first product development platform that helps teams solve
 - **Error Tracking**: Sentry integration
 
 ### Database Schema
+
 - **Users**: Lightning Network users with Sphinx authentication
 - **Auth Challenges**: Secure authentication flow management
 - **Projects**: Product initiatives and their metadata
@@ -51,74 +54,86 @@ Hive Platform is an AI-first product development platform that helps teams solve
 ## 📦 Installation
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - PostgreSQL database
 - Sphinx Chat desktop app (for authentication)
 
 ### Quick Start
 
 1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd hive
-   ```
+
+```bash
+git clone <your-repo-url>
+cd hive
+```
 
 2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+
+```bash
+npm install
+```
 
 3. **Set up environment variables**
-   ```bash
-   cp env.example .env.local
-   ```
-   
-   Edit `.env.local` with your configuration:
-   ```env
-   DATABASE_URL="postgresql://username:password@localhost:5432/hive_db"
-   NEXTAUTH_URL="http://localhost:3000"
-   NEXTAUTH_SECRET="your-secret-key-here"
-   JWT_SECRET="your-64-character-hex-secret-here"
-   
-   # GitHub OAuth (for Code Graph feature)
-   GITHUB_CLIENT_ID="your-github-client-id"
-   GITHUB_CLIENT_SECRET="your-github-client-secret"
-   ```
+
+```bash
+cp env.example .env.local
+```
+
+Edit `.env.local` with your configuration:
+
+```env
+DATABASE_URL="postgresql://hive_user:hive_password@localhost:5432/hive_db"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-secret-key-here"
+JWT_SECRET="your-64-character-hex-secret-here"
+
+# GitHub OAuth (for Code Graph feature)
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+```
 
 4. **Generate JWT secret (optional)**
-   ```bash
-   npm run setup
-   ```
+
+```bash
+npm run setup
+```
 
 5. **Set up the database**
-   ```bash
-   # Generate Prisma client
-   npx prisma generate
-   
-   # Run database migrations
-   npx prisma migrate dev
-   ```
+
+`docker-compose up -d postgres`
+
+```bash
+# Generate Prisma client
+npx prisma generate
+
+# Run database migrations
+npx prisma migrate dev
+```
 
 6. **Start the development server**
-   ```bash
-   npm run dev
-   ```
+
+```bash
+npm run dev
+```
 
 7. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
+
+Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## 🔐 Authentication
 
 Hive uses Sphinx Chat for secure Lightning Network-based authentication:
 
 1. **Install Sphinx Chat**: Download from [sphinx.chat](https://sphinx.chat)
-2. **Login Process**: 
+2. **Login Process**:
    - Click "Login with Sphinx" on the login page
    - The app will automatically open Sphinx Chat
    - Approve the authentication request in Sphinx
    - You'll be automatically logged in
 
 ### Development Authentication
+
 In development mode, you can use a quick test login bypass for faster development cycles.
 
 ## 🔗 GitHub OAuth Setup
@@ -126,6 +141,7 @@ In development mode, you can use a quick test login bypass for faster developmen
 The Code Graph feature requires GitHub OAuth integration for repository access:
 
 ### 1. Create GitHub OAuth App
+
 1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
 2. Click "New OAuth App"
 3. Fill in the application details:
@@ -136,18 +152,23 @@ The Code Graph feature requires GitHub OAuth integration for repository access:
 5. Copy the **Client ID** and **Client Secret**
 
 ### 2. Configure Environment Variables
+
 Add your GitHub OAuth credentials to `.env.local`:
+
 ```env
 GITHUB_CLIENT_ID="your-github-client-id"
 GITHUB_CLIENT_SECRET="your-github-client-secret"
 ```
 
 ### 3. Permissions
+
 The OAuth app requests the following scopes:
+
 - `repo` - Access to public and private repositories
 - `read:org` - Read organization information
 
 ### 4. Testing the Integration
+
 1. Navigate to the Code Graph page (`/codegraph`)
 2. Click "Connect with GitHub"
 3. Authorize the application in GitHub
@@ -158,6 +179,7 @@ The OAuth app requests the following scopes:
 For containerized deployment, see [DOCKER.md](./DOCKER.md) for detailed instructions.
 
 ### Quick Docker Start
+
 ```bash
 # Development
 docker-compose -f docker-compose.dev.yml up --build
@@ -202,6 +224,7 @@ src/
 ## 🔧 Development
 
 ### Available Scripts
+
 - `npm run dev` - Start development server with Turbopack
 - `npm run build` - Build for production
 - `npm run start` - Start production server
@@ -209,12 +232,14 @@ src/
 - `npm run setup` - Generate JWT secret
 
 ### Database Commands
+
 - `npx prisma studio` - Open Prisma Studio (database GUI)
 - `npx prisma migrate dev` - Create and apply migrations
 - `npx prisma generate` - Generate Prisma client
 - `npx prisma db push` - Push schema changes to database
 
 ### Adding New Components
+
 ```bash
 # Add shadcn/ui components
 npx shadcn@latest add [component-name]
@@ -228,15 +253,18 @@ npx shadcn@latest add dropdown-menu
 ## 🚀 Deployment
 
 ### Vercel (Recommended)
+
 1. Push your code to GitHub
 2. Connect your repository to Vercel
 3. Add environment variables in Vercel dashboard
 4. Deploy automatically on push
 
 ### Docker Deployment
+
 See [DOCKER.md](./DOCKER.md) for detailed Docker deployment instructions.
 
 ### Environment Variables for Production
+
 - `DATABASE_URL` - Production PostgreSQL connection string
 - `NEXTAUTH_URL` - Your production domain
 - `NEXTAUTH_SECRET` - Secure random string for session encryption
@@ -245,24 +273,28 @@ See [DOCKER.md](./DOCKER.md) for detailed Docker deployment instructions.
 ## 🔮 Roadmap
 
 ### Phase 1: Core Platform ✅
+
 - [x] Sphinx authentication integration
 - [x] User management with Lightning Network
 - [x] Basic dashboard and analytics
 - [x] Docker containerization
 
 ### Phase 2: AI Integration 🚧
+
 - [ ] AI-powered codebase analysis
 - [ ] Smart task estimation and prioritization
 - [ ] Automated system visualization
 - [ ] Predictive development insights
 
 ### Phase 3: Advanced Features 📋
+
 - [ ] Real-time collaboration tools
 - [ ] Advanced bounty marketplace
 - [ ] Integration with external development tools
 - [ ] Mobile app development
 
 ### Phase 4: Enterprise Features 🏢
+
 - [ ] Advanced permissions and roles
 - [ ] SSO integration
 - [ ] Advanced analytics and reporting

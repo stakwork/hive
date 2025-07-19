@@ -18,10 +18,9 @@ export function SidebarMenuItem({ children }: { children: React.ReactNode }) {
 
 export function SidebarMenuButton({
   children,
-  size,
   className = "",
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { size?: string }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       className={`flex items-center gap-2 w-full rounded-md px-2 py-2 text-sm hover:bg-accent transition-colors ${className}`}
@@ -30,4 +29,4 @@ export function SidebarMenuButton({
       {children}
     </button>
   );
-} 
+}

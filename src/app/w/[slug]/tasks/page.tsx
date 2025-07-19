@@ -1,6 +1,12 @@
-'use client';
+"use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckSquare, Clock, Users, Calendar, Plus } from "lucide-react";
@@ -35,9 +41,7 @@ export default function TasksPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">45</div>
-            <p className="text-xs text-muted-foreground">
-              +5 from last week
-            </p>
+            <p className="text-xs text-muted-foreground">+5 from last week</p>
           </CardContent>
         </Card>
 
@@ -48,9 +52,7 @@ export default function TasksPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">
-              Active tasks
-            </p>
+            <p className="text-xs text-muted-foreground">Active tasks</p>
           </CardContent>
         </Card>
 
@@ -61,9 +63,7 @@ export default function TasksPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">28</div>
-            <p className="text-xs text-muted-foreground">
-              This sprint
-            </p>
+            <p className="text-xs text-muted-foreground">This sprint</p>
           </CardContent>
         </Card>
 
@@ -74,9 +74,7 @@ export default function TasksPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">
-              Need attention
-            </p>
+            <p className="text-xs text-muted-foreground">Need attention</p>
           </CardContent>
         </Card>
       </div>
@@ -89,14 +87,14 @@ export default function TasksPage() {
               <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
               To Do
             </CardTitle>
-            <CardDescription>
-              Tasks ready to be started
-            </CardDescription>
+            <CardDescription>Tasks ready to be started</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="p-3 border rounded-lg hover:bg-muted cursor-pointer">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-medium">Update user authentication</h4>
+                <h4 className="text-sm font-medium">
+                  Update user authentication
+                </h4>
                 <Badge variant="secondary">High</Badge>
               </div>
               <p className="text-xs text-muted-foreground mb-2">
@@ -130,9 +128,7 @@ export default function TasksPage() {
               <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
               In Progress
             </CardTitle>
-            <CardDescription>
-              Currently being worked on
-            </CardDescription>
+            <CardDescription>Currently being worked on</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="p-3 border rounded-lg hover:bg-muted cursor-pointer">
@@ -171,9 +167,7 @@ export default function TasksPage() {
               <div className="w-3 h-3 bg-green-500 rounded-full"></div>
               Done
             </CardTitle>
-            <CardDescription>
-              Completed tasks
-            </CardDescription>
+            <CardDescription>Completed tasks</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="p-3 border rounded-lg bg-muted/50">
@@ -208,4 +202,4 @@ export default function TasksPage() {
       </div>
     </div>
   );
-} 
+}

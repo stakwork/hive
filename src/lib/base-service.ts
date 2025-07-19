@@ -1,5 +1,5 @@
-import { HttpClient, HttpClientConfig } from './http-client';
-import { BaseService, ServiceConfig, ApiError } from '@/types';
+import { HttpClient } from "./http-client";
+import { BaseService, ServiceConfig, ApiError } from "@/types";
 
 export abstract class BaseServiceClass implements BaseService {
   protected client: HttpClient;
@@ -11,7 +11,7 @@ export abstract class BaseServiceClass implements BaseService {
     this.client = new HttpClient({
       baseURL: config.baseURL,
       defaultHeaders: {
-        'Authorization': `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         ...config.headers,
       },
       timeout: config.timeout || 10000,
@@ -29,13 +29,13 @@ export abstract class BaseServiceClass implements BaseService {
 
   protected async handleRequest<T>(
     requestFn: () => Promise<T>,
-    context: string = 'request'
+    context: string = "request"
   ): Promise<T> {
     try {
       return await requestFn();
     } catch (error) {
       // Enhance error with service context
-      if (error && typeof error === 'object' && 'status' in error) {
+      if (error && typeof error === "object" && "status" in error) {
         const apiError = error as ApiError;
         throw {
           ...apiError,
@@ -43,7 +43,7 @@ export abstract class BaseServiceClass implements BaseService {
           message: `${this.serviceName} ${context}: ${apiError.message}`,
         } as ApiError;
       }
-      
+
       // Handle unknown errors
       throw {
         message: `${this.serviceName} ${context}: An unexpected error occurred`,
@@ -57,4 +57,4 @@ export abstract class BaseServiceClass implements BaseService {
   protected getClient(): HttpClient {
     return this.client;
   }
-} 
+}
