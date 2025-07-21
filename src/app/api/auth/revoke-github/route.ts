@@ -26,7 +26,7 @@ export async function POST() {
     }
 
     // Revoke the GitHub OAuth access token
-    if (account.access_token) {
+    if (account.accessToken) {
       try {
         const response = await fetch("https://api.github.com/applications/revoke", {
           method: "DELETE",
@@ -38,7 +38,7 @@ export async function POST() {
             ).toString("base64")}`,
           },
           body: JSON.stringify({
-            access_token: account.access_token,
+            access_token: account.accessToken,
           }),
         });
 

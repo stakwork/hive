@@ -20,7 +20,7 @@ export async function GET() {
       },
     });
 
-    if (!account?.access_token) {
+    if (!account?.accessToken) {
       return NextResponse.json(
         { error: "GitHub access token not found" },
         { status: 400 }
@@ -30,7 +30,7 @@ export async function GET() {
     // Fetch repositories from GitHub API
     const response = await axios.get("https://api.github.com/user/repos", {
       headers: {
-        Authorization: `token ${account.access_token}`,
+        Authorization: `token ${account.accessToken}`,
         Accept: "application/vnd.github.v3+json",
       },
       params: {

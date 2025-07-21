@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
       taskId,
       message,
       contextTags = [] as ContextTag[],
-      sourceWebsocketID,
+      sourceWebsocketId,
       artifacts = [] as ArtifactRequest[],
     } = body;
 
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
         role: ChatRole.USER,
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
-        sourceWebsocketID,
+        sourceWebsocketId,
         artifacts: {
           create: artifacts.map((artifact: ArtifactRequest) => ({
             type: artifact.type,

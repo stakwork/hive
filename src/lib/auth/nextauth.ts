@@ -67,13 +67,13 @@ export const authOptions: NextAuthOptions = {
                   type: account.type,
                   provider: account.provider,
                   providerAccountId: account.providerAccountId,
-                  access_token: account.access_token,
-                  refresh_token: account.refresh_token,
-                  expires_at: account.expires_at,
-                  token_type: account.token_type,
+                  accessToken: account.accessToken,
+                  refreshToken: account.refreshToken,
+                  expiresAt: account.expiresAt,
+                  tokenType: account.tokenType,
                   scope: account.scope,
-                  id_token: account.id_token,
-                  session_state: account.session_state,
+                  idToken: account.idToken,
+                  sessionState: account.sessionState,
                 },
               });
 
@@ -106,14 +106,14 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          if (account && account.access_token) {
+          if (account && account.accessToken) {
             try {
               // Fetch profile from GitHub API
               const { data: githubProfile } = await axios.get<GitHubProfile>(
                 "https://api.github.com/user",
                 {
                   headers: {
-                    Authorization: `token ${account.access_token}`,
+                    Authorization: `token ${account.accessToken}`,
                   },
                 }
               );
@@ -164,7 +164,7 @@ export const authOptions: NextAuthOptions = {
               // If GitHub API fails, just skip
               console.error("Failed to fetch GitHub profile:", err);
             }
-          } else if (account && !account.access_token) {
+          } else if (account && !account.accessToken) {
             // Account exists but token is revoked - this is expected after disconnection
             console.log("GitHub account exists but token is revoked - user needs to re-authenticate");
           }
@@ -193,7 +193,7 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
- * Fetches the GitHub username and PAT (access_token) for a given userId.
+ * Fetches the GitHub username and PAT (accessToken) for a given userId.
  * Returns { username, pat } or null if not found.
  */
 export async function getGithubUsernameAndPAT(userId: string): Promise<{ username: string; pat: string } | null> {
@@ -201,8 +201,8 @@ export async function getGithubUsernameAndPAT(userId: string): Promise<{ usernam
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
   // Get PAT from Account
   const githubAccount = await db.account.findFirst({ where: { userId, provider: 'github' } });
-  if (githubAuth?.githubUsername && githubAccount?.access_token) {
-    return { username: githubAuth.githubUsername, pat: githubAccount.access_token };
+  if (githubAuth?.githubUsername && githubAccount?.accessToken) {
+    return { username: githubAuth.githubUsername, pat: githubAccount.accessToken };
   }
   return null;
 } 
