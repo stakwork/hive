@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { WizardStateData, WizardStep } from '@/types/wizard';
-import { Repository, ServiceConfig } from '@/types';
+import { Repository } from '@/types';
 import { EnvironmentVariable } from '@/types/wizard';
+import { ServiceDataConfig } from '@/components/stakgraph/types';
 
 type WizardStepStatus = 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
@@ -17,6 +18,7 @@ export const STEPS_ARRAY = [
   'ENVIRONMENT_SETUP',
   'REVIEW_POOL_ENVIRONMENT',
   'STAKWORK_SETUP',
+  'COMPLETION',
 ]
 
 export type TWizardStep = (typeof STEPS_ARRAY)[number];
@@ -31,7 +33,7 @@ export const steps = {
   'ENVIRONMENT_SETUP': 7,
   'REVIEW_POOL_ENVIRONMENT': 8,
   'STAKWORK_SETUP': 9,
-
+  'COMPLETION': 10,
 }
 
 export const reverseSteps = {
@@ -44,6 +46,7 @@ export const reverseSteps = {
   7: 'ENVIRONMENT_SETUP',
   8: 'REVIEW_POOL_ENVIRONMENT',
   9: 'STAKWORK_SETUP',
+  10: 'COMPLETION',
 }
 
 type WizardStore = {
@@ -59,12 +62,13 @@ type WizardStore = {
   searchTerm: string;
   projectName: string;
   repoName: string;
-  services: ServiceConfig[];
+  services: ServiceDataConfig[];
   envVars: EnvironmentVariable[];
   wizardStep: string | null;
   hasSwarm: boolean;
   workspaceSlug: string;
   workspaceId: string;
+  hasKey: boolean;
 
   swarmId?: string;
   swarmName?: string;
@@ -89,10 +93,11 @@ type WizardStore = {
   setSearchTerm: (term: string) => void;
   setProjectName: (name: string) => void;
   setRepoName: (name: string) => void;
-  setServices: (data: ServiceConfig[]) => void;
+  setServices: (data: ServiceDataConfig[]) => void;
   setEnvVars: (vars: EnvironmentVariable[]) => void;
   setWorkspaceSlug: (slug: string) => void;
   setWorkspaceId: (id: string) => void;
+  setHasKey: (hasKey: boolean) => void;
 };
 
 export const useWizardStore = create<WizardStore>()(
@@ -108,9 +113,9 @@ export const useWizardStore = create<WizardStore>()(
     projectName: '',
     workspaceSlug: '',
     repoName: '',
-    envVars: [{ key: '', value: '', show: false }],
     workspaceId: '',
     services: [],
+    hasKey: false,
 
 
     // API Logic
@@ -121,11 +126,12 @@ export const useWizardStore = create<WizardStore>()(
       try {
         const res = await fetch(`/api/code-graph/wizard-state?workspace=${encodeURIComponent(workspaceSlug)}`);
         const json = await res.json();
+        console.log(json)
         const { data } = json;
 
         if (res.ok && json.success) {
-          const { wizardStep, stepStatus, swarmId } = data;
-          set({ wizardStateData: data, currentStep: wizardStep,  currentStepStatus: stepStatus as WizardStepStatus, projectName: data.wizardData?.projectName || '', swarmId });
+          const { wizardStep, stepStatus, swarmId, services } = data;
+          set({ wizardStateData: data, currentStep: wizardStep,  currentStepStatus: stepStatus as WizardStepStatus, projectName: data.wizardData?.projectName || '', swarmId, services });
         } else {
           set({ wizardStateData: null });
         }
@@ -209,5 +215,6 @@ export const useWizardStore = create<WizardStore>()(
     setServices: (services) => set({ services }),
     setEnvVars: (vars) => set({ envVars: vars }),
     setWorkspaceId: (id) => set({ workspaceId: id }),
+    setHasKey: (hasKey) => set({ hasKey }),
   }))
 );

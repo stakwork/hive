@@ -1,3 +1,5 @@
+import { ServiceDataConfig } from "@/components/stakgraph";
+
 export interface Repository {
   id: number;
   name: string;
@@ -70,6 +72,7 @@ export type WizardStateData = {
   workspaceId: string;
   workspaceSlug: string;
   workspaceName: string;
+  services: ServiceDataConfig[];
   user: {
     id: string;
     name?: string | null;

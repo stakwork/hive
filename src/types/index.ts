@@ -12,4 +12,4 @@ export * from './workspace';
 
 // Existing types
 export * from './wizard';
-export * from './swarm'; 
+export * from './swarm';

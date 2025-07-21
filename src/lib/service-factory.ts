@@ -14,6 +14,10 @@ export class ServiceFactory {
   static getService<T extends BaseServiceClass>(serviceName: ServiceName): T {
     if (!this.instances.has(serviceName)) {
       const config = getServiceConfig(serviceName);
+
+      console.log('--------------------------------config--------------------------------')
+      console.log(config)
+      console.log('--------------------------------config--------------------------------')
       
       switch (serviceName) {
         case 'stakwork':

@@ -155,6 +155,9 @@ model Workspace {
   products Product[]
   tasks    Task[]
 
+  // Stakwork credentials
+  stakworkApiKey String? @map("stakwork_api_key")
+
   @@index([ownerId])
   @@index([deleted])
   @@map("workspaces")

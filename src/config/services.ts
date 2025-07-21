@@ -1,3 +1,4 @@
+import { env } from '@/lib/env';
 import { ServiceConfig } from '@/types';
 
 // Service endpoint configurations
@@ -8,6 +9,8 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     timeout: parseInt(process.env.API_TIMEOUT || '10000'),
     headers: {
       'Content-Type': 'application/json',
+      'X-User-Email': process.env.STAKWORK_CUSTOMERS_EMAIL || '',
+      'X-User-Password': process.env.STAKWORK_CUSTOMERS_PASSWORD || '',
     },
   },
   poolManager: {

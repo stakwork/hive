@@ -25,6 +25,7 @@ export interface WorkspaceWithRole extends WorkspaceResponse {
 
 export interface WorkspaceWithAccess extends WorkspaceResponse {
   userRole: WorkspaceRole;
+  hasKey: boolean;
   owner: {
     id: string;
     name: string | null;

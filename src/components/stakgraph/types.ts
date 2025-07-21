@@ -1,8 +1,9 @@
 import { EnvironmentVariable } from "@/types/wizard";
 
-export interface ServiceConfig {
+export interface ServiceDataConfig {
   name: string;
   port: number;
+  env: Record<string, string>;
   scripts: {
     start: string;
     install?: string;
@@ -20,7 +21,7 @@ export interface StakgraphSettings {
   poolName: string;
   poolApiKey: string;
   environmentVariables: EnvironmentVariable[];
-  services: ServiceConfig[];
+  services: ServiceDataConfig[];
   status?: string;
   lastUpdated?: string;
 }
@@ -48,7 +49,7 @@ export interface EnvironmentData {
 }
 
 export interface ServicesData {
-  services: ServiceConfig[];
+  services: ServiceDataConfig[];
 }
 
 // Form props interface

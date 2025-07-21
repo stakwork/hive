@@ -25,11 +25,13 @@ export default function CodeGraphPage() {
   const setCurrentStep = useWizardStore((s) => s.setCurrentStep);
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
+  const setHasKey = useWizardStore((s) => s.setHasKey);
 
   useEffect(() => {
     if (workspace) {
       setWorkspaceSlug(workspace.slug);
       setWorkspaceId(workspace.id);
+      setHasKey(workspace.hasKey);
     }
   }, [workspace, setWorkspaceSlug]);
 
@@ -43,7 +45,7 @@ export default function CodeGraphPage() {
 
   const handleNext = useCallback(async () => {
     const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
-    if (currentStepIndex < 9) {
+    if (currentStepIndex < 10) {
       const newStep = (currentStepIndex + 1);
 
       if (hasSwarm) {
@@ -81,7 +83,7 @@ export default function CodeGraphPage() {
         try {
           await updateWizardProgress(workspace?.slug || '', {
             wizardStep: newWizardStep,
-            stepStatus: 'PENDING',
+            stepStatus: 'COMPLETED',
             wizardData: {
               ...(wizardStateData || {}),
               step: newStep,
@@ -151,10 +153,8 @@ export default function CodeGraphPage() {
             <h1 className="text-3xl font-bold text-foreground">Setting up CodeGraph</h1>
           </div>
 
-          {/* Progress Indicator */}
-          <WizardProgress currentStep={currentStep} totalSteps={9} stepStatus={currentStepStatus} />
+          <WizardProgress currentStep={currentStep} totalSteps={10} stepStatus={currentStepStatus} />
 
-          {/* Step Renderer */}
           <WizardStepRenderer
             onNext={handleNext}
             onBack={handleBack}

@@ -62,16 +62,7 @@ export async function GET(request: NextRequest) {
     const swarm = await db.swarm.findFirst({
       where: {
         workspaceId: workspace.id,
-      },
-      select: {
-        id: true,
-        swarmId: true,
-        name: true,
-        status: true,
-        wizardStep: true,
-        stepStatus: true,
-        wizardData: true,
-      },
+      }
     });
 
     // If no swarm exists, return empty response
@@ -95,8 +86,6 @@ export async function GET(request: NextRequest) {
       wizardData = swarm.wizardData as Record<string, unknown>;
     }
 
-    console.log("swarm", swarm)
-
     // Prepare response
     const response: WizardStateResponse = {
       success: true,
@@ -110,6 +99,7 @@ export async function GET(request: NextRequest) {
         workspaceId: workspace.id,
         workspaceSlug: workspace.slug,
         workspaceName: workspace.name,
+        services: swarm.services,
         user: {
           id: userId,
           name: session.user.name,

@@ -112,6 +112,12 @@ export class HttpClient {
     headers?: Record<string, string>,
     service?: string
   ): Promise<T> {
+
+    console.log('--------------------------------post--------------------------------')
+    console.log(headers)
+    console.log(body)
+    console.log('--------------------------------post--------------------------------')
+
     return this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,

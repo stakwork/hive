@@ -3,20 +3,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle } from "lucide-react";
+import { useWizardStore } from "@/stores/useWizardStore";
 
 interface StakworkSetupStepProps {
-  workspaceName: string;
-  onFinish: () => void;
+  onNext: () => void;
   onBack: () => void;
-  stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 const StakworkSetupStep = ({
-  workspaceName,
-  onFinish,
+  onNext,
   onBack,
-  stepStatus: _stepStatus,
 }: StakworkSetupStepProps) => {
+  const workspaceName = useWizardStore((s) => s.workspaceName);
+  const workspaceId = useWizardStore((s) => s.workspaceId);
+  const hasKey = useWizardStore((s) => s.hasKey);
+
+  const createCustomer = async () => {
+    try {
+      const data = await fetch('/api/stakwork/create-customer', {
+        method: 'POST',
+        body: JSON.stringify({
+          workspaceId,
+        }),
+      })
+      const res = await data.json();
+      console.log(res)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader className="text-center">
@@ -69,10 +85,14 @@ const StakworkSetupStep = ({
           <Button variant="outline" type="button" onClick={onBack}>
             Back
           </Button>
-          <Button className="px-8 bg-green-600 hover:bg-green-700" type="button" onClick={onFinish}>
+          {hasKey ? (<Button className="px-8 bg-green-600 hover:bg-green-700" type="button" onClick={onNext}>
             Finish
             <CheckCircle className="w-4 h-4 ml-2" />
-          </Button>
+          </Button>) :
+            (<Button className="px-8 bg-green-600 hover:bg-green-700" type="button" onClick={createCustomer}>
+              Create customer
+              <CheckCircle className="w-4 h-4 ml-2" />
+            </Button>)}
         </div>
       </CardContent>
     </Card>

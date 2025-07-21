@@ -12,3 +12,12 @@ export interface StakworkProjectPayload {
   workflow_id: number;
   workflow_params: Record<string, unknown>;
 }
+
+export interface CreateCustomerResponse {
+  success: boolean;
+  data: {
+    id: number;
+    name: string;
+    token: string;
+  };
+};

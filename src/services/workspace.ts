@@ -61,6 +61,7 @@ export async function getWorkspacesByUserId(userId: string): Promise<WorkspaceRe
  * Gets a workspace by slug if user has access (owner or member)
  */
 export async function getWorkspaceBySlug(slug: string, userId: string): Promise<WorkspaceWithAccess | null> {
+
   // Get the workspace with owner info
   const workspace = await db.workspace.findFirst({
     where: { 
@@ -82,6 +83,7 @@ export async function getWorkspaceBySlug(slug: string, userId: string): Promise<
     return {
       id: workspace.id,
       name: workspace.name,
+      hasKey: !!workspace.stakworkApiKey,
       description: workspace.description,
       slug: workspace.slug,
       ownerId: workspace.ownerId,

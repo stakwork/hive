@@ -8,7 +8,6 @@ import { useWizardStore } from "@/stores/useWizardStore";
 interface ProjectNameStepProps {
   onNext: () => void;
   onBack: () => void;
-  stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export function ProjectNameStep({

@@ -25,6 +25,8 @@ export function IngestCodeStep({
   const setServices = useWizardStore((s) => s.setServices);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+
+  const services = useWizardStore((s) => s.services);
   const isProcessing = currentStepStatus === "PROCESSING";
   const isPending = currentStepStatus === "PENDING";
 
@@ -73,6 +75,7 @@ export function IngestCodeStep({
         if (data.success || data.status === "ACTIVE") {
           console.log("poll success", data);
           setServices(data.data)
+
           handleComplete();
         } else {
           console.log("polling response (not ready):", data);
@@ -89,7 +92,7 @@ export function IngestCodeStep({
   }, [workspaceId, swarmId, handleComplete, setCurrentStepStatus]);
 
   useEffect(() => {
-    if (isProcessing && swarmId && workspaceId) {
+    if (isProcessing && swarmId && workspaceId && (!services || !services.length)) {
       startPollingServices();
     }
 
@@ -99,11 +102,15 @@ export function IngestCodeStep({
         pollIntervalRef.current = null;
       }
     };
-  }, [isProcessing, swarmId, workspaceId, startPollingServices]);
+  }, [isProcessing, swarmId, workspaceId, startPollingServices, services]);
 
   useEffect(() => {
-    handleIngestStart();
-  }, [handleIngestStart]);
+    if (!services && !services.length) {
+      handleIngestStart();
+    } else {
+      onNext();
+    }
+  }, [handleIngestStart, services]);
 
 
   return (

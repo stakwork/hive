@@ -17,21 +17,21 @@ export function EnvironmentSetupStep({
   onBack,
 }: EnvironmentSetupStepProps) {
 
-  const envVars = useWizardStore((s) => s.envVars);
+  const services = useWizardStore((s) => s.services);
 
   const onEnvChange = useCallback((index: number, field: keyof EnvironmentVariable, value: string | boolean) => {
-    useWizardStore.setState({ envVars: envVars.map((env, i) => i === index ? { ...env, [field]: value } : env) });
-  }, [envVars]);
+    // useWizardStore.setState({ envVars: envVars.map((env, i) => i === index ? { ...env, [field]: value } : env) });
+  }, [services]);
 
   const onAddEnv = useCallback(() => {
-    useWizardStore.setState({ envVars: [...envVars, { key: '', value: '', show: false }] });
-  }, [envVars]);
+    // useWizardStore.setState({ envVars: [...envVars, { key: '', value: '', show: false }] });
+  }, [services]);
 
   const onRemoveEnv = useCallback((index: number) => {
-    useWizardStore.setState({ envVars: envVars.filter((_, i) => i !== index) });
-  }, [envVars]);
+    // useWizardStore.setState({ envVars: envVars.filter((_, i) => i !== index) });
+  }, [services]);
 
-  console.log(envVars)
+  console.log(services)
 
 
   return (
@@ -60,30 +60,35 @@ export function EnvironmentSetupStep({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="space-y-2">
-          {envVars.map((pair, idx) => (
+        {services.map((i) => {
+          console.log(i)
+          const envVars = Object.entries(i.env);
+          return(
+        <div key={i.name} className="space-y-2">
+          <div className="text-lg font-bold">{i.name}</div>
+          {Object.entries(i.env).map((pair, idx) => (
             <div key={idx} className="flex gap-2 items-center">
               <Input
                 placeholder="KEY"
-                value={pair.key}
+                value={pair[0]}
                 onChange={(e) => onEnvChange(idx, 'key', e.target.value)}
                 className="w-1/3"
               />
               <div className="relative w-1/2 flex items-center">
                 <Input
                   placeholder="VALUE"
-                  type={pair.show ? 'text' : 'password'}
-                  value={pair.value}
+                  type={'text'} // TODO: add password type
+                  value={pair[1]}
                   onChange={(e) => onEnvChange(idx, 'value', e.target.value)}
                   className="pr-10"
                 />
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                  onClick={() => onEnvChange(idx, 'show', !pair.show)}
+                  // onClick={() => onEnvChange(idx, 'show', !pair.show)}
                   tabIndex={-1}
                 >
-                  {pair.show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               <Button
@@ -101,6 +106,8 @@ export function EnvironmentSetupStep({
             Add Variable
           </Button>
         </div>
+
+        )})}
         <div className="flex justify-between pt-4">
           <Button variant="outline" type="button" onClick={onBack}>
             Back

@@ -7,7 +7,6 @@ import { STEPS_ARRAY, TWizardStep } from "@/stores/useWizardStore";
 
 interface WizardStepRendererProps {
   step: TWizardStep;
-  stepStatus: string;
   onNext: () => void;
   onBack: () => void;
 }
@@ -16,12 +15,10 @@ interface WizardStepRendererProps {
 
 export function WizardStepRenderer({
   step,
-  stepStatus,
   onNext,
   onBack,
 }: WizardStepRendererProps) {
 
-  console.log("step", step)
 
   const StepComponent = componentsMap[step]
 
@@ -30,7 +27,6 @@ export function WizardStepRenderer({
   }
 
   const sharedProps = {
-    stepStatus,
     onNext,
     onBack,
   }

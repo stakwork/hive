@@ -11,13 +11,11 @@ import { useWizardStore } from "@/stores/useWizardStore";
 interface RepositorySelectionStepProps {
     onNext: () => void;
     onBack: () => void;
-    stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export function RepositorySelectionStep({
     onNext,
     onBack,
-    stepStatus: _stepStatus,
 }: RepositorySelectionStepProps) {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [searchTerm, setSearchTerm] = useState("");

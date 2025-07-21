@@ -1,3 +1,4 @@
+import { CompletionStep } from "./completion-step";
 import { EnvironmentSetupStep } from "./environment-setup-step";
 import { GraphInfrastructureStep } from "./graph-infrastructure-step";
 import { IngestCodeStep } from "./ingest-code-step";
@@ -18,4 +19,5 @@ export const componentsMap: Record<string, React.ComponentType<any>> = {
     'ENVIRONMENT_SETUP': EnvironmentSetupStep,
     'REVIEW_POOL_ENVIRONMENT': ReviewPoolEnvironmentStep,
     'STAKWORK_SETUP': StakworkSetupStep,
+    'COMPLETION': CompletionStep,
 }

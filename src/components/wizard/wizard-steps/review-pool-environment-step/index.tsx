@@ -1,32 +1,33 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { 
-  FileText, 
-  Settings, 
-  Package, 
+import {
+  FileText,
+  Settings,
+  Package,
   Container,
   AlertCircle,
   RotateCcw,
   ArrowRight
 } from "lucide-react";
 import { EnvironmentVariable } from "@/types/wizard";
-import { ServicesData } from "@/components/stakgraph/types";
+import { ServiceDataConfig, ServicesData } from "@/components/stakgraph/types";
 import { useWizardStore } from "@/stores/useWizardStore";
+import { ServiceConfig } from "@/types";
 
 // Helper function to generate containerEnv from environment variables
 const generateContainerEnv = (envVars: EnvironmentVariable[]) => {
   const containerEnv: Record<string, string> = {};
-  
+
   envVars.forEach(envVar => {
     if (envVar.key && envVar.value) {
       containerEnv[envVar.key] = envVar.value;
     }
   });
-  
+
   return containerEnv;
 };
 
@@ -35,7 +36,7 @@ const formatContainerEnv = (containerEnv: Record<string, string>) => {
   if (Object.keys(containerEnv).length === 0) {
     return '{}';
   }
-  
+
   const entries = Object.entries(containerEnv);
   const formattedEntries = entries.map(([key, value]) => `    "${key}": "${value}"`);
   return `{\n${formattedEntries.join(',\n')}\n  }`;
@@ -94,7 +95,7 @@ const formatPM2Apps = (apps: Array<{
     const envEntries = Object.entries(app.env)
       .map(([key, value]) => `        ${key}: "${value}"`)
       .join(',\n');
-    
+
     return `    {
       name: "${app.name}",
       script: "${app.script}",
@@ -115,7 +116,7 @@ ${envEntries}
 const getFiles = (repoName: string, projectName: string, servicesData: ServicesData, envVars: EnvironmentVariable[]) => {
   const containerEnv = generateContainerEnv(envVars);
   const pm2Apps = generatePM2Apps(repoName, servicesData);
-  
+
   return [
     {
       name: "devcontainer.json",
@@ -245,18 +246,30 @@ interface ReviewPoolEnvironmentStepProps {
   onBack: () => void;
 }
 
-const ReviewPoolEnvironmentStep = ({ 
+const ReviewPoolEnvironmentStep = ({
   onNext,
   onBack,
 }: ReviewPoolEnvironmentStepProps) => {
-  const [activeTab, setActiveTab] = useState("devcontainer");
+  const [activeTab, setActiveTab] = useState("devcontainer-json");
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [originalContents, setOriginalContents] = useState<Record<string, string>>({});
 
   const repoName = useWizardStore((s) => s.repoName);
   const projectName = useWizardStore((s) => s.projectName);
-  const servicesData = useWizardStore((s) => s.servicesData);
-  const envVars = useWizardStore((s) => s.envVars);
+  const services = useWizardStore((s) => s.services);
+
+  const envVars = services.reduce<EnvironmentVariable[]>((acc, service) => {
+    const envs = Object.entries(service.env).map(([key, value]) => ({
+      key,
+      value,
+      show: true,
+    }));
+    return [...acc, ...envs];
+  }, []);
+
+  const servicesData = useMemo(() => ({
+    services: services
+  }), [services]);
 
   const files = getFiles(repoName, projectName, servicesData, envVars);
 
@@ -267,7 +280,7 @@ const ReviewPoolEnvironmentStep = ({
     });
     setOriginalContents(initialContents);
     setFileContents(initialContents);
-  }, [repoName, projectName, servicesData, envVars]);
+  }, [servicesData]);
 
   const handleContentChange = (fileName: string, value: string) => {
     setFileContents(prev => ({ ...prev, [fileName]: value }));
@@ -292,6 +305,9 @@ const ReviewPoolEnvironmentStep = ({
 
   const hasModifications = Object.keys(fileContents).some(fileName => isFileModified(fileName));
 
+  console.log(activeTab)
+  console.log(files.map(file => file.name.toLowerCase().replace('.', '-')))
+
   return (
     <Card className="max-w-4xl mx-auto">
       <CardHeader className="text-center">
@@ -311,15 +327,15 @@ const ReviewPoolEnvironmentStep = ({
       <CardContent className="space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="devcontainer" className="flex items-center gap-2">
+            <TabsTrigger value="devcontainer-json" className="flex items-center gap-2">
               {getFileIcon("json")}
               DevContainer
             </TabsTrigger>
-            <TabsTrigger value="pm2" className="flex items-center gap-2">
+            <TabsTrigger value="pm2-config.js" className="flex items-center gap-2">
               {getFileIcon("javascript")}
               PM2 Config
             </TabsTrigger>
-            <TabsTrigger value="docker-compose" className="flex items-center gap-2">
+            <TabsTrigger value="docker-compose-yml" className="flex items-center gap-2">
               {getFileIcon("yaml")}
               Docker Compose
             </TabsTrigger>
@@ -329,46 +345,50 @@ const ReviewPoolEnvironmentStep = ({
             </TabsTrigger>
           </TabsList>
 
-          {files.map(file => (
-            <TabsContent key={file.name} value={file.name.toLowerCase().replace('.', '-')} className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {getFileIcon(file.type)}
-                  <span className="font-medium">{file.name}</span>
+          {files.map(file => {
+            return (
+              <TabsContent key={file.name} value={file.name.toLowerCase().replace('.', '-')} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {getFileIcon(file.type)}
+                    <span className="font-medium">{file.name}</span>
+                    {isFileModified(file.name) && (
+                      <Badge variant="secondary" className="text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{getFileStats(fileContents[file.name] || file.content).lines} lines</span>
+                    <span>•</span>
+                    <span>{formatBytes(getFileStats(fileContents[file.name] || file.content).bytes)}</span>
+                  </div>
+                </div>
+                {fileContents[file.name] || file.content}
+                asdf
+                {console.log(fileContents[file.name] || file.content)}
+                <div className="relative">
+                  <Textarea
+                    value={fileContents[file.name] || file.content}
+                    onChange={(e) => handleContentChange(file.name, e.target.value)}
+                    className="font-mono text-sm min-h-[300px] resize-none"
+                    placeholder={`Enter ${file.name} content...`}
+                  />
                   {isFileModified(file.name) && (
-                    <Badge variant="secondary" className="text-xs">
-                      Modified
-                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleContentChange(file.name, originalContents[file.name])}
+                      className="absolute top-2 right-2"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                      Reset
+                    </Button>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{getFileStats(fileContents[file.name] || file.content).lines} lines</span>
-                  <span>•</span>
-                  <span>{formatBytes(getFileStats(fileContents[file.name] || file.content).bytes)}</span>
-                </div>
-              </div>
-              
-              <div className="relative">
-                <Textarea
-                  value={fileContents[file.name] || file.content}
-                  onChange={(e) => handleContentChange(file.name, e.target.value)}
-                  className="font-mono text-sm min-h-[300px] resize-none"
-                  placeholder={`Enter ${file.name} content...`}
-                />
-                {isFileModified(file.name) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleContentChange(file.name, originalContents[file.name])}
-                    className="absolute top-2 right-2"
-                  >
-                    <RotateCcw className="w-3 h-3 mr-1" />
-                    Reset
-                  </Button>
-                )}
-              </div>
-            </TabsContent>
-          ))}
+              </TabsContent>
+            )
+          })}
         </Tabs>
 
         {hasModifications && (
@@ -384,9 +404,9 @@ const ReviewPoolEnvironmentStep = ({
           <Button variant="outline" type="button" onClick={onBack}>
             Back
           </Button>
-          <Button 
-            className="px-8 bg-green-600 hover:bg-green-700" 
-            type="button" 
+          <Button
+            className="px-8 bg-green-600 hover:bg-green-700"
+            type="button"
             onClick={onNext}
           >
             Confirm Setup

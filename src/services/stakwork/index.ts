@@ -1,6 +1,6 @@
 import { BaseServiceClass } from '@/lib/base-service';
-import { ServiceConfig } from '@/types';
-import { config } from '@/lib/env';
+import { CreateCustomerResponse, ServiceConfig } from '@/types';
+import { config, env } from '@/lib/env';
 
 export class StakworkService extends BaseServiceClass {
   public readonly serviceName = 'stakwork';
@@ -38,13 +38,18 @@ export class StakworkService extends BaseServiceClass {
    * @param input - Object with fields: name, workflow_id, workflow_params (with set_var/attributes/vars)
    * @returns API response as JSON
    */
-  async createCustomer<T = unknown>(customerName: string): Promise<T> {
-    const endpoint = `${config.STAKWORK_BASE_URL}/customers`;
+  async createCustomer(customerName: string): Promise<CreateCustomerResponse> {
+    const endpoint = `/customers`;
     // Compose headers as required by Stakwork
-    const headers = {
+
+    console.log('--------------------------------createCustomer--------------------------------')
+    console.log(this.config)
+    console.log('--------------------------------createCustomer--------------------------------')
+
+    const headers = this.config.headers || {
       'Content-Type': 'application/json',
-      'Authorization': `Token token=${this.config.apiKey}`,
     };
+
 
     // Use the correct HTTP method
     const client = this.getClient();
@@ -61,12 +66,12 @@ export class StakworkService extends BaseServiceClass {
    * @param input - Object with fields: name, workflow_id, workflow_params (with set_var/attributes/vars)
    * @returns API response as JSON
    */
-  async createSecret<T = unknown>(name: string, value: string): Promise<T> {
-    const endpoint = `${config.STAKWORK_BASE_URL}/secrets`;
-    
+  async createSecret<T = unknown>(name: string, value: string, token: string): Promise<T> {
+    const endpoint = `/secrets`;
+
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': `Token token=${this.config.apiKey}`,
+      'Authorization': `Token token=${token}`,
     };
 
     const client = this.getClient();
@@ -97,6 +102,7 @@ export class StakworkService extends BaseServiceClass {
       'Content-Type': 'application/json',
       'Authorization': `Token token=${this.config.apiKey}`,
     };
+    
 
     // Use the correct HTTP method
     const client = this.getClient();

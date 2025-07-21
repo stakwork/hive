@@ -4,16 +4,14 @@ import { Github, TrendingUp, BarChart3, GitBranch, ArrowRight } from "lucide-rea
 
 interface WelcomeStepProps {
   onNext: () => void;
-  stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-  onStatusChange?: (status: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED') => void;
 }
 
-const WelcomeStep = ({ onNext, stepStatus: _stepStatus, onStatusChange }: WelcomeStepProps) => {
+const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
+
   const handleNext = () => {
-    onStatusChange?.('COMPLETED');
     onNext();
   };
-  
+
   return (
     <Card className="max-w-4xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
@@ -30,7 +28,6 @@ const WelcomeStep = ({ onNext, stepStatus: _stepStatus, onStatusChange }: Welcom
           <p className="text-muted-foreground mb-6">
             We&apos;ll help you visualize dependencies, relationships, and collaboration patterns in your codebase.
           </p>
-          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-8">
             <div className="p-4 border rounded-lg bg-muted">
               <div className="flex items-center gap-2 mb-2">

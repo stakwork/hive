@@ -27,7 +27,7 @@ export async function updatePoolEnvVarsApi(
   poolApiKey: string,
   envVars: Array<{ key: string; value: string }>,
   currentEnvVars: Array<{ key: string; value: string; masked?: boolean }>
-): Promise<unknown> {
+): Promise<void> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}`;
   const currentMap = new Map(currentEnvVars.map(env => [env.key, env.value]));
   const envVarsForApi = envVars.map(({ key, value }) => {
@@ -52,5 +52,5 @@ export async function updatePoolEnvVarsApi(
   if (!response.ok) {
     throw new Error(`Failed to update pool env vars: ${response.status}`);
   }
-  return response.json();
+  // Don't return the response JSON since we don't need it
 } 

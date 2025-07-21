@@ -12,13 +12,11 @@ import { sanitizeWorkspaceName } from "@/utils/repositoryParser";
 interface GraphInfrastructureStepProps {
   onNext: () => void;
   onBack: () => void;
-  stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 }
 
 export function GraphInfrastructureStep({
   onNext,
   onBack,
-  stepStatus,
 }: GraphInfrastructureStepProps) {
   const swarmId = useWizardStore((s) => s.swarmId);
   const swarmName = useWizardStore((s) => s.swarmName);
@@ -29,6 +27,7 @@ export function GraphInfrastructureStep({
   const createSwarm = useWizardStore((s) => s.createSwarm);
 
   const isPending = currentStepStatus === "PENDING";
+
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -48,7 +47,7 @@ export function GraphInfrastructureStep({
 
   // Swarm polling effect
   useEffect(() => {
-    if (swarmId && (currentStepStatus === 'PROCESSING')) {
+    if (swarmId) {
       pollIntervalRef.current = setInterval(async () => {
         try {
           const res = await fetch(`/api/swarm/poll?id=${swarmId}`);
@@ -71,7 +70,7 @@ export function GraphInfrastructureStep({
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, [swarmId, currentStepStatus, handleComplete]);
+  }, [swarmId, handleComplete]);
 
 
 
@@ -144,7 +143,7 @@ export function GraphInfrastructureStep({
         <div className="flex justify-between pt-4">
 
 
-          {isPending && (
+          {!swarmId && (
             <>
               <Button variant="outline" type="button" onClick={onBack}>
                 Back
@@ -155,7 +154,7 @@ export function GraphInfrastructureStep({
               </Button>
             </>
           )}
-          {!isPending && (
+          {swarmId && (
             <div className="flex flex-col items-end gap-2 w-full">
               <Button
                 className={`mt-2 ml-auto px-8 bg-muted text-muted-foreground`}
