@@ -20,13 +20,13 @@ model Account {
   type              String
   provider          String
   providerAccountId String  @map("provider_account_id")
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
+  refreshToken      String? @map("refresh_token")
+  accessToken       String? @map("access_token")
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
   scope             String?
-  id_token          String?
-  session_state     String?
+  idToken           String? @map("id_token")
+  sessionState      String? @map("session_state")
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
@@ -199,12 +199,12 @@ model Swarm {
   swarmSecretAlias      String? @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
   poolApiKey            String? @map("pool_api_key") // NEW: Pool API Key for Pool Manager
   environmentVariables  Json    @default("[]") @map("environment_variables")
-  services              Json    @default("[]") @map("services")
+  services              Json    @default("[]")
 
   // Wizard progress tracking
-  wizardStep   SwarmWizardStep @default(WELCOME)
-  stepStatus   StepStatus      @default(PENDING)
-  wizardData   Json     @default("{}")
+  wizardStep   SwarmWizardStep @default(WELCOME) @map("wizard_step")
+  stepStatus   StepStatus      @default(PENDING) @map("step_status")
+  wizardData   Json     @default("{}") @map("wizard_data")
   
   // One-to-one relationship with workspace
   workspaceId String @unique @map("workspace_id")
@@ -245,7 +245,7 @@ model Product {
   description String?
   vision      String?
   
-  workspaceId String    @map("workspace_id")
+  workspaceId String @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   
   deleted     Boolean   @default(false)
@@ -415,7 +415,7 @@ model ChatMessage {
   message             String
   role                ChatRole
   timestamp           DateTime    @default(now())
-  contextTags         Json        @default("[]") // stores ContextTag[]
+  contextTags         Json        @default("[]") @map("context_tags") // stores ContextTag[]
   status              ChatStatus  @default(SENDING)
   sourceWebsocketID   String?     @map("source_websocket_id")
   replyId             String?     @map("reply_id")
@@ -484,7 +484,7 @@ model Roadmap {
   productId   String         @map("product_id")
   product     Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   
-  timeHorizon TimeHorizon    @default(QUARTER)
+  timeHorizon TimeHorizon    @default(QUARTER) @map("time_horizon")
   startDate   DateTime       @map("start_date")
   endDate     DateTime       @map("end_date")
   
@@ -534,7 +534,7 @@ model Comment {
   content     String
   
   // Polymorphic relationship - can comment on different entity types
-  entityType  CommentEntity
+  entityType  CommentEntity @map("entity_type")
   featureId   String?       @map("feature_id")
   feature     Feature?      @relation("FeatureComments", fields: [featureId], references: [id], onDelete: Cascade)
   userStoryId String?       @map("user_story_id")
