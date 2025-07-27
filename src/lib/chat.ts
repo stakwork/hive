@@ -30,6 +30,23 @@ export interface BrowserContent {
   url: string;
 }
 
+export interface BugReportContent {
+  bugDescription: string;
+  iframeUrl: string;
+  method: 'click' | 'selection' | 'description';
+  sourceFiles: Array<{
+    file: string;
+    lines: number[];
+    context?: string;
+  }>;
+  coordinates?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 export interface Option {
   actionType: "button" | "chat";
   optionLabel: string;
@@ -44,7 +61,7 @@ export interface FormContent {
 
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent;
+  content?: FormContent | CodeContent | BrowserContent | BugReportContent;
 }
 
 export interface ChatMessage

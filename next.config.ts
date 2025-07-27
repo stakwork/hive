@@ -21,6 +21,17 @@ const nextConfig: NextConfig = {
             },
         ],
     },
+    // Enable Babel for development builds to inject source mapping
+    experimental: {
+        turbo: process.env.NODE_ENV === 'development' ? {
+            rules: {
+                '*.{js,jsx,ts,tsx}': {
+                    loaders: ['babel-loader'],
+                    as: '*.js'
+                }
+            }
+        } : undefined
+    }
 };
 
 export default nextConfig;

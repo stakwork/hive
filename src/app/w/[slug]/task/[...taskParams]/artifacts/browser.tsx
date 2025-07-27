@@ -2,12 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { Monitor, RefreshCw, ExternalLink } from "lucide-react";
+import { Monitor, RefreshCw, ExternalLink, Bug } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 
 export function BrowserArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [debugMode, setDebugMode] = useState(false);
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
@@ -15,6 +16,12 @@ export function BrowserArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
 
   const handleTabOut = (url: string) => {
     window.open(url, "_blank");
+  };
+
+  const handleDebugElement = () => {
+    setDebugMode(!debugMode);
+    // TODO: Implement debug mode activation
+    console.log('Debug mode toggled:', !debugMode);
   };
 
   if (artifacts.length === 0) return null;
@@ -65,6 +72,15 @@ export function BrowserArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
                     title="Open in new tab"
                   >
                     <ExternalLink className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={debugMode ? "default" : "ghost"}
+                    size="sm"
+                    onClick={handleDebugElement}
+                    className="h-8 w-8 p-0"
+                    title="Debug Element"
+                  >
+                    <Bug className="w-4 h-4" />
                   </Button>
                   <Button
                     variant="ghost"
