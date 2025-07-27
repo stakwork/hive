@@ -325,22 +325,89 @@ export async function POST(request: NextRequest) {
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.poolName || null;
 
-    // Call appropriate service based on environment configuration
-    if (useStakwork) {
-      await callStakwork(
-        taskId,
-        message,
-        contextTags,
-        userName,
-        accessToken,
-        swarmUrl,
-        swarmSecretAlias,
-        poolName,
-        request,
-        webhook
-      );
+    // Check if this is a debug message and handle it specially
+    const debugMatch = message.match(/🐛 Debug (click|selection) at \((\d+), (\d+)\)(?:\s+\((\d+)×(\d+)\))?\s+on (.+)/);
+    
+    if (debugMatch) {
+      // This is a debug message - process it with our debug element API
+      const [, type, x, y, width = '0', height = '0', iframeUrl] = debugMatch;
+      
+      try {
+        console.log('Processing debug message:', { type, x, y, width, height, iframeUrl });
+        
+        // Call our debug element API internally
+        const debugResponse = await fetch(`${getBaseUrl(request)}/api/debug-element`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': request.headers.get('Cookie') || '', // Forward authentication
+          },
+          body: JSON.stringify({
+            x: parseInt(x),
+            y: parseInt(y),
+            width: parseInt(width),
+            height: parseInt(height),
+            iframeUrl,
+            taskId
+          })
+        });
+        
+        if (debugResponse.ok) {
+          const debugResult = await debugResponse.json();
+          
+          if (debugResult.success) {
+            // Create a response message with the source file mappings
+            const sourceFiles = debugResult.data.sourceFiles;
+            const responseText = sourceFiles.length > 0 
+              ? `Found source mappings:\n${sourceFiles.map((sf: { file: string; lines: number[] }) => 
+                  `📄 ${sf.file}:${sf.lines.join(',')}`
+                ).join('\n')}`
+              : 'No source mappings found for the selected area.';
+            
+            // Create assistant response message
+            await db.chatMessage.create({
+              data: {
+                taskId,
+                message: responseText,
+                role: ChatRole.ASSISTANT,
+                status: ChatStatus.SENT,
+                replyId: chatMessage.id,
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error processing debug message:', error);
+        
+        // Create error response message
+        await db.chatMessage.create({
+          data: {
+            taskId,
+            message: 'Sorry, I encountered an error while analyzing the debug coordinates. Please try again.',
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            replyId: chatMessage.id,
+          },
+        });
+      }
     } else {
-      await callMock(taskId, message, userId, request);
+      // Regular message - call appropriate service based on environment configuration
+      if (useStakwork) {
+        await callStakwork(
+          taskId,
+          message,
+          contextTags,
+          userName,
+          accessToken,
+          swarmUrl,
+          swarmSecretAlias,
+          poolName,
+          request,
+          webhook
+        );
+      } else {
+        await callMock(taskId, message, userId, request);
+      }
     }
 
     return NextResponse.json(
