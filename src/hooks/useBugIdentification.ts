@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { 
-  extractSourceMappings, 
   findElementsByDescription, 
   findElementsAtCoordinates,
   findElementsInRegion,

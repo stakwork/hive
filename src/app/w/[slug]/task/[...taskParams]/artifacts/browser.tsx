@@ -98,7 +98,13 @@ function DebugOverlay({ isActive, onDebugSelection }: DebugOverlayProps) {
   );
 }
 
-export function BrowserArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
+export function BrowserArtifactPanel({ 
+  artifacts, 
+  onDebugMessage 
+}: { 
+  artifacts: Artifact[];
+  onDebugMessage?: (message: string) => Promise<void>;
+}) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
@@ -115,18 +121,25 @@ export function BrowserArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
     setDebugMode(!debugMode);
   };
 
-  const handleDebugSelection = (x: number, y: number, width: number, height: number) => {
+  const handleDebugSelection = async (x: number, y: number, width: number, height: number) => {
     const activeArtifact = artifacts[activeTab];
     const content = activeArtifact.content as BrowserContent;
     
     // Format message for chat system
-    const selectionType = width === 0 && height === 0 ? 'click' : 'selection';
     const message = width === 0 && height === 0 
       ? `🐛 Debug click at (${x}, ${y}) on ${content.url}`
       : `🐛 Debug selection (${width}×${height} at ${x},${y}) on ${content.url}`;
     
-    // TODO: Send to chat system
-    console.log(message);
+    // Send to chat system
+    if (onDebugMessage) {
+      try {
+        await onDebugMessage(message);
+      } catch (error) {
+        console.error('Failed to send debug message:', error);
+      }
+    } else {
+      console.log(message); // Fallback for development
+    }
     
     // Auto-disable debug mode after interaction
     setDebugMode(false);

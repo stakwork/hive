@@ -551,7 +551,10 @@ export default function TaskChatPage() {
                         forceMount
                         hidden={activeTab !== "BROWSER"}
                       >
-                        <BrowserArtifactPanel artifacts={browserArtifacts} />
+                        <BrowserArtifactPanel 
+                          artifacts={browserArtifacts} 
+                          onDebugMessage={sendMessage}
+                        />
                       </TabsContent>
                     )}
                   </motion.div>
