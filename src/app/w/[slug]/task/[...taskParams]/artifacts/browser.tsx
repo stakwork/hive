@@ -7,10 +7,11 @@ import { Artifact, BrowserContent } from "@/lib/chat";
 
 interface DebugOverlayProps {
   isActive: boolean;
+  isSubmitting: boolean;
   onDebugSelection: (x: number, y: number, width: number, height: number) => void;
 }
 
-function DebugOverlay({ isActive, onDebugSelection }: DebugOverlayProps) {
+function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlayProps) {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionCurrent, setSelectionCurrent] = useState<{ x: number; y: number } | null>(null);
@@ -92,7 +93,11 @@ function DebugOverlay({ isActive, onDebugSelection }: DebugOverlayProps) {
       
       {/* Debug mode indicator */}
       <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
-        🐛 Debug Mode: Click or drag to identify elements
+        {isSubmitting ? (
+          <>⏳ Sending debug info...</>
+        ) : (
+          <>🐛 Debug Mode: Click or drag to identify elements</>
+        )}
       </div>
     </div>
   );
@@ -108,6 +113,15 @@ export function BrowserArtifactPanel({
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
+  const [isSubmittingDebug, setIsSubmittingDebug] = useState(false);
+
+  // Reset debug mode when switching tabs
+  const handleTabChange = (newTab: number) => {
+    setActiveTab(newTab);
+    if (debugMode) {
+      setDebugMode(false);
+    }
+  };
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
@@ -130,19 +144,24 @@ export function BrowserArtifactPanel({
       ? `🐛 Debug click at (${x}, ${y}) on ${content.url}`
       : `🐛 Debug selection (${width}×${height} at ${x},${y}) on ${content.url}`;
     
-    // Send to chat system
+    // Send to chat system with loading state
     if (onDebugMessage) {
+      setIsSubmittingDebug(true);
       try {
         await onDebugMessage(message);
+        // Auto-disable debug mode after successful interaction
+        setDebugMode(false);
       } catch (error) {
         console.error('Failed to send debug message:', error);
+        // Keep debug mode active on error so user can retry
+        // TODO: Show user-friendly error feedback
+      } finally {
+        setIsSubmittingDebug(false);
       }
     } else {
       console.log(message); // Fallback for development
+      setDebugMode(false);
     }
-    
-    // Auto-disable debug mode after interaction
-    setDebugMode(false);
   };
 
   if (artifacts.length === 0) return null;
@@ -155,7 +174,7 @@ export function BrowserArtifactPanel({
             {artifacts.map((artifact, index) => (
               <button
                 key={artifact.id}
-                onClick={() => setActiveTab(index)}
+                onClick={() => handleTabChange(index)}
                 className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                   activeTab === index
                     ? "border-primary text-primary bg-background"
@@ -225,6 +244,7 @@ export function BrowserArtifactPanel({
                 {activeTab === index && (
                   <DebugOverlay
                     isActive={debugMode}
+                    isSubmitting={isSubmittingDebug}
                     onDebugSelection={handleDebugSelection}
                   />
                 )}
