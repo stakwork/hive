@@ -139,28 +139,89 @@ export function BrowserArtifactPanel({
     const activeArtifact = artifacts[activeTab];
     const content = activeArtifact.content as BrowserContent;
     
-    // Format message for chat system
-    const message = width === 0 && height === 0 
-      ? `🐛 Debug click at (${x}, ${y}) on ${content.url}`
-      : `🐛 Debug selection (${width}×${height} at ${x},${y}) on ${content.url}`;
+    setIsSubmittingDebug(true);
     
-    // Send to chat system with loading state
-    if (onDebugMessage) {
-      setIsSubmittingDebug(true);
-      try {
-        await onDebugMessage(message);
-        // Auto-disable debug mode after successful interaction
-        setDebugMode(false);
-      } catch (error) {
-        console.error('Failed to send debug message:', error);
-        // Keep debug mode active on error so user can retry
-        // TODO: Show user-friendly error feedback
-      } finally {
-        setIsSubmittingDebug(false);
+    try {
+      // Get the iframe element for the active tab
+      const iframeElement = document.querySelector(`iframe[title="Live Preview ${activeTab + 1}"]`) as HTMLIFrameElement;
+      
+      if (!iframeElement?.contentWindow) {
+        throw new Error('Could not access iframe content window');
       }
-    } else {
-      console.log(message); // Fallback for development
+      
+      // Create unique message ID for tracking responses
+      const messageId = `debug-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Set up response listener
+      const responsePromise = new Promise<Array<{file: string; lines: number[]; context?: string}>>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout waiting for iframe response'));
+        }, 10000); // 10 second timeout
+        
+        const handleMessage = (event: MessageEvent) => {
+          // Verify origin matches iframe URL for security
+          const iframeOrigin = new URL(content.url).origin;
+          if (event.origin !== iframeOrigin) return;
+          
+          if (event.data?.type === 'debug-response' && event.data?.messageId === messageId) {
+            clearTimeout(timeout);
+            window.removeEventListener('message', handleMessage);
+            
+            if (event.data.success) {
+              resolve(event.data.sourceFiles);
+            } else {
+              reject(new Error(event.data.error || 'Unknown error from iframe'));
+            }
+          }
+        };
+        
+        window.addEventListener('message', handleMessage);
+      });
+      
+      // Send coordinates to iframe via postMessage
+      iframeElement.contentWindow.postMessage({
+        type: 'debug-request',
+        messageId,
+        coordinates: { x, y, width, height }
+      }, new URL(content.url).origin);
+      
+      // Wait for response from iframe
+      await responsePromise;
+      
+      // Format message for chat system
+      const coordinateText = width === 0 && height === 0 
+        ? `click at (${x}, ${y})`
+        : `selection (${width}×${height} at ${x},${y})`;
+      
+      const message = `🐛 Debug ${coordinateText} on ${content.url}`;
+      
+      // Send debug message to chat system
+      if (onDebugMessage) {
+        await onDebugMessage(message);
+      }
+      
+      // Auto-disable debug mode after successful interaction
       setDebugMode(false);
+      
+    } catch (error) {
+      console.error('Failed to process debug selection:', error);
+      
+      // Fallback: send coordinates without source mapping if iframe communication fails
+      const message = width === 0 && height === 0 
+        ? `🐛 Debug click at (${x}, ${y}) on ${content.url}`
+        : `🐛 Debug selection (${width}×${height} at ${x},${y}) on ${content.url}`;
+      
+      if (onDebugMessage) {
+        try {
+          await onDebugMessage(message);
+          setDebugMode(false);
+        } catch (chatError) {
+          console.error('Failed to send fallback debug message:', chatError);
+          // Keep debug mode active on error so user can retry
+        }
+      }
+    } finally {
+      setIsSubmittingDebug(false);
     }
   };
 
