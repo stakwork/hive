@@ -10,6 +10,7 @@ import {
   type ContextTag,
   type Artifact,
   type ChatMessage,
+  type BugReportContent,
 } from "@/lib/chat";
 
 // Disable caching for real-time messaging
@@ -325,65 +326,75 @@ export async function POST(request: NextRequest) {
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.poolName || null;
 
-    // Check if this is a debug message and handle it specially
-    const debugMatch = message.match(/🐛 Debug (click|selection) at \((\d+), (\d+)\)(?:\s+\((\d+)×(\d+)\))?\s+on (.+)/);
+    // Check for BugReportContent artifacts and process if found
+    const bugReportArtifacts = clientMessage.artifacts?.filter(
+      (artifact) => artifact.type === ArtifactType.BUG_REPORT
+    );
     
-    if (debugMatch) {
-      // This is a debug message - process it with our debug element API
-      const [, type, x, y, width = '0', height = '0', iframeUrl] = debugMatch;
-      
+    if (bugReportArtifacts && bugReportArtifacts.length > 0) {
+      // This message has debug artifacts - process them with our debug element API
       try {
-        console.log('Processing debug message:', { type, x, y, width, height, iframeUrl });
-        
-        // Call our debug element API internally
-        const debugResponse = await fetch(`${getBaseUrl(request)}/api/debug-element`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cookie': request.headers.get('Cookie') || '', // Forward authentication
-          },
-          body: JSON.stringify({
-            x: parseInt(x),
-            y: parseInt(y),
-            width: parseInt(width),
-            height: parseInt(height),
-            iframeUrl,
-            taskId
-          })
-        });
-        
-        if (debugResponse.ok) {
-          const debugResult = await debugResponse.json();
+        for (const artifact of bugReportArtifacts) {
+          const bugReportContent = artifact.content as BugReportContent;
           
-          if (debugResult.success) {
-            // Create a response message with the source file mappings
-            const sourceFiles = debugResult.data.sourceFiles;
-            const responseText = sourceFiles.length > 0 
-              ? `Found source mappings:\n${sourceFiles.map((sf: { file: string; lines: number[] }) => 
-                  `📄 ${sf.file}:${sf.lines.join(',')}`
-                ).join('\n')}`
-              : 'No source mappings found for the selected area.';
+          console.log('Processing debug artifact:', {
+            method: bugReportContent.method,
+            coordinates: bugReportContent.coordinates,
+            iframeUrl: bugReportContent.iframeUrl
+          });
+          
+          // Call our debug element API internally
+          const debugResponse = await fetch(`${getBaseUrl(request)}/api/debug-element`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cookie': request.headers.get('Cookie') || '', // Forward authentication
+            },
+            body: JSON.stringify({
+              bugReportContent,
+              taskId
+            })
+          });
+          
+          if (debugResponse.ok) {
+            const debugResult = await debugResponse.json();
             
-            // Create assistant response message
-            await db.chatMessage.create({
-              data: {
-                taskId,
-                message: responseText,
-                role: ChatRole.ASSISTANT,
-                status: ChatStatus.SENT,
-                replyId: chatMessage.id,
-              },
-            });
+            if (debugResult.success) {
+              // Create a response message with the source file mappings
+              const sourceFiles = debugResult.data.sourceFiles;
+              const coords = debugResult.data.coordinates;
+              const methodText = debugResult.data.method === 'click' ? 'click' : 'selection';
+              const coordText = debugResult.data.method === 'click' 
+                ? `(${coords.x}, ${coords.y})`
+                : `${coords.width}×${coords.height} at (${coords.x}, ${coords.y})`;
+              
+              const responseText = sourceFiles.length > 0 
+                ? `Debug ${methodText} ${coordText} analysis:\n${sourceFiles.map((sf: { file: string; lines: number[]; context?: string }) => 
+                    `📄 ${sf.file}:${sf.lines.join(',')}${sf.context ? ` (${sf.context})` : ''}`
+                  ).join('\n')}`
+                : `Debug ${methodText} ${coordText}: No source mappings found for the selected area.`;
+              
+              // Create assistant response message
+              await db.chatMessage.create({
+                data: {
+                  taskId,
+                  message: responseText,
+                  role: ChatRole.ASSISTANT,
+                  status: ChatStatus.SENT,
+                  replyId: chatMessage.id,
+                },
+              });
+            }
           }
         }
       } catch (error) {
-        console.error('Error processing debug message:', error);
+        console.error('Error processing debug artifacts:', error);
         
         // Create error response message
         await db.chatMessage.create({
           data: {
             taskId,
-            message: 'Sorry, I encountered an error while analyzing the debug coordinates. Please try again.',
+            message: 'Sorry, I encountered an error while analyzing the debug data. Please try again.',
             role: ChatRole.ASSISTANT,
             status: ChatStatus.SENT,
             replyId: chatMessage.id,

@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { BugReportContent } from "@/lib/chat";
 
 interface DebugElementRequest {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  iframeUrl: string;
+  bugReportContent: BugReportContent;
   taskId?: string;
 }
 
@@ -43,21 +40,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<DebugElem
 
     // Parse request body
     const body: DebugElementRequest = await request.json();
-    const { x, y, width, height, iframeUrl, taskId } = body;
+    const { bugReportContent, taskId } = body;
 
     // Validate required fields
-    if (typeof x !== 'number' || typeof y !== 'number' || 
-        typeof width !== 'number' || typeof height !== 'number' || 
-        !iframeUrl) {
+    if (!bugReportContent || !bugReportContent.iframeUrl || !bugReportContent.coordinates) {
       return NextResponse.json(
-        { success: false, error: "Invalid request parameters" },
+        { success: false, error: "Invalid bug report content" },
         { status: 400 }
       );
     }
 
     // Validate URL
     try {
-      const url = new URL(iframeUrl);
+      const url = new URL(bugReportContent.iframeUrl);
       if (!['http:', 'https:'].includes(url.protocol)) {
         return NextResponse.json(
           { success: false, error: "Invalid URL protocol" },
@@ -71,31 +66,28 @@ export async function POST(request: NextRequest): Promise<NextResponse<DebugElem
       );
     }
 
-    // TODO: Implement actual DOM extraction logic
-    // For now, return mock data to test the integration
-    const mockSourceFiles = [
+    // Process the BugReportContent from the attachment
+    const { coordinates, method, sourceFiles, iframeUrl } = bugReportContent;
+    
+    console.log(`Debug element request: ${method} at (${coordinates.x}, ${coordinates.y}) ${coordinates.width}x${coordinates.height} on ${iframeUrl} for task ${taskId}`);
+    console.log(`Source files from postMessage:`, sourceFiles);
+
+    // If we have source files from the postMessage, use them; otherwise provide helpful mock data
+    const finalSourceFiles = sourceFiles.length > 0 ? sourceFiles : [
       {
-        file: "src/components/HomePage.tsx",
-        lines: [42, 43, 44],
-        context: "Button component with onClick handler"
-      },
-      {
-        file: "src/styles/homepage.css",
-        lines: [15],
-        context: ".hero-button styling"
+        file: "No source files detected",
+        lines: [1],
+        context: "Target repository may not have debug message listener initialized. Check that initializeDebugMessageListener() is called in the target app."
       }
     ];
-
-    const method = width === 0 && height === 0 ? 'click' : 'selection';
-
-    console.log(`Debug element request: ${method} at (${x}, ${y}) ${width}x${height} on ${iframeUrl} for task ${taskId}`);
 
     return NextResponse.json({
       success: true,
       data: {
-        sourceFiles: mockSourceFiles,
+        sourceFiles: finalSourceFiles,
         method,
-        coordinates: { x, y, width, height }
+        coordinates,
+        bugDescription: bugReportContent.bugDescription
       }
     });
 
