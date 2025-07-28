@@ -4,6 +4,6 @@
 - **Feature:** Bug identification with DOM source mapping
 - **Branch:** feature/bug-identification
 - **Started:** 2025-07-25
-- **Status:** Core Implementation Complete
-- **Last Commit:** f5947a5 - feat: integrate debug coordinates with chat system
-- **Summary:** Interactive debug system for Live Preview toolbar that maps UI elements to source code files. Features: (1) Babel plugins inject data-source attributes in dev builds, (2) Debug button activates overlay mode, (3) Click/drag capture sends coordinates to chat, (4) Unified selection handling for both clicks and drags, (5) Auto-disable after interaction. Ready for testing and backend DOM extraction implementation.
+- **Status:** Architecture Pivot - Turbopack + SWC Approach
+- **Last Commit:** 497e37b - refactor: pivot bug identification to Turbopack + SWC approach
+- **Summary:** Interactive debug system for Live Preview toolbar that maps UI elements to source code files. **Architecture Update:** Switched from Babel-based to Turbopack+SWC approach for cross-iframe source mapping. Completed: (1) Debug button overlay mode ✅, (2) Click/drag coordinate capture ✅, (3) Turbopack compatibility restored ✅. Next: Implement SWC fiber-based DOM inspection and cross-iframe postMessage communication for target repository source extraction.

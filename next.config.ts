@@ -21,17 +21,8 @@ const nextConfig: NextConfig = {
             },
         ],
     },
-    // Enable Babel for development builds to inject source mapping
-    experimental: {
-        turbo: process.env.NODE_ENV === 'development' ? {
-            rules: {
-                '*.{js,jsx,ts,tsx}': {
-                    loaders: ['babel-loader'],
-                    as: '*.js'
-                }
-            }
-        } : undefined
-    }
+    // SWC development mode is enabled by default in Next.js
+    // This provides __source and __self props for React debugging
 };
 
 export default nextConfig;
