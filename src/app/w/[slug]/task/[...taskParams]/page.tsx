@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Bug, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
@@ -19,6 +19,8 @@ import {
   createChatMessage,
   ArtifactType,
   FormContent,
+  Artifact,
+  BugReportContent,
 } from "@/lib/chat";
 import {
   FormArtifact,
@@ -31,6 +33,43 @@ import { usePusherConnection } from "@/hooks/usePusherConnection";
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Debug Attachment Component
+function DebugAttachment({ 
+  artifact, 
+  onRemove 
+}: { 
+  artifact: Artifact; 
+  onRemove: () => void;
+}) {
+  const content = artifact.content as BugReportContent;
+  const coordinateText = content.method === 'click' 
+    ? `Click at (${content.coordinates?.x}, ${content.coordinates?.y})`
+    : `Selection ${content.coordinates?.width}×${content.coordinates?.height} at (${content.coordinates?.x}, ${content.coordinates?.y})`;
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg max-w-xs">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <Bug className="w-4 h-4 text-orange-600 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-orange-900 truncate">
+            Debug Analysis
+          </div>
+          <div className="text-xs text-orange-700 truncate">
+            {coordinateText}
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={onRemove}
+        className="flex-shrink-0 p-1 hover:bg-orange-100 rounded-full transition-colors"
+        title="Remove debug data"
+      >
+        <X className="w-3 h-3 text-orange-600" />
+      </button>
+    </div>
+  );
 }
 
 function TaskStartInput({ onStart }: { onStart: (task: string) => void }) {
@@ -207,7 +246,7 @@ export default function TaskChatPage() {
       window.history.replaceState({}, "", newUrl);
 
       setStarted(true);
-      await sendMessage(msg, { taskId: newTaskId });
+      await sendMessage(msg, undefined, { taskId: newTaskId });
     } else {
       setStarted(true);
       await sendMessage(msg);
@@ -230,6 +269,7 @@ export default function TaskChatPage() {
 
   const sendMessage = async (
     messageText: string,
+    artifact?: Artifact,
     options?: {
       taskId?: string;
       replyId?: string;
@@ -244,6 +284,7 @@ export default function TaskChatPage() {
       role: ChatRole.USER,
       status: ChatStatus.SENDING,
       replyId: options?.replyId,
+      artifacts: artifact ? [{ ...artifact, messageId: generateUniqueId() }] : undefined,
     });
 
     setMessages((msgs) => [...msgs, newMessage]);
@@ -252,12 +293,13 @@ export default function TaskChatPage() {
     // console.log("Sending message:", messageText, options);
 
     try {
-      const body: { [k: string]: string | string[] | null } = {
+      const body: { [k: string]: unknown } = {
         taskId: options?.taskId || currentTaskId,
         message: messageText,
         contextTags: [],
         ...(options?.replyId && { replyId: options.replyId }),
         ...(options?.webhook && { webhook: options.webhook }),
+        ...(artifact && { artifacts: [artifact] }),
       };
       const response = await fetch("/api/chat/message", {
         method: "POST",
@@ -315,11 +357,24 @@ export default function TaskChatPage() {
 
     if (originalMessage) {
       // Send the artifact action response to the backend
-      await sendMessage(action.optionResponse, {
+      await sendMessage(action.optionResponse, undefined, {
         replyId: originalMessage.id,
         webhook: webhook,
       });
     }
+  };
+
+  const handleRemoveDebugAttachment = (messageId: string, artifactId: string) => {
+    setMessages((prevMessages) =>
+      prevMessages.map((msg) =>
+        msg.id === messageId
+          ? {
+              ...msg,
+              artifacts: msg.artifacts?.filter((artifact) => artifact.id !== artifactId)
+            }
+          : msg
+      )
+    );
   };
 
   // Separate artifacts by type
@@ -456,6 +511,27 @@ export default function TaskChatPage() {
                             </div>
                           );
                         })}
+
+                      {/* Debug Report Artifacts */}
+                      {msg.artifacts
+                        ?.filter((a) => a.type === "BUG_REPORT")
+                        .map((artifact) => (
+                          <div
+                            key={artifact.id}
+                            className={`flex ${msg.role === "USER" ? "justify-end" : "justify-start"}`}
+                          >
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.2 }}
+                            >
+                              <DebugAttachment
+                                artifact={artifact}
+                                onRemove={() => handleRemoveDebugAttachment(msg.id, artifact.id)}
+                              />
+                            </motion.div>
+                          </div>
+                        ))}
                     </motion.div>
                   );
                 })}
@@ -553,7 +629,9 @@ export default function TaskChatPage() {
                       >
                         <BrowserArtifactPanel 
                           artifacts={browserArtifacts} 
-                          onDebugMessage={sendMessage}
+                          onDebugMessage={(message: string, debugArtifact?: Artifact) => 
+                            sendMessage(message, debugArtifact)
+                          }
                         />
                       </TabsContent>
                     )}

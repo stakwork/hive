@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Monitor, RefreshCw, ExternalLink, Bug } from "lucide-react";
-import { Artifact, BrowserContent } from "@/lib/chat";
+import { Artifact, BrowserContent, BugReportContent, ArtifactType } from "@/lib/chat";
 
 interface DebugOverlayProps {
   isActive: boolean;
@@ -108,7 +108,7 @@ export function BrowserArtifactPanel({
   onDebugMessage 
 }: { 
   artifacts: Artifact[];
-  onDebugMessage?: (message: string) => Promise<void>;
+  onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -153,9 +153,10 @@ export function BrowserArtifactPanel({
       const messageId = `debug-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
       // Set up response listener
-      const responsePromise = new Promise<Array<{file: string; lines: number[]; context?: string}>>((resolve, reject) => {
+      const responsePromise = new Promise<Array<{file: string; lines: number[]; context?: string}>>((resolve) => {
         const timeout = setTimeout(() => {
-          reject(new Error('Timeout waiting for iframe response'));
+          // If postMessage fails, use empty source files array
+          resolve([]);
         }, 10000); // 10 second timeout
         
         const handleMessage = (event: MessageEvent) => {
@@ -168,9 +169,9 @@ export function BrowserArtifactPanel({
             window.removeEventListener('message', handleMessage);
             
             if (event.data.success) {
-              resolve(event.data.sourceFiles);
+              resolve(event.data.sourceFiles || []);
             } else {
-              reject(new Error(event.data.error || 'Unknown error from iframe'));
+              resolve([]); // Graceful fallback on error
             }
           }
         };
@@ -186,18 +187,34 @@ export function BrowserArtifactPanel({
       }, new URL(content.url).origin);
       
       // Wait for response from iframe
-      await responsePromise;
+      const sourceFiles = await responsePromise;
       
-      // Format message for chat system
-      const coordinateText = width === 0 && height === 0 
-        ? `click at (${x}, ${y})`
-        : `selection (${width}×${height} at ${x},${y})`;
+      // Create BugReportContent artifact
+      const bugReportContent: BugReportContent = {
+        bugDescription: width === 0 && height === 0 
+          ? `Debug click at coordinates (${x}, ${y})`
+          : `Debug selection area ${width}×${height} at coordinates (${x}, ${y})`,
+        iframeUrl: content.url,
+        method: width === 0 && height === 0 ? 'click' : 'selection',
+        sourceFiles: sourceFiles,
+        coordinates: { x, y, width, height }
+      };
       
-      const message = `🐛 Debug ${coordinateText} on ${content.url}`;
+      // Create debug artifact
+      const debugArtifact: Artifact = {
+        id: `debug-${Date.now()}`,
+        messageId: '', // Will be set by chat system
+        type: ArtifactType.BUG_REPORT,
+        content: bugReportContent,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
       
-      // Send debug message to chat system
+      // Send simple message with debug artifact attached
+      const message = `🐛 Debug element analysis`;
+      
       if (onDebugMessage) {
-        await onDebugMessage(message);
+        await onDebugMessage(message, debugArtifact);
       }
       
       // Auto-disable debug mode after successful interaction
@@ -206,14 +223,27 @@ export function BrowserArtifactPanel({
     } catch (error) {
       console.error('Failed to process debug selection:', error);
       
-      // Fallback: send coordinates without source mapping if iframe communication fails
-      const message = width === 0 && height === 0 
-        ? `🐛 Debug click at (${x}, ${y}) on ${content.url}`
-        : `🐛 Debug selection (${width}×${height} at ${x},${y}) on ${content.url}`;
+      // Fallback: create debug artifact with error info
+      const bugReportContent: BugReportContent = {
+        bugDescription: `Debug ${width === 0 && height === 0 ? 'click' : 'selection'} failed - communication error with iframe`,
+        iframeUrl: content.url,
+        method: width === 0 && height === 0 ? 'click' : 'selection',
+        sourceFiles: [],
+        coordinates: { x, y, width, height }
+      };
+      
+      const debugArtifact: Artifact = {
+        id: `debug-error-${Date.now()}`,
+        messageId: '',
+        type: ArtifactType.BUG_REPORT,
+        content: bugReportContent,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
       
       if (onDebugMessage) {
         try {
-          await onDebugMessage(message);
+          await onDebugMessage(`🐛 Debug element analysis (with errors)`, debugArtifact);
           setDebugMode(false);
         } catch (chatError) {
           console.error('Failed to send fallback debug message:', chatError);
