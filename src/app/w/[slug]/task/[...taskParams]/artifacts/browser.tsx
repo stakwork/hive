@@ -210,11 +210,9 @@ export function BrowserArtifactPanel({
         updatedAt: new Date()
       };
       
-      // Send simple message with debug artifact attached
-      const message = `🐛 Debug element analysis`;
-      
+      // Send artifact without chat message (debug attachment will appear directly)
       if (onDebugMessage) {
-        await onDebugMessage(message, debugArtifact);
+        await onDebugMessage('', debugArtifact);
       }
       
       // Auto-disable debug mode after successful interaction
