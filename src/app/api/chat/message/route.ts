@@ -193,10 +193,10 @@ export async function POST(request: NextRequest) {
       replyId,
     } = body;
 
-    // Validate required fields
-    if (!message) {
+    // Validate required fields - allow empty message if artifacts are present
+    if (!message && (!artifacts || artifacts.length === 0)) {
       return NextResponse.json(
-        { error: "Message is required" },
+        { error: "Message is required when no artifacts are provided" },
         { status: 400 }
       );
     }

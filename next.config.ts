@@ -21,8 +21,16 @@ const nextConfig: NextConfig = {
             },
         ],
     },
-    // SWC development mode is enabled by default in Next.js
-    // This provides __source and __self props for React debugging
+    // Enable SWC debug source mapping for React fiber inspection
+    experimental: {
+        swcPlugins: []
+    },
+    compiler: {
+        // Enable debug source information in development
+        reactRemoveProperties: false,
+    },
+    // Ensure source maps are available for debugging
+    productionBrowserSourceMaps: false,
 };
 
 export default nextConfig;

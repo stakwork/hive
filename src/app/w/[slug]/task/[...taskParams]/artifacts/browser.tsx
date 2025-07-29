@@ -210,9 +210,9 @@ export function BrowserArtifactPanel({
         updatedAt: new Date()
       };
       
-      // Send artifact without chat message (debug attachment will appear directly)
+      // Send artifact without visible chat message (debug attachment will appear directly)
       if (onDebugMessage) {
-        await onDebugMessage('', debugArtifact);
+        await onDebugMessage('', debugArtifact); // Empty message - no chat bubble will be created
       }
       
       // Auto-disable debug mode after successful interaction

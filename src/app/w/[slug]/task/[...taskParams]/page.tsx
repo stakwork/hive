@@ -278,16 +278,22 @@ export default function TaskChatPage() {
   ) => {
     if (isLoading) return;
 
-    const newMessage: ChatMessage = createChatMessage({
-      id: generateUniqueId(),
-      message: messageText,
-      role: ChatRole.USER,
-      status: ChatStatus.SENDING,
-      replyId: options?.replyId,
-      artifacts: artifact ? [{ ...artifact, messageId: generateUniqueId() }] : undefined,
-    });
-
-    setMessages((msgs) => [...msgs, newMessage]);
+    // Only create a chat message if there's actual text content (not just whitespace)
+    // For artifact-only messages (like debug), skip creating the empty chat bubble
+    const hasRealMessage = messageText && messageText.trim().length > 0;
+    
+    let newMessage: ChatMessage | null = null;
+    if (hasRealMessage) {
+      newMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: messageText,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+        replyId: options?.replyId,
+        artifacts: artifact ? [{ ...artifact, messageId: generateUniqueId() }] : undefined,
+      });
+      setMessages((msgs) => [...msgs, newMessage]);
+    }
     setIsLoading(true);
 
     // console.log("Sending message:", messageText, options);
@@ -318,22 +324,25 @@ export default function TaskChatPage() {
         throw new Error(result.error || "Failed to send message");
       }
 
-      // Update the temporary message status instead of replacing entirely
-      // This prevents re-animation since React sees it as the same message
-      setMessages((msgs) =>
-        msgs.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg
-        )
-      );
+      // Update the temporary message status if a message was created
+      if (newMessage) {
+        setMessages((msgs) =>
+          msgs.map((msg) =>
+            msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg
+          )
+        );
+      }
     } catch (error) {
       console.error("Error sending message:", error);
 
-      // Update message status to ERROR
-      setMessages((msgs) =>
-        msgs.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg
-        )
-      );
+      // Update message status to ERROR if a message was created
+      if (newMessage) {
+        setMessages((msgs) =>
+          msgs.map((msg) =>
+            msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg
+          )
+        );
+      }
 
       toast({
         title: "Error",
