@@ -79,13 +79,13 @@ export function generateFormResponse() {
 export function generateBrowserResponse() {
   const messageId = generateUniqueId();
 
-  return makeRes("Here's a live preview of the Sphinx Chat community site:", [
+  return makeRes("Here's a live preview of the Hive application:", [
     createArtifact({
       id: "browser-artifact-1",
       messageId: messageId,
       type: ArtifactType.BROWSER,
       content: {
-        url: "https://community.sphinx.chat",
+        url: "http://localhost:3000",
       },
     }),
   ]);
