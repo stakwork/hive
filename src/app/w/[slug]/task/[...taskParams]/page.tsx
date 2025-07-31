@@ -29,7 +29,6 @@ import {
 } from "./artifacts";
 import { useParams } from "next/navigation";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
-import { DebugFiberTest } from "@/components/debug-fiber-test";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 
 // Generate unique IDs to prevent collisions
@@ -393,7 +392,6 @@ export default function TaskChatPage() {
 
   return (
     <>
-      <DebugFiberTest />
       <AnimatePresence mode="wait">
       {!started ? (
         <motion.div

@@ -5,7 +5,6 @@ import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
-import DebugMessageListener from "@/components/DebugMessageListener";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,7 +28,6 @@ export default function RootLayout({
           >
             <SessionProvider>
               <WorkspaceProvider>
-                <DebugMessageListener />
                 {children}
               </WorkspaceProvider>
             </SessionProvider>

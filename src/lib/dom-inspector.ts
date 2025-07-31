@@ -1,31 +1,13 @@
 // DOM Inspector utilities for bug identification feature
-// Uses unified debug source resolver with fallback chain (DevTools → Fiber → DOM heuristics)
-
-import { DebugSourceResolver, DebugSourceResult } from './debug-source-resolver';
-import { getDebugSourceConfig } from './debug-source-config';
 
 export interface SourceMapping {
   element: Element;
-  fileName?: string;
-  lineNumber?: number;
-  columnNumber?: number;
+  source?: string;
+  line?: string;
+  column?: string;
   text?: string;
   selector?: string;
   bounds?: DOMRect;
-}
-
-export interface ReactFiberDebugSource {
-  fileName: string;
-  lineNumber: number;
-  columnNumber: number;
-}
-
-export interface FallbackSourceInfo {
-  fileName: string;
-  lineNumber?: number;
-  columnNumber?: number;
-  context: string;
-  method: 'react-fiber' | 'dom-heuristic' | 'component-name' | 'data-attributes';
 }
 
 export interface DebugSelection {
@@ -40,344 +22,144 @@ export interface DebugSelection {
 }
 
 /**
- * Analyze DOM element for fallback source information when React fiber fails
+ * Extract source mappings from iframe DOM
  */
-function getFallbackSourceInfo(element: Element): FallbackSourceInfo | null {
+export function extractSourceMappings(iframe: HTMLIFrameElement): SourceMapping[] {
   try {
-    // Method 1: Check for data attributes that might indicate component source
-    const dataTestId = element.getAttribute('data-testid');
-    const dataComponent = element.getAttribute('data-component');
-    const className = element.className;
-    
-    if (dataTestId) {
-      return {
-        fileName: `components/${dataTestId}.tsx`,
-        context: `Component with data-testid="${dataTestId}"`,
-        method: 'data-attributes'
-      };
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) {
+      console.warn('Cannot access iframe document - likely due to CORS');
+      return [];
     }
+
+    // Find elements with source mapping attributes
+    const elementsWithSource = doc.querySelectorAll('[data-source], [data-inspector-line], [data-inspector-column]');
     
-    if (dataComponent) {
-      return {
-        fileName: `components/${dataComponent}.tsx`,
-        context: `Component with data-component="${dataComponent}"`,
-        method: 'data-attributes'
-      };
-    }
-    
-    // Method 2: Analyze CSS classes for component patterns
-    if (className && typeof className === 'string') {
-      const classNames = className.split(' ');
-      const componentClass = classNames.find(cls => 
-        cls.match(/^[A-Z][a-zA-Z0-9]*(?:-[a-z]+)*$/) || // Component-like class names
-        cls.includes('Component') ||
-        cls.includes('component') ||
-        cls.includes('_')
-      );
-      
-      if (componentClass) {
-        return {
-          fileName: `components/${componentClass}.tsx`,
-          context: `Element with CSS class "${componentClass}"`,
-          method: 'dom-heuristic'
-        };
-      }
-    }
-    
-    // Method 3: Analyze element hierarchy and patterns
-    const tagName = element.tagName.toLowerCase();
-    const id = element.id;
-    
-    if (id) {
-      return {
-        fileName: `components/${id}.tsx`,
-        context: `Element with id="${id}" (${tagName})`,
-        method: 'dom-heuristic'
-      };
-    }
-    
-    // Method 4: Generic element info
-    return {
-      fileName: `components/UnknownComponent.tsx`,
-      context: `${tagName} element${className ? ` with classes: ${className}` : ''}`,
-      method: 'dom-heuristic'
-    };
-    
+    return Array.from(elementsWithSource).map(element => ({
+      element,
+      source: element.getAttribute('data-source') || undefined,
+      line: element.getAttribute('data-inspector-line') || element.getAttribute('data-line') || undefined,
+      column: element.getAttribute('data-inspector-column') || element.getAttribute('data-column') || undefined,
+      text: element.textContent?.trim() || undefined,
+      selector: generateSelector(element),
+      bounds: element.getBoundingClientRect()
+    }));
   } catch (error) {
-    console.error('Error analyzing element for fallback info:', error);
-    return null;
-  }
-}
-
-/**
- * Extract source file location from React component's fiber node
- * SWC injects this debug info automatically in development mode
- */
-function getReactFiberSource(element: Element): ReactFiberDebugSource | null {
-  try {
-    // React stores internal data on DOM elements - try different property names across versions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fiber = (element as any)._reactInternalFiber ||
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (element as any).__reactInternalInstance ||
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (element as any)._reactInternals;
-
-    console.log(`🔍 Checking React Fiber for ${element.tagName}${element.className ? '.' + element.className.split(' ')[0] : ''}:`, {
-      hasFiber: !!fiber,
-      fiberKeys: fiber ? Object.keys(fiber).filter(k => k.includes('debug') || k.includes('source') || k.includes('Source')) : [],
-      _debugSource: fiber?._debugSource,
-      __source: fiber?.memoizedProps?.__source,
-      type: fiber?.type?.name || fiber?.elementType?.name
-    });
-
-    if (!fiber) return null;
-
-    // SWC puts debug source directly on fiber
-    if (fiber._debugSource) {
-      console.log('   ✅ SUCCESS: Found _debugSource (SWC debug info):', fiber._debugSource);
-      return fiber._debugSource;
-    }
-
-    // Fallback: check component props for source info
-    if (fiber.memoizedProps?.__source) {
-      console.log('   ✅ SUCCESS: Found __source in props (Babel transform):', fiber.memoizedProps.__source);
-      return fiber.memoizedProps.__source;
-    }
-
-    // Additional debugging: check all possible locations
-    const possibleSources = [
-      fiber.__source,
-      fiber.source,
-      fiber._source,
-      fiber.debugSource,
-      fiber.stateNode?._debugSource,
-      fiber.stateNode?.__source
-    ].filter(Boolean);
-
-    if (possibleSources.length > 0) {
-      console.log('   🔧 PARTIAL: Found alternative sources:', possibleSources);
-      return possibleSources[0];
-    }
-
-    console.log('   ❌ FAILED: No React fiber debug source found');
-    return null;
-  } catch (error) {
-    console.error('❌ Error accessing React fiber:', error);
-    return null;
-  }
-}
-
-/**
- * Find React components at specific coordinates using the unified debug source resolver
- * This version uses the new fallback chain system (DevTools → Fiber → DOM heuristics)
- */
-export async function findElementsAtCoordinates(x: number, y: number): Promise<SourceMapping[]> {
-  try {
-    const config = getDebugSourceConfig();
-    const resolver = new DebugSourceResolver();
-    
-    // This function runs inside the iframe context, not from parent
-    const element = document.elementFromPoint(x, y);
-    
-    if (config.enableLogging) {
-      console.log('🎯 Finding elements at coordinates:', { x, y, element: element?.tagName, className: element?.className });
-    }
-    
-    if (!element) return [];
-
-    const sourceMappings: SourceMapping[] = [];
-    
-    // Start with the clicked element and walk up the DOM tree
-    let currentElement: Element | null = element;
-    
-    while (currentElement && sourceMappings.length < 5) { // Limit to 5 levels to avoid too much data
-      const result: DebugSourceResult = await resolver.resolveElement(currentElement);
-      
-      if (result.sources.length > 0) {
-        for (const source of result.sources) {
-          if (config.enableLogging) {
-            console.log(`📍 Found source at depth ${sourceMappings.length} via ${result.activeMethod}:`, source);
-          }
-          
-          sourceMappings.push({
-            element: currentElement,
-            fileName: source.fileName,
-            lineNumber: source.lineNumber,
-            columnNumber: source.columnNumber,
-            text: source.context || currentElement.textContent?.trim()?.substring(0, 100) || undefined,
-            selector: generateCssSelector(currentElement),
-            bounds: currentElement.getBoundingClientRect()
-          });
-        }
-      }
-      
-      currentElement = currentElement.parentElement;
-    }
-
-    // Generate detection method summary
-    const fiberSources = sourceMappings.filter(m => m.lineNumber !== undefined);
-    const fallbackSources = sourceMappings.filter(m => m.lineNumber === undefined);
-    
-    if (config.enableLogging) {
-      console.log('🎯 SOURCE DETECTION SUMMARY:');
-      console.log(`   Total sources found: ${sourceMappings.length}`);
-      console.log(`   ✅ Precise sources: ${fiberSources.length} (accurate file:line mapping)`);
-      console.log(`   🔧 Heuristic sources: ${fallbackSources.length} (estimated)`);
-      
-      if (fiberSources.length > 0) {
-        console.log('   🎉 SUCCESS: Precise debug info is working!');
-        fiberSources.forEach((source, i) => {
-          console.log(`      ${i + 1}. ${source.fileName}:${source.lineNumber}`);
-        });
-      } else if (fallbackSources.length > 0) {
-        console.log('   ⚠️  Using heuristic detection only');
-        fallbackSources.forEach((source, i) => {
-          console.log(`      Heuristic ${i + 1}: ${source.fileName}`);
-        });
-      }
-    }
-    
-    return sourceMappings;
-  } catch (error) {
-    console.error('❌ Error finding elements at coordinates:', error);
+    console.error('Error extracting source mappings:', error);
     return [];
   }
 }
 
 /**
- * Find React components within a selection rectangle using the unified debug source resolver
- * Useful for drag selections that cover multiple components
+ * Find elements that match text description
  */
-export async function findElementsInRegion(x: number, y: number, width: number, height: number): Promise<SourceMapping[]> {
+export function findElementsByDescription(iframe: HTMLIFrameElement, description: string): SourceMapping[] {
   try {
-    const config = getDebugSourceConfig();
-    const resolver = new DebugSourceResolver();
-    const sourceMappings: SourceMapping[] = [];
-    const processedElements = new Set<Element>();
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return [];
+
+    const keywords = description.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    const allMappings = extractSourceMappings(iframe);
     
-    // Sample multiple points within the selection area
-    const samplePoints = [
-      { x, y }, // Top-left
-      { x: x + width/2, y }, // Top-center
-      { x: x + width, y }, // Top-right
-      { x, y: y + height/2 }, // Middle-left
-      { x: x + width/2, y: y + height/2 }, // Center
-      { x: x + width, y: y + height/2 }, // Middle-right
-      { x, y: y + height }, // Bottom-left
-      { x: x + width/2, y: y + height }, // Bottom-center
-      { x: x + width, y: y + height }, // Bottom-right
-    ];
+    // Score elements based on text content match
+    const scoredElements = allMappings
+      .map(mapping => {
+        const text = mapping.text?.toLowerCase() || '';
+        const score = keywords.reduce((acc, keyword) => {
+          return acc + (text.includes(keyword) ? 1 : 0);
+        }, 0);
+        return { ...mapping, score };
+      })
+      .filter(mapping => mapping.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    return scoredElements;
+  } catch (error) {
+    console.error('Error finding elements by description:', error);
+    return [];
+  }
+}
+
+/**
+ * Find elements at specific coordinates
+ */
+export function findElementsAtCoordinates(iframe: HTMLIFrameElement, x: number, y: number): SourceMapping[] {
+  try {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return [];
+
+    const element = doc.elementFromPoint(x, y);
+    if (!element) return [];
+
+    // Get the element and its parents with source mappings
+    const elementsWithSource: Element[] = [];
+    let current: Element | null = element;
     
-    for (const point of samplePoints) {
-      const element = document.elementFromPoint(point.x, point.y);
-      if (!element || processedElements.has(element)) continue;
-      
-      processedElements.add(element);
-      
-      const result: DebugSourceResult = await resolver.resolveElement(element);
-      if (result.sources.length > 0) {
-        for (const source of result.sources) {
-          sourceMappings.push({
-            element,
-            fileName: source.fileName,
-            lineNumber: source.lineNumber,
-            columnNumber: source.columnNumber,
-            text: source.context || element.textContent?.trim()?.substring(0, 100) || undefined,
-            selector: generateCssSelector(element),
-            bounds: element.getBoundingClientRect()
-          });
-        }
+    while (current && current !== doc.body) {
+      if (hasSourceMapping(current)) {
+        elementsWithSource.push(current);
       }
+      current = current.parentElement;
     }
 
-    return sourceMappings;
+    return elementsWithSource.map(el => ({
+      element: el,
+      source: el.getAttribute('data-source') || undefined,
+      line: el.getAttribute('data-inspector-line') || el.getAttribute('data-line') || undefined,
+      column: el.getAttribute('data-inspector-column') || el.getAttribute('data-column') || undefined,
+      text: el.textContent?.trim() || undefined,
+      selector: generateSelector(el),
+      bounds: el.getBoundingClientRect()
+    }));
+  } catch (error) {
+    console.error('Error finding elements at coordinates:', error);
+    return [];
+  }
+}
+
+/**
+ * Find elements within a selection rectangle
+ */
+export function findElementsInRegion(
+  iframe: HTMLIFrameElement, 
+  x: number, 
+  y: number, 
+  width: number, 
+  height: number
+): SourceMapping[] {
+  try {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return [];
+
+    const allMappings = extractSourceMappings(iframe);
+    const selectionRect = { x, y, width, height };
+
+    // Find elements that intersect with the selection rectangle
+    return allMappings.filter(mapping => {
+      if (!mapping.bounds) return false;
+      
+      return rectsIntersect(
+        { x: mapping.bounds.left, y: mapping.bounds.top, width: mapping.bounds.width, height: mapping.bounds.height },
+        selectionRect
+      );
+    });
   } catch (error) {
     console.error('Error finding elements in region:', error);
     return [];
   }
 }
 
-/**
- * Initialize debug message listener for iframe context
- * This should be called by target repositories that want to support bug identification
- */
-export function initializeDebugMessageListener() {
-  console.log('🎬 Initializing debug message listener');
-  
-  window.addEventListener('message', async (event) => {
-    // Only respond to debug requests
-    if (event.data?.type !== 'debug-request') return;
-    
-    console.log('📨 Received debug request:', event.data);
-    
-    try {
-      const { messageId, coordinates } = event.data;
-      const { x, y, width, height } = coordinates;
-      
-      let sourceMappings: SourceMapping[];
-      
-      if (width === 0 && height === 0) {
-        // Point selection (click)
-        console.log('🖱️ Processing click at:', { x, y });
-        sourceMappings = await findElementsAtCoordinates(x, y);
-      } else {
-        // Area selection (drag)
-        console.log('🖱️ Processing area selection:', { x, y, width, height });
-        sourceMappings = await findElementsInRegion(x, y, width, height);
-      }
-      
-      // Convert to simple format for postMessage (remove DOM element references)
-      const sourceFiles = sourceMappings.map(mapping => ({
-        file: mapping.fileName || 'unknown',
-        lines: mapping.lineNumber ? [mapping.lineNumber] : [],
-        context: mapping.text
-      }));
-      
-      // Show final summary of what we're sending
-      const fiberFiles = sourceFiles.filter(f => f.lines.length > 0);
-      const fallbackFiles = sourceFiles.filter(f => f.lines.length === 0);
-      
-      console.log('📤 SENDING DEBUG RESPONSE:');
-      console.log(`   Message ID: ${messageId}`);
-      console.log(`   ✅ React Fiber files: ${fiberFiles.length}`);
-      console.log(`   🔧 Fallback files: ${fallbackFiles.length}`);
-      
-      if (fiberFiles.length === 0 && fallbackFiles.length === 0) {
-        console.log('   ❌ No source information found');
-      }
-      
-      // Send response back to parent
-      if (event.source) {
-        event.source.postMessage({
-          type: 'debug-response',
-          messageId,
-          success: true,
-          sourceFiles
-        }, event.origin);
-      }
-      
-    } catch (error) {
-      console.error('Error processing debug request:', error);
-      
-      // Send error response
-      if (event.source) {
-        event.source.postMessage({
-          type: 'debug-response',
-          messageId: event.data?.messageId,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }, event.origin);
-      }
-    }
-  });
+// Helper functions
+
+function hasSourceMapping(element: Element): boolean {
+  return !!(
+    element.getAttribute('data-source') ||
+    element.getAttribute('data-inspector-line') ||
+    element.getAttribute('data-line')
+  );
 }
 
-/**
- * Generate CSS selector for an element - prioritizes ID, then classes, then tag name
- * Used for debugging and element identification in bug reports
- */
-function generateCssSelector(element: Element): string {
+function generateSelector(element: Element): string {
   if (element.id) {
     return `#${element.id}`;
   }
@@ -392,3 +174,11 @@ function generateCssSelector(element: Element): string {
   return element.tagName.toLowerCase();
 }
 
+function rectsIntersect(rect1: { x: number; y: number; width: number; height: number }, rect2: { x: number; y: number; width: number; height: number }): boolean {
+  return !(
+    rect1.x + rect1.width < rect2.x ||
+    rect2.x + rect2.width < rect1.x ||
+    rect1.y + rect1.height < rect2.y ||
+    rect2.y + rect2.height < rect1.y
+  );
+}
