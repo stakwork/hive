@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-// import { db } from "@/lib/db";
-import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import jwt from "jsonwebtoken";
 
@@ -25,70 +23,8 @@ function getGitHubAppConfig(): GitHubAppConfig {
 
   // Decode base64 private key if needed
   let decodedPrivateKey = privateKey;
-  try {
-    if (!privateKey.includes("-----BEGIN")) {
-      decodedPrivateKey = Buffer.from(privateKey, "base64").toString("utf-8");
-      console.log("Decoded base64 private key");
-    } else {
-      console.log("Using private key as-is (already in PEM format)");
-    }
-  } catch (decodeError) {
-    console.warn(
-      "Failed to decode private key as base64, using as-is:",
-      decodeError,
-    );
-  }
-
-  // Sanitize and validate private key
-  decodedPrivateKey = decodedPrivateKey.trim();
-
-  // Check if the private key is properly formatted
-  const hasBegin = decodedPrivateKey.startsWith("-----BEGIN");
-  const hasEnd =
-    decodedPrivateKey.endsWith("-----END RSA PRIVATE KEY-----") ||
-    decodedPrivateKey.endsWith("-----END PRIVATE KEY-----");
-
-  console.log("Private key validation:", {
-    originalLength: privateKey.length,
-    decodedLength: decodedPrivateKey.length,
-    startsWithBegin: hasBegin,
-    endsWithEnd: hasEnd,
-    lastChars: decodedPrivateKey.slice(-30), // Show last 30 chars for debugging
-  });
-
-  // If the key doesn't end properly, try to fix it
-  if (hasBegin && !hasEnd) {
-    console.warn("Private key appears to be truncated or malformed");
-    // Try to add the missing footer if it's clearly an RSA key
-    if (
-      decodedPrivateKey.includes("-----BEGIN RSA PRIVATE KEY-----") &&
-      !decodedPrivateKey.endsWith("-----END RSA PRIVATE KEY-----")
-    ) {
-      if (!decodedPrivateKey.endsWith("\n")) {
-        decodedPrivateKey += "\n";
-      }
-      decodedPrivateKey += "-----END RSA PRIVATE KEY-----";
-      console.log("Added missing RSA private key footer");
-    } else if (
-      decodedPrivateKey.includes("-----BEGIN PRIVATE KEY-----") &&
-      !decodedPrivateKey.endsWith("-----END PRIVATE KEY-----")
-    ) {
-      if (!decodedPrivateKey.endsWith("\n")) {
-        decodedPrivateKey += "\n";
-      }
-      decodedPrivateKey += "-----END PRIVATE KEY-----";
-      console.log("Added missing private key footer");
-    }
-  }
-
-  if (
-    !hasBegin ||
-    (!decodedPrivateKey.endsWith("-----END RSA PRIVATE KEY-----") &&
-      !decodedPrivateKey.endsWith("-----END PRIVATE KEY-----"))
-  ) {
-    throw new Error(
-      "Invalid private key format. Private key must be in PEM format with proper headers and footers.",
-    );
+  if (!privateKey.includes("-----BEGIN")) {
+    decodedPrivateKey = Buffer.from(privateKey, "base64").toString("utf-8");
   }
 
   return {
@@ -109,13 +45,6 @@ async function createGitHubAppJWT(
     exp: now + 600, // Expires in 10 minutes
     iss: appId, // GitHub expects this as a string
   };
-
-  console.log("JWT payload:", {
-    iat: payload.iat,
-    exp: payload.exp,
-    iss: payload.iss,
-    issType: typeof payload.iss,
-  });
 
   const token = jwt.sign(payload, privateKey, { algorithm: "RS256" });
 
@@ -151,13 +80,6 @@ export async function POST(request: NextRequest) {
     // Create GitHub App JWT
     const appJWT = await createGitHubAppJWT(config.appId, config.privateKey);
 
-    console.log("Created GitHub App JWT:", {
-      jwtLength: appJWT?.length,
-      jwtType: typeof appJWT,
-      jwtExists: !!appJWT,
-      jwtStartsWith: appJWT?.substring(0, 20) + "...",
-    });
-
     // Create Octokit instance with App authentication
     const octokit = new Octokit({
       auth: appJWT,
@@ -174,116 +96,45 @@ export async function POST(request: NextRequest) {
       // Check each installation
       for (const installation of installations.data) {
         try {
-          console.log(
-            `Checking installation ${installation.id} for account ${installation.account?.login}`,
+          // Create installation access token
+          const installationTokenResponse = await fetch(
+            `https://api.github.com/app/installations/${installation.id}/access_tokens`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${appJWT}`,
+                Accept: "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+              },
+            },
           );
 
-          // Get repositories accessible by this installation
-          const authConfig = {
-            appId: parseInt(config.appId, 10),
-            privateKey: config.privateKey,
-            installationId: installation.id,
-          };
-
-          console.log("Auth config for installation:", {
-            appId: authConfig.appId,
-            appIdType: typeof authConfig.appId,
-            installationId: authConfig.installationId,
-            privateKeyExists: !!authConfig.privateKey,
-            privateKeyType: typeof authConfig.privateKey,
-          });
-
-          // Create installation access token manually
-          let installationOctokit;
-          try {
-            // First, create an installation access token using our JWT
-            const installationTokenResponse = await fetch(
-              `https://api.github.com/app/installations/${installation.id}/access_tokens`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${appJWT}`,
-                  Accept: "application/vnd.github+json",
-                  "X-GitHub-Api-Version": "2022-11-28",
-                },
-              },
+          if (!installationTokenResponse.ok) {
+            throw new Error(
+              `Failed to create installation token: ${installationTokenResponse.status} ${installationTokenResponse.statusText}`,
             );
-
-            if (!installationTokenResponse.ok) {
-              throw new Error(
-                `Failed to create installation token: ${installationTokenResponse.status} ${installationTokenResponse.statusText}`,
-              );
-            }
-
-            const installationTokenData =
-              await installationTokenResponse.json();
-            console.log("Successfully created installation access token");
-
-            // Use the installation access token
-            installationOctokit = new Octokit({
-              auth: installationTokenData.token,
-            });
-          } catch (tokenError) {
-            console.error(
-              "Failed to create installation access token:",
-              tokenError,
-            );
-
-            // Final fallback: try createAppAuth one more time
-            try {
-              installationOctokit = new Octokit({
-                auth: createAppAuth(authConfig),
-              });
-            } catch (authError) {
-              console.error("All authentication methods failed:", authError);
-              throw authError;
-            }
           }
+
+          const installationTokenData = await installationTokenResponse.json();
+
+          // Use the installation access token
+          const installationOctokit = new Octokit({
+            auth: installationTokenData.token,
+          });
 
           const repos =
             await installationOctokit.rest.apps.listReposAccessibleToInstallation();
 
-          console.log("Installation repositories found:", {
-            count: repos.data.repositories.length,
-            repositories: repos.data.repositories.map((repo) => ({
-              id: repo.id,
-              name: repo.name,
-              owner: repo.owner.login,
-              fullName: repo.full_name,
-            })),
-          });
-
-          console.log("Looking for target repository:", {
-            repositoryId,
-            repositoryIdType: typeof repositoryId,
-            repositoryIdParsed: repositoryId ? parseInt(repositoryId) : null,
-            repositoryName,
-            repositoryOwner,
-          });
-
           // Check if our target repository is in the list
           const targetRepo = repos.data.repositories.find((repo) => {
             if (repositoryId) {
-              const matches = repo.id === parseInt(repositoryId);
-              console.log(
-                `Comparing repo ${repo.id} (${repo.full_name}) with target ${repositoryId}: ${matches}`,
-              );
-              return matches;
+              return repo.id === parseInt(repositoryId);
             }
-            const matches =
+            return (
               repo.name === repositoryName &&
-              repo.owner.login === repositoryOwner;
-            console.log(
-              `Comparing repo ${repo.owner.login}/${repo.name} with target ${repositoryOwner}/${repositoryName}: ${matches}`,
+              repo.owner.login === repositoryOwner
             );
-            return matches;
           });
-
-          console.log(
-            "Target repository found:",
-            !!targetRepo,
-            targetRepo ? targetRepo.full_name : "none",
-          );
 
           if (targetRepo) {
             isInstalled = true;
@@ -302,27 +153,9 @@ export async function POST(request: NextRequest) {
             `Failed to check installation ${installation.id}:`,
             error instanceof Error ? error.message : error,
           );
-          // If this is an auth error, log more details
-          if (error instanceof Error && error.message.includes("Token")) {
-            console.error("Auth error details:", {
-              appId: config.appId,
-              appIdType: typeof config.appId,
-              installationId: installation.id,
-              installationIdType: typeof installation.id,
-              privateKeyExists: !!config.privateKey,
-              privateKeyLength: config.privateKey?.length,
-            });
-          }
           continue;
         }
       }
-
-      console.log("Final decision variables:", {
-        isInstalled,
-        repositoryAccessGranted,
-        installationId,
-        bothConditionsMet: isInstalled && repositoryAccessGranted,
-      });
 
       if (isInstalled && repositoryAccessGranted) {
         return NextResponse.json({
@@ -365,11 +198,6 @@ export async function POST(request: NextRequest) {
           if (userResponse.ok) {
             const userData = await userResponse.json();
             targetId = userData.id.toString();
-            console.log(`Found user ID for ${repositoryOwner}: ${targetId}`);
-          } else {
-            console.warn(
-              `Failed to get user ID for ${repositoryOwner}, using username`,
-            );
           }
 
           const params = new URLSearchParams();
@@ -391,8 +219,6 @@ export async function POST(request: NextRequest) {
           installationUrl += `?${params.toString()}`;
         }
       }
-
-      console.log("installationUrl", installationUrl);
 
       // Provide alternative URLs for different account contexts
       const alternativeUrls = {
