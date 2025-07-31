@@ -113,3 +113,40 @@ export function createArtifact(data: {
     updatedAt: new Date(),
   };
 }
+
+// Safe JSON parsing utility for contextTags field
+export function parseContextTags(contextTags: unknown): ContextTag[] {
+  try {
+    // Handle null or undefined
+    if (contextTags == null) {
+      return [];
+    }
+
+    // Handle empty string
+    if (contextTags === '') {
+      return [];
+    }
+
+    // Handle already parsed objects
+    if (Array.isArray(contextTags)) {
+      return contextTags as ContextTag[];
+    }
+
+    // Handle string values
+    if (typeof contextTags === 'string') {
+      // Handle empty JSON string
+      if (contextTags.trim() === '') {
+        return [];
+      }
+      
+      const parsed = JSON.parse(contextTags);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+
+    // Fallback for any other types
+    return [];
+  } catch (error) {
+    console.warn('Failed to parse contextTags:', error, 'Input:', contextTags);
+    return [];
+  }
+}

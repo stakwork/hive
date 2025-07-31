@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
+import { type ChatMessage, type Artifact, parseContextTags } from "@/lib/chat";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -91,10 +91,10 @@ export async function GET(
       },
     });
 
-    // Convert to client-side types with proper JSON parsing
+    // Convert to client-side types with safe JSON parsing
     const clientMessages: ChatMessage[] = chatMessages.map((msg) => ({
       ...msg,
-      contextTags: JSON.parse(msg.contextTags as string) as ContextTag[],
+      contextTags: parseContextTags(msg.contextTags),
       artifacts: msg.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,

@@ -7,6 +7,7 @@ import {
   type ContextTag,
   type Artifact,
   type ChatMessage,
+  parseContextTags,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
@@ -81,9 +82,7 @@ export async function POST(request: NextRequest) {
     // Convert to client-side type
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string
-      ) as ContextTag[],
+      contextTags: parseContextTags(chatMessage.contextTags),
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
