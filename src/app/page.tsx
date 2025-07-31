@@ -135,7 +135,7 @@ export default async function HomePage() {
           </Badge>
 
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
-            &ldquo;You can just do things&rdquo;
+            Get Started
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto">
