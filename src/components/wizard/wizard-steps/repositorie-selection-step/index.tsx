@@ -33,6 +33,12 @@ export function RepositorySelectionStep({
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [checkingAppIntegration, setCheckingAppIntegration] = useState(false);
+  const [appIntegrationStatus, setAppIntegrationStatus] = useState<{
+    status: "linked" | "not_linked" | "error";
+    installationUrl?: string;
+    message?: string;
+  } | null>(null);
   const { selectedRepo, setSelectedRepo } = useWizardStore((s) => s);
 
   useEffect(() => {
@@ -58,6 +64,66 @@ export function RepositorySelectionStep({
 
     fetchRepositories();
   }, []);
+
+  const checkGitHubAppIntegration = async (repo: Repository) => {
+    setCheckingAppIntegration(true);
+    setAppIntegrationStatus(null);
+
+    try {
+      const response = await fetch("/api/github/app-integration", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          repositoryId: repo.id.toString(),
+          repositoryName: repo.name,
+          repositoryOwner: repo.full_name?.split("/")[0],
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setAppIntegrationStatus({
+          status: "error",
+          message: data.error || "Failed to check GitHub App integration",
+        });
+        return;
+      }
+
+      setAppIntegrationStatus(data);
+    } catch (error) {
+      console.error("Error checking GitHub App integration:", error);
+      setAppIntegrationStatus({
+        status: "error",
+        message: "Failed to check GitHub App integration",
+      });
+    } finally {
+      setCheckingAppIntegration(false);
+    }
+  };
+
+  const handleRepositorySelect = async (repo: Repository) => {
+    setSelectedRepo(repo);
+    await checkGitHubAppIntegration(repo);
+  };
+
+  const handleLinkApp = () => {
+    if (appIntegrationStatus?.installationUrl) {
+      window.open(
+        appIntegrationStatus.installationUrl,
+        "_blank",
+        "width=800,height=600",
+      );
+      // Optionally refresh the integration status after some time
+      setTimeout(() => {
+        if (selectedRepo) {
+          checkGitHubAppIntegration(selectedRepo);
+        }
+      }, 3000);
+    }
+  };
 
   const filteredRepositories = repositories.filter(
     (repo) =>
@@ -111,7 +177,7 @@ export function RepositorySelectionStep({
                     ? "border-accent bg-accent text-accent-foreground"
                     : "border-muted hover:border-accent"
                 }`}
-                onClick={() => setSelectedRepo(repo)}
+                onClick={() => handleRepositorySelect(repo)}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -161,12 +227,67 @@ export function RepositorySelectionStep({
           )}
         </div>
 
+        {/* GitHub App Integration Status */}
+        {selectedRepo && (
+          <div className="border-t pt-4">
+            <h4 className="font-medium text-foreground mb-2">
+              GitHub App Integration
+            </h4>
+            {checkingAppIntegration ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-sm">Checking app integration...</span>
+              </div>
+            ) : appIntegrationStatus ? (
+              <div className="space-y-2">
+                {appIntegrationStatus.status === "linked" ? (
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="text-sm">
+                      Repository is linked to GitHub App
+                    </span>
+                  </div>
+                ) : appIntegrationStatus.status === "not_linked" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                      <Github className="w-4 h-4" />
+                      <span className="text-sm">
+                        {appIntegrationStatus.message}
+                      </span>
+                    </div>
+                    <Button
+                      onClick={handleLinkApp}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                    >
+                      Link GitHub App
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                    <span className="text-sm">
+                      {appIntegrationStatus.message}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Navigation */}
         <div className="flex justify-between pt-4">
           <Button variant="outline" onClick={onBack}>
             Back
           </Button>
-          <Button onClick={onNext} disabled={!selectedRepo} className="px-8">
+          <Button
+            onClick={onNext}
+            disabled={
+              !selectedRepo || appIntegrationStatus?.status !== "linked"
+            }
+            className="px-8"
+          >
             Continue
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
