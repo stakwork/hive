@@ -114,7 +114,7 @@ export function RepositorySelectionStep({
       window.open(
         appIntegrationStatus.installationUrl,
         "_blank",
-        "width=800,height=600",
+        "width=1000,height=600",
       );
       // Optionally refresh the integration status after some time
       setTimeout(() => {
