@@ -158,10 +158,7 @@ export default function TaskChatPage() {
       // Check if message already exists to prevent duplicates
       const messageExists = prev.some(msg => msg.id === message.id);
       if (messageExists) {
-        // Update existing message status if needed
-        return prev.map(msg => 
-          msg.id === message.id ? { ...msg, status: message.status } : msg
-        );
+        return prev; // Don't add duplicates
       }
       // Add new message
       return [...prev, message];
@@ -279,7 +276,10 @@ export default function TaskChatPage() {
     // Allow sending if we have either text or a pending debug attachment
     if ((!input.trim() && !pendingDebugAttachment) || isLoading) return;
 
-    await sendMessage(input.trim(), pendingDebugAttachment || undefined);
+    // For artifact-only messages, provide a default message
+    const messageText = input.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    
+    await sendMessage(messageText, pendingDebugAttachment || undefined);
     setInput("");
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
@@ -295,25 +295,8 @@ export default function TaskChatPage() {
   ) => {
     if (isLoading) return;
 
-    // Only create a chat message if there's actual text content (not just whitespace)
-    // For artifact-only messages (like debug), skip creating the empty chat bubble
-    const hasRealMessage = messageText && messageText.trim().length > 0;
-    
-    let newMessage: ChatMessage | null = null;
-    if (hasRealMessage) {
-      newMessage = createChatMessage({
-        id: generateUniqueId(),
-        message: messageText,
-        role: ChatRole.USER,
-        status: ChatStatus.SENDING,
-        replyId: options?.replyId,
-        artifacts: artifact ? [{ ...artifact, messageId: generateUniqueId() }] : undefined,
-      });
-      setMessages((msgs) => [...msgs, newMessage]);
-    }
+    // Don't add optimistic messages - let them come from Pusher only
     setIsLoading(true);
-
-    // console.log("Sending message:", messageText, options);
 
     try {
       const body: { [k: string]: unknown } = {
@@ -341,21 +324,9 @@ export default function TaskChatPage() {
         throw new Error(result.error || "Failed to send message");
       }
 
-      // If we created a temporary message, remove it since the real message will come via Pusher
-      if (newMessage && result.data) {
-        setMessages((msgs) => msgs.filter(msg => msg.id !== newMessage.id));
-      }
+      // Message will be added via Pusher broadcast
     } catch (error) {
       console.error("Error sending message:", error);
-
-      // Update message status to ERROR if a message was created
-      if (newMessage) {
-        setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg
-          )
-        );
-      }
 
       toast({
         title: "Error",
@@ -668,7 +639,7 @@ export default function TaskChatPage() {
                       >
                         <BrowserArtifactPanel 
                           artifacts={browserArtifacts} 
-                          onDebugMessage={(message: string, debugArtifact?: Artifact) => {
+                          onDebugMessage={async (_message: string, debugArtifact?: Artifact) => {
                             if (debugArtifact) {
                               // Set pending attachment instead of sending immediately
                               setPendingDebugAttachment(debugArtifact);
