@@ -29,6 +29,8 @@ import {
 } from "./artifacts";
 import { useParams } from "next/navigation";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
+import { DebugFiberTest } from "@/components/debug-fiber-test";
+import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -148,10 +150,22 @@ export default function TaskChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
+  const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
 
   // Handle incoming SSE messages
   const handleSSEMessage = useCallback((message: ChatMessage) => {
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => {
+      // Check if message already exists to prevent duplicates
+      const messageExists = prev.some(msg => msg.id === message.id);
+      if (messageExists) {
+        // Update existing message status if needed
+        return prev.map(msg => 
+          msg.id === message.id ? { ...msg, status: message.status } : msg
+        );
+      }
+      // Add new message
+      return [...prev, message];
+    });
   }, []);
 
   // Use the Pusher connection hook
@@ -261,10 +275,13 @@ export default function TaskChatPage() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    
+    // Allow sending if we have either text or a pending debug attachment
+    if ((!input.trim() && !pendingDebugAttachment) || isLoading) return;
 
-    await sendMessage(input.trim());
+    await sendMessage(input.trim(), pendingDebugAttachment || undefined);
     setInput("");
+    setPendingDebugAttachment(null); // Clear attachment after sending
   };
 
   const sendMessage = async (
@@ -324,13 +341,9 @@ export default function TaskChatPage() {
         throw new Error(result.error || "Failed to send message");
       }
 
-      // Update the temporary message status if a message was created
-      if (newMessage) {
-        setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg
-          )
-        );
+      // If we created a temporary message, remove it since the real message will come via Pusher
+      if (newMessage && result.data) {
+        setMessages((msgs) => msgs.filter(msg => msg.id !== newMessage.id));
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -408,7 +421,9 @@ export default function TaskChatPage() {
   }, [availableTabs, activeTab]);
 
   return (
-    <AnimatePresence mode="wait">
+    <>
+      <DebugFiberTest />
+      <AnimatePresence mode="wait">
       {!started ? (
         <motion.div
           key="start"
@@ -548,30 +563,45 @@ export default function TaskChatPage() {
             </div>
 
             {/* Input Bar */}
-            <form
-              onSubmit={handleSend}
-              className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10"
-            >
-              <Input
-                placeholder="Type your message..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="flex-1"
-                autoFocus
-              />
-              <Button type="submit" disabled={!input.trim() || isLoading}>
-                {isLoading ? "Sending..." : "Send"}
-              </Button>
-              {/* Connection status indicator */}
-              <div className="flex items-center ml-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    isConnected ? "bg-green-500" : "bg-gray-400"
-                  }`}
-                  title={isConnected ? "Connected" : "Disconnected"}
+            <div className="border-t bg-background sticky bottom-0 z-10">
+              {/* Pending Debug Attachment */}
+              {pendingDebugAttachment && (
+                <div className="px-6 pt-3">
+                  <InputDebugAttachment
+                    attachment={pendingDebugAttachment}
+                    onRemove={() => setPendingDebugAttachment(null)}
+                  />
+                </div>
+              )}
+              
+              <form
+                onSubmit={handleSend}
+                className="flex gap-2 px-6 py-4"
+              >
+                <Input
+                  placeholder={pendingDebugAttachment ? "Add context about the bug (optional)..." : "Type your message..."}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="flex-1"
+                  autoFocus
                 />
-              </div>
-            </form>
+                <Button 
+                  type="submit" 
+                  disabled={(!input.trim() && !pendingDebugAttachment) || isLoading}
+                >
+                  {isLoading ? "Sending..." : "Send"}
+                </Button>
+                {/* Connection status indicator */}
+                <div className="flex items-center ml-2">
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      isConnected ? "bg-green-500" : "bg-gray-400"
+                    }`}
+                    title={isConnected ? "Connected" : "Disconnected"}
+                  />
+                </div>
+              </form>
+            </div>
           </motion.div>
 
           {/* Artifacts Panel */}
@@ -638,9 +668,17 @@ export default function TaskChatPage() {
                       >
                         <BrowserArtifactPanel 
                           artifacts={browserArtifacts} 
-                          onDebugMessage={(message: string, debugArtifact?: Artifact) => 
-                            sendMessage(message, debugArtifact)
-                          }
+                          onDebugMessage={(message: string, debugArtifact?: Artifact) => {
+                            if (debugArtifact) {
+                              // Set pending attachment instead of sending immediately
+                              setPendingDebugAttachment(debugArtifact);
+                              // Focus the input for user to add context
+                              const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
+                              if (inputElement) {
+                                inputElement.focus();
+                              }
+                            }
+                          }}
                         />
                       </TabsContent>
                     )}
@@ -652,5 +690,6 @@ export default function TaskChatPage() {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 }

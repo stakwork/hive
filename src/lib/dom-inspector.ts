@@ -1,5 +1,8 @@
 // DOM Inspector utilities for bug identification feature
-// Uses React fiber to extract source mappings since SWC automatically injects debug info
+// Uses unified debug source resolver with fallback chain (DevTools → Fiber → DOM heuristics)
+
+import { DebugSourceResolver, DebugSourceResult } from './debug-source-resolver';
+import { getDebugSourceConfig } from './debug-source-config';
 
 export interface SourceMapping {
   element: Element;
@@ -166,15 +169,20 @@ function getReactFiberSource(element: Element): ReactFiberDebugSource | null {
 }
 
 /**
- * Find React components at specific coordinates and extract their source file locations
- * This version walks up the React fiber tree to find all relevant source mappings
- * Used when user clicks on iframe to identify which components they're pointing at
+ * Find React components at specific coordinates using the unified debug source resolver
+ * This version uses the new fallback chain system (DevTools → Fiber → DOM heuristics)
  */
-export function findElementsAtCoordinates(x: number, y: number): SourceMapping[] {
+export async function findElementsAtCoordinates(x: number, y: number): Promise<SourceMapping[]> {
   try {
+    const config = getDebugSourceConfig();
+    const resolver = new DebugSourceResolver();
+    
     // This function runs inside the iframe context, not from parent
     const element = document.elementFromPoint(x, y);
-    console.log('🎯 Finding elements at coordinates:', { x, y, element: element?.tagName, className: element?.className });
+    
+    if (config.enableLogging) {
+      console.log('🎯 Finding elements at coordinates:', { x, y, element: element?.tagName, className: element?.className });
+    }
     
     if (!element) return [];
 
@@ -184,30 +192,20 @@ export function findElementsAtCoordinates(x: number, y: number): SourceMapping[]
     let currentElement: Element | null = element;
     
     while (currentElement && sourceMappings.length < 5) { // Limit to 5 levels to avoid too much data
-      const sourceInfo = getReactFiberSource(currentElement);
+      const result: DebugSourceResult = await resolver.resolveElement(currentElement);
       
-      if (sourceInfo) {
-        console.log(`📍 Found React fiber source at depth ${sourceMappings.length}:`, sourceInfo);
-        sourceMappings.push({
-          element: currentElement,
-          fileName: sourceInfo.fileName,
-          lineNumber: sourceInfo.lineNumber,
-          columnNumber: sourceInfo.columnNumber,
-          text: currentElement.textContent?.trim()?.substring(0, 100) || undefined,
-          selector: generateCssSelector(currentElement),
-          bounds: currentElement.getBoundingClientRect()
-        });
-      } else {
-        // Try fallback analysis when React fiber fails
-        const fallbackInfo = getFallbackSourceInfo(currentElement);
-        if (fallbackInfo) {
-          console.log(`🔧 Using fallback source at depth ${sourceMappings.length}:`, fallbackInfo);
+      if (result.sources.length > 0) {
+        for (const source of result.sources) {
+          if (config.enableLogging) {
+            console.log(`📍 Found source at depth ${sourceMappings.length} via ${result.activeMethod}:`, source);
+          }
+          
           sourceMappings.push({
             element: currentElement,
-            fileName: fallbackInfo.fileName,
-            lineNumber: fallbackInfo.lineNumber,
-            columnNumber: fallbackInfo.columnNumber,
-            text: fallbackInfo.context + (currentElement.textContent?.trim()?.substring(0, 50) ? ` | ${currentElement.textContent.trim().substring(0, 50)}` : ''),
+            fileName: source.fileName,
+            lineNumber: source.lineNumber,
+            columnNumber: source.columnNumber,
+            text: source.context || currentElement.textContent?.trim()?.substring(0, 100) || undefined,
             selector: generateCssSelector(currentElement),
             bounds: currentElement.getBoundingClientRect()
           });
@@ -221,24 +219,23 @@ export function findElementsAtCoordinates(x: number, y: number): SourceMapping[]
     const fiberSources = sourceMappings.filter(m => m.lineNumber !== undefined);
     const fallbackSources = sourceMappings.filter(m => m.lineNumber === undefined);
     
-    console.log('🎯 SOURCE DETECTION SUMMARY:');
-    console.log(`   Total sources found: ${sourceMappings.length}`);
-    console.log(`   ✅ React Fiber sources: ${fiberSources.length} (accurate file:line mapping)`);
-    console.log(`   🔧 Fallback heuristics: ${fallbackSources.length} (DOM analysis)`);
-    
-    if (fiberSources.length > 0) {
-      console.log('   🎉 SUCCESS: React fiber debug info is working!');
-      fiberSources.forEach((source, i) => {
-        console.log(`      ${i + 1}. ${source.fileName}:${source.lineNumber}`);
-      });
-    } else {
-      console.log('   ⚠️  React fiber debug info not found - using fallback detection');
-    }
-    
-    if (fallbackSources.length > 0) {
-      fallbackSources.forEach((source, i) => {
-        console.log(`      Fallback ${i + 1}: ${source.fileName} (${source.text?.split('|')[0]})`);
-      });
+    if (config.enableLogging) {
+      console.log('🎯 SOURCE DETECTION SUMMARY:');
+      console.log(`   Total sources found: ${sourceMappings.length}`);
+      console.log(`   ✅ Precise sources: ${fiberSources.length} (accurate file:line mapping)`);
+      console.log(`   🔧 Heuristic sources: ${fallbackSources.length} (estimated)`);
+      
+      if (fiberSources.length > 0) {
+        console.log('   🎉 SUCCESS: Precise debug info is working!');
+        fiberSources.forEach((source, i) => {
+          console.log(`      ${i + 1}. ${source.fileName}:${source.lineNumber}`);
+        });
+      } else if (fallbackSources.length > 0) {
+        console.log('   ⚠️  Using heuristic detection only');
+        fallbackSources.forEach((source, i) => {
+          console.log(`      Heuristic ${i + 1}: ${source.fileName}`);
+        });
+      }
     }
     
     return sourceMappings;
@@ -249,11 +246,13 @@ export function findElementsAtCoordinates(x: number, y: number): SourceMapping[]
 }
 
 /**
- * Find React components within a selection rectangle
+ * Find React components within a selection rectangle using the unified debug source resolver
  * Useful for drag selections that cover multiple components
  */
-export function findElementsInRegion(x: number, y: number, width: number, height: number): SourceMapping[] {
+export async function findElementsInRegion(x: number, y: number, width: number, height: number): Promise<SourceMapping[]> {
   try {
+    const config = getDebugSourceConfig();
+    const resolver = new DebugSourceResolver();
     const sourceMappings: SourceMapping[] = [];
     const processedElements = new Set<Element>();
     
@@ -276,17 +275,19 @@ export function findElementsInRegion(x: number, y: number, width: number, height
       
       processedElements.add(element);
       
-      const sourceInfo = getReactFiberSource(element);
-      if (sourceInfo) {
-        sourceMappings.push({
-          element,
-          fileName: sourceInfo.fileName,
-          lineNumber: sourceInfo.lineNumber,
-          columnNumber: sourceInfo.columnNumber,
-          text: element.textContent?.trim()?.substring(0, 100) || undefined,
-          selector: generateCssSelector(element),
-          bounds: element.getBoundingClientRect()
-        });
+      const result: DebugSourceResult = await resolver.resolveElement(element);
+      if (result.sources.length > 0) {
+        for (const source of result.sources) {
+          sourceMappings.push({
+            element,
+            fileName: source.fileName,
+            lineNumber: source.lineNumber,
+            columnNumber: source.columnNumber,
+            text: source.context || element.textContent?.trim()?.substring(0, 100) || undefined,
+            selector: generateCssSelector(element),
+            bounds: element.getBoundingClientRect()
+          });
+        }
       }
     }
 
@@ -304,7 +305,7 @@ export function findElementsInRegion(x: number, y: number, width: number, height
 export function initializeDebugMessageListener() {
   console.log('🎬 Initializing debug message listener');
   
-  window.addEventListener('message', (event) => {
+  window.addEventListener('message', async (event) => {
     // Only respond to debug requests
     if (event.data?.type !== 'debug-request') return;
     
@@ -319,11 +320,11 @@ export function initializeDebugMessageListener() {
       if (width === 0 && height === 0) {
         // Point selection (click)
         console.log('🖱️ Processing click at:', { x, y });
-        sourceMappings = findElementsAtCoordinates(x, y);
+        sourceMappings = await findElementsAtCoordinates(x, y);
       } else {
         // Area selection (drag)
         console.log('🖱️ Processing area selection:', { x, y, width, height });
-        sourceMappings = findElementsInRegion(x, y, width, height);
+        sourceMappings = await findElementsInRegion(x, y, width, height);
       }
       
       // Convert to simple format for postMessage (remove DOM element references)

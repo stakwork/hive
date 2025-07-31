@@ -10,8 +10,9 @@ import {
   type ContextTag,
   type Artifact,
   type ChatMessage,
-  type BugReportContent,
+  parseContextTags,
 } from "@/lib/chat";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -301,14 +302,41 @@ export async function POST(request: NextRequest) {
     // Convert to client-side type
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string
-      ) as ContextTag[],
+      contextTags: parseContextTags(chatMessage.contextTags),
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
       })) as Artifact[],
     };
+
+    // Broadcast the user message via Pusher to all connected clients for this task
+    if (taskId) {
+      try {
+        const channelName = getTaskChannelName(taskId);
+        console.log(
+          `🚀 Broadcasting user message to Pusher channel: ${channelName}`
+        );
+        console.log(`📨 User message content:`, {
+          id: clientMessage.id,
+          message: clientMessage.message,
+          role: clientMessage.role,
+          timestamp: clientMessage.timestamp,
+        });
+
+        await pusherServer.trigger(
+          channelName,
+          PUSHER_EVENTS.NEW_MESSAGE,
+          clientMessage
+        );
+
+        console.log(
+          `✅ Successfully broadcast user message to Pusher channel: ${channelName}`
+        );
+      } catch (error) {
+        console.error("❌ Error broadcasting user message to Pusher:", error);
+        // Don't fail the request if Pusher fails
+      }
+    }
 
     // Check if Stakwork environment variables are defined
     const useStakwork =
@@ -326,99 +354,23 @@ export async function POST(request: NextRequest) {
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.poolName || null;
 
-    // Check for BugReportContent artifacts and process if found
-    const bugReportArtifacts = clientMessage.artifacts?.filter(
-      (artifact) => artifact.type === ArtifactType.BUG_REPORT
-    );
-    
-    if (bugReportArtifacts && bugReportArtifacts.length > 0) {
-      // This message has debug artifacts - process them with our debug element API
-      try {
-        for (const artifact of bugReportArtifacts) {
-          const bugReportContent = artifact.content as BugReportContent;
-          
-          console.log('Processing debug artifact:', {
-            method: bugReportContent.method,
-            coordinates: bugReportContent.coordinates,
-            iframeUrl: bugReportContent.iframeUrl
-          });
-          
-          // Call our debug element API internally
-          const debugResponse = await fetch(`${getBaseUrl(request)}/api/debug-element`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Cookie': request.headers.get('Cookie') || '', // Forward authentication
-            },
-            body: JSON.stringify({
-              bugReportContent,
-              taskId
-            })
-          });
-          
-          if (debugResponse.ok) {
-            const debugResult = await debugResponse.json();
-            
-            if (debugResult.success) {
-              // Create a response message with the source file mappings
-              const sourceFiles = debugResult.data.sourceFiles;
-              const coords = debugResult.data.coordinates;
-              const methodText = debugResult.data.method === 'click' ? 'click' : 'selection';
-              const coordText = debugResult.data.method === 'click' 
-                ? `(${coords.x}, ${coords.y})`
-                : `${coords.width}×${coords.height} at (${coords.x}, ${coords.y})`;
-              
-              const responseText = sourceFiles.length > 0 
-                ? `Debug ${methodText} ${coordText} analysis:\n${sourceFiles.map((sf: { file: string; lines: number[]; context?: string }) => 
-                    `📄 ${sf.file}:${sf.lines.join(',')}${sf.context ? ` (${sf.context})` : ''}`
-                  ).join('\n')}`
-                : `Debug ${methodText} ${coordText}: No source mappings found for the selected area.`;
-              
-              // Create assistant response message
-              await db.chatMessage.create({
-                data: {
-                  taskId,
-                  message: responseText,
-                  role: ChatRole.ASSISTANT,
-                  status: ChatStatus.SENT,
-                  replyId: chatMessage.id,
-                },
-              });
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error processing debug artifacts:', error);
-        
-        // Create error response message
-        await db.chatMessage.create({
-          data: {
-            taskId,
-            message: 'Sorry, I encountered an error while analyzing the debug data. Please try again.',
-            role: ChatRole.ASSISTANT,
-            status: ChatStatus.SENT,
-            replyId: chatMessage.id,
-          },
-        });
-      }
+    // Call appropriate service based on environment configuration
+    // Note: Debug artifacts (BUG_REPORT) are stored with the message but processing is handled separately
+    if (useStakwork) {
+      await callStakwork(
+        taskId,
+        message,
+        contextTags,
+        userName,
+        accessToken,
+        swarmUrl,
+        swarmSecretAlias,
+        poolName,
+        request,
+        webhook
+      );
     } else {
-      // Regular message - call appropriate service based on environment configuration
-      if (useStakwork) {
-        await callStakwork(
-          taskId,
-          message,
-          contextTags,
-          userName,
-          accessToken,
-          swarmUrl,
-          swarmSecretAlias,
-          poolName,
-          request,
-          webhook
-        );
-      } else {
-        await callMock(taskId, message, userId, request);
-      }
+      await callMock(taskId, message, userId, request);
     }
 
     return NextResponse.json(
