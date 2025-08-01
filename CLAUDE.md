@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run lint` - Run ESLint
 - `npm run setup` - Generate JWT secret for development
 
-**Note:** The dev scripts automatically toggle the Babel configuration since Turbopack cannot coexist with `.babelrc.js`.
+**Note:** The dev scripts automatically toggle the Babel configuration since Turbopack cannot coexist with `.babelrc.js`. The debug button (Bug icon) in browser previews is automatically hidden when using Turbopack mode and only appears when debugging features are available.
 
 ### Testing
 - `npm run test` - Run all tests with Vitest
