@@ -8,6 +8,7 @@ import {
   FormContent,
   createChatMessage,
   createArtifact,
+  LongformContent,
 } from "@/lib/chat";
 
 export function codeMessage(): ChatMessage {
@@ -168,6 +169,64 @@ export function assistantMessage(): ChatMessage {
             },
           ],
         } as FormContent,
+      }),
+    ],
+  };
+}
+
+export function longformMessage(): ChatMessage {
+  const baseMessage = createChatMessage({
+    id: (Date.now() + 3).toString(),
+    message: "Project Hive's repomap on Display",
+    role: ChatRole.ASSISTANT,
+    status: ChatStatus.SENT,
+  });
+
+  return {
+    ...baseMessage,
+    artifacts: [
+      createArtifact({
+        id: "longform-1",
+        messageId: baseMessage.id,
+        type: ArtifactType.LONGFORM,
+        content: {
+          title: "Repomap: Project Hive RepoMap",
+          text: `
+<pre>
+Repository: fayekelmith/demo-repo
+├─┬ Directory: frontend
+│ ├─┬ Directory: public
+│ │ └── File: index.html (118)
+│ ├─┬ Directory: src
+│ │ ├─┬ Directory: components
+│ │ │ ├── File: NewPerson.tsx (592)
+│ │ │ ├── File: People.tsx (185)
+│ │ │ └── File: Person.tsx (20)
+│ │ ├── File: api.ts (15)
+│ │ ├── File: App.css (169)
+│ │ ├── File: App.tsx (133)
+│ │ └── File: index.tsx (54)
+│ ├── File: .gitignore (7)
+│ ├── File: package.json (405)
+│ ├── File: tsconfig.json (162)
+│ └── File: yarn.lock (220266)
+├── File: .env (16)
+├── File: .gitignore (6)
+├── File: alpha.go (16)
+├── File: beta.go (22)
+├─┬ File: db.go (436)
+│ └── Instance: DB (3)
+├── File: delta.go (22)
+├── File: docker-compose.yaml (85)
+├── File: go.mod (88)
+├── File: go.sum (4982)
+├── File: main.go (159)
+├── File: routes.go (660)
+└── File: utils.go (47)
+
+</pre>
+          `,
+        } as LongformContent,
       }),
     ],
   };

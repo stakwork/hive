@@ -19,11 +19,12 @@ import {
   createChatMessage,
   ArtifactType,
 } from "@/lib/chat";
-import { assistantMessage, codeMessage } from "./mockmsgs";
+import { assistantMessage, codeMessage, longformMessage } from "./mockmsgs";
 import {
   FormArtifact,
   CodeArtifactPanel,
   BrowserArtifactPanel,
+  LongformArtifactPanel,
 } from "./artifacts";
 
 function TaskStartInput({ onStart }: { onStart: (task: string) => void }) {
@@ -185,7 +186,7 @@ export default function TaskChatPage() {
     // Auto-reply after a short delay
     setTimeout(() => {
       const msg = assistantMessage();
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => [...prev, msg, longformMessage()]);
     }, 1000);
   };
 
@@ -311,6 +312,25 @@ export default function TaskChatPage() {
                               artifact={artifact}
                               onAction={handleArtifactAction}
                             />
+                          </motion.div>
+                        </div>
+                      </div>
+                    ))}
+                  {/* Only Longform Artifacts in Chat */}
+                  {msg.artifacts
+                    ?.filter((a) => a.type === "LONGFORM")
+                    .map((artifact) => (
+                      <div
+                        key={artifact.id}
+                        className={`flex ${msg.role === "USER" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div className="max-w-md w-full">
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 }}
+                          >
+                            <LongformArtifactPanel artifacts={[artifact]} />
                           </motion.div>
                         </div>
                       </div>
