@@ -5,11 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ### Core Development
-- `npm run dev` - Start development server with Turbopack
+- `npm run dev` - Start development server with Turbopack (fast development, disables Babel)
+- `npm run dev:debug` - Start development server with Babel (enables DOM debugging features, slower)
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 - `npm run setup` - Generate JWT secret for development
+
+**Note:** The dev scripts automatically toggle the Babel configuration since Turbopack cannot coexist with `.babelrc.js`.
 
 ### Testing
 - `npm run test` - Run all tests with Vitest
