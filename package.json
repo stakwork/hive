@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "mv .babelrc.js .babelrc.js.disabled 2>/dev/null || true && next dev --turbopack",
-    "dev:debug": "mv .babelrc.js.disabled .babelrc.js 2>/dev/null || true && next dev",
+    "dev": "mv .babelrc.js .babelrc.js.disabled 2>/dev/null || true && NEXT_PUBLIC_DEBUG_MODE=false next dev --turbopack",
+    "dev:debug": "mv .babelrc.js.disabled .babelrc.js 2>/dev/null || true && NEXT_PUBLIC_DEBUG_MODE=true next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

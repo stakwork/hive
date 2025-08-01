@@ -114,6 +114,10 @@ export function BrowserArtifactPanel({
   const [refreshKey, setRefreshKey] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
   const [isSubmittingDebug, setIsSubmittingDebug] = useState(false);
+  
+  // Check if debug mode is available (when using Babel instead of Turbopack)
+  const isDebugAvailable = process.env.NODE_ENV === 'development' && 
+    process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
 
   // Reset debug mode when switching tabs
   const handleTabChange = (newTab: number) => {
@@ -302,15 +306,17 @@ export function BrowserArtifactPanel({
                   >
                     <ExternalLink className="w-4 h-4" />
                   </Button>
-                  <Button
-                    variant={debugMode ? "default" : "ghost"}
-                    size="sm"
-                    onClick={handleDebugElement}
-                    className="h-8 w-8 p-0"
-                    title="Debug Element"
-                  >
-                    <Bug className="w-4 h-4" />
-                  </Button>
+                  {isDebugAvailable && (
+                    <Button
+                      variant={debugMode ? "default" : "ghost"}
+                      size="sm"
+                      onClick={handleDebugElement}
+                      className="h-8 w-8 p-0"
+                      title="Debug Element"
+                    >
+                      <Bug className="w-4 h-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
