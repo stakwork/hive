@@ -50,11 +50,6 @@ async function callMock(
   request?: NextRequest
 ) {
   const baseUrl = getBaseUrl(request);
-  console.log("Sending message to mock server", {
-    taskId,
-    message,
-    baseUrl,
-  });
 
   try {
     const response = await fetch(`${baseUrl}/api/mock`, {
@@ -78,7 +73,6 @@ async function callMock(
     }
 
     const result = await response.json();
-    console.log("mock result", result);
     return { success: true, data: result };
   } catch (error) {
     console.error("Error calling mock server:", error);
@@ -140,10 +134,6 @@ async function callStakwork(
 
     const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
 
-    console.log("Sending message to Stakwork", {
-      url: stakworkURL,
-      payload: stakworkPayload,
-    });
 
     const response = await fetch(stakworkURL, {
       method: "POST",
@@ -162,7 +152,6 @@ async function callStakwork(
     }
 
     const result = await response.json();
-    console.log("Stakwork result", result);
     return { success: true, data: result };
   } catch (error) {
     console.error("Error calling Stakwork:", error);
@@ -315,15 +304,6 @@ export async function POST(request: NextRequest) {
     if (taskId) {
       try {
         const channelName = getTaskChannelName(taskId);
-        console.log(
-          `🚀 Broadcasting user message to Pusher channel: ${channelName}`
-        );
-        console.log(`📨 User message content:`, {
-          id: clientMessage.id,
-          message: clientMessage.message,
-          role: clientMessage.role,
-          timestamp: clientMessage.timestamp,
-        });
 
         await pusherServer.trigger(
           channelName,
@@ -331,9 +311,6 @@ export async function POST(request: NextRequest) {
           clientMessage
         );
 
-        console.log(
-          `✅ Successfully broadcast user message to Pusher channel: ${channelName}`
-        );
       } catch (error) {
         console.error("❌ Error broadcasting user message to Pusher:", error);
         // Don't fail the request if Pusher fails

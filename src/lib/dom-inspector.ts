@@ -28,7 +28,6 @@ export function extractSourceMappings(iframe: HTMLIFrameElement): SourceMapping[
   try {
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
     if (!doc) {
-      console.warn("Cannot access iframe document - likely due to CORS");
       return [];
     }
 
@@ -280,40 +279,28 @@ function extractReactDebugSource(
   element: Element
 ): { fileName?: string; lineNumber?: number; columnNumber?: number } | null {
   try {
-    console.log("🔍 Analyzing element:", element.tagName.toLowerCase(), element.className);
-
-    // Log all properties on the element to see what's available
-    const allKeys = Object.keys(element);
-    console.log("📋 All element keys:", allKeys);
-
     // Look for React fiber keys (React 17+)
-    const reactKeys = allKeys.filter((key) => key.startsWith("__react"));
-    console.log("⚛️ React-related keys found:", reactKeys);
+    const allKeys = Object.keys(element);
 
     // Also check for older React versions
     const fiberKey = allKeys.find(
       (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
     );
 
-    console.log("🔗 Found fiber key:", fiberKey);
 
     if (!fiberKey) {
-      console.log("❌ No React fiber key found on element");
       return null;
     }
 
     // @ts-expect-error - Accessing React internals
     let fiber = element[fiberKey];
-    console.log("🧬 Initial fiber object:", fiber);
 
     let level = 0;
     // Traverse up the fiber tree to find debug source
     while (fiber && level < 10) {
       // Limit traversal to prevent infinite loops
-      console.log(`🔄 Level ${level} - Fiber type:`, fiber.type, "elementType:", fiber.elementType);
 
       if (fiber._debugSource) {
-        console.log("✅ Found _debugSource:", fiber._debugSource);
         return {
           fileName: fiber._debugSource.fileName,
           lineNumber: fiber._debugSource.lineNumber,
@@ -323,7 +310,6 @@ function extractReactDebugSource(
 
       // Also check for __source prop (used in some React setups)
       if (fiber.memoizedProps && fiber.memoizedProps.__source) {
-        console.log("✅ Found __source in memoizedProps:", fiber.memoizedProps.__source);
         return {
           fileName: fiber.memoizedProps.__source.fileName,
           lineNumber: fiber.memoizedProps.__source.lineNumber,
@@ -333,7 +319,6 @@ function extractReactDebugSource(
 
       // Check for __source in other prop locations
       if (fiber.pendingProps && fiber.pendingProps.__source) {
-        console.log("✅ Found __source in pendingProps:", fiber.pendingProps.__source);
         return {
           fileName: fiber.pendingProps.__source.fileName,
           lineNumber: fiber.pendingProps.__source.lineNumber,
@@ -341,24 +326,15 @@ function extractReactDebugSource(
         };
       }
 
-      // Log what properties are available on this fiber
-      if (level < 3) {
-        // Only log first few levels to avoid spam
-        console.log(`🔍 Fiber level ${level} properties:`, Object.keys(fiber));
-        if (fiber.memoizedProps) {
-          console.log(`🔍 MemoizedProps keys:`, Object.keys(fiber.memoizedProps));
-        }
-      }
 
       // Go up the component tree
       fiber = fiber.return;
       level++;
     }
 
-    console.log("❌ No debug source found after traversing", level, "fiber levels");
     return null;
   } catch (error) {
-    console.error("💥 Error extracting React debug source:", error);
+    console.error("Error extracting React debug source:", error);
     return null;
   }
 }
@@ -374,7 +350,6 @@ export function initializeDebugMessageListener() {
     if (event.data?.type !== "debug-request") return;
 
     const { messageId, coordinates } = event.data;
-    console.log("Received debug request:", { messageId, coordinates });
 
     try {
       // Note: The findElementsAtCoordinates and findElementsInRegion functions are designed for iframe access,
@@ -387,12 +362,10 @@ export function initializeDebugMessageListener() {
       // Get element at point or elements in region
       let elementsToProcess: Element[] = [];
 
-      console.log("🎯 Debug coordinates:", coordinates);
 
       if (coordinates.width === 0 && coordinates.height === 0) {
         // Click mode - get element at point
         const element = document.elementFromPoint(coordinates.x, coordinates.y);
-        console.log("👆 Element at click point:", element);
 
         if (element) {
           elementsToProcess = [element];
@@ -402,7 +375,6 @@ export function initializeDebugMessageListener() {
             elementsToProcess.push(parent);
             parent = parent.parentElement;
           }
-          console.log("🌳 Elements to process (including parents):", elementsToProcess.length);
         }
       } else {
         // Selection mode - get all elements in the rectangle
@@ -414,7 +386,6 @@ export function initializeDebugMessageListener() {
             coordinates
           );
         });
-        console.log("📦 Elements in selection:", elementsToProcess.length);
       }
 
       // Process each element to extract debug source
@@ -448,11 +419,6 @@ export function initializeDebugMessageListener() {
           if (debugSource && debugSource.fileName && debugSource.lineNumber) {
             const fileName = debugSource.fileName;
             const lineNum = debugSource.lineNumber;
-            console.log("Found React fiber debug source:", {
-              fileName,
-              lineNum,
-              element: element.tagName,
-            });
 
             if (!processedFiles.has(fileName) || !processedFiles.get(fileName)?.has(lineNum)) {
               if (!processedFiles.has(fileName)) {
@@ -482,7 +448,6 @@ export function initializeDebugMessageListener() {
         file.lines.sort((a, b) => a - b);
       });
 
-      console.log("Sending debug response with source files:", sourceFiles);
 
       // Send response back to parent frame
       event.source?.postMessage(
@@ -511,5 +476,4 @@ export function initializeDebugMessageListener() {
     }
   });
 
-  console.log("Debug message listener initialized");
 }

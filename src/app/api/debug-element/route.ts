@@ -40,7 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<DebugElem
 
     // Parse request body
     const body: DebugElementRequest = await request.json();
-    const { bugReportContent, taskId } = body;
+    const { bugReportContent } = body;
 
     // Validate required fields
     if (!bugReportContent || !bugReportContent.iframeUrl || !bugReportContent.coordinates) {
@@ -67,10 +67,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<DebugElem
     }
 
     // Process the BugReportContent from the attachment
-    const { coordinates, method, sourceFiles, iframeUrl } = bugReportContent;
-    
-    console.log(`Debug element request: ${method} at (${coordinates.x}, ${coordinates.y}) ${coordinates.width}x${coordinates.height} on ${iframeUrl} for task ${taskId}`);
-    console.log(`Source files from postMessage:`, sourceFiles);
+    const { coordinates, method, sourceFiles } = bugReportContent;
+
 
     // If we have source files from the postMessage, use them; otherwise provide helpful mock data
     const finalSourceFiles = sourceFiles.length > 0 ? sourceFiles : [

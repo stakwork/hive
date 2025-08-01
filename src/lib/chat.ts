@@ -33,7 +33,7 @@ export interface BrowserContent {
 export interface BugReportContent {
   bugDescription: string;
   iframeUrl: string;
-  method: 'click' | 'selection' | 'description';
+  method: 'click' | 'selection';
   sourceFiles: Array<{
     file: string;
     lines: number[];

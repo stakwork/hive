@@ -11,7 +11,6 @@ export default function DebugMessageListener() {
   useEffect(() => {
     // Initialize the debug message listener when component mounts
     initializeDebugMessageListener();
-    console.log('Debug message listener initialized for bug identification feature');
   }, []);
 
   // This component doesn't render anything - it just sets up the message listener
