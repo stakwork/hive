@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import {
-  isRepositoryInstalled,
-  generateInstallationUrl,
+  getRepositoryInstallationInfo,
+  generateInstallationUrlForRepository,
 } from "@/lib/github-app";
 
 export async function GET(request: NextRequest) {
@@ -23,17 +23,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if the repository is installed
-    const installationStatus = await isRepositoryInstalled(repositoryFullName);
+    // Check if the repository is installed with detailed info
+    const installationInfo =
+      await getRepositoryInstallationInfo(repositoryFullName);
 
     // Generate installation URL for this repository
-    const installationUrl = generateInstallationUrl(repositoryFullName);
+    const installationUrl = generateInstallationUrlForRepository(
+      repositoryFullName,
+      installationInfo.needsUserInstallation,
+    );
 
     return NextResponse.json({
-      installed: installationStatus.installed,
-      installationId: installationStatus.installationId,
+      installed: installationInfo.installed,
+      installationId: installationInfo.installationId,
       installationUrl,
       repository: repositoryFullName,
+      accountType: installationInfo.accountType,
+      accountLogin: installationInfo.accountLogin,
+      repositoryOwner: installationInfo.repositoryOwner,
+      needsUserInstallation: installationInfo.needsUserInstallation,
+      availableInstallations: installationInfo.availableInstallations,
     });
   } catch (error) {
     console.error("Error checking GitHub App installation:", error);

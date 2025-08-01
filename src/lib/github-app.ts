@@ -63,9 +63,9 @@ export function generateInstallationUrl(repositoryFullName: string): string {
     throw new Error("GITHUB_APP_SLUG is not configured");
   }
 
-  const [owner, repo] = repositoryFullName.split("/");
+  const [owner] = repositoryFullName.split("/");
   const callbackUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/github/callback`;
-  return `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new?repository=${repo}&owner=${owner}&return_to=${encodeURIComponent(callbackUrl)}`;
+  return `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new?suggested_target_id=${owner}&return_to=${encodeURIComponent(callbackUrl)}`;
 }
 
 /**
@@ -209,6 +209,112 @@ export async function isRepositoryInstalled(
     console.error("Error checking repository installation:", error);
     return { installed: false };
   }
+}
+
+/**
+ * Get detailed installation info for a repository
+ */
+export async function getRepositoryInstallationInfo(
+  repositoryFullName: string,
+): Promise<{
+  installed: boolean;
+  installationId?: number;
+  accountType?: "User" | "Organization";
+  accountLogin?: string;
+  repositoryOwner: string;
+  needsUserInstallation?: boolean;
+  availableInstallations?: Array<{
+    id: number;
+    accountLogin: string;
+    accountType: "User" | "Organization";
+  }>;
+}> {
+  if (!githubApp) {
+    return {
+      installed: false,
+      repositoryOwner: repositoryFullName.split("/")[0],
+    };
+  }
+
+  const [owner] = repositoryFullName.split("/");
+
+  try {
+    const installations = await getAppInstallations();
+    const availableInstallations = installations.map((inst) => ({
+      id: inst.id,
+      accountLogin: inst.account.login,
+      accountType: inst.account.type as "User" | "Organization",
+    }));
+
+    for (const installation of installations) {
+      try {
+        const repositories = await getInstallationRepositories(installation.id);
+        const isInstalled = repositories.some(
+          (repo) => repo.full_name === repositoryFullName,
+        );
+
+        if (isInstalled) {
+          return {
+            installed: true,
+            installationId: installation.id,
+            accountType: installation.account.type as "User" | "Organization",
+            accountLogin: installation.account.login,
+            repositoryOwner: owner,
+            availableInstallations,
+          };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    // Check if we have an org installation but need a user installation
+    const hasOrgInstallation = installations.some(
+      (inst) => inst.account.type === "Organization",
+    );
+    const needsUserInstallation =
+      hasOrgInstallation &&
+      !installations.some(
+        (inst) => inst.account.type === "User" && inst.account.login === owner,
+      );
+
+    return {
+      installed: false,
+      repositoryOwner: owner,
+      needsUserInstallation,
+      availableInstallations,
+    };
+  } catch (error) {
+    console.error("Error checking repository installation:", error);
+    return { installed: false, repositoryOwner: owner };
+  }
+}
+
+/**
+ * Generate installation URL with better targeting
+ */
+export function generateInstallationUrlForRepository(
+  repositoryFullName: string,
+  preferUserAccount = false,
+): string {
+  if (!GITHUB_APP_SLUG) {
+    throw new Error("GITHUB_APP_SLUG is not configured");
+  }
+
+  const [owner] = repositoryFullName.split("/");
+  const callbackUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/github/callback`;
+
+  // Add a parameter to suggest installing on user account if needed
+  const params = new URLSearchParams({
+    suggested_target_id: owner,
+    return_to: callbackUrl,
+  });
+
+  if (preferUserAccount) {
+    params.append("suggested_target_type", "User");
+  }
+
+  return `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new?${params.toString()}`;
 }
 
 /**
