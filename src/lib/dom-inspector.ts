@@ -46,14 +46,10 @@ function extractReactDebugSource(
   element: Element
 ): { fileName?: string; lineNumber?: number; columnNumber?: number } | null {
   try {
-    // Look for React fiber keys (React 17+)
-    const allKeys = Object.keys(element);
-
-    // Also check for older React versions
-    const fiberKey = allKeys.find(
+    // Find React fiber key
+    const fiberKey = Object.keys(element).find(
       (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
     );
-
 
     if (!fiberKey) {
       return null;
@@ -61,38 +57,32 @@ function extractReactDebugSource(
 
     // @ts-expect-error - Accessing React internals
     let fiber = element[fiberKey];
-
     let level = 0;
+    
+    // Get max traversal depth from env variable, default to 10
+    const maxTraversalDepth = Number(process.env.NEXT_PUBLIC_REACT_FIBER_TRAVERSAL_DEPTH) || 10;
+
+    // Helper to extract source from an object
+    const extractSource = (source: { fileName?: string; lineNumber?: number; columnNumber?: number } | null) => {
+      if (!source) return null;
+      return {
+        fileName: source.fileName,
+        lineNumber: source.lineNumber,
+        columnNumber: source.columnNumber,
+      };
+    };
+
     // Traverse up the fiber tree to find debug source
-    while (fiber && level < 10) {
-      // Limit traversal to prevent infinite loops
-
-      if (fiber._debugSource) {
-        return {
-          fileName: fiber._debugSource.fileName,
-          lineNumber: fiber._debugSource.lineNumber,
-          columnNumber: fiber._debugSource.columnNumber,
-        };
+    while (fiber && level < maxTraversalDepth) {
+      // Check various locations where source info might be stored
+      const source = 
+        fiber._debugSource ||
+        fiber.memoizedProps?.__source ||
+        fiber.pendingProps?.__source;
+      
+      if (source) {
+        return extractSource(source);
       }
-
-      // Also check for __source prop (used in some React setups)
-      if (fiber.memoizedProps && fiber.memoizedProps.__source) {
-        return {
-          fileName: fiber.memoizedProps.__source.fileName,
-          lineNumber: fiber.memoizedProps.__source.lineNumber,
-          columnNumber: fiber.memoizedProps.__source.columnNumber,
-        };
-      }
-
-      // Check for __source in other prop locations
-      if (fiber.pendingProps && fiber.pendingProps.__source) {
-        return {
-          fileName: fiber.pendingProps.__source.fileName,
-          lineNumber: fiber.pendingProps.__source.lineNumber,
-          columnNumber: fiber.pendingProps.__source.columnNumber,
-        };
-      }
-
 
       // Go up the component tree
       fiber = fiber.return;
