@@ -15,11 +15,13 @@ import {
   Search,
   Star,
   Eye,
+  GitBranch,
 } from "lucide-react";
 import { Repository } from "@/types/wizard";
 import { useEffect, useState } from "react";
 import { mockRepositories } from "@/data/mockRepositories";
 import { useWizardStore } from "@/stores/useWizardStore";
+import { GitHubAppLink } from "@/components/GitHubAppLink";
 
 interface RepositorySelectionStepProps {
   onNext: () => void;
@@ -152,9 +154,30 @@ export function RepositorySelectionStep({
                       </span>
                     </div>
                   </div>
-                  {selectedRepo?.id === repo.id && (
-                    <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-300" />
-                  )}
+                  <div className="flex items-center gap-2">
+                    {selectedRepo?.id === repo.id && (
+                      <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-300" />
+                    )}
+                    <GitHubAppLink
+                      repositoryFullName={repo.full_name}
+                      repositoryName={repo.name}
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <GitBranch className="w-3 h-3" />
+                        </Button>
+                      }
+                      onInstallationComplete={(installationId) => {
+                        console.log(
+                          `GitHub App installed for ${repo.name} with installation ID: ${installationId}`,
+                        );
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             ))
