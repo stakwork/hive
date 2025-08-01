@@ -18,7 +18,7 @@ interface OnboardingWorkspaceClientProps {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 export function OnboardingWorkspaceClient({
   user,
 }: OnboardingWorkspaceClientProps) {

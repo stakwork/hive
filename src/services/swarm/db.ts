@@ -64,7 +64,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   let swarm = await db.swarm.findUnique({
     where: { workspaceId: params.workspaceId },
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   console.log("params", params);
 
   const data: Record<string, any> = {};

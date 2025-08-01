@@ -91,7 +91,42 @@ export function generateBrowserResponse() {
   ]);
 }
 
-export function generateResponseBasedOnMessage(message: string) {
+export function generateBugReportResponse(artifacts: { type: string; content: unknown }[]) {
+  // Find BUG_REPORT artifacts and extract source file information
+  const bugReportArtifacts = artifacts?.filter(artifact => artifact.type === "BUG_REPORT") || [];
+  
+  if (bugReportArtifacts.length === 0) {
+    return makeRes("No debug information found in the request.");
+  }
+
+  let response = "Found source locations:";
+  
+  for (const artifact of bugReportArtifacts) {
+    const content = artifact.content;
+    if (content?.sourceFiles && Array.isArray(content.sourceFiles)) {
+      for (const sourceFile of content.sourceFiles) {
+        if (sourceFile.file && sourceFile.lines && sourceFile.lines.length > 0) {
+          response += `\n${sourceFile.file}`;
+          response += `\n  Lines ${sourceFile.lines.join(', ')}`;
+        }
+      }
+    }
+  }
+  
+  // If no source files found, provide a helpful fallback message
+  if (response === "Found source locations:") {
+    response = "Debug information captured, but no source file mappings were available. This may indicate the element was generated dynamically or the source mapping failed.";
+  }
+
+  return makeRes(response.trim());
+}
+
+export function generateResponseBasedOnMessage(message: string, artifacts?: { type: string; content: unknown }[]) {
+  // Check for BUG_REPORT artifacts first
+  if (artifacts && artifacts.some(artifact => artifact.type === "BUG_REPORT")) {
+    return generateBugReportResponse(artifacts);
+  }
+
   const messageText = message.toLowerCase();
 
   if (messageText.includes("browser")) {

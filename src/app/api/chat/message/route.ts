@@ -46,6 +46,7 @@ async function callMock(
   taskId: string,
   message: string,
   userId: string,
+  artifacts?: ArtifactRequest[],
   request?: NextRequest
 ) {
   const baseUrl = getBaseUrl(request);
@@ -62,6 +63,7 @@ async function callMock(
         taskId,
         message,
         userId,
+        artifacts,
       }),
       headers: {
         "Content-Type": "application/json",
@@ -370,7 +372,7 @@ export async function POST(request: NextRequest) {
         webhook
       );
     } else {
-      await callMock(taskId, message, userId, request);
+      await callMock(taskId, message, userId, artifacts, request);
     }
 
     return NextResponse.json(
