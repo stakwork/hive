@@ -99,26 +99,25 @@ export function generateBugReportResponse(artifacts: { type: string; content: un
     return makeRes("No debug information found in the request.");
   }
 
-  let response = "Found source locations:";
+  let response = "Found source locations:\n";
   
   for (const artifact of bugReportArtifacts) {
     const content = artifact.content;
     if (content?.sourceFiles && Array.isArray(content.sourceFiles)) {
       for (const sourceFile of content.sourceFiles) {
         if (sourceFile.file && sourceFile.lines && sourceFile.lines.length > 0) {
-          response += `\n${sourceFile.file}`;
-          response += `\n  Lines ${sourceFile.lines.join(', ')}`;
+          response += `\n${sourceFile.file}\n(Lines ${sourceFile.lines.join(', ')})`;
         }
       }
     }
   }
   
   // If no source files found, provide a helpful fallback message
-  if (response === "Found source locations:") {
+  if (response === "Found source locations:\n") {
     response = "Debug information captured, but no source file mappings were available. This may indicate the element was generated dynamically or the source mapping failed.";
   }
 
-  return makeRes(response.trim());
+  return makeRes(response);
 }
 
 export function generateResponseBasedOnMessage(message: string, artifacts?: { type: string; content: unknown }[]) {
