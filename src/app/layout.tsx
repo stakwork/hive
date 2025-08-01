@@ -1,33 +1,25 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
-
-const inter = Inter({ subsets: ["latin"] });
+import DebugMessageListener from "@/components/DebugMessageListener";
 
 export const metadata: Metadata = {
   title: "Hive",
   description: "A fresh start",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
+      <body className="min-h-screen bg-background text-foreground antialiased font-sans">
         <ToastProvider>
-          <ThemeProvider
-            defaultTheme="system"
-            storageKey="theme"
-          >
+          <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>
               <WorkspaceProvider>
+                <DebugMessageListener />
                 {children}
               </WorkspaceProvider>
             </SessionProvider>
