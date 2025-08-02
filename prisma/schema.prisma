@@ -480,6 +480,7 @@ enum ArtifactType {
   IDE
   MEDIA
   STREAM
+  LONGFORM
 }
 
 // =============================================

@@ -41,10 +41,14 @@ export interface FormContent {
   webhook: string;
   options: Option[];
 }
+export interface LongformContent {
+  text: string;
+  title?: string;
+}
 
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent;
 }
 
 export interface ChatMessage
@@ -85,7 +89,7 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent;
 }): Artifact {
   return {
     id: data.id,

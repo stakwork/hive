@@ -4,6 +4,7 @@ import {
   ArtifactType,
   PYTHON_CODE,
   JSON_CODE,
+  REPOMAP,
 } from "./helpers";
 
 // Generate unique IDs to prevent collisions
@@ -118,6 +119,22 @@ export function generateBrowserResponse(baseUrl: string) {
   ]);
 }
 
+export function generateLongformResponse() {
+  const messageId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  return makeRes("Project Hive RepoMap", [
+    createArtifact({
+      id: "longform-1",
+      messageId,
+      type: ArtifactType.LONGFORM,
+      content: {
+        title: "Repomap: Project Hive Overview",
+        text: REPOMAP,
+      },
+    }),
+  ]);
+}
+
 export function generateResponseBasedOnMessage(
   message: string,
   baseUrl: string,
@@ -130,6 +147,8 @@ export function generateResponseBasedOnMessage(
     return generateCodeResponse();
   } else if (messageText.includes("chat")) {
     return generateChatFormResponse();
+  } else if (messageText.includes("longform")) {
+    return generateLongformResponse();
   } else if (messageText.includes("form")) {
     return generateFormResponse();
   } else if (messageText.includes("confirmed")) {
