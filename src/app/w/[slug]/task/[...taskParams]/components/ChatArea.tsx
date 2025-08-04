@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChatMessage as ChatMessageType, Option } from "@/lib/chat";
+import { ChatMessage as ChatMessageType, Option, Artifact } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 
@@ -19,6 +19,8 @@ interface ChatAreaProps {
   hasNonFormArtifacts?: boolean;
   isChainVisible?: boolean;
   lastLogLine?: string;
+  pendingDebugAttachment?: Artifact | null;
+  onRemoveDebugAttachment?: () => void;
 }
 
 export function ChatArea({
@@ -30,6 +32,8 @@ export function ChatArea({
   hasNonFormArtifacts = false,
   isChainVisible = false,
   lastLogLine = "",
+  pendingDebugAttachment = null,
+  onRemoveDebugAttachment,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +114,8 @@ export function ChatArea({
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}
+        pendingDebugAttachment={pendingDebugAttachment}
+        onRemoveDebugAttachment={onRemoveDebugAttachment}
       />
     </motion.div>
   );
