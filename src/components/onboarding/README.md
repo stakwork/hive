@@ -20,7 +20,7 @@ The onboarding system has been broken down into several focused components:
 - **Features**:
   - Supports both input and textarea types
   - Built-in error and help text display
-  - Optional prefix support (e.g., "hive.app/")
+  - Optional prefix support (e.g., "hive.sphinx.chat/w/")
   - Consistent styling and validation states
 
 ### 3. `WorkspaceForm`
