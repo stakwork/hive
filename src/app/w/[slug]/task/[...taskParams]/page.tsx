@@ -10,6 +10,7 @@ import {
   ChatStatus,
   createChatMessage,
   Option,
+  Artifact,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
@@ -278,6 +279,34 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleDebugMessage = async (message: string, debugArtifact?: Artifact) => {
+    if (debugArtifact) {
+      // Send the debug artifact to the chat system
+      const response = await fetch("/api/chat/message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          taskId: currentTaskId,
+          message: message || "Debug element analysis",
+          contextTags: [],
+          mode: taskMode,
+          artifacts: [debugArtifact],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send debug message: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Failed to send debug message");
+      }
+    }
+  };
+
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM");
@@ -324,7 +353,7 @@ export default function TaskChatPage() {
           />
 
           <AnimatePresence>
-            {hasNonFormArtifacts && <ArtifactsPanel artifacts={allArtifacts} />}
+            {hasNonFormArtifacts && <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />}
           </AnimatePresence>
         </motion.div>
       )}
