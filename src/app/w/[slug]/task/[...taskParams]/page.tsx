@@ -66,13 +66,15 @@ export default function TaskChatPage() {
     (message: ChatMessage) => {
       setMessages((prev) => [...prev, message]);
 
-      // Clear logs when we get a new message (similar to old implementation)
-      if (message.artifacts?.length === 0) {
-        clearLogs();
+      // Only hide chain visibility when we receive a final assistant response (not a reply)
+      // This allows thinking logs to continue showing during artifact creation
+      if (message.role === ChatRole.ASSISTANT && !message.replyId) {
+        // This is a main response from the assistant, hide thinking logs after a delay
+        setTimeout(() => {
+          setIsChainVisible(false);
+          clearLogs();
+        }, 1500); // Short delay to let users see the final thinking status
       }
-
-      // Hide chain visibility when message processing is complete
-      setIsChainVisible(false);
     },
     [clearLogs],
   );
