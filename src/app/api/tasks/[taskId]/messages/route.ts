@@ -9,7 +9,7 @@ export const fetchCache = "force-no-store";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
+  { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -21,7 +21,7 @@ export async function GET(
     if (!userId) {
       return NextResponse.json(
         { error: "Invalid user session" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -30,7 +30,7 @@ export async function GET(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -114,13 +114,13 @@ export async function GET(
           count: clientMessages.length,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error fetching chat messages for task:", error);
     return NextResponse.json(
       { error: "Failed to fetch chat messages" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

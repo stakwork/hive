@@ -53,4 +53,4 @@ export const mockRepositories: Repository[] = [
     default_branch: "main",
     updated_at: "2024-01-12T14:10:00Z",
   },
-]; 
+];

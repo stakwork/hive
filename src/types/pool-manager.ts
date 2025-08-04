@@ -1,5 +1,7 @@
 // Pool Manager-specific types and interfaces
 
+import { EnvironmentVariable } from "./wizard";
+
 //Example Payload
 // {
 //   "username": "test",
@@ -7,9 +9,9 @@
 //   "password": "testasdasd"
 // }
 export interface CreateUserRequest {
-    email: string;
-    password: string;
-    username: string;
+  email: string;
+  password: string;
+  username: string;
 }
 //Response:
 // {
@@ -45,14 +47,14 @@ export interface CreateUserRequest {
 //   ]
 // }
 export interface CreatePoolRequest {
-    pool_name: string;
-    minimum_vms: number;
-    repo_name: string;
-    branch_name: string;
-    github_pat: string;
-    github_username: string;
-    env_vars: []; //Key value pair of name and value
-    container_files: Record<string, string>;
+  pool_name: string;
+  minimum_vms: number;
+  repo_name: string;
+  branch_name: string;
+  github_pat: string;
+  github_username: string;
+  env_vars: EnvironmentVariable[]; //Key value pair of name and value
+  container_files: Record<string, string>;
 }
 //Response:
 // {
@@ -82,45 +84,44 @@ export interface CreatePoolRequest {
 // }
 
 export interface GetPoolRequest {
-    name: string;
+  name: string;
 }
 
 export interface DeletePoolRequest {
-    name: string;
+  name: string;
 }
 
 export interface UpdatePoolRequest {
-    name: string;
-    description?: string;
-    members?: string[];
+  name: string;
+  description?: string;
+  members?: string[];
 }
 
-
 export interface PoolUser {
-    email: string;
-    username: string;
-    authentication_token: string;
+  email: string;
+  username: string;
+  authentication_token: string;
 }
 
 export interface PoolUserResponse {
-    user: PoolUser;
+  user: PoolUser;
 }
 export interface Pool {
-    id: string;
-    name: string;
-    description?: string;
-    owner_id: string;
-    created_at: string;
-    updated_at: string;
-    status: "active" | "archived" | "deleted";
+  id: string;
+  name: string;
+  description?: string;
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
+  status: "active" | "archived" | "deleted";
 }
 
 export interface AuthBody {
-    username: string;
-    password: string;
+  username: string;
+  password: string;
 }
 
 export interface PoolManagerAuthResponse {
-    success: boolean;
-    token: string;
+  success: boolean;
+  token: string;
 }

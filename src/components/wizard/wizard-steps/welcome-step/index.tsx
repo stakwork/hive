@@ -1,13 +1,24 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Github, TrendingUp, BarChart3, GitBranch, ArrowRight } from "lucide-react";
+import {
+  Github,
+  TrendingUp,
+  BarChart3,
+  GitBranch,
+  ArrowRight,
+} from "lucide-react";
 
 interface WelcomeStepProps {
   onNext: () => void;
 }
 
 export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
-
   const handleNext = () => {
     onNext();
   };
@@ -26,7 +37,8 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
       <CardContent className="space-y-6">
         <div className="text-center">
           <p className="text-muted-foreground mb-6">
-            We&apos;ll help you visualize dependencies, relationships, and collaboration patterns in your codebase.
+            We&apos;ll help you visualize dependencies, relationships, and
+            collaboration patterns in your codebase.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-8">
             <div className="p-4 border rounded-lg bg-muted">
@@ -52,7 +64,9 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             <div className="p-4 border rounded-lg bg-muted">
               <div className="flex items-center gap-2 mb-2">
                 <BarChart3 className="w-4 h-4 text-purple-600 dark:text-purple-300" />
-                <span className="text-sm font-medium">Collaboration Insights</span>
+                <span className="text-sm font-medium">
+                  Collaboration Insights
+                </span>
               </div>
               <p className="text-xs text-muted-foreground">
                 Understand team collaboration patterns

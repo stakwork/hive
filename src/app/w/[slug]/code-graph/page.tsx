@@ -4,7 +4,13 @@ import { useEffect, useCallback, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WizardProgress } from "@/components/wizard/WizardProgress";
 import { WizardStepRenderer } from "@/components/wizard/WizardStepRenderer";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle } from "lucide-react";
 import { STEPS_ARRAY, useWizardStore } from "@/stores/useWizardStore";
@@ -17,7 +23,7 @@ export default function CodeGraphPage() {
   const currentStep = useWizardStore((s) => s.currentStep);
   const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const error = useWizardStore((s) => s.error);
-  const hasSwarm = useWizardStore((s) => s.hasSwarm);
+  const swarmId = useWizardStore((s) => s.swarmId);
   const updateWizardProgress = useWizardStore((s) => s.updateWizardProgress);
   const workspaceSlug = useWizardStore((s) => s.workspaceSlug);
   const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
@@ -25,11 +31,9 @@ export default function CodeGraphPage() {
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
   const setHasKey = useWizardStore((s) => s.setHasKey);
-
   const resetWizard = useWizardStore((s) => s.resetWizard);
 
   useEffect(() => {
-    console.log(workspace?.slug)
     if (workspace?.slug && workspace?.id) {
       resetWizard();
       setWorkspaceSlug(workspace.slug);
@@ -38,12 +42,19 @@ export default function CodeGraphPage() {
     }
 
     return () => {
-      console.log("unmounting")
       resetWizard();
-    }
-  }, [workspace?.id, workspace?.slug, workspace?.hasKey, setWorkspaceSlug, resetWizard]);
-
-
+    };
+  }, [
+    workspace?.id,
+    workspace?.slug,
+    workspace?.hasKey,
+    setWorkspaceSlug,
+    resetWizard,
+    setWorkspaceId,
+    setHasKey,
+    setCurrentStep,
+    setCurrentStepStatus,
+  ]);
 
   useEffect(() => {
     if (workspaceSlug) {
@@ -54,58 +65,72 @@ export default function CodeGraphPage() {
   const handleNext = useCallback(async () => {
     const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
     if (currentStepIndex < 10) {
-      const newStep = (currentStepIndex + 1);
+      const newStep = currentStepIndex + 1;
 
-      if (hasSwarm) {
+      if (swarmId) {
         // Update persisted state
         const newWizardStep = STEPS_ARRAY[newStep];
         try {
           await updateWizardProgress({
             wizardStep: newWizardStep,
-            stepStatus: 'PENDING',
+            stepStatus: "PENDING",
             wizardData: {
               step: newStep,
-            }
+            },
           });
+
+          setCurrentStep(newWizardStep);
+          setCurrentStepStatus("PENDING");
         } catch (error) {
-          console.error('Failed to update wizard progress:', error);
+          console.error("Failed to update wizard progress:", error);
         }
       } else {
         // Update local state only
         setCurrentStep(STEPS_ARRAY[newStep]);
-        setCurrentStepStatus('PENDING');
+        setCurrentStepStatus("PENDING");
       }
     }
-  }, [currentStep, hasSwarm, updateWizardProgress, setCurrentStep]);
+  }, [
+    currentStep,
+    swarmId,
+    updateWizardProgress,
+    setCurrentStep,
+    setCurrentStepStatus,
+  ]);
 
   const handleBack = useCallback(async () => {
     const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
 
     if (currentStepIndex > 1) {
-      const newStep = (currentStepIndex - 1);
+      const newStep = currentStepIndex - 1;
 
-      if (hasSwarm) {
+      if (swarmId) {
         // Update persisted state
         const newWizardStep = STEPS_ARRAY[newStep];
         try {
           await updateWizardProgress({
             wizardStep: newWizardStep,
-            stepStatus: 'COMPLETED',
+            stepStatus: "COMPLETED",
             wizardData: {
               step: newStep,
-            }
+            },
           });
         } catch (error) {
-          console.error('Failed to update wizard progress:', error);
+          console.error("Failed to update wizard progress:", error);
         }
       } else {
         // Update local state only
         setCurrentStep(STEPS_ARRAY[newStep]);
-        setCurrentStepStatus('COMPLETED');
+        setCurrentStepStatus("COMPLETED");
       }
     }
-  }, [currentStep, hasSwarm, updateWizardProgress, setCurrentStep]);
-
+  }, [
+    currentStep,
+    swarmId,
+    updateWizardProgress,
+    setCurrentStep,
+    setCurrentStepStatus,
+  ]);
 
   // Loading state
   if (loading) {
@@ -148,9 +173,6 @@ export default function CodeGraphPage() {
   }
 
   // Get current step status for display
-  const stepStatus = hasSwarm ? currentStepStatus : undefined;
-
-  console.log(currentStepStatus, currentStep)
 
   return (
     <div className="min-h-screen bg-background">
@@ -158,10 +180,16 @@ export default function CodeGraphPage() {
         <div className="space-y-8">
           {/* Header */}
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-foreground">Setting up CodeGraph</h1>
+            <h1 className="text-3xl font-bold text-foreground">
+              Setting up CodeGraph
+            </h1>
           </div>
 
-          <WizardProgress currentStep={currentStep} totalSteps={10} stepStatus={currentStepStatus} />
+          <WizardProgress
+            currentStep={currentStep}
+            totalSteps={10}
+            stepStatus={currentStepStatus}
+          />
 
           <WizardStepRenderer
             onNext={handleNext}

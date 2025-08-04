@@ -32,12 +32,14 @@ export function FormField({
   className,
 }: FormFieldProps) {
   const inputClassName = error ? "border-destructive" : "";
-  const fullClassName = className ? `${inputClassName} ${className}` : inputClassName;
+  const fullClassName = className
+    ? `${inputClassName} ${className}`
+    : inputClassName;
 
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      
+
       {prefix ? (
         <div className="flex items-center space-x-2">
           <span className="text-sm text-muted-foreground">{prefix}</span>
@@ -45,7 +47,7 @@ export function FormField({
             id={id}
             placeholder={placeholder}
             value={value}
-            onChange={e => onChange(e.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             className={`${fullClassName} flex-1`}
             disabled={disabled}
           />
@@ -55,7 +57,7 @@ export function FormField({
           id={id}
           placeholder={placeholder}
           value={value}
-          onChange={e => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           className={fullClassName}
           disabled={disabled}
           rows={rows}
@@ -65,14 +67,14 @@ export function FormField({
           id={id}
           placeholder={placeholder}
           value={value}
-          onChange={e => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           className={fullClassName}
           disabled={disabled}
         />
       )}
-      
+
       {error && <p className="text-sm text-destructive">{error}</p>}
       {helpText && <p className="text-xs text-muted-foreground">{helpText}</p>}
     </div>
   );
-} 
+}

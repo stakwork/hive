@@ -2,11 +2,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SwarmData, FormSectionProps } from "../types";
 
-export default function SwarmForm({ 
-  data, 
-  errors, 
-  loading, 
-  onChange 
+export default function SwarmForm({
+  data,
+  errors,
+  loading,
+  onChange,
 }: FormSectionProps<SwarmData>) {
   const handleInputChange = (field: keyof SwarmData, value: string) => {
     onChange({ [field]: value });
@@ -15,7 +15,7 @@ export default function SwarmForm({
   return (
     <div className="space-y-2">
       <h3 className="text-lg font-semibold mb-2">Swarm</h3>
-      
+
       <div className="space-y-2">
         <Label htmlFor="swarmUrl">Swarm URL</Label>
         <Input
@@ -42,7 +42,9 @@ export default function SwarmForm({
           type="text"
           placeholder="e.g. {{SWARM_123456_API_KEY}}"
           value={data.swarmSecretAlias}
-          onChange={(e) => handleInputChange("swarmSecretAlias", e.target.value)}
+          onChange={(e) =>
+            handleInputChange("swarmSecretAlias", e.target.value)
+          }
           className={errors.swarmSecretAlias ? "border-destructive" : ""}
           disabled={loading}
         />
@@ -55,4 +57,4 @@ export default function SwarmForm({
       </div>
     </div>
   );
-} 
+}

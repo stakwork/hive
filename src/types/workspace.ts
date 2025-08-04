@@ -13,10 +13,16 @@ export interface WorkspaceResponse {
   ownerId: string;
   createdAt: string;
   updatedAt: string;
-} 
+}
 
 // New types for enhanced workspace functions
-export type WorkspaceRole = 'OWNER' | 'ADMIN' | 'PM' | 'DEVELOPER' | 'STAKEHOLDER' | 'VIEWER';
+export type WorkspaceRole =
+  | "OWNER"
+  | "ADMIN"
+  | "PM"
+  | "DEVELOPER"
+  | "STAKEHOLDER"
+  | "VIEWER";
 
 export interface WorkspaceWithRole extends WorkspaceResponse {
   userRole: WorkspaceRole;
@@ -46,4 +52,4 @@ export interface WorkspaceAccessValidation {
 export interface SlugValidationResult {
   isValid: boolean;
   error?: string;
-} 
+}

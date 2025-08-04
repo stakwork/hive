@@ -7,13 +7,15 @@ This directory contains the refactored onboarding components following a modular
 The onboarding system has been broken down into several focused components:
 
 ### 1. `OnboardingHeader`
+
 - **Purpose**: Reusable header component for onboarding pages
-- **Features**: 
+- **Features**:
   - Customizable title and description
   - Configurable icon (defaults to Building2)
   - Consistent styling across onboarding flows
 
 ### 2. `FormField`
+
 - **Purpose**: Reusable form field component
 - **Features**:
   - Supports both input and textarea types
@@ -22,6 +24,7 @@ The onboarding system has been broken down into several focused components:
   - Consistent styling and validation states
 
 ### 3. `WorkspaceForm`
+
 - **Purpose**: Main workspace creation form
 - **Features**:
   - Uses the `useWorkspaceForm` custom hook for logic
@@ -29,6 +32,7 @@ The onboarding system has been broken down into several focused components:
   - Handles form submission and error display
 
 ### 4. `useWorkspaceForm` Hook
+
 - **Purpose**: Custom hook containing all form logic
 - **Features**:
   - Form state management
@@ -67,4 +71,4 @@ export function MyOnboardingPage() {
 - Add more form field types (select, checkbox, etc.)
 - Create additional onboarding step components
 - Add progress indicator component
-- Implement form persistence across page refreshes 
+- Implement form persistence across page refreshes

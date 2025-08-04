@@ -8,13 +8,19 @@ import { ServicesData, FormSectionProps, ServiceDataConfig } from "../types";
 export default function ServicesForm({
   data,
   loading,
-  onChange
-}: Omit<FormSectionProps<ServiceDataConfig[]>, 'errors'>) {
+  onChange,
+}: Omit<FormSectionProps<ServiceDataConfig[]>, "errors">) {
+  console.log("SERVICES DATA: ", data);
 
   const handleAddService = () => {
     const newServices = [
       ...data,
-      { name: "", port: 0, scripts: { start: "" }, env: {} }
+      {
+        name: "",
+        port: 0,
+        scripts: { start: "", install: "", build: "", test: "" },
+        env: {},
+      },
     ];
 
     onChange(newServices);
@@ -25,19 +31,30 @@ export default function ServicesForm({
     onChange(newServices);
   };
 
-  const handleServiceChange = (idx: number, field: keyof ServiceDataConfig, value: string | number) => {
+  const handleServiceChange = (
+    idx: number,
+    field: keyof ServiceDataConfig,
+    value: string | number,
+  ) => {
     const updatedServices = [...data];
-    if (field === 'port') {
-      updatedServices[idx].port = typeof value === 'number' ? value : Number(value);
-    } else if (field === 'name') {
+    if (field === "port") {
+      updatedServices[idx].port =
+        typeof value === "number" ? value : Number(value);
+    } else if (field === "name") {
       updatedServices[idx].name = value as string;
     }
     onChange(updatedServices);
   };
 
-  const handleServiceScriptChange = (idx: number, scriptKey: keyof ServiceDataConfig['scripts'], value: string) => {
+  const handleServiceScriptChange = (
+    idx: number,
+    scriptKey: keyof ServiceDataConfig["scripts"],
+    value: string,
+  ) => {
     const updatedServices = data.map((svc, i) =>
-      i === idx ? { ...svc, scripts: { ...svc.scripts, [scriptKey]: value } } : svc
+      i === idx
+        ? { ...svc, scripts: { ...svc.scripts, [scriptKey]: value } }
+        : svc,
     );
     onChange(updatedServices);
   };
@@ -46,7 +63,8 @@ export default function ServicesForm({
     <div className="space-y-4">
       <h3 className="text-lg font-semibold mb-2">Services</h3>
       <p className="text-xs text-muted-foreground mb-2">
-        Define your services, their ports, and scripts. The <b>start</b> script is required.
+        Define your services, their ports, and scripts. The <b>start</b> script
+        is required.
       </p>
 
       {data.length === 0 ? (
@@ -69,31 +87,37 @@ export default function ServicesForm({
 
                 <div className="flex gap-2 mb-2 items-end">
                   <div className="w-1/3">
-                    <Label htmlFor={`service-name-${idx}`} className="mb-1">Name</Label>
+                    <Label htmlFor={`service-name-${idx}`} className="mb-1">
+                      Name
+                    </Label>
                     <Input
                       id={`service-name-${idx}`}
                       placeholder="e.g. api-server"
                       value={svc.name}
-                      onChange={e => handleServiceChange(idx, "name", e.target.value)}
+                      onChange={(e) =>
+                        handleServiceChange(idx, "name", e.target.value)
+                      }
                       disabled={loading}
                     />
                   </div>
 
                   <div className="w-1/4">
-                    <Label htmlFor={`service-port-${idx}`} className="mb-1">Port</Label>
+                    <Label htmlFor={`service-port-${idx}`} className="mb-1">
+                      Port
+                    </Label>
                     <Input
                       id={`service-port-${idx}`}
                       placeholder="e.g. 3000"
                       type="text"
-                      value={svc.port === 0 ? '' : svc.port}
-                      onChange={e => {
+                      value={svc.port === 0 ? "" : svc.port}
+                      onChange={(e) => {
                         const val = e.target.value;
-                        if (val === '') {
-                          handleServiceChange(idx, 'port', 0);
+                        if (val === "") {
+                          handleServiceChange(idx, "port", 0);
                           return;
                         }
                         if (/^(0|[1-9][0-9]*)$/.test(val)) {
-                          handleServiceChange(idx, 'port', Number(val));
+                          handleServiceChange(idx, "port", Number(val));
                         }
                       }}
                       disabled={loading}
@@ -115,7 +139,9 @@ export default function ServicesForm({
                 </div>
 
                 <div className="mb-2 mt-2">
-                  <span className="text-md font-bold">Scripts Configuration</span>
+                  <span className="text-md font-bold">
+                    Scripts Configuration
+                  </span>
                 </div>
 
                 <div className="space-y-3">
@@ -127,7 +153,9 @@ export default function ServicesForm({
                     id={`service-start-${idx}`}
                     placeholder="npm start"
                     value={svc.scripts.start}
-                    onChange={e => handleServiceScriptChange(idx, 'start', e.target.value)}
+                    onChange={(e) =>
+                      handleServiceScriptChange(idx, "start", e.target.value)
+                    }
                     className="font-mono"
                     disabled={loading}
                     required
@@ -140,8 +168,10 @@ export default function ServicesForm({
                   <Input
                     id={`service-install-${idx}`}
                     placeholder="npm install"
-                    value={svc.scripts.install || ''}
-                    onChange={e => handleServiceScriptChange(idx, 'install', e.target.value)}
+                    value={svc.scripts.install || ""}
+                    onChange={(e) =>
+                      handleServiceScriptChange(idx, "install", e.target.value)
+                    }
                     className="font-mono"
                     disabled={loading}
                   />
@@ -153,8 +183,10 @@ export default function ServicesForm({
                   <Input
                     id={`service-build-${idx}`}
                     placeholder="npm run build"
-                    value={svc.scripts.build || ''}
-                    onChange={e => handleServiceScriptChange(idx, 'build', e.target.value)}
+                    value={svc.scripts.build || ""}
+                    onChange={(e) =>
+                      handleServiceScriptChange(idx, "build", e.target.value)
+                    }
                     className="font-mono"
                     disabled={loading}
                   />
@@ -166,8 +198,10 @@ export default function ServicesForm({
                   <Input
                     id={`service-test-${idx}`}
                     placeholder="npm test"
-                    value={svc.scripts.test || ''}
-                    onChange={e => handleServiceScriptChange(idx, 'test', e.target.value)}
+                    value={svc.scripts.test || ""}
+                    onChange={(e) =>
+                      handleServiceScriptChange(idx, "test", e.target.value)
+                    }
                     className="font-mono"
                     disabled={loading}
                   />
@@ -188,4 +222,4 @@ export default function ServicesForm({
       )}
     </div>
   );
-} 
+}

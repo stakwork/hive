@@ -47,7 +47,7 @@ export function usePusherConnection({
       if (LOGS) {
         console.log(
           "Unsubscribing from Pusher channel:",
-          getTaskChannelName(currentTaskIdRef.current)
+          getTaskChannelName(currentTaskIdRef.current),
         );
       }
 
@@ -56,7 +56,7 @@ export function usePusherConnection({
 
       // Unsubscribe from the channel
       getPusherClient().unsubscribe(
-        getTaskChannelName(currentTaskIdRef.current)
+        getTaskChannelName(currentTaskIdRef.current),
       );
 
       channelRef.current = null;
@@ -86,7 +86,7 @@ export function usePusherConnection({
           if (LOGS) {
             console.log(
               "Successfully subscribed to Pusher channel:",
-              channelName
+              channelName,
             );
           }
 
@@ -130,7 +130,7 @@ export function usePusherConnection({
         setIsConnected(false);
       }
     },
-    [disconnect, connectionReadyDelay]
+    [disconnect, connectionReadyDelay],
   );
 
   // Connection management effect

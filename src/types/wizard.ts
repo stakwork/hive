@@ -50,15 +50,15 @@ export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
 // Canonical wizard step keys for backend/frontend sync
 export type WizardStepKey =
-  | 'WELCOME'
-  | 'REPOSITORY_SELECT'
-  | 'PROJECT_NAME'
-  | 'GRAPH_INFRASTRUCTURE'
-  | 'INGEST_CODE'
-  | 'ADD_SERVICES'
-  | 'ENVIRONMENT_SETUP'
-  | 'REVIEW_POOL_ENVIRONMENT'
-  | 'STAKWORK_SETUP';
+  | "WELCOME"
+  | "REPOSITORY_SELECT"
+  | "PROJECT_NAME"
+  | "GRAPH_INFRASTRUCTURE"
+  | "INGEST_CODE"
+  | "ADD_SERVICES"
+  | "ENVIRONMENT_SETUP"
+  | "REVIEW_POOL_ENVIRONMENT"
+  | "STAKWORK_SETUP";
 
 // API Response Types
 
@@ -81,11 +81,11 @@ export type WizardStateData = {
     email?: string | null;
     image?: string | null;
   };
-}
+};
 
 export interface WizardStateResponse {
   success: boolean;
-  data: WizardStateData
+  data: WizardStateData;
   message?: string;
 }
 
@@ -99,7 +99,7 @@ export interface WizardStateError {
 export interface WizardProgressRequest {
   workspaceSlug: string;
   wizardStep?: WizardStepKey;
-  stepStatus?: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  stepStatus?: "PENDING" | "STARTED" | "PROCESSING" | "COMPLETED" | "FAILED";
   wizardData?: Record<string, unknown>;
 }
 
@@ -107,7 +107,7 @@ export interface WizardProgressResponse {
   success: boolean;
   data?: {
     wizardStep: WizardStepKey;
-    stepStatus: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    stepStatus: "PENDING" | "STARTED" | "PROCESSING" | "COMPLETED" | "FAILED";
     wizardData: Record<string, unknown>;
   };
   message?: string;
@@ -123,12 +123,12 @@ export interface WizardResetResponse {
   success: boolean;
   data?: {
     wizardStep: WizardStepKey;
-    stepStatus: 'PENDING' | 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    stepStatus: "PENDING" | "STARTED" | "PROCESSING" | "COMPLETED" | "FAILED";
     wizardData: Record<string, unknown>;
   };
   message?: string;
   error?: string;
-} 
+}
 
 // Step mapping from wizard step keys to numbers
 export const STEP_MAPPING = {
@@ -141,7 +141,7 @@ export const STEP_MAPPING = {
   ENVIRONMENT_SETUP: 7,
   REVIEW_POOL_ENVIRONMENT: 8,
   STAKWORK_SETUP: 9,
-}
+};
 
 export const REVERSE_STEP_MAPPING = {
   1: "WELCOME",
@@ -152,5 +152,5 @@ export const REVERSE_STEP_MAPPING = {
   6: "ADD_SERVICES",
   7: "ENVIRONMENT_SETUP",
   8: "REVIEW_POOL_ENVIRONMENT",
-  9: "STAKWORK_SETUP"
-}
+  9: "STAKWORK_SETUP",
+};

@@ -1,4 +1,10 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +16,7 @@ interface ProjectNameStepProps {
   onBack: () => void;
 }
 
-export function ProjectNameStep({
-  onNext,
-  onBack,
-}: ProjectNameStepProps) {
+export function ProjectNameStep({ onNext, onBack }: ProjectNameStepProps) {
   const projectName = useWizardStore((s) => s.projectName);
   const setProjectName = useWizardStore((s) => s.setProjectName);
 
@@ -22,25 +25,69 @@ export function ProjectNameStep({
       <CardHeader className="text-center">
         <div className="flex items-center justify-center mx-auto mb-4">
           {/* Animated Paper and Pen SVG */}
-          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            width="64"
+            height="64"
+            viewBox="0 0 64 64"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             {/* Paper */}
-            <rect x="12" y="16" width="40" height="32" rx="4" fill="#F3F4F6" stroke="#D1D5DB" strokeWidth="2" filter="url(#shadow)" />
+            <rect
+              x="12"
+              y="16"
+              width="40"
+              height="32"
+              rx="4"
+              fill="#F3F4F6"
+              stroke="#D1D5DB"
+              strokeWidth="2"
+              filter="url(#shadow)"
+            />
             <defs>
-              <filter id="shadow" x="0" y="0" width="64" height="64" filterUnits="userSpaceOnUse">
-                <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#000" floodOpacity="0.10" />
+              <filter
+                id="shadow"
+                x="0"
+                y="0"
+                width="64"
+                height="64"
+                filterUnits="userSpaceOnUse"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="2"
+                  stdDeviation="2"
+                  floodColor="#000"
+                  floodOpacity="0.10"
+                />
               </filter>
             </defs>
             {/* Pen body */}
             <rect x="38" y="40" width="14" height="4" rx="2" fill="#6366F1">
-              <animate attributeName="x" values="38;32;38" dur="1.2s" repeatCount="indefinite" />
+              <animate
+                attributeName="x"
+                values="38;32;38"
+                dur="1.2s"
+                repeatCount="indefinite"
+              />
             </rect>
             {/* Pen tip */}
             <polygon points="52,42 56,42 54,46" fill="#F59E42">
-              <animate attributeName="points" values="52,42 56,42 54,46;46,42 50,42 48,46;52,42 56,42 54,46" dur="1.2s" repeatCount="indefinite" />
+              <animate
+                attributeName="points"
+                values="52,42 56,42 54,46;46,42 50,42 48,46;52,42 56,42 54,46"
+                dur="1.2s"
+                repeatCount="indefinite"
+              />
             </polygon>
             {/* Pen shadow */}
             <ellipse cx="45" cy="48" rx="7" ry="2" fill="#D1D5DB" opacity="0.4">
-              <animate attributeName="cx" values="45;39;45" dur="1.2s" repeatCount="indefinite" />
+              <animate
+                attributeName="cx"
+                values="45;39;45"
+                dur="1.2s"
+                repeatCount="indefinite"
+              />
             </ellipse>
             {/* Paper lines */}
             <rect x="18" y="24" width="28" height="2" rx="1" fill="#E5E7EB" />
@@ -49,13 +96,14 @@ export function ProjectNameStep({
           </svg>
         </div>
         <CardTitle className="text-2xl">Name Your Project</CardTitle>
-        <CardDescription>
-          Enter a name for your project.
-        </CardDescription>
+        <CardDescription>Enter a name for your project.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <Label htmlFor="projectName" className="text-sm font-medium text-foreground">
+          <Label
+            htmlFor="projectName"
+            className="text-sm font-medium text-foreground"
+          >
             Project Name
           </Label>
           <Input
@@ -71,7 +119,12 @@ export function ProjectNameStep({
           <Button variant="outline" type="button" onClick={onBack}>
             Back
           </Button>
-          <Button className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={onNext} disabled={!projectName.trim()}>
+          <Button
+            className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
+            type="button"
+            onClick={onNext}
+            disabled={!projectName.trim()}
+          >
             Next
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

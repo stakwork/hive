@@ -1,11 +1,11 @@
-import { BaseServiceClass } from './base-service';
-import { StakworkService } from '@/services/stakwork';
-import { PoolManagerService } from '@/services/pool-manager';
-import { WizardService } from '@/services/wizard';
-import { getServiceConfig } from '@/config/services';
+import { BaseServiceClass } from "./base-service";
+import { StakworkService } from "@/services/stakwork";
+import { PoolManagerService } from "@/services/pool-manager";
+import { WizardService } from "@/services/wizard";
+import { getServiceConfig } from "@/config/services";
 
 // Service registry type
-export type ServiceName = 'stakwork' | 'poolManager' | 'wizard';
+export type ServiceName = "stakwork" | "poolManager" | "wizard";
 
 // Service factory class
 export class ServiceFactory {
@@ -15,18 +15,22 @@ export class ServiceFactory {
     if (!this.instances.has(serviceName)) {
       const config = getServiceConfig(serviceName);
 
-      console.log('--------------------------------config--------------------------------')
-      console.log(config)
-      console.log('--------------------------------config--------------------------------')
-      
+      console.log(
+        "--------------------------------config--------------------------------",
+      );
+      console.log(config);
+      console.log(
+        "--------------------------------config--------------------------------",
+      );
+
       switch (serviceName) {
-        case 'stakwork':
+        case "stakwork":
           this.instances.set(serviceName, new StakworkService(config));
           break;
-        case 'poolManager':
+        case "poolManager":
           this.instances.set(serviceName, new PoolManagerService(config));
           break;
-        case 'wizard':
+        case "wizard":
           this.instances.set(serviceName, new WizardService(config));
           break;
         default:
@@ -38,15 +42,15 @@ export class ServiceFactory {
   }
 
   static getStakworkService(): StakworkService {
-    return this.getService<StakworkService>('stakwork');
+    return this.getService<StakworkService>("stakwork");
   }
 
   static getPoolManagerService(): PoolManagerService {
-    return this.getService<PoolManagerService>('poolManager');
+    return this.getService<PoolManagerService>("poolManager");
   }
 
   static getWizardService(): WizardService {
-    return this.getService<WizardService>('wizard');
+    return this.getService<WizardService>("wizard");
   }
 
   static updateServiceApiKey(serviceName: ServiceName, apiKey: string): void {
@@ -70,4 +74,4 @@ export class ServiceFactory {
 // Convenience exports
 export const stakworkService = () => ServiceFactory.getStakworkService();
 export const poolManagerService = () => ServiceFactory.getPoolManagerService();
-export const wizardService = () => ServiceFactory.getWizardService(); 
+export const wizardService = () => ServiceFactory.getWizardService();

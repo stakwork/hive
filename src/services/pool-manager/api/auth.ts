@@ -1,5 +1,5 @@
-import { config } from '@/lib/env';
-import { AuthBody, PoolManagerAuthResponse } from '@/types/pool-manager';
+import { config } from "@/lib/env";
+import { AuthBody, PoolManagerAuthResponse } from "@/types/pool-manager";
 
 export async function getPoolManagerApiKey(): Promise<string> {
   const url = `${config.POOL_MANAGER_BASE_URL}/auth/login`;
@@ -9,9 +9,9 @@ export async function getPoolManagerApiKey(): Promise<string> {
   };
 
   const response = await fetch(url, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
   });
@@ -22,7 +22,7 @@ export async function getPoolManagerApiKey(): Promise<string> {
 
   const data = (await response.json()) as PoolManagerAuthResponse;
   if (!data.success) {
-    throw new Error('Authentication failed');
+    throw new Error("Authentication failed");
   }
   return data.token;
-} 
+}

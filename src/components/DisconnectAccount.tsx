@@ -22,12 +22,16 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   const handleDisconnect = async () => {
-    if (!confirm("Are you sure you want to disconnect your GitHub account? This will revoke access to your GitHub data and you'll need to reconnect to use the app.")) {
+    if (
+      !confirm(
+        "Are you sure you want to disconnect your GitHub account? This will revoke access to your GitHub data and you'll need to reconnect to use the app.",
+      )
+    ) {
       return;
     }
 
     setIsDisconnecting(true);
-    
+
     try {
       // First, revoke the GitHub OAuth access token
       const response = await fetch("/api/auth/revoke-github", {
@@ -42,21 +46,26 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
       }
 
       // Clear any potential browser cache/storage
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         // Clear localStorage and sessionStorage
         localStorage.clear();
         sessionStorage.clear();
-        
+
         // Clear any NextAuth cookies
-        document.cookie.split(";").forEach(function(c) { 
-          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+        document.cookie.split(";").forEach(function (c) {
+          document.cookie = c
+            .replace(/^ +/, "")
+            .replace(
+              /=.*/,
+              "=;expires=" + new Date().toUTCString() + ";path=/",
+            );
         });
       }
 
       // Then sign out the user with a fresh redirect
-      await signOut({ 
+      await signOut({
         callbackUrl: "/",
-        redirect: true 
+        redirect: true,
       });
     } catch (error) {
       console.error("Error disconnecting account:", error);
@@ -81,7 +90,8 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
         <div className="flex-1">
           <div className="font-medium">@{user.github.username}</div>
           <div className="text-sm text-muted-foreground">
-            {user.github.publicRepos} public repos • {user.github.followers} followers
+            {user.github.publicRepos} public repos • {user.github.followers}{" "}
+            followers
           </div>
         </div>
         <div className="text-sm text-green-600 font-medium">Connected</div>
@@ -97,11 +107,12 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
           <Unlink className="w-4 h-4 mr-2" />
           {isDisconnecting ? "Disconnecting..." : "Disconnect GitHub Account"}
         </Button>
-        
+
         <p className="text-xs text-muted-foreground mt-2 text-center">
-          This will revoke access to your GitHub data and sign you out of the application.
+          This will revoke access to your GitHub data and sign you out of the
+          application.
         </p>
       </div>
     </div>
   );
-} 
+}

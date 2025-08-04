@@ -18,7 +18,6 @@ interface OnboardingWorkspaceClientProps {
   };
 }
 
- 
 export function OnboardingWorkspaceClient({
   user,
 }: OnboardingWorkspaceClientProps) {

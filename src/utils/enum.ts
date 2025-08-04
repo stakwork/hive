@@ -6,10 +6,12 @@
  * @param value The string value to convert
  * @param fallback The fallback value if conversion fails
  */
-export function enumFromString<T>(enumObj: T, value: string | undefined, fallback: T[keyof T]): T[keyof T] {
+export function enumFromString<T>(
+  enumObj: T,
+  value: string | undefined,
+  fallback: T[keyof T],
+): T[keyof T] {
   if (!value) return fallback;
   const values = Object.values(enumObj as object) as string[];
-  return values.includes(value)
-    ? (value as T[keyof T])
-    : fallback;
-} 
+  return values.includes(value) ? (value as T[keyof T]) : fallback;
+}

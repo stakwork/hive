@@ -1,6 +1,6 @@
 // Unit test setup
-import '@testing-library/jest-dom';
-import { beforeAll, afterAll } from 'vitest';
+import "@testing-library/jest-dom";
+import { beforeAll, afterAll } from "vitest";
 
 // Add any global test setup here
 beforeAll(() => {
@@ -9,4 +9,4 @@ beforeAll(() => {
 
 afterAll(() => {
   // Cleanup after all unit tests
-}); 
+});

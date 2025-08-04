@@ -61,13 +61,17 @@ export function EditRequirementDialog({
         status: requirement.status,
         source: requirement.source || "",
       });
-      setAcceptanceCriteria(requirement.acceptanceCriteria.length > 0 ? requirement.acceptanceCriteria : [""]);
+      setAcceptanceCriteria(
+        requirement.acceptanceCriteria.length > 0
+          ? requirement.acceptanceCriteria
+          : [""],
+      );
     }
   }, [requirement]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     const newErrors: Record<string, string> = {};
     if (!formData.title.trim()) {
@@ -91,7 +95,9 @@ export function EditRequirementDialog({
       type: formData.type,
       priority: formData.priority,
       status: formData.status,
-      acceptanceCriteria: acceptanceCriteria.filter(criteria => criteria.trim() !== ""),
+      acceptanceCriteria: acceptanceCriteria.filter(
+        (criteria) => criteria.trim() !== "",
+      ),
       source: formData.source.trim() || undefined,
     });
 
@@ -122,18 +128,18 @@ export function EditRequirementDialog({
         "Enhanced security protocols required",
         "Must comply with GDPR regulations",
         "Scalability to support 10x current load",
-        "Integration with existing legacy systems"
+        "Integration with existing legacy systems",
       ];
-      
+
       // Add AI-generated suggestions to acceptance criteria
       const newCriteria = [...acceptanceCriteria];
-      suggestions.forEach(suggestion => {
+      suggestions.forEach((suggestion) => {
         if (!newCriteria.includes(suggestion)) {
           newCriteria.push(suggestion);
         }
       });
       setAcceptanceCriteria(newCriteria);
-      setFormData(prev => ({ ...prev, source: "AI-enhanced context" }));
+      setFormData((prev) => ({ ...prev, source: "AI-enhanced context" }));
       setIsAILoading(false);
     }, 2000);
   };
@@ -148,14 +154,19 @@ export function EditRequirementDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 flex-1 overflow-y-auto">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 flex-1 overflow-y-auto"
+        >
           <div className="space-y-2">
             <Label htmlFor="title">Requirement Title</Label>
             <Input
               id="title"
               placeholder="e.g., User Authentication Security"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, title: e.target.value })
+              }
               className={errors.title ? "border-destructive" : ""}
             />
             {errors.title && (
@@ -169,7 +180,9 @@ export function EditRequirementDialog({
               id="description"
               placeholder="Brief description of what this requirement covers..."
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
               className={`min-h-[80px] ${errors.description ? "border-destructive" : ""}`}
             />
             {errors.description && (
@@ -183,7 +196,9 @@ export function EditRequirementDialog({
               id="details"
               placeholder="Detailed technical or business specifications..."
               value={formData.details}
-              onChange={(e) => setFormData({ ...formData, details: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, details: e.target.value })
+              }
               className="min-h-[100px]"
             />
           </div>
@@ -273,7 +288,7 @@ export function EditRequirementDialog({
                 </Button>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               {acceptanceCriteria.map((criteria, index) => (
                 <div key={index} className="flex gap-2">
@@ -303,12 +318,18 @@ export function EditRequirementDialog({
               id="source"
               placeholder="e.g., Stakeholder meeting, AI-generated, User feedback"
               value={formData.source}
-              onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, source: e.target.value })
+              }
             />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit">Update Requirement</Button>
@@ -317,4 +338,4 @@ export function EditRequirementDialog({
       </DialogContent>
     </Dialog>
   );
-} 
+}

@@ -24,7 +24,7 @@ export async function POST() {
     if (!account) {
       return NextResponse.json(
         { error: "No GitHub account found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -39,20 +39,20 @@ export async function POST() {
               Accept: "application/vnd.github.v3+json",
               "Content-Type": "application/json",
               Authorization: `Basic ${Buffer.from(
-                `${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`
+                `${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`,
               ).toString("base64")}`,
             },
             body: JSON.stringify({
               access_token: account.access_token,
             }),
-          }
+          },
         );
 
         if (!response.ok) {
           console.error(
             "Failed to revoke GitHub token:",
             response.status,
-            response.statusText
+            response.statusText,
           );
         }
       } catch (error) {
@@ -85,7 +85,7 @@ export async function POST() {
     } catch (error) {
       console.log(
         "Sessions already deleted or error deleting sessions:",
-        error
+        error,
       );
     }
 
@@ -94,7 +94,7 @@ export async function POST() {
     console.error("Error revoking GitHub access:", error);
     return NextResponse.json(
       { error: "Failed to revoke GitHub access" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

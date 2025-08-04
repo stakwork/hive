@@ -40,7 +40,7 @@ export function generateCodeResponse() {
           action: "create",
         },
       }),
-    ]
+    ],
   );
 }
 
@@ -72,20 +72,47 @@ export function generateFormResponse() {
           ],
         },
       }),
-    ]
+    ],
   );
 }
 
-export function generateBrowserResponse() {
+export function generateChatFormResponse() {
   const messageId = generateUniqueId();
 
-  return makeRes("Here's a live preview of the Hive application:", [
+  return makeRes(
+    "I need some additional information to proceed with your request:",
+    [
+      createArtifact({
+        id: "chat-form-artifact-1",
+        messageId: messageId,
+        type: ArtifactType.FORM,
+        content: {
+          actionText:
+            "Please provide more details about what you'd like me to help you with. You can type your response in the input field below.",
+          webhook: "https://stakwork.com/api/chat/details",
+          options: [
+            {
+              actionType: "chat",
+              optionLabel: "Provide Details",
+              optionResponse: "user_details_provided",
+            },
+          ],
+        },
+      }),
+    ],
+  );
+}
+
+export function generateBrowserResponse(baseUrl: string) {
+  const messageId = generateUniqueId();
+
+  return makeRes("Here's a live preview of the site:", [
     createArtifact({
       id: "browser-artifact-1",
       messageId: messageId,
       type: ArtifactType.BROWSER,
       content: {
-        url: "http://localhost:3000",
+        url: baseUrl,
       },
     }),
   ]);
@@ -120,18 +147,23 @@ export function generateBugReportResponse(artifacts: { type: string; content: un
   return makeRes(response);
 }
 
-export function generateResponseBasedOnMessage(message: string, artifacts?: { type: string; content: unknown }[]) {
+export function generateResponseBasedOnMessage(
+  message: string,
+  baseUrl: string,
+  artifacts?: { type: string; content: unknown }[]
+) {
   // Check for BUG_REPORT artifacts first
   if (artifacts && artifacts.some(artifact => artifact.type === "BUG_REPORT")) {
     return generateBugReportResponse(artifacts);
   }
-
   const messageText = message.toLowerCase();
 
   if (messageText.includes("browser")) {
-    return generateBrowserResponse();
+    return generateBrowserResponse(baseUrl);
   } else if (messageText.includes("code")) {
     return generateCodeResponse();
+  } else if (messageText.includes("chat")) {
+    return generateChatFormResponse();
   } else if (messageText.includes("form")) {
     return generateFormResponse();
   } else if (messageText.includes("confirmed")) {

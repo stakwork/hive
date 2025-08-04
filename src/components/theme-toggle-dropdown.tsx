@@ -1,20 +1,20 @@
-'use client'
+"use client";
 
-import { Check, ChevronDown, Monitor, Moon, Sun } from 'lucide-react'
-import { useTheme } from '../hooks/use-theme'
-import { useState } from 'react'
+import { Check, ChevronDown, Monitor, Moon, Sun } from "lucide-react";
+import { useTheme } from "../hooks/use-theme";
+import { useState } from "react";
 
 export function ThemeToggleDropdown() {
-  const { theme, setTheme, mounted } = useTheme()
-  const [isOpen, setIsOpen] = useState(false)
+  const { theme, setTheme, mounted } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
 
-  if (!mounted) return null
+  if (!mounted) return null;
 
   const themes = [
-    { value: 'light', label: 'Light', icon: Sun },
-    { value: 'dark', label: 'Dark', icon: Moon },
-    { value: 'system', label: 'System', icon: Monitor },
-  ] as const
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "system", label: "System", icon: Monitor },
+  ] as const;
 
   return (
     <div className="relative">
@@ -23,13 +23,13 @@ export function ThemeToggleDropdown() {
         className="flex items-center gap-2 rounded-md border border-border bg-popover text-popover-foreground px-3 py-1.5 text-sm hover:bg-accent transition-colors"
       >
         {(() => {
-          const currentTheme = themes.find(t => t.value === theme)
+          const currentTheme = themes.find((t) => t.value === theme);
           return currentTheme ? (
             <>
               <currentTheme.icon className="h-4 w-4" />
               {currentTheme.label}
             </>
-          ) : null
+          ) : null;
         })()}
         <ChevronDown className="h-3 w-3" />
       </button>
@@ -40,8 +40,8 @@ export function ThemeToggleDropdown() {
             <button
               key={value}
               onClick={() => {
-                setTheme(value)
-                setIsOpen(false)
+                setTheme(value);
+                setIsOpen(false);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
             >
@@ -53,5 +53,5 @@ export function ThemeToggleDropdown() {
         </div>
       )}
     </div>
-  )
-} 
+  );
+}

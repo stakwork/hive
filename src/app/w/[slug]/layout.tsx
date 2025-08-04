@@ -18,12 +18,16 @@ export default async function DashboardRootLayout({
     name: session.user?.name,
     email: session.user?.email,
     image: session.user?.image,
-    github: (session.user as { github?: { username?: string; publicRepos?: number; followers?: number } })?.github,
+    github: (
+      session.user as {
+        github?: {
+          username?: string;
+          publicRepos?: number;
+          followers?: number;
+        };
+      }
+    )?.github,
   };
 
-  return (
-    <DashboardLayout user={user}>
-      {children}
-    </DashboardLayout>
-  );
-} 
+  return <DashboardLayout user={user}>{children}</DashboardLayout>;
+}

@@ -25,7 +25,9 @@ import { Feature } from "@/components/roadmap/RoadmapContent";
 interface CreateFeatureDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateFeature: (feature: Omit<Feature, "id" | "createdAt" | "updatedAt">) => void;
+  onCreateFeature: (
+    feature: Omit<Feature, "id" | "createdAt" | "updatedAt">,
+  ) => void;
 }
 
 export function CreateFeatureDialog({
@@ -44,7 +46,7 @@ export function CreateFeatureDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     const newErrors: Record<string, string> = {};
     if (!formData.title.trim()) {
@@ -96,7 +98,8 @@ export function CreateFeatureDialog({
         <DialogHeader>
           <DialogTitle>Create New Feature</DialogTitle>
           <DialogDescription>
-            Add a new feature to your roadmap. You can add user stories and requirements later.
+            Add a new feature to your roadmap. You can add user stories and
+            requirements later.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,7 +110,9 @@ export function CreateFeatureDialog({
               id="title"
               placeholder="e.g., User Authentication System"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, title: e.target.value })
+              }
               className={errors.title ? "border-destructive" : ""}
             />
             {errors.title && (
@@ -121,7 +126,9 @@ export function CreateFeatureDialog({
               id="brief"
               placeholder="Provide a brief overview of what this feature does and why it's important..."
               value={formData.brief}
-              onChange={(e) => setFormData({ ...formData, brief: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, brief: e.target.value })
+              }
               className={`min-h-[100px] ${errors.brief ? "border-destructive" : ""}`}
             />
             {errors.brief && (
@@ -180,4 +187,4 @@ export function CreateFeatureDialog({
       </DialogContent>
     </Dialog>
   );
-} 
+}

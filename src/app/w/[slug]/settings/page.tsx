@@ -1,6 +1,12 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
@@ -8,7 +14,11 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import { notFound } from "next/navigation";
 import { Github } from "lucide-react";
 
-export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function SettingsPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const session = await getServerSession(authOptions);
   const { slug } = await params;
 
@@ -31,7 +41,15 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     name: session?.user?.name,
     email: session?.user?.email,
     image: session?.user?.image,
-    github: (session?.user as { github?: { username?: string; publicRepos?: number; followers?: number } })?.github,
+    github: (
+      session?.user as {
+        github?: {
+          username?: string;
+          publicRepos?: number;
+          followers?: number;
+        };
+      }
+    )?.github,
   };
 
   return (
@@ -45,7 +63,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
 
       <div className="max-w-2xl space-y-6">
         <ThemeSettings />
-        
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -61,8 +79,11 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
           </CardContent>
         </Card>
 
-        <DeleteWorkspace workspaceSlug={workspace.slug} workspaceName={workspace.name} />
+        <DeleteWorkspace
+          workspaceSlug={workspace.slug}
+          workspaceName={workspace.name}
+        />
       </div>
     </div>
   );
-} 
+}

@@ -58,13 +58,15 @@ export function EditUserStoryDialog({
         soThat: story.soThat,
         priority: story.priority,
       });
-      setAcceptanceCriteria(story.acceptanceCriteria.length > 0 ? story.acceptanceCriteria : [""]);
+      setAcceptanceCriteria(
+        story.acceptanceCriteria.length > 0 ? story.acceptanceCriteria : [""],
+      );
     }
   }, [story]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     const newErrors: Record<string, string> = {};
     if (!formData.title.trim()) {
@@ -96,7 +98,9 @@ export function EditUserStoryDialog({
       asA: formData.asA.trim(),
       iWant: formData.iWant.trim(),
       soThat: formData.soThat.trim(),
-      acceptanceCriteria: acceptanceCriteria.filter(criteria => criteria.trim() !== ""),
+      acceptanceCriteria: acceptanceCriteria.filter(
+        (criteria) => criteria.trim() !== "",
+      ),
       priority: formData.priority,
     });
 
@@ -129,14 +133,19 @@ export function EditUserStoryDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 flex-1 overflow-y-auto">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 flex-1 overflow-y-auto"
+        >
           <div className="space-y-2">
             <Label htmlFor="title">Story Title</Label>
             <Input
               id="title"
               placeholder="e.g., User can login with Google"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, title: e.target.value })
+              }
               className={errors.title ? "border-destructive" : ""}
             />
             {errors.title && (
@@ -150,7 +159,9 @@ export function EditUserStoryDialog({
               id="description"
               placeholder="Brief description of what this story accomplishes..."
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
               className={`min-h-[80px] ${errors.description ? "border-destructive" : ""}`}
             />
             {errors.description && (
@@ -160,7 +171,7 @@ export function EditUserStoryDialog({
 
           <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
             <h4 className="font-medium">User Story Structure</h4>
-            
+
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="asA">As a...</Label>
@@ -168,7 +179,9 @@ export function EditUserStoryDialog({
                   id="asA"
                   placeholder="user, admin, customer, etc."
                   value={formData.asA}
-                  onChange={(e) => setFormData({ ...formData, asA: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, asA: e.target.value })
+                  }
                   className={errors.asA ? "border-destructive" : ""}
                 />
                 {errors.asA && (
@@ -182,7 +195,9 @@ export function EditUserStoryDialog({
                   id="iWant"
                   placeholder="what the user wants to do"
                   value={formData.iWant}
-                  onChange={(e) => setFormData({ ...formData, iWant: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, iWant: e.target.value })
+                  }
                   className={errors.iWant ? "border-destructive" : ""}
                 />
                 {errors.iWant && (
@@ -196,7 +211,9 @@ export function EditUserStoryDialog({
                   id="soThat"
                   placeholder="the benefit or value the user gets"
                   value={formData.soThat}
-                  onChange={(e) => setFormData({ ...formData, soThat: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, soThat: e.target.value })
+                  }
                   className={errors.soThat ? "border-destructive" : ""}
                 />
                 {errors.soThat && (
@@ -210,7 +227,8 @@ export function EditUserStoryDialog({
                 <p className="text-sm">
                   <span className="font-medium">As a</span> {formData.asA},{" "}
                   <span className="font-medium">I want</span> {formData.iWant},{" "}
-                  <span className="font-medium">so that</span> {formData.soThat}.
+                  <span className="font-medium">so that</span> {formData.soThat}
+                  .
                 </p>
               </div>
             )}
@@ -229,7 +247,7 @@ export function EditUserStoryDialog({
                 Add
               </Button>
             </div>
-            
+
             <div className="space-y-2">
               {acceptanceCriteria.map((criteria, index) => (
                 <div key={index} className="flex gap-2">
@@ -273,7 +291,11 @@ export function EditUserStoryDialog({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit">Update Story</Button>
@@ -282,4 +304,4 @@ export function EditUserStoryDialog({
       </DialogContent>
     </Dialog>
   );
-} 
+}

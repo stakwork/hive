@@ -7,20 +7,20 @@ export function parseRepositoryName(repoName: string): string {
   // If the repoName looks like a GitHub URL, extract the repo name
   const urlMatch = repoName.match(/github\.com\/[^/]+\/([^/?#]+)/i);
   let parsedName = repoName;
-  
+
   if (urlMatch) {
     parsedName = urlMatch[1];
   }
-  
+
   // Split camelCase and PascalCase into words, then capitalize
   parsedName = parsedName
-    .replace(/[-_]/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .replace(/\s+/g, ' ')
+    .replace(/[-_]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (l) => l.toUpperCase());
-    
+
   return parsedName;
 }
 
@@ -32,7 +32,7 @@ export function parseRepositoryName(repoName: string): string {
 export function sanitizeWorkspaceName(workspaceName: string): string {
   return workspaceName
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-') // replace invalid domain chars with dash
-    .replace(/-+/g, '-') // collapse multiple dashes
-    .replace(/^-+|-+$/g, ''); // trim leading/trailing dashes
-} 
+    .replace(/[^a-z0-9-]/g, "-") // replace invalid domain chars with dash
+    .replace(/-+/g, "-") // collapse multiple dashes
+    .replace(/^-+|-+$/g, ""); // trim leading/trailing dashes
+}

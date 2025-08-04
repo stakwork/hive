@@ -11,25 +11,21 @@ interface WizardStepRendererProps {
   onBack: () => void;
 }
 
-
-
 export function WizardStepRenderer({
   step,
   onNext,
   onBack,
 }: WizardStepRendererProps) {
-
-
-  const StepComponent = componentsMap[step]
+  const StepComponent = componentsMap[step];
 
   if (!StepComponent) {
-    return <DefaultStep step={step} handleBackToStep={() => { }} />
+    return <DefaultStep step={step} handleBackToStep={() => {}} />;
   }
 
   const sharedProps = {
     onNext,
     onBack,
-  }
+  };
 
-  return <StepComponent {...sharedProps} />
+  return <StepComponent {...sharedProps} />;
 }

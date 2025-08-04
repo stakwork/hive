@@ -13,7 +13,7 @@ import "prismjs/components/prism-css";
 import "prismjs/components/prism-python";
 import "prismjs/components/prism-ruby";
 import "prismjs/components/prism-json";
-import "./prims-dark-plus.css";
+import "./prism-dark-plus.css";
 
 function SyntaxHighlighter({
   code,

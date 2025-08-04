@@ -17,7 +17,7 @@ const toastVariants = cva(
     defaultVariants: {
       variant: "default",
     },
-  }
+  },
 );
 
 export interface ToastProps
@@ -48,7 +48,7 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         <div
           className={cn(
             "flex flex-col gap-1",
-            variant === "success" ? "ml-1" : ""
+            variant === "success" ? "ml-1" : "",
           )}
         >
           {title && (
@@ -57,7 +57,7 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
                 "font-semibold text-base",
                 variant === "success"
                   ? "text-green-600 dark:text-green-400"
-                  : ""
+                  : "",
               )}
             >
               {title}
@@ -70,6 +70,6 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         {action && <div>{action}</div>}
       </div>
     );
-  }
+  },
 );
 Toast.displayName = "Toast";

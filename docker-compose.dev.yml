@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # PostgreSQL Database
@@ -40,4 +40,4 @@ services:
     command: npm run dev
 
 volumes:
-  postgres_data_dev: 
+  postgres_data_dev:

@@ -2,11 +2,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RepositoryData, FormSectionProps } from "../types";
 
-export default function RepositoryForm({ 
-  data, 
-  errors, 
-  loading, 
-  onChange 
+export default function RepositoryForm({
+  data,
+  errors,
+  loading,
+  onChange,
 }: FormSectionProps<RepositoryData>) {
   const handleInputChange = (field: keyof RepositoryData, value: string) => {
     onChange({ [field]: value });
@@ -15,7 +15,7 @@ export default function RepositoryForm({
   return (
     <div className="space-y-2">
       <h3 className="text-lg font-semibold mb-2">Repository</h3>
-      
+
       <div className="space-y-2">
         <Label htmlFor="repositoryUrl">Repository URL</Label>
         <Input
@@ -36,4 +36,4 @@ export default function RepositoryForm({
       </div>
     </div>
   );
-} 
+}

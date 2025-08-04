@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useWorkspace } from '@/hooks/useWorkspace';
-import { useWorkspaceAccess } from '@/hooks/useWorkspaceAccess';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Building2, Users, Loader2 } from 'lucide-react';
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Building2, Users, Loader2 } from "lucide-react";
 
 /**
  * Example component demonstrating how to use the WorkspaceContext
@@ -24,12 +24,8 @@ export function WorkspaceInfo() {
     refreshWorkspaces,
     hasAccess,
   } = useWorkspace();
-  
-  const {
-    canRead,
-    canWrite,
-    canAdmin,
-  } = useWorkspaceAccess();
+
+  const { canRead, canWrite, canAdmin } = useWorkspaceAccess();
 
   if (loading) {
     return (
@@ -67,14 +63,14 @@ export function WorkspaceInfo() {
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
-      case 'OWNER':
-        return 'default';
-      case 'ADMIN':
-        return 'secondary';
-      case 'PM':
-        return 'outline';
+      case "OWNER":
+        return "default";
+      case "ADMIN":
+        return "secondary";
+      case "PM":
+        return "outline";
       default:
-        return 'outline';
+        return "outline";
     }
   };
 
@@ -92,9 +88,7 @@ export function WorkspaceInfo() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-lg font-semibold">{workspace.name}</h3>
-              <Badge variant={getRoleBadgeVariant(role || '')}>
-                {role}
-              </Badge>
+              <Badge variant={getRoleBadgeVariant(role || "")}>{role}</Badge>
             </div>
             {workspace.description && (
               <p className="text-muted-foreground">{workspace.description}</p>
@@ -108,19 +102,21 @@ export function WorkspaceInfo() {
             </div>
             <div>
               <div className="text-sm font-medium">ID</div>
-              <div className="text-sm text-muted-foreground font-mono">{id}</div>
+              <div className="text-sm text-muted-foreground font-mono">
+                {id}
+              </div>
             </div>
           </div>
 
           <div className="flex gap-2">
-            <Badge variant={canRead ? 'default' : 'outline'}>
-              Read: {canRead ? '✓' : '✗'}
+            <Badge variant={canRead ? "default" : "outline"}>
+              Read: {canRead ? "✓" : "✗"}
             </Badge>
-            <Badge variant={canWrite ? 'default' : 'outline'}>
-              Write: {canWrite ? '✓' : '✗'}
+            <Badge variant={canWrite ? "default" : "outline"}>
+              Write: {canWrite ? "✓" : "✗"}
             </Badge>
-            <Badge variant={canAdmin ? 'default' : 'outline'}>
-              Admin: {canAdmin ? '✓' : '✗'}
+            <Badge variant={canAdmin ? "default" : "outline"}>
+              Admin: {canAdmin ? "✓" : "✗"}
             </Badge>
           </div>
         </CardContent>
@@ -140,7 +136,7 @@ export function WorkspaceInfo() {
               <div
                 key={ws.id}
                 className={`flex items-center justify-between p-3 rounded-lg border ${
-                  ws.id === id ? 'bg-muted border-primary' : 'hover:bg-muted/50'
+                  ws.id === id ? "bg-muted border-primary" : "hover:bg-muted/50"
                 }`}
               >
                 <div className="flex-1">
@@ -151,7 +147,8 @@ export function WorkspaceInfo() {
                     </Badge>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {ws.memberCount} member{ws.memberCount !== 1 ? 's' : ''} • /{ws.slug}
+                    {ws.memberCount} member{ws.memberCount !== 1 ? "s" : ""} • /
+                    {ws.slug}
                   </div>
                 </div>
                 {ws.id !== id && (
@@ -175,4 +172,4 @@ export function WorkspaceInfo() {
       </Card>
     </div>
   );
-} 
+}

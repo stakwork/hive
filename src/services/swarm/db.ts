@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { EnvironmentVariable } from "@/types";
 import { SwarmStatus, SwarmWizardStep, StepStatus } from "@prisma/client";
 
 // Add ServiceConfig interface for the services array
@@ -17,7 +18,7 @@ interface SaveOrUpdateSwarmParams {
   workspaceId: string;
   name?: string; // domain name (vanity_address)
   instanceType?: string;
-  environmentVariables?: Record<string, string>;
+  environmentVariables?: Record<string, string>[];
   status?: SwarmStatus;
   swarmUrl?: string;
   repositoryName?: string;
@@ -65,14 +66,16 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     where: { workspaceId: params.workspaceId },
   });
    
-  console.log("params", params);
+  console.log("swarm-data-next", params);
+  console.log("swarm-data-current", swarm);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: Record<string, any> = {};
   if (params.name !== undefined) data.name = params.name;
   if (params.instanceType !== undefined)
     data.instanceType = params.instanceType;
   if (params.environmentVariables !== undefined)
-    data.environmentVariables = JSON.stringify(params.environmentVariables);
+    data.environmentVariables = params.environmentVariables;
   if (params.status !== undefined) data.status = params.status;
   if (params.swarmUrl !== undefined) data.swarmUrl = params.swarmUrl;
   if (params.repositoryName !== undefined)
@@ -88,7 +91,19 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
   if (params.stepStatus !== undefined) data.stepStatus = params.stepStatus;
-  if (params.wizardData !== undefined) data.wizardData = params.wizardData;
+  if (params.wizardData !== undefined) {
+    console.log("params.wizardData", params.wizardData);
+    console.log("data.wizardData", data.wizardData);
+    const previousWizardData = swarm?.wizardData || {};
+
+    const newWizardData = {
+      ...(previousWizardData as object),
+      ...params.wizardData,
+    } as unknown;
+
+    data.wizardData = newWizardData;
+  }
+
   if (params.services !== undefined) {
     data.services = params.services;
   }

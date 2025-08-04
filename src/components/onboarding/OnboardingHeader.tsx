@@ -6,10 +6,10 @@ interface OnboardingHeaderProps {
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-export function OnboardingHeader({ 
-  title, 
-  description, 
-  icon: Icon = Building2 
+export function OnboardingHeader({
+  title,
+  description,
+  icon: Icon = Building2,
 }: OnboardingHeaderProps) {
   return (
     <div className="text-center mb-8">
@@ -17,9 +17,7 @@ export function OnboardingHeader({
         <Icon className="w-8 h-8 text-primary-foreground" />
       </div>
       <h1 className="text-3xl font-bold text-foreground">{title}</h1>
-      <p className="text-muted-foreground mt-2 text-lg">
-        {description}
-      </p>
+      <p className="text-muted-foreground mt-2 text-lg">{description}</p>
     </div>
   );
-} 
+}

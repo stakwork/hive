@@ -119,7 +119,9 @@ export function EditFeatureDialog({
               id="edit-title"
               placeholder="e.g., User Authentication System"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, title: e.target.value })
+              }
               className={errors.title ? "border-destructive" : ""}
             />
             {errors.title && (
@@ -133,7 +135,9 @@ export function EditFeatureDialog({
               id="edit-brief"
               placeholder="Describe what this feature will accomplish..."
               value={formData.brief}
-              onChange={(e) => setFormData({ ...formData, brief: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, brief: e.target.value })
+              }
               className={`min-h-[100px] ${errors.brief ? "border-destructive" : ""}`}
             />
             {errors.brief && (
@@ -192,4 +196,4 @@ export function EditFeatureDialog({
       </DialogContent>
     </Dialog>
   );
-} 
+}

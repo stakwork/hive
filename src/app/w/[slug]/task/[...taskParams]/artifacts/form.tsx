@@ -20,6 +20,11 @@ export function FormArtifact({
 }) {
   const content = artifact.content as FormContent;
 
+  // Only show buttons for actionType="button" options
+  const buttonOptions = content.options.filter(
+    (option) => option.actionType === "button",
+  );
+
   const handleSubmit = (action: Option) => {
     if (isDisabled) return;
     onAction(messageId, action, content.webhook);
@@ -28,28 +33,32 @@ export function FormArtifact({
   return (
     <Card className="p-4 bg-card border rounded-lg">
       <p className="text-sm font-medium mb-3">{content.actionText}</p>
-      <div className="space-y-2">
-        {content.options.map((option, index) => {
-          const isSelected =
-            selectedOption &&
-            option.optionResponse === selectedOption.optionResponse;
 
-          return (
-            <Button
-              key={index}
-              variant={isSelected ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleSubmit(option)}
-              className={`w-full justify-start ${
-                isSelected ? "bg-primary text-primary-foreground" : ""
-              }`}
-              disabled={isDisabled}
-            >
-              {option.optionLabel}
-            </Button>
-          );
-        })}
-      </div>
+      {/* Only show buttons for actionType="button" options */}
+      {buttonOptions.length > 0 && (
+        <div className="space-y-2">
+          {buttonOptions.map((option, index) => {
+            const isSelected =
+              selectedOption &&
+              option.optionResponse === selectedOption.optionResponse;
+
+            return (
+              <Button
+                key={index}
+                variant={isSelected ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleSubmit(option)}
+                className={`w-full justify-start ${
+                  isSelected ? "bg-primary text-primary-foreground" : ""
+                }`}
+                disabled={isDisabled}
+              >
+                {option.optionLabel}
+              </Button>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }

@@ -34,7 +34,10 @@ export default async function WorkspacesPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {userWorkspaces.map((workspace) => (
-            <Card key={workspace.id} className="group hover:shadow-lg transition-all duration-200 cursor-pointer relative">
+            <Card
+              key={workspace.id}
+              className="group hover:shadow-lg transition-all duration-200 cursor-pointer relative"
+            >
               <Link href={`/w/${workspace.slug}`} className="block">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
@@ -48,7 +51,11 @@ export default async function WorkspacesPage() {
                         </p>
                       )}
                     </div>
-                    <Badge variant={workspace.userRole === 'OWNER' ? 'default' : 'secondary'}>
+                    <Badge
+                      variant={
+                        workspace.userRole === "OWNER" ? "default" : "secondary"
+                      }
+                    >
                       {workspace.userRole}
                     </Badge>
                   </div>
@@ -57,14 +64,20 @@ export default async function WorkspacesPage() {
                   <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
                     <div className="flex items-center space-x-1">
                       <Users className="w-4 h-4" />
-                      <span>{workspace.memberCount} member{workspace.memberCount !== 1 ? 's' : ''}</span>
+                      <span>
+                        {workspace.memberCount} member
+                        {workspace.memberCount !== 1 ? "s" : ""}
+                      </span>
                     </div>
                     <div className="flex items-center space-x-1">
                       <Calendar className="w-4 h-4" />
-                      <span>Created {new Date(workspace.createdAt).toLocaleDateString()}</span>
+                      <span>
+                        Created{" "}
+                        {new Date(workspace.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700">
                       Open workspace
@@ -73,10 +86,10 @@ export default async function WorkspacesPage() {
                   </div>
                 </CardContent>
               </Link>
-              
-              {workspace.userRole === 'OWNER' && (
+
+              {workspace.userRole === "OWNER" && (
                 <div className="absolute top-4 right-4">
-                  <Link 
+                  <Link
                     href={`/workspaces/${workspace.slug}/settings`}
                     className="p-1 rounded-md hover:bg-muted"
                     onClick={(e) => e.stopPropagation()}
@@ -87,7 +100,7 @@ export default async function WorkspacesPage() {
               )}
             </Card>
           ))}
-          
+
           {/* Create New Workspace Card */}
           <Card className="group hover:shadow-lg transition-all duration-200 cursor-pointer border-dashed border-2 border-muted-foreground/25 hover:border-blue-500/50">
             <Link href="/workspaces/new" className="block h-full">
@@ -108,12 +121,15 @@ export default async function WorkspacesPage() {
 
         <div className="text-center">
           <p className="text-sm text-muted-foreground mb-4">
-            Need help managing your workspaces?{' '}
-            <Link href="/docs/workspaces" className="text-blue-600 hover:text-blue-700 underline">
+            Need help managing your workspaces?{" "}
+            <Link
+              href="/docs/workspaces"
+              className="text-blue-600 hover:text-blue-700 underline"
+            >
               View documentation
             </Link>
           </p>
-          
+
           <div className="flex justify-center space-x-4">
             <Button variant="outline" asChild>
               <Link href="/auth/signout">Sign Out</Link>
@@ -123,4 +139,4 @@ export default async function WorkspacesPage() {
       </div>
     </div>
   );
-} 
+}

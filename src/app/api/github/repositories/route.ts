@@ -23,7 +23,7 @@ export async function GET() {
     if (!account?.access_token) {
       return NextResponse.json(
         { error: "GitHub access token not found" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -77,13 +77,13 @@ export async function GET() {
     ) {
       return NextResponse.json(
         { error: "GitHub token expired or invalid" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
     return NextResponse.json(
       { error: "Failed to fetch repositories" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

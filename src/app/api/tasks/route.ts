@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { error: "Invalid user session" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json(
         { error: "workspaceId query parameter is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     if (!workspace) {
       return NextResponse.json(
         { error: "Workspace not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -109,13 +109,13 @@ export async function GET(request: NextRequest) {
         success: true,
         data: tasks,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error fetching tasks:", error);
     return NextResponse.json(
       { error: "Failed to fetch tasks" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { error: "Invalid user session" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     if (!title || !workspaceSlug) {
       return NextResponse.json(
         { error: "Missing required fields: title, workspaceId" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     if (!workspace) {
       return NextResponse.json(
         { error: "Workspace not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
           {
             error: `Invalid status. Must be one of: ${Object.values(TaskStatus).join(", ")}`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
         {
           error: `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
       if (!assignee) {
         return NextResponse.json(
           { error: "Assignee not found" },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
           {
             error: "Repository not found or does not belong to this workspace",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -311,13 +311,13 @@ export async function POST(request: NextRequest) {
         success: true,
         data: task,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error creating task:", error);
     return NextResponse.json(
       { error: "Failed to create task" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

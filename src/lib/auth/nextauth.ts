@@ -1,5 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import axios from "axios";
@@ -25,21 +26,97 @@ interface GitHubProfile {
   type: string;
 }
 
-export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(db),
-  providers: [
-    GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: "read:user user:email read:org",
+// Create providers array based on environment
+const getProviders = () => {
+  const providers = [];
+
+  // Always include GitHub provider if credentials are available
+  if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
+    providers.push(
+      GitHubProvider({
+        clientId: process.env.GITHUB_CLIENT_ID!,
+        clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+        authorization: {
+          params: {
+            scope: "read:user user:email read:org repo",
+          },
         },
-      },
-    }),
-  ],
+      }),
+    );
+  }
+
+  // Add mock provider for development when POD_URL is defined
+  if (process.env.POD_URL) {
+    providers.push(
+      CredentialsProvider({
+        id: "mock",
+        name: "Development Mock Login",
+        credentials: {
+          username: {
+            label: "Username",
+            type: "text",
+            placeholder: "Enter any username",
+          },
+        },
+        async authorize(credentials) {
+          // Mock authentication - accept any username in development
+          if (credentials?.username) {
+            const username = credentials.username.trim();
+            return {
+              id: `mock-${username}`,
+              name: username,
+              email: `${username}@mock.dev`,
+              image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
+            };
+          }
+          return null;
+        },
+      }),
+    );
+  }
+
+  return providers;
+};
+
+export const authOptions: NextAuthOptions = {
+  // Only use PrismaAdapter when not using credentials provider
+  ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
+  providers: getProviders(),
   callbacks: {
     async signIn({ user, account }) {
+      // Handle mock provider sign-in for development
+      if (account?.provider === "mock") {
+        try {
+          // Create or find the mock user in the database
+          const existingUser = user.email
+            ? await db.user.findUnique({
+                where: {
+                  email: user.email,
+                },
+              })
+            : null;
+
+          if (!existingUser) {
+            // Create a new user for mock authentication
+            const newUser = await db.user.create({
+              data: {
+                name: user.name || "Mock User",
+                email: user.email!, // Email is always generated from username
+                image: user.image,
+                emailVerified: new Date(), // Auto-verify mock users
+              },
+            });
+            user.id = newUser.id;
+          } else {
+            user.id = existingUser.id;
+          }
+        } catch (error) {
+          console.error("Error handling mock authentication:", error);
+          return false;
+        }
+        return true;
+      }
+
       // If this is a GitHub sign-in, we need to handle re-authentication
       if (account?.provider === "github") {
         try {
@@ -90,6 +167,16 @@ export const authOptions: NextAuthOptions = {
 
               // Update the user object to use the existing user's ID
               user.id = existingUser.id;
+            } else {
+              if (account.access_token) {
+                await db.account.update({
+                  where: { id: existingAccount.id },
+                  data: {
+                    access_token: account.access_token,
+                    scope: account.scope,
+                  },
+                });
+              }
             }
           }
         } catch (error) {
@@ -98,9 +185,53 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async session({ session, user }) {
+    async session({ session, user, token }) {
       if (session.user) {
-        (session.user as { id: string }).id = user.id;
+        // For JWT sessions (mock provider), get data from token
+        if (process.env.POD_URL && token) {
+          (session.user as { id: string }).id = token.id as string;
+          if (token.github) {
+            (
+              session.user as {
+                github?: {
+                  username?: string;
+                  publicRepos?: number;
+                  followers?: number;
+                };
+              }
+            ).github = token.github as {
+              username?: string;
+              publicRepos?: number;
+              followers?: number;
+            };
+          }
+          return session;
+        }
+
+        // For database sessions
+        if (user) {
+          (session.user as { id: string }).id = user.id;
+
+          // Skip GitHub data fetching for mock users
+          if (user.email?.endsWith("@mock.dev")) {
+            // For mock users, add mock GitHub data if needed
+            (
+              session.user as {
+                github?: {
+                  username?: string;
+                  publicRepos?: number;
+                  followers?: number;
+                };
+              }
+            ).github = {
+              username:
+                user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
+              publicRepos: 5,
+              followers: 10,
+            };
+            return session;
+          }
+        }
 
         // Check if we already have GitHub data
         let githubAuth = await db.gitHubAuth.findUnique({
@@ -126,7 +257,7 @@ export const authOptions: NextAuthOptions = {
                   headers: {
                     Authorization: `token ${account.access_token}`,
                   },
-                }
+                },
               );
 
               githubAuth = await db.gitHubAuth.upsert({
@@ -186,7 +317,7 @@ export const authOptions: NextAuthOptions = {
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
             console.log(
-              "GitHub account exists but token is revoked - user needs to re-authenticate"
+              "GitHub account exists but token is revoked - user needs to re-authenticate",
             );
           }
         }
@@ -209,13 +340,29 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
+    async jwt({ token, user, account }) {
+      // For JWT sessions (mock provider), store user info in token
+      if (account?.provider === "mock" && user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
+        token.github = {
+          username:
+            user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
+          publicRepos: 5,
+          followers: 10,
+        };
+      }
+      return token;
+    },
   },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/error",
   },
   session: {
-    strategy: "database",
+    strategy: process.env.POD_URL ? "jwt" : "database",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
@@ -226,8 +373,15 @@ export const authOptions: NextAuthOptions = {
  * Returns { username, pat } or null if not found.
  */
 export async function getGithubUsernameAndPAT(
-  userId: string
+  userId: string,
 ): Promise<{ username: string; pat: string } | null> {
+  // Check if this is a mock user
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (user?.email?.endsWith("@mock.dev")) {
+    // Mock users don't have real GitHub credentials
+    return null;
+  }
+
   // Get GitHub username from GitHubAuth
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
   // Get PAT from Account

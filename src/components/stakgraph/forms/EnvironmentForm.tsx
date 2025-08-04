@@ -7,15 +7,17 @@ import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { useEffect } from "react";
 
 interface EnvironmentFormProps extends FormSectionProps<EnvironmentData> {
-  onEnvVarsChange: (envVars: Array<{name: string; value: string; show?: boolean}>) => void;
+  onEnvVarsChange: (
+    envVars: Array<{ name: string; value: string; show?: boolean }>,
+  ) => void;
 }
 
-export default function EnvironmentForm({ 
-  data, 
-  errors, 
-  loading, 
+export default function EnvironmentForm({
+  data,
+  errors,
+  loading,
   onChange,
-  onEnvVarsChange
+  onEnvVarsChange,
 }: EnvironmentFormProps) {
   const {
     envVars,
@@ -28,11 +30,13 @@ export default function EnvironmentForm({
   // Sync environment variables when data changes
   useEffect(() => {
     if (data.environmentVariables && Array.isArray(data.environmentVariables)) {
-      setEnvVars(data.environmentVariables.map(env => ({
-        name: env.name,
-        value: env.value,
-        show: false
-      })));
+      setEnvVars(
+        data.environmentVariables.map((env) => ({
+          name: env.name,
+          value: env.value,
+          show: false,
+        })),
+      );
     }
   }, [data.environmentVariables, setEnvVars]);
 
@@ -48,7 +52,7 @@ export default function EnvironmentForm({
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold mb-2">Environment</h3>
-      
+
       <div className="space-y-2">
         <Label htmlFor="poolName">Pool Name</Label>
         <Input
@@ -67,30 +71,11 @@ export default function EnvironmentForm({
         </p>
       </div>
 
-      {/* NEW: Pool API Key field */}
-      <div className="space-y-2">
-        <Label htmlFor="poolApiKey">Pool API Key</Label>
-        <Input
-          id="poolApiKey"
-          type="text"
-          placeholder="Enter your Pool API Key"
-          value={data.poolApiKey}
-          onChange={(e) => onChange({ poolApiKey: e.target.value })}
-          className={errors.poolApiKey ? "border-destructive" : ""}
-          disabled={loading}
-        />
-        {errors.poolApiKey && (
-          <p className="text-sm text-destructive">{errors.poolApiKey}</p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          Your API key for authenticating with the Pool Manager
-        </p>
-      </div>
-
       <div className="space-y-3">
         <h4 className="text-md font-medium">Environment Variables</h4>
         <p className="text-xs text-muted-foreground">
-          Add any ENV variables your Stakgraph integration needs. These will be included in your configuration.
+          Add any ENV variables your Stakgraph integration needs. These will be
+          included in your configuration.
         </p>
         <div className="space-y-2">
           {envVars.map((pair, idx) => (
@@ -98,27 +83,33 @@ export default function EnvironmentForm({
               <Input
                 placeholder="KEY"
                 value={pair.name}
-                onChange={(e) => handleEnvChange(idx, 'name', e.target.value)}
+                onChange={(e) => handleEnvChange(idx, "name", e.target.value)}
                 className="w-1/3"
                 disabled={loading}
               />
               <div className="relative w-1/2 flex items-center">
                 <Input
                   placeholder="VALUE"
-                  type={pair.show ? 'text' : 'password'}
+                  type={pair.show ? "text" : "password"}
                   value={pair.value}
-                  onChange={(e) => handleEnvChange(idx, 'value', e.target.value)}
+                  onChange={(e) =>
+                    handleEnvChange(idx, "value", e.target.value)
+                  }
                   className="pr-10"
                   disabled={loading}
                 />
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                  onClick={() => handleEnvChange(idx, 'show', !pair.show)}
+                  onClick={() => handleEnvChange(idx, "show", !pair.show)}
                   tabIndex={-1}
                   disabled={loading}
                 >
-                  {pair.show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {pair.show ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
                 </button>
               </div>
               <Button
@@ -132,11 +123,11 @@ export default function EnvironmentForm({
               </Button>
             </div>
           ))}
-          <Button 
-            type="button" 
-            variant="secondary" 
-            onClick={handleAddEnv} 
-            className="mt-2" 
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleAddEnv}
+            className="mt-2"
             disabled={loading}
           >
             Add Variable
@@ -145,4 +136,4 @@ export default function EnvironmentForm({
       </div>
     </div>
   );
-} 
+}

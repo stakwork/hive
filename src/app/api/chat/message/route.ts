@@ -67,7 +67,7 @@ async function callMock(
 
     if (!response.ok) {
       console.error(
-        `Failed to send message to mock server: ${response.statusText}`
+        `Failed to send message to mock server: ${response.statusText}`,
       );
       return { success: false, error: response.statusText };
     }
@@ -90,7 +90,9 @@ async function callStakwork(
   swarmSecretAlias: string | null,
   poolName: string | null,
   request: NextRequest,
-  webhook?: string
+  repo2GraphUrl: string,
+  webhook?: string,
+  mode?: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -99,7 +101,7 @@ async function callStakwork(
     }
     if (!config.STAKWORK_WORKFLOW_ID) {
       throw new Error(
-        "STAKWORK_WORKFLOW_ID is required for Stakwork integration"
+        "STAKWORK_WORKFLOW_ID is required for Stakwork integration",
       );
     }
 
@@ -115,14 +117,24 @@ async function callStakwork(
       contextTags,
       webhookUrl,
       alias: userName,
+      username: userName,
       accessToken,
       swarmUrl,
       swarmSecretAlias,
       poolName,
+      repo2graph_url: repo2GraphUrl,
     };
+
+    const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
+
+    console.log("config.STAKWORK_WORKFLOW_ID", config.STAKWORK_WORKFLOW_ID);
+    console.log("mode", mode);
+
+    const workflowId =
+      mode === "live" ? stakworkWorkflowIds[0] : stakworkWorkflowIds[1];
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
-      workflow_id: parseInt(config.STAKWORK_WORKFLOW_ID),
+      workflow_id: parseInt(workflowId),
       workflow_params: {
         set_var: {
           attributes: {
@@ -146,13 +158,14 @@ async function callStakwork(
 
     if (!response.ok) {
       console.error(
-        `Failed to send message to Stakwork: ${response.statusText}`
+        `Failed to send message to Stakwork: ${response.statusText}`,
       );
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
-    return { success: true, data: result };
+    console.log("Stakwork result", result);
+    return { success: result.success, data: result.data };
   } catch (error) {
     console.error("Error calling Stakwork:", error);
     return { success: false, error: String(error) };
@@ -170,7 +183,7 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { error: "Invalid user session" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -183,6 +196,7 @@ export async function POST(request: NextRequest) {
       artifacts = [] as ArtifactRequest[],
       webhook,
       replyId,
+      mode,
     } = body;
 
     // Validate required fields - allow empty message if artifacts are present
@@ -195,7 +209,7 @@ export async function POST(request: NextRequest) {
     if (!taskId) {
       return NextResponse.json(
         { error: "taskId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -215,6 +229,8 @@ export async function POST(request: NextRequest) {
                 swarmUrl: true,
                 swarmSecretAlias: true,
                 poolName: true,
+                name: true,
+                id: true,
               },
             },
             members: {
@@ -317,6 +333,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
+
     // Check if Stakwork environment variables are defined
     const useStakwork =
       config.STAKWORK_API_KEY &&
@@ -324,19 +342,27 @@ export async function POST(request: NextRequest) {
       config.STAKWORK_WORKFLOW_ID;
 
     // Extract data for Stakwork payload
-    const userName = user.name;
+    const userName = githubAuth?.githubUsername || null;
     const accessToken =
       user.accounts.find((account) => account.access_token)?.access_token ||
       null;
-    const swarm = task.workspace.swarm;
-    const swarmUrl = swarm?.swarmUrl || null;
-    const swarmSecretAlias = swarm?.swarmSecretAlias || null;
-    const poolName = swarm?.poolName || null;
 
+    const swarm = task.workspace.swarm;
+    const swarmUrl = swarm?.swarmUrl
+      ? swarm.swarmUrl.replace("/api", ":8444/api")
+      : "";
+
+    const swarmSecretAlias = swarm?.swarmSecretAlias || null;
+    const poolName = swarm?.id || null;
+    const repo2GraphUrl = swarm?.swarmUrl
+      ? swarm.swarmUrl.replace("/api", ":3355")
+      : "";
+
+    let stakworkData = null;
     // Call appropriate service based on environment configuration
     // Note: Debug artifacts (BUG_REPORT) are stored with the message but processing is handled separately
     if (useStakwork) {
-      await callStakwork(
+      stakworkData = await callStakwork(
         taskId,
         message,
         contextTags,
@@ -346,24 +372,26 @@ export async function POST(request: NextRequest) {
         swarmSecretAlias,
         poolName,
         request,
-        webhook
+        repo2GraphUrl,
+        webhook,
+        mode,
       );
     } else {
-      await callMock(taskId, message, userId, artifacts, request);
+      stakworkData = await callMock(taskId, message, userId, artifacts, request);
     }
 
     return NextResponse.json(
       {
         success: true,
-        data: clientMessage,
+        data: stakworkData.data,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error creating chat message:", error);
     return NextResponse.json(
       { error: "Failed to create chat message" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,326 +1,70 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Save, Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
 import {
+  EnvironmentForm,
   ProjectInfoForm,
   RepositoryForm,
-  SwarmForm,
-  EnvironmentForm,
   ServicesForm,
-  StakgraphSettings,
-  ProjectInfoData,
-  RepositoryData,
-  SwarmData,
-  EnvironmentData,
-  ServicesData,
+  SwarmForm,
 } from "@/components/stakgraph";
-import { EnvironmentVariable } from "@/types/wizard";
+import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useStakgraphStore } from "@/stores/useStakgraphStore";
+import { AnimatePresence, motion } from "framer-motion";
+import { Loader2, Save } from "lucide-react";
+import Link from "next/link";
+import { useEffect } from "react";
 
 export default function StakgraphPage() {
   const { slug, refreshCurrentWorkspace } = useWorkspace();
-  const [formData, setFormData] = useState<StakgraphSettings>({
-    name: "",
-    description: "",
-    repositoryUrl: "",
-    swarmUrl: "",
-    swarmSecretAlias: "",
-    poolName: "",
-    poolApiKey: "",
-    environmentVariables: [],
-    services: [],
-  });
-
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
-
-  // Environment variables for the EnvironmentForm
-  const [envVars, setEnvVars] = useState<
-    Array<{ name: string; value: string; show?: boolean }>
-  >([]);
+  const {
+    formData,
+    errors,
+    loading,
+    initialLoading,
+    saved,
+    loadSettings,
+    saveSettings,
+    handleProjectInfoChange,
+    handleRepositoryChange,
+    handleSwarmChange,
+    handleEnvironmentChange,
+    handleEnvVarsChange,
+    handleServicesChange,
+    handleFileChange
+  } = useStakgraphStore();
 
   const { toast } = useToast();
 
-  // Form change handlers for each section
-  const handleProjectInfoChange = useCallback(
-    (data: Partial<ProjectInfoData>) => {
-      setFormData((prev) => ({ ...prev, ...data }));
-      setSaved(false);
-      // Clear errors for changed fields
-      if (data.name !== undefined && errors.name) {
-        setErrors((prev) => ({ ...prev, name: "" }));
-      }
-      if (data.description !== undefined && errors.description) {
-        setErrors((prev) => ({ ...prev, description: "" }));
-      }
-    },
-    [errors.name, errors.description]
-  );
-
-  const handleRepositoryChange = useCallback(
-    (data: Partial<RepositoryData>) => {
-      setFormData((prev) => ({ ...prev, ...data }));
-      setSaved(false);
-      // Clear errors for changed fields
-      if (data.repositoryUrl !== undefined && errors.repositoryUrl) {
-        setErrors((prev) => ({ ...prev, repositoryUrl: "" }));
-      }
-    },
-    [errors.repositoryUrl]
-  );
-
-  const handleSwarmChange = useCallback(
-    (data: Partial<SwarmData>) => {
-      setFormData((prev) => ({ ...prev, ...data }));
-      setSaved(false);
-      // Clear errors for changed fields
-      if (data.swarmUrl !== undefined && errors.swarmUrl) {
-        setErrors((prev) => ({ ...prev, swarmUrl: "" }));
-      }
-      if (data.swarmSecretAlias !== undefined && errors.swarmSecretAlias) {
-        setErrors((prev) => ({ ...prev, swarmSecretAlias: "" }));
-      }
-      if (data.poolApiKey !== undefined && errors.poolApiKey) {
-        setErrors((prev) => ({ ...prev, poolApiKey: "" }));
-      }
-    },
-    [errors.swarmUrl, errors.swarmSecretAlias, errors.poolApiKey]
-  );
-
-  const handleEnvironmentChange = useCallback(
-    (data: Partial<EnvironmentData>) => {
-      setFormData((prev) => ({ ...prev, ...data }));
-      setSaved(false);
-      // Clear errors for changed fields
-      if (data.poolName !== undefined && errors.poolName) {
-        setErrors((prev) => ({ ...prev, poolName: "" }));
-      }
-      if (data.poolApiKey !== undefined && errors.poolApiKey) {
-        setErrors((prev) => ({ ...prev, poolApiKey: "" }));
-      }
-    },
-    [errors.poolName, errors.poolApiKey]
-  );
-
-  const handleServicesChange = useCallback((data: Partial<ServicesData>) => {
-    setFormData((prev) => ({ ...prev, ...data }));
-    setSaved(false);
-  }, []);
-
-  const handleEnvVarsChange = useCallback(
-    (newEnvVars: Array<{ name: string; value: string; show?: boolean }>) => {
-      setEnvVars(newEnvVars);
-      setSaved(false);
-    },
-    []
-  );
-
   // Load existing settings on component mount
   useEffect(() => {
-    const loadSettings = async () => {
-      if (!slug) return;
-
-      try {
-        setInitialLoading(true);
-        const response = await fetch(`/api/workspaces/${slug}/stakgraph`);
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data) {
-            const settings = result.data;
-            setFormData({
-              name: settings.name || "",
-              description: settings.description || "",
-              repositoryUrl: settings.repositoryUrl || "",
-              swarmUrl: settings.swarmUrl || "",
-              swarmSecretAlias: settings.swarmSecretAlias || "",
-              poolName: settings.poolName || "",
-              poolApiKey: settings.poolApiKey || "",
-              environmentVariables: settings.environmentVariables || [],
-              services: settings.services || [],
-              status: settings.status,
-              lastUpdated: settings.lastUpdated,
-            });
-
-            // Also update the environment variables state
-            if (
-              settings.environmentVariables &&
-              Array.isArray(settings.environmentVariables)
-            ) {
-              setEnvVars(
-                settings.environmentVariables.map(
-                  (env: EnvironmentVariable) => ({
-                    key: env.name,
-                    value: env.value,
-                    show: false,
-                  })
-                )
-              );
-            }
-          }
-        } else if (response.status === 404) {
-          // No swarm found - this is expected for workspaces without swarms
-          console.log("No swarm found for this workspace yet");
-        } else {
-          console.error("Failed to load stakgraph settings");
-        }
-      } catch (error) {
-        console.error("Error loading stakgraph settings:", error);
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadSettings();
-  }, [slug]);
+    if (slug) {
+      loadSettings(slug);
+    }
+  }, [slug, loadSettings]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!slug) {
-      toast({
-        title: "Error",
-        description: "Workspace not found",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!slug) return;
 
-    // Reset previous states
-    setErrors({});
-    setSaved(false);
-
-    // Validation
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = "Name is required";
-    }
-    if (!formData.description.trim()) {
-      newErrors.description = "Description is required";
-    }
-    if (!formData.repositoryUrl.trim()) {
-      newErrors.repositoryUrl = "Repository URL is required";
-    } else if (!isValidUrl(formData.repositoryUrl.trim())) {
-      newErrors.repositoryUrl = "Please enter a valid URL";
-    }
-
-    if (!formData.swarmUrl.trim()) {
-      newErrors.swarmUrl = "Swarm URL is required";
-    } else if (!isValidUrl(formData.swarmUrl.trim())) {
-      newErrors.swarmUrl = "Please enter a valid URL";
-    }
-
-    if (!formData.swarmSecretAlias.trim()) {
-      newErrors.swarmSecretAlias = "Swarm API Key is required";
-    }
-
-    if (!formData.poolName.trim()) {
-      newErrors.poolName = "Pool Name is required";
-    }
-    if (!formData.poolApiKey.trim()) {
-      newErrors.poolApiKey = "Pool API Key is required";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const payload = {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-        repositoryUrl: formData.repositoryUrl.trim(),
-        swarmUrl: formData.swarmUrl.trim(),
-        swarmSecretAlias: formData.swarmSecretAlias.trim(),
-        poolName: formData.poolName.trim(),
-        poolApiKey: formData.poolApiKey.trim(),
-        environmentVariables: envVars.map((env) => ({
-          name: env.name,
-          value: env.value,
-        })),
-        services: formData.services,
-      };
-
-      const response = await fetch(`/api/workspaces/${slug}/stakgraph`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        setSaved(true);
-        toast({
-          title: "Configuration saved",
-          description: "Your Stakgraph settings have been saved successfully!",
-          variant: "default",
-        });
-
-        // Update form data with response data
-        if (result.data) {
-          setFormData((prev) => ({
-            ...prev,
-            status: result.data.status,
-            lastUpdated: result.data.updatedAt,
-          }));
-        }
-        refreshCurrentWorkspace();
-      } else {
-        // Handle validation errors
-        if (result.error === "VALIDATION_ERROR" && result.details) {
-          setErrors(result.details);
-        } else {
-          setErrors({
-            general:
-              result.message ||
-              "Failed to save configuration. Please try again.",
-          });
-        }
-
-        toast({
-          title: "Error",
-          description: result.message || "Failed to save configuration",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Failed to save configuration:", error);
-      setErrors({
-        general: "Failed to save configuration. Please try again.",
-      });
-      toast({
-        title: "Error",
-        description: "Network error occurred while saving",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+    await saveSettings(slug, toast);
+    refreshCurrentWorkspace();
   };
 
-  const isValidUrl = (string: string) => {
-    try {
-      new URL(string);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  const allFieldsFilled =
+    formData.name &&
+      formData.repositoryUrl &&
+      formData.swarmUrl &&
+      formData.swarmSecretAlias &&
+      formData.poolName
+      ? true
+      : false;
+
+  console.log("allFieldsFilled", allFieldsFilled);
 
   if (initialLoading) {
     return (
@@ -425,7 +169,6 @@ export default function StakgraphPage() {
                 data={{
                   swarmUrl: formData.swarmUrl,
                   swarmSecretAlias: formData.swarmSecretAlias,
-                  poolApiKey: formData.poolApiKey,
                 }}
                 errors={errors}
                 loading={loading}
@@ -435,7 +178,6 @@ export default function StakgraphPage() {
               <EnvironmentForm
                 data={{
                   poolName: formData.poolName,
-                  poolApiKey: formData.poolApiKey,
                   environmentVariables: formData.environmentVariables,
                 }}
                 errors={errors}
@@ -444,11 +186,17 @@ export default function StakgraphPage() {
                 onEnvVarsChange={handleEnvVarsChange}
               />
 
-              {/* <ServicesForm
-                                data={{ services: formData.services }}
-                                loading={loading}
-                                onChange={handleServicesChange}
-                            /> */}
+              <ServicesForm
+                data={formData.services}
+                loading={loading}
+                onChange={handleServicesChange}
+              />
+
+              <FileTabs
+                fileContents={formData.containerFiles}
+                originalContents={formData.containerFiles}
+                onChange={handleFileChange}
+              />
             </div>
 
             <Button type="submit" disabled={loading}>

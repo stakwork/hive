@@ -1,39 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { getWorkspaceBySlug } from "@/services/workspace";
 import { db } from "@/lib/db";
-import { z } from "zod";
-import { PoolManagerService } from "@/services/pool-manager";
-import { ServiceConfig } from "@/types";
 import { config } from "@/lib/env";
+import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
+import { getWorkspaceBySlug } from "@/services/workspace";
+import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
+import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 // Validation schema for stakgraph settings
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  description: z.string().min(1, "Description is required"),
   repositoryUrl: z.string().url("Invalid repository URL"),
   swarmUrl: z.string().url("Invalid swarm URL"),
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
   poolName: z.string().min(1, "Pool name is required"),
+  description: z.string().optional(),
+  containerFiles: z.record(z.string()).optional().default({}),
   environmentVariables: z
     .array(
       z.object({
-        key: z.string(),
+        name: z.string().min(1, "Environment variable key is required"),
         value: z.string(),
-      })
+      }),
     )
+    .optional()
     .default([]),
   services: z
     .array(
       z.object({
         name: z.string().min(1, "Service name is required"),
         port: z.preprocess(
-          (val) => Number(val),
-          z.number().int().min(1, "Port is required")
+          (val) => {
+            if (val === undefined || val === null || val === "") return NaN;
+            return Number(val);
+          },
+          z.number().int().min(1, "Port is required"),
         ),
         scripts: z.object({
           start: z.string().min(1, "Start script is required"),
@@ -41,14 +47,19 @@ const stakgraphSettingsSchema = z.object({
           build: z.string().optional(),
           test: z.string().optional(),
         }),
-      })
+        // Add optional fields that might be in your payload
+        dev: z.boolean().optional(),
+        env: z.record(z.string()).optional(),
+        language: z.string().optional(),
+      }),
     )
+    .optional()
     .default([]),
 });
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
+  { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -61,7 +72,7 @@ export async function GET(
           message: "Authentication required",
           error: "UNAUTHORIZED",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -73,7 +84,7 @@ export async function GET(
           message: "Invalid user session",
           error: "INVALID_SESSION",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -86,7 +97,7 @@ export async function GET(
           message: "Workspace not found",
           error: "WORKSPACE_NOT_FOUND",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -103,52 +114,40 @@ export async function GET(
           message: "No swarm found for this workspace",
           error: "SWARM_NOT_FOUND",
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
-    const user = await db.user.findUnique({
+    // Fetch environment variables from Pool Manager using poolName and poolApiKey
+    const environmentVariables = swarm?.environmentVariables;
+
+    const repository = await db.repository.findFirst({
       where: {
-        email: session?.user?.email || "",
+        workspaceId: workspace.id,
       },
     });
-
-    const poolApiKey = user?.poolApiKey;
-
-    // Fetch environment variables from Pool Manager using poolName and poolApiKey
-    let environmentVariables: Array<{ key: string; value: string }> = [];
-    if (swarm.poolName && poolApiKey) {
-      try {
-        const poolManager = new PoolManagerService(
-          config as unknown as ServiceConfig
-        );
-        environmentVariables = await poolManager.getPoolEnvVars(
-          swarm.poolName,
-          poolApiKey
-        );
-      } catch (err) {
-        console.error("Failed to fetch env vars from Pool Manager:", err);
-        // Optionally, you can return an error or fallback to empty array
-      }
-    }
 
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings retrieved successfully",
       data: {
-        name: swarm.repositoryName || "",
+        name: repository?.name || "",
         description: swarm.repositoryDescription || "",
-        repositoryUrl: swarm.repositoryUrl || "",
+        repositoryUrl: repository?.repositoryUrl || "",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
-        poolName: swarm.poolName || "",
-        environmentVariables,
+        poolName: swarm.id || "",
+        environmentVariables:
+          typeof environmentVariables === "string"
+            ? JSON.parse(environmentVariables)
+            : environmentVariables,
         services:
           typeof swarm.services === "string"
             ? JSON.parse(swarm.services)
             : swarm.services || [],
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
+        containerFiles: swarm.containerFiles || [],
       },
     });
   } catch (error) {
@@ -159,14 +158,14 @@ export async function GET(
         message: "Internal server error",
         error: "INTERNAL_ERROR",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
+  { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -179,7 +178,7 @@ export async function PUT(
           message: "Authentication required",
           error: "UNAUTHORIZED",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -191,7 +190,7 @@ export async function PUT(
           message: "Invalid user session",
           error: "INVALID_SESSION",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -204,7 +203,7 @@ export async function PUT(
           message: "Workspace not found",
           error: "WORKSPACE_NOT_FOUND",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -220,7 +219,7 @@ export async function PUT(
           error: "VALIDATION_ERROR",
           details: validationResult.error.flatten().fieldErrors,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -229,7 +228,7 @@ export async function PUT(
     // Save or update Swarm using shared service
     const swarm = await saveOrUpdateSwarm({
       workspaceId: workspace.id,
-      name: workspace.name, // Use workspace name for swarm name
+      name: `${workspace.name}.sphinx.chat`, // Use workspace name for swarm name
       repositoryName: settings.name,
       repositoryDescription: settings.description,
       repositoryUrl: settings.repositoryUrl,
@@ -238,6 +237,8 @@ export async function PUT(
       swarmSecretAlias: settings.swarmSecretAlias,
       poolName: settings.poolName,
       services: settings.services,
+      environmentVariables: settings.environmentVariables,
+      containerFiles: settings.containerFiles,
     });
 
     const user = await db.user.findUnique({
@@ -248,6 +249,8 @@ export async function PUT(
 
     const poolApiKey = user?.poolApiKey;
 
+    console.log(">>>>>>>>>settings.services", settings.services);
+
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
     if (
       settings.poolName &&
@@ -256,20 +259,39 @@ export async function PUT(
     ) {
       try {
         const poolManager = new PoolManagerService(
-          config as unknown as ServiceConfig
+          config as unknown as ServiceConfig,
         );
-        // Fetch current env vars from Pool Manager
-        const currentEnvVars = await poolManager.getPoolEnvVars(
-          settings.poolName,
-          poolApiKey
-        );
-        // Always send all vars, with correct masked/changed status
-        await poolManager.updatePoolEnvVars(
-          settings.poolName,
-          poolApiKey,
-          settings.environmentVariables,
-          currentEnvVars
-        );
+
+        const swarm = (await db.swarm.findUnique({
+          where: { workspaceId: workspace.id },
+          select: swarmSelect,
+        })) as SwarmSelectResult | null;
+
+        if (swarm) {
+          const currentEnvVars = await poolManager.getPoolEnvVars(
+            swarm.id,
+            poolApiKey,
+          );
+
+          // TODO: This is a solution to preserve data structure.
+          const files = getDevContainerFilesFromBase64(settings.containerFiles);
+
+          // Always send all vars, with correct masked/changed status
+          await poolManager.updatePoolData(
+            swarm.id,
+            poolApiKey,
+            settings.environmentVariables as unknown as Array<{
+              name: string;
+              value: string;
+            }>,
+            currentEnvVars as unknown as Array<{
+              name: string;
+              value: string;
+              masked?: boolean;
+            }>,
+            files,
+          );
+        }
       } catch (err) {
         console.error("Failed to update env vars in Pool Manager:", err);
         // Optionally, return error or continue
@@ -305,7 +327,7 @@ export async function PUT(
         message: "Failed to save stakgraph settings",
         error: "INTERNAL_ERROR",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

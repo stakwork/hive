@@ -1,30 +1,28 @@
-import { BaseServiceClass } from '@/lib/base-service';
-import { ServiceConfig } from '@/types';
-import { config, env } from '@/lib/env';
+import { BaseServiceClass } from "@/lib/base-service";
+import { ServiceConfig } from "@/types";
+import { config, env } from "@/lib/env";
 
 export class StakworkService extends BaseServiceClass {
-  public readonly serviceName = 'stakwork';
+  public readonly serviceName = "stakwork";
 
   constructor(config: ServiceConfig) {
     super(config);
   }
 
-  async createProject<T = unknown>(
-    input: {
-      title: string;
-      description: string;
-      budget: number;
-      skills: string[];
-      name: string;
-      workflow_id: number;
-      workflow_params: { set_var: { attributes: { vars: unknown } } };
-    }
-  ): Promise<T> {
+  async createProject<T = unknown>(input: {
+    title: string;
+    description: string;
+    budget: number;
+    skills: string[];
+    name: string;
+    workflow_id: number;
+    workflow_params: { set_var: { attributes: { vars: unknown } } };
+  }): Promise<T> {
     const endpoint = `${config.STAKWORK_BASE_URL}/projects`;
     // Compose headers as required by Stakwork
     const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Token token=${this.config.apiKey}`,
+      "Content-Type": "application/json",
+      Authorization: `Token token=${this.config.apiKey}`,
     };
 
     // Use the correct HTTP method
@@ -46,14 +44,18 @@ export class StakworkService extends BaseServiceClass {
     const endpoint = `/customers`;
 
     const headers = this.config.headers || {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
-
 
     // Use the correct HTTP method
     const client = this.getClient();
     const requestFn = () => {
-      return client.post<unknown>(endpoint, { customer: { name: customerName } }, headers, this.serviceName);
+      return client.post<unknown>(
+        endpoint,
+        { customer: { name: customerName } },
+        headers,
+        this.serviceName,
+      );
     };
 
     return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
@@ -65,17 +67,26 @@ export class StakworkService extends BaseServiceClass {
    * @param input - Object with fields: name, workflow_id, workflow_params (with set_var/attributes/vars)
    * @returns API response as JSON
    */
-  async createSecret<T = unknown>(name: string, value: string, token: string): Promise<T> {
+  async createSecret<T = unknown>(
+    name: string,
+    value: string,
+    token: string,
+  ): Promise<T> {
     const endpoint = `/secrets`;
 
     const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Token token=${token}`,
+      "Content-Type": "application/json",
+      Authorization: `Token token=${token}`,
     };
 
     const client = this.getClient();
     const requestFn = () => {
-      return client.post<T>(endpoint, { secret: { name: name, value: value } }, headers, this.serviceName);
+      return client.post<T>(
+        endpoint,
+        { secret: { name: name, value: value } },
+        headers,
+        this.serviceName,
+      );
     };
 
     return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
@@ -94,14 +105,13 @@ export class StakworkService extends BaseServiceClass {
       name: string;
       workflow_id: number;
       workflow_params: { set_var: { attributes: { vars: unknown } } };
-    }
+    },
   ): Promise<T> {
     // Compose headers as required by Stakwork
     const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Token token=${this.config.apiKey}`,
+      "Content-Type": "application/json",
+      Authorization: `Token token=${this.config.apiKey}`,
     };
-
 
     // Use the correct HTTP method
     const client = this.getClient();
@@ -111,4 +121,4 @@ export class StakworkService extends BaseServiceClass {
 
     return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
   }
-} 
+}

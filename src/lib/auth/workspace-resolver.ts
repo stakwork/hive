@@ -1,6 +1,9 @@
-import { redirect } from 'next/navigation';
-import { Session } from 'next-auth';
-import { getUserWorkspaces, getDefaultWorkspaceForUser } from '@/services/workspace';
+import { redirect } from "next/navigation";
+import { Session } from "next-auth";
+import {
+  getUserWorkspaces,
+  getDefaultWorkspaceForUser,
+} from "@/services/workspace";
 
 export interface WorkspaceResolutionResult {
   shouldRedirect: boolean;
@@ -13,11 +16,13 @@ export interface WorkspaceResolutionResult {
  * Resolves where a user should be redirected based on their workspace access
  * This function handles the post-authentication routing logic
  */
-export async function resolveUserWorkspaceRedirect(session: Session | null): Promise<WorkspaceResolutionResult> {
+export async function resolveUserWorkspaceRedirect(
+  session: Session | null,
+): Promise<WorkspaceResolutionResult> {
   if (!session?.user) {
     return {
       shouldRedirect: true,
-      redirectUrl: '/auth/signin',
+      redirectUrl: "/auth/signin",
       workspaceCount: 0,
     };
   }
@@ -27,12 +32,12 @@ export async function resolveUserWorkspaceRedirect(session: Session | null): Pro
   try {
     // Get all workspaces the user has access to
     const userWorkspaces = await getUserWorkspaces(userId);
-    
+
     if (userWorkspaces.length === 0) {
       // User has no workspaces - redirect to onboarding
       return {
         shouldRedirect: true,
-        redirectUrl: '/onboarding/workspace',
+        redirectUrl: "/onboarding/workspace",
         workspaceCount: 0,
       };
     }
@@ -50,7 +55,7 @@ export async function resolveUserWorkspaceRedirect(session: Session | null): Pro
 
     // User has multiple workspaces - get their default
     const defaultWorkspace = await getDefaultWorkspaceForUser(userId);
-    
+
     if (defaultWorkspace) {
       return {
         shouldRedirect: true,
@@ -68,14 +73,13 @@ export async function resolveUserWorkspaceRedirect(session: Session | null): Pro
       workspaceCount: userWorkspaces.length,
       defaultWorkspaceSlug: fallbackWorkspace.slug,
     };
-
   } catch (error) {
-    console.error('Error resolving workspace redirect:', error);
-    
+    console.error("Error resolving workspace redirect:", error);
+
     // On error, redirect to onboarding to be safe
     return {
       shouldRedirect: true,
-      redirectUrl: '/onboarding/workspace',
+      redirectUrl: "/onboarding/workspace",
       workspaceCount: 0,
     };
   }
@@ -85,9 +89,11 @@ export async function resolveUserWorkspaceRedirect(session: Session | null): Pro
  * Handles workspace redirection for server components
  * This is a convenience function that calls resolveUserWorkspaceRedirect and performs the redirect
  */
-export async function handleWorkspaceRedirect(session: Session | null): Promise<void> {
+export async function handleWorkspaceRedirect(
+  session: Session | null,
+): Promise<void> {
   const result = await resolveUserWorkspaceRedirect(session);
-  
+
   if (result.shouldRedirect && result.redirectUrl) {
     redirect(result.redirectUrl);
   }
@@ -97,7 +103,10 @@ export async function handleWorkspaceRedirect(session: Session | null): Promise<
  * Validates if a user has access to a specific workspace
  * Returns the workspace slug if valid, null otherwise
  */
-export async function validateUserWorkspaceAccess(session: Session | null, requestedSlug: string): Promise<string | null> {
+export async function validateUserWorkspaceAccess(
+  session: Session | null,
+  requestedSlug: string,
+): Promise<string | null> {
   if (!session?.user) {
     return null;
   }
@@ -106,11 +115,13 @@ export async function validateUserWorkspaceAccess(session: Session | null, reque
 
   try {
     const userWorkspaces = await getUserWorkspaces(userId);
-    const hasAccess = userWorkspaces.some(workspace => workspace.slug === requestedSlug);
-    
+    const hasAccess = userWorkspaces.some(
+      (workspace) => workspace.slug === requestedSlug,
+    );
+
     return hasAccess ? requestedSlug : null;
   } catch (error) {
-    console.error('Error validating workspace access:', error);
+    console.error("Error validating workspace access:", error);
     return null;
   }
-} 
+}

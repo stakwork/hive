@@ -61,7 +61,11 @@ export function FeatureDetailDialog({
   };
 
   const handleDelete = () => {
-    if (window.confirm("Are you sure you want to delete this feature? This action cannot be undone.")) {
+    if (
+      window.confirm(
+        "Are you sure you want to delete this feature? This action cannot be undone.",
+      )
+    ) {
       onDeleteFeature(feature.id);
     }
   };
@@ -98,28 +102,47 @@ export function FeatureDetailDialog({
             </div>
 
             <div className="flex gap-2 flex-wrap mt-4">
-              <Badge variant="secondary" className={getStatusColor(feature.status)}>
-                {feature.status.charAt(0).toUpperCase() + feature.status.slice(1).replace('-', ' ')}
+              <Badge
+                variant="secondary"
+                className={getStatusColor(feature.status)}
+              >
+                {feature.status.charAt(0).toUpperCase() +
+                  feature.status.slice(1).replace("-", " ")}
               </Badge>
-              <Badge variant="outline" className={getPriorityColor(feature.priority)}>
-                {feature.priority.charAt(0).toUpperCase() + feature.priority.slice(1)} Priority
+              <Badge
+                variant="outline"
+                className={getPriorityColor(feature.priority)}
+              >
+                {feature.priority.charAt(0).toUpperCase() +
+                  feature.priority.slice(1)}{" "}
+                Priority
               </Badge>
             </div>
           </DialogHeader>
 
           <Separator />
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Overview
               </TabsTrigger>
-              <TabsTrigger value="user-stories" className="flex items-center gap-2">
+              <TabsTrigger
+                value="user-stories"
+                className="flex items-center gap-2"
+              >
                 <Users className="w-4 h-4" />
                 User Stories ({feature.userStories.length})
               </TabsTrigger>
-              <TabsTrigger value="requirements" className="flex items-center gap-2">
+              <TabsTrigger
+                value="requirements"
+                className="flex items-center gap-2"
+              >
                 <Sparkles className="w-4 h-4" />
                 Requirements ({feature.requirements.length})
               </TabsTrigger>
@@ -129,7 +152,9 @@ export function FeatureDetailDialog({
               <TabsContent value="overview" className="mt-4 space-y-4">
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-lg font-semibold mb-2">Feature Brief</h3>
+                    <h3 className="text-lg font-semibold mb-2">
+                      Feature Brief
+                    </h3>
                     <p className="text-muted-foreground leading-relaxed">
                       {feature.brief}
                     </p>
@@ -138,14 +163,23 @@ export function FeatureDetailDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <h4 className="font-medium mb-2">Status</h4>
-                      <Badge variant="secondary" className={getStatusColor(feature.status)}>
-                        {feature.status.charAt(0).toUpperCase() + feature.status.slice(1).replace('-', ' ')}
+                      <Badge
+                        variant="secondary"
+                        className={getStatusColor(feature.status)}
+                      >
+                        {feature.status.charAt(0).toUpperCase() +
+                          feature.status.slice(1).replace("-", " ")}
                       </Badge>
                     </div>
                     <div>
                       <h4 className="font-medium mb-2">Priority</h4>
-                      <Badge variant="outline" className={getPriorityColor(feature.priority)}>
-                        {feature.priority.charAt(0).toUpperCase() + feature.priority.slice(1)} Priority
+                      <Badge
+                        variant="outline"
+                        className={getPriorityColor(feature.priority)}
+                      >
+                        {feature.priority.charAt(0).toUpperCase() +
+                          feature.priority.slice(1)}{" "}
+                        Priority
                       </Badge>
                     </div>
                   </div>
@@ -153,35 +187,51 @@ export function FeatureDetailDialog({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <h4 className="font-medium mb-2">User Stories</h4>
-                      <p className="text-2xl font-bold text-primary">{feature.userStories.length}</p>
-                      <p className="text-sm text-muted-foreground">Stories defined</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {feature.userStories.length}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Stories defined
+                      </p>
                     </div>
                     <div>
                       <h4 className="font-medium mb-2">Requirements</h4>
-                      <p className="text-2xl font-bold text-primary">{feature.requirements.length}</p>
-                      <p className="text-sm text-muted-foreground">Requirements documented</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {feature.requirements.length}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Requirements documented
+                      </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                     <div>
-                      <span className="font-medium">Created:</span> {new Date(feature.createdAt).toLocaleDateString()}
+                      <span className="font-medium">Created:</span>{" "}
+                      {new Date(feature.createdAt).toLocaleDateString()}
                     </div>
                     <div>
-                      <span className="font-medium">Last Updated:</span> {new Date(feature.updatedAt).toLocaleDateString()}
+                      <span className="font-medium">Last Updated:</span>{" "}
+                      {new Date(feature.updatedAt).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="user-stories" className="mt-4 flex-1 overflow-hidden">
+              <TabsContent
+                value="user-stories"
+                className="mt-4 flex-1 overflow-hidden"
+              >
                 <UserStoriesTab
                   feature={feature}
                   onUpdateFeature={onUpdateFeature}
                 />
               </TabsContent>
 
-              <TabsContent value="requirements" className="mt-4 flex-1 overflow-hidden">
+              <TabsContent
+                value="requirements"
+                className="mt-4 flex-1 overflow-hidden"
+              >
                 <RequirementsTab
                   feature={feature}
                   onUpdateFeature={onUpdateFeature}
@@ -200,4 +250,4 @@ export function FeatureDetailDialog({
       />
     </>
   );
-} 
+}

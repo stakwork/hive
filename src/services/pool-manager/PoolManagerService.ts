@@ -1,8 +1,25 @@
-import { BaseServiceClass } from '@/lib/base-service';
-import { PoolUserResponse, ServiceConfig } from '@/types';
-import { CreateUserRequest, CreatePoolRequest, GetPoolRequest, DeletePoolRequest, UpdatePoolRequest, Pool, PoolUser } from '@/types';
-import { fetchPoolEnvVars, updatePoolEnvVarsApi } from '@/services/pool-manager/api/envVars';
-import { createUserApi, createPoolApi, getPoolApi, deletePoolApi, updatePoolApi } from '@/services/pool-manager/api/pool';
+import { BaseServiceClass } from "@/lib/base-service";
+import { PoolUserResponse, ServiceConfig } from "@/types";
+import {
+  CreateUserRequest,
+  CreatePoolRequest,
+  GetPoolRequest,
+  DeletePoolRequest,
+  UpdatePoolRequest,
+  Pool,
+} from "@/types";
+import {
+  fetchPoolEnvVars,
+  updatePoolDataApi,
+} from "@/services/pool-manager/api/envVars";
+import {
+  createUserApi,
+  createPoolApi,
+  getPoolApi,
+  deletePoolApi,
+  updatePoolApi,
+} from "@/services/pool-manager/api/pool";
+import { DevContainerFile } from "@/utils/devContainerUtils";
 
 interface IPoolManagerService {
   createUser: (user: CreateUserRequest) => Promise<PoolUserResponse>;
@@ -10,12 +27,24 @@ interface IPoolManagerService {
   getPool: (pool: GetPoolRequest) => Promise<Pool>;
   updatePool: (pool: UpdatePoolRequest) => Promise<Pool>;
   deletePool: (pool: DeletePoolRequest) => Promise<Pool>;
-  getPoolEnvVars: (poolName: string, poolApiKey: string) => Promise<Array<{ key: string; value: string }>>;
-  updatePoolEnvVars: (poolName: string, poolApiKey: string, envVars: Array<{ key: string; value: string }>, currentEnvVars: Array<{ key: string; value: string; masked?: boolean }>) => Promise<void>;
+  getPoolEnvVars: (
+    poolName: string,
+    poolApiKey: string,
+  ) => Promise<Array<{ key: string; value: string }>>;
+  updatePoolData: (
+    poolName: string,
+    poolApiKey: string,
+    envVars: Array<{ name: string; value: string }>,
+    currentEnvVars: Array<{ name: string; value: string; masked?: boolean }>,
+    containerFiles: Record<string, DevContainerFile>,
+  ) => Promise<void>;
 }
 
-export class PoolManagerService extends BaseServiceClass implements IPoolManagerService {
-  public readonly serviceName = 'poolManager';
+export class PoolManagerService
+  extends BaseServiceClass
+  implements IPoolManagerService
+{
+  public readonly serviceName = "poolManager";
 
   constructor(config: ServiceConfig) {
     super(config);
@@ -41,16 +70,26 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
     return deletePoolApi(this.getClient(), pool, this.serviceName);
   }
 
-  async getPoolEnvVars(poolName: string, poolApiKey: string): Promise<Array<{ key: string; value: string }>> {
+  async getPoolEnvVars(
+    poolName: string,
+    poolApiKey: string,
+  ): Promise<Array<{ key: string; value: string }>> {
     return fetchPoolEnvVars(poolName, poolApiKey);
   }
 
-  async updatePoolEnvVars(
+  async updatePoolData(
     poolName: string,
     poolApiKey: string,
-    envVars: Array<{ key: string; value: string }>,
-    currentEnvVars: Array<{ key: string; value: string; masked?: boolean }>
+    envVars: Array<{ name: string; value: string }>,
+    currentEnvVars: Array<{ name: string; value: string; masked?: boolean }>,
+    containerFiles: Record<string, DevContainerFile>,
   ): Promise<void> {
-    return updatePoolEnvVarsApi(poolName, poolApiKey, envVars, currentEnvVars);
+    return updatePoolDataApi(
+      poolName,
+      poolApiKey,
+      envVars,
+      currentEnvVars,
+      containerFiles,
+    );
   }
-} 
+}

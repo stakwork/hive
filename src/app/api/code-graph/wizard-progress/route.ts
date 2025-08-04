@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/nextauth';
-import { db } from '@/lib/db';
-import { validateUserWorkspaceAccess } from '@/lib/auth/workspace-resolver';
-import { SwarmWizardStep, StepStatus, Prisma } from '@prisma/client';
-import { WizardProgressRequest, WizardProgressResponse } from '@/types/wizard';
-import { saveOrUpdateSwarm } from '@/services/swarm/db';
-import { enumFromString } from '@/utils/enum';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth/nextauth";
+import { db } from "@/lib/db";
+import { validateUserWorkspaceAccess } from "@/lib/auth/workspace-resolver";
+import { SwarmWizardStep, StepStatus, Prisma } from "@prisma/client";
+import { WizardProgressRequest, WizardProgressResponse } from "@/types/wizard";
+import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { enumFromString } from "@/utils/enum";
 
 // Valid wizard step order for validation
 const WIZARD_STEP_ORDER: SwarmWizardStep[] = [
@@ -18,29 +18,39 @@ const WIZARD_STEP_ORDER: SwarmWizardStep[] = [
   SwarmWizardStep.ADD_SERVICES,
   SwarmWizardStep.ENVIRONMENT_SETUP,
   SwarmWizardStep.REVIEW_POOL_ENVIRONMENT,
-  SwarmWizardStep.STAKWORK_SETUP
+  SwarmWizardStep.STAKWORK_SETUP,
+  SwarmWizardStep.COMPLETION,
 ];
 
 // Valid step status transitions
 const VALID_STATUS_TRANSITIONS: Record<StepStatus, StepStatus[]> = {
-  PENDING: ['STARTED', 'PROCESSING'],
-  STARTED: ['PROCESSING', 'COMPLETED', 'FAILED'],
-  PROCESSING: ['COMPLETED', 'FAILED'],
-  COMPLETED: ['STARTED'], // Can go back to restart a step
-  FAILED: ['STARTED', 'PROCESSING']
+  PENDING: ["STARTED", "PROCESSING"],
+  STARTED: ["PROCESSING", "COMPLETED", "FAILED"],
+  PROCESSING: ["COMPLETED", "FAILED"],
+  COMPLETED: ["STARTED", "PENDING"], // Can go back to restart a step
+  FAILED: ["STARTED", "PROCESSING"],
 };
 
-function validateStepTransition(currentStep: SwarmWizardStep, newStep: SwarmWizardStep): boolean {
+function validateStepTransition(
+  currentStep: SwarmWizardStep,
+  newStep: SwarmWizardStep,
+): boolean {
   const currentIndex = WIZARD_STEP_ORDER.indexOf(currentStep);
   const newIndex = WIZARD_STEP_ORDER.indexOf(newStep);
-  
+
   // Allow staying on the same step or moving to next step
   // Also allow moving backward (for editing previous steps)
   return newIndex >= 0 && currentIndex >= 0;
 }
 
-function validateStatusTransition(currentStatus: StepStatus, newStatus: StepStatus): boolean {
-  return VALID_STATUS_TRANSITIONS[currentStatus]?.includes(newStatus) || currentStatus === newStatus;
+function validateStatusTransition(
+  currentStatus: StepStatus,
+  newStatus: StepStatus,
+): boolean {
+  return (
+    VALID_STATUS_TRANSITIONS[currentStatus]?.includes(newStatus) ||
+    currentStatus === newStatus
+  );
 }
 
 export async function PUT(request: NextRequest) {
@@ -48,10 +58,13 @@ export async function PUT(request: NextRequest) {
     // Get session and validate user
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({
-        success: false,
-        message: 'Unauthorized',
-      } as WizardProgressResponse, { status: 401 });
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        } as WizardProgressResponse,
+        { status: 401 },
+      );
     }
 
     // Parse request body
@@ -59,23 +72,40 @@ export async function PUT(request: NextRequest) {
     const { workspaceSlug, wizardStep, stepStatus, wizardData } = body;
 
     // Convert types to Prisma enums if provided
-    const prismaWizardStep = enumFromString(SwarmWizardStep, wizardStep, SwarmWizardStep.WELCOME);
-    const prismaStepStatus = enumFromString(StepStatus, stepStatus, StepStatus.PENDING);
+    const prismaWizardStep = enumFromString(
+      SwarmWizardStep,
+      wizardStep,
+      SwarmWizardStep.WELCOME,
+    );
+    const prismaStepStatus = enumFromString(
+      StepStatus,
+      stepStatus,
+      StepStatus.PENDING,
+    );
 
     if (!workspaceSlug) {
-      return NextResponse.json({
-        success: false,
-        message: 'Workspace slug is required',
-      } as WizardProgressResponse, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Workspace slug is required",
+        } as WizardProgressResponse,
+        { status: 400 },
+      );
     }
 
     // Validate workspace access
-    const validatedSlug = await validateUserWorkspaceAccess(session, workspaceSlug);
+    const validatedSlug = await validateUserWorkspaceAccess(
+      session,
+      workspaceSlug,
+    );
     if (!validatedSlug) {
-      return NextResponse.json({
-        success: false,
-        message: 'Access denied to workspace',
-      } as WizardProgressResponse, { status: 403 });
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Access denied to workspace",
+        } as WizardProgressResponse,
+        { status: 403 },
+      );
     }
 
     // Get workspace
@@ -90,10 +120,13 @@ export async function PUT(request: NextRequest) {
     });
 
     if (!workspace) {
-      return NextResponse.json({
-        success: false,
-        message: 'Workspace not found',
-      } as WizardProgressResponse, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Workspace not found",
+        } as WizardProgressResponse,
+        { status: 404 },
+      );
     }
 
     // Get current swarm state or create one if it doesn't exist
@@ -109,13 +142,13 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    console.log("currentSwarm", currentSwarm)
-    console.log("wizardStep:", prismaWizardStep)
-    console.log("stepStatus:", prismaStepStatus)
+    console.log("currentSwarm", currentSwarm);
+    console.log("wizardStep:", prismaWizardStep);
+    console.log("stepStatus:", prismaStepStatus);
+    console.log("wizardData", wizardData);
 
     // Use saveOrUpdateSwarm to create or update the swarm
-    const swarm = await saveOrUpdateSwarm(
-      {
+    const swarm = await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       wizardStep: prismaWizardStep,
       stepStatus: prismaStepStatus,
@@ -123,31 +156,47 @@ export async function PUT(request: NextRequest) {
     });
 
     // Validate step transition if wizardStep is provided
-    if (prismaWizardStep && currentSwarm && !validateStepTransition(currentSwarm.wizardStep, prismaWizardStep)) {
-      return NextResponse.json({
-        success: false,
-        message: `Invalid wizard step transition from ${currentSwarm.wizardStep} to ${prismaWizardStep}`,
-      } as WizardProgressResponse, { status: 400 });
+    if (
+      prismaWizardStep &&
+      currentSwarm &&
+      !validateStepTransition(currentSwarm.wizardStep, prismaWizardStep)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Invalid wizard step transition from ${currentSwarm.wizardStep} to ${prismaWizardStep}`,
+        } as WizardProgressResponse,
+        { status: 400 },
+      );
     }
 
     // Validate status transition if stepStatus is provided
-    if (prismaStepStatus && currentSwarm && !validateStatusTransition(currentSwarm.stepStatus, prismaStepStatus)) {
-      return NextResponse.json({
-        success: false,
-        message: `Invalid step status transition from ${currentSwarm.stepStatus} to ${prismaStepStatus}`,
-      } as WizardProgressResponse, { status: 400 });
+    if (
+      prismaStepStatus &&
+      currentSwarm &&
+      !validateStatusTransition(currentSwarm.stepStatus, prismaStepStatus)
+    ) {
+      console.log(
+        "Invalid step status transition from",
+        currentSwarm.stepStatus,
+        "to",
+        prismaStepStatus,
+      );
     }
 
     // Parse wizard data if it's a string
     let parsedWizardData: Record<string, unknown> = {};
-    if (typeof swarm.wizardData === 'string') {
+    if (typeof swarm.wizardData === "string") {
       try {
         parsedWizardData = JSON.parse(swarm.wizardData);
       } catch (error) {
-        console.warn('Failed to parse wizard data:', error);
+        console.warn("Failed to parse wizard data:", error);
         parsedWizardData = {};
       }
-    } else if (typeof swarm.wizardData === 'object' && swarm.wizardData !== null) {
+    } else if (
+      typeof swarm.wizardData === "object" &&
+      swarm.wizardData !== null
+    ) {
       parsedWizardData = swarm.wizardData as Record<string, unknown>;
     }
 
@@ -159,13 +208,15 @@ export async function PUT(request: NextRequest) {
         wizardData: parsedWizardData,
       },
     } as WizardProgressResponse);
-
   } catch (error) {
-    console.error('Error updating wizard progress:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Internal server error',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    } as WizardProgressResponse, { status: 500 });
+    console.error("Error updating wizard progress:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Internal server error",
+        error: error instanceof Error ? error.message : "Unknown error",
+      } as WizardProgressResponse,
+      { status: 500 },
+    );
   }
 }

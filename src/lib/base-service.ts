@@ -9,9 +9,13 @@ export abstract class BaseServiceClass implements BaseService {
   constructor(config: ServiceConfig) {
     this.config = config;
 
-    console.log('--------------------------------config--------------------------------')
-    console.log(config)
-    console.log('--------------------------------config--------------------------------')
+    console.log(
+      "--------------------------------config--------------------------------",
+    );
+    console.log(config);
+    console.log(
+      "--------------------------------config--------------------------------",
+    );
 
     this.client = new HttpClient({
       baseURL: config.baseURL,
@@ -34,7 +38,7 @@ export abstract class BaseServiceClass implements BaseService {
 
   protected async handleRequest<T>(
     requestFn: () => Promise<T>,
-    context: string = "request"
+    context: string = "request",
   ): Promise<T> {
     try {
       return await requestFn();

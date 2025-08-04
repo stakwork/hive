@@ -1,39 +1,39 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
-import { ServiceDataConfig, ServicesData } from "@/components/stakgraph/types";
-import { WizardStep } from "@/types/wizard";
+import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { useCallback, useState } from "react";
-import { ServiceConfig } from "@/types";
 
 interface ServicesStepProps {
   onNext: () => void;
   onBack: () => void;
 }
 
-export const ServicesStep = ({
-  onNext,
-  onBack,
-}: ServicesStepProps) => {
-
+export const ServicesStep = ({ onNext, onBack }: ServicesStepProps) => {
   const services = useWizardStore((s) => s.services);
   const setServices = useWizardStore((s) => s.setServices);
   const workspaceId = useWizardStore((s) => s.workspaceId);
   const swarmId = useWizardStore((s) => s.swarmId);
   const [loading, setLoading] = useState(false);
 
-  console.log(services)
-
-  const onServicesChange = useCallback((data: ServiceDataConfig[]) => {
-    setServices(data);
-  }, [services]);
+  const onServicesChange = useCallback(
+    (data: ServiceDataConfig[]) => {
+      setServices(data);
+    },
+    [services],
+  );
 
   const handleNext = useCallback(async () => {
-
     try {
-      await fetch('/api/swarm', {
-        method: 'PUT',
+      await fetch("/api/swarm", {
+        method: "PUT",
         body: JSON.stringify({
           services: services,
           swarmId: swarmId,
@@ -53,26 +53,53 @@ export const ServicesStep = ({
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
         <div className="flex items-center justify-center mx-auto mb-4">
-          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="12" y="20" width="40" height="24" rx="6" fill="#F3F4F6" stroke="#60A5FA" strokeWidth="2" />
-            <path d="M24 32h16" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" />
+          <svg
+            width="64"
+            height="64"
+            viewBox="0 0 64 64"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect
+              x="12"
+              y="20"
+              width="40"
+              height="24"
+              rx="6"
+              fill="#F3F4F6"
+              stroke="#60A5FA"
+              strokeWidth="2"
+            />
+            <path
+              d="M24 32h16"
+              stroke="#2563EB"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
             <circle cx="32" cy="32" r="4" fill="#60A5FA" />
           </svg>
         </div>
         <CardTitle className="text-2xl">Add Services</CardTitle>
-        <CardDescription>Define your services, ports, and scripts for your project.</CardDescription>
+        <CardDescription>
+          Define your services, ports, and scripts for your project.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <ServicesForm
           data={services ?? []}
           loading={false}
-          onChange={partial => onServicesChange(partial)}
+          onChange={(partial) => onServicesChange(partial)}
         />
         <div className="flex justify-between pt-6">
           <Button variant="outline" type="button" onClick={() => onBack()}>
             Back
           </Button>
-          <Button disabled={loading} className="px-8 bg-primary text-primary-foreground hover:bg-primary/90" type="button" onClick={handleNext}>
+          <Button
+            disabled={loading}
+            className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
+            type="button"
+            onClick={handleNext}
+          >
             Next
           </Button>
         </div>

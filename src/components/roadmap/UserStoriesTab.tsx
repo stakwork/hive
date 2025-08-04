@@ -1,7 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,7 +21,10 @@ interface UserStoriesTabProps {
   onUpdateFeature: (feature: Feature) => void;
 }
 
-export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps) {
+export function UserStoriesTab({
+  feature,
+  onUpdateFeature,
+}: UserStoriesTabProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedStory, setSelectedStory] = useState<UserStory | null>(null);
@@ -25,12 +34,12 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
       ...storyData,
       id: Date.now().toString(),
     };
-    
+
     const updatedFeature = {
       ...feature,
       userStories: [...feature.userStories, newStory],
     };
-    
+
     onUpdateFeature(updatedFeature);
     setCreateDialogOpen(false);
   };
@@ -38,11 +47,11 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
   const handleUpdateStory = (updatedStory: UserStory) => {
     const updatedFeature = {
       ...feature,
-      userStories: feature.userStories.map(story =>
-        story.id === updatedStory.id ? updatedStory : story
+      userStories: feature.userStories.map((story) =>
+        story.id === updatedStory.id ? updatedStory : story,
       ),
     };
-    
+
     onUpdateFeature(updatedFeature);
     setEditDialogOpen(false);
     setSelectedStory(null);
@@ -52,9 +61,11 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
     if (window.confirm("Are you sure you want to delete this user story?")) {
       const updatedFeature = {
         ...feature,
-        userStories: feature.userStories.filter(story => story.id !== storyId),
+        userStories: feature.userStories.filter(
+          (story) => story.id !== storyId,
+        ),
       };
-      
+
       onUpdateFeature(updatedFeature);
     }
   };
@@ -95,9 +106,12 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Users className="w-12 h-12 text-muted-foreground mb-4" />
-              <h4 className="text-lg font-semibold mb-2">No user stories yet</h4>
+              <h4 className="text-lg font-semibold mb-2">
+                No user stories yet
+              </h4>
               <p className="text-muted-foreground text-center mb-4">
-                Start by adding your first user story to define what users need from this feature
+                Start by adding your first user story to define what users need
+                from this feature
               </p>
               <Button onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -108,7 +122,10 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
         ) : (
           <div className="space-y-4">
             {feature.userStories.map((story) => (
-              <Card key={story.id} className="hover:shadow-md transition-shadow">
+              <Card
+                key={story.id}
+                className="hover:shadow-md transition-shadow"
+              >
                 <CardHeader className="pb-4">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -136,31 +153,41 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
                     </div>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent>
                   <div className="space-y-4">
                     <div className="bg-muted/50 p-4 rounded-lg">
                       <p className="text-sm">
                         <span className="font-medium">As a</span> {story.asA},{" "}
-                        <span className="font-medium">I want</span> {story.iWant},{" "}
-                        <span className="font-medium">so that</span> {story.soThat}.
+                        <span className="font-medium">I want</span>{" "}
+                        {story.iWant},{" "}
+                        <span className="font-medium">so that</span>{" "}
+                        {story.soThat}.
                       </p>
                     </div>
 
-                    {story.acceptanceCriteria && story.acceptanceCriteria.length > 0 && (
-                      <div>
-                        <h5 className="font-medium mb-2">Acceptance Criteria</h5>
-                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                          {story.acceptanceCriteria.map((criteria, index) => (
-                            <li key={index}>{criteria}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    {story.acceptanceCriteria &&
+                      story.acceptanceCriteria.length > 0 && (
+                        <div>
+                          <h5 className="font-medium mb-2">
+                            Acceptance Criteria
+                          </h5>
+                          <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                            {story.acceptanceCriteria.map((criteria, index) => (
+                              <li key={index}>{criteria}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
                     <div className="flex justify-between items-center">
-                      <Badge variant="outline" className={getPriorityColor(story.priority)}>
-                        {story.priority.charAt(0).toUpperCase() + story.priority.slice(1)} Priority
+                      <Badge
+                        variant="outline"
+                        className={getPriorityColor(story.priority)}
+                      >
+                        {story.priority.charAt(0).toUpperCase() +
+                          story.priority.slice(1)}{" "}
+                        Priority
                       </Badge>
                     </div>
                   </div>
@@ -187,4 +214,4 @@ export function UserStoriesTab({ feature, onUpdateFeature }: UserStoriesTabProps
       )}
     </div>
   );
-} 
+}

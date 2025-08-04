@@ -18,7 +18,7 @@ import {
 
 // Existing functions
 export async function createWorkspace(
-  data: CreateWorkspaceRequest
+  data: CreateWorkspaceRequest,
 ): Promise<WorkspaceResponse> {
   // Validate the slug before creating
   const slugValidation = validateWorkspaceSlug(data.slug);
@@ -68,7 +68,7 @@ export async function createWorkspace(
 }
 
 export async function getWorkspacesByUserId(
-  userId: string
+  userId: string,
 ): Promise<WorkspaceResponse[]> {
   const workspaces = await db.workspace.findMany({
     where: { ownerId: userId },
@@ -86,7 +86,7 @@ export async function getWorkspacesByUserId(
  */
 export async function getWorkspaceBySlug(
   slug: string,
-  userId: string
+  userId: string,
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info and swarm status
   const workspace = await db.workspace.findFirst({
@@ -158,7 +158,7 @@ export async function getWorkspaceBySlug(
  * Gets all workspaces a user has access to, including their role
  */
 export async function getUserWorkspaces(
-  userId: string
+  userId: string,
 ): Promise<WorkspaceWithRole[]> {
   const result: WorkspaceWithRole[] = [];
 
@@ -229,7 +229,7 @@ export async function getUserWorkspaces(
  */
 export async function validateWorkspaceAccess(
   slug: string,
-  userId: string
+  userId: string,
 ): Promise<WorkspaceAccessValidation> {
   const workspace = await getWorkspaceBySlug(slug, userId);
 
@@ -266,7 +266,7 @@ export async function validateWorkspaceAccess(
  * Gets the user's default/primary workspace (first owned, then first member)
  */
 export async function getDefaultWorkspaceForUser(
-  userId: string
+  userId: string,
 ): Promise<WorkspaceResponse | null> {
   // Try to get the first owned workspace
   const ownedWorkspace = await db.workspace.findFirst({
@@ -312,7 +312,7 @@ export async function getDefaultWorkspaceForUser(
  */
 export async function deleteWorkspaceBySlug(
   slug: string,
-  userId: string
+  userId: string,
 ): Promise<void> {
   // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
@@ -356,7 +356,7 @@ export function validateWorkspaceSlug(slug: string): {
   // Check against reserved slugs
   if (
     RESERVED_WORKSPACE_SLUGS.includes(
-      slug as (typeof RESERVED_WORKSPACE_SLUGS)[number]
+      slug as (typeof RESERVED_WORKSPACE_SLUGS)[number],
     )
   ) {
     return { isValid: false, error: WORKSPACE_ERRORS.SLUG_RESERVED };
