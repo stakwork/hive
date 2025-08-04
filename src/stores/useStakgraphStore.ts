@@ -138,11 +138,17 @@ export const useStakgraphStore = create<StakgraphStore>()(
         } else if (response.status === 404) {
           // No swarm found - this is expected for workspaces without swarms
           console.log("No swarm found for this workspace yet");
+          // Reset form data to initial state for workspaces without swarms
+          set({ formData: initialFormData, envVars: [] });
         } else {
           console.error("Failed to load stakgraph settings");
+          // Reset form data on error to prevent stale data
+          set({ formData: initialFormData, envVars: [] });
         }
       } catch (error) {
         console.error("Error loading stakgraph settings:", error);
+        // Reset form data on error to prevent stale data
+        set({ formData: initialFormData, envVars: [] });
       } finally {
         set({ initialLoading: false });
       }
