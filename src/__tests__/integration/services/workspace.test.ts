@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, beforeAll } from "vitest";
 import { 
   createWorkspace,
   getWorkspacesByUserId,
@@ -15,6 +15,15 @@ import {
 import type { User, Workspace, Swarm } from "@prisma/client";
 
 describe("Workspace Service - Integration Tests", () => {
+   const generateRandomString = (length = 8) => {
+    const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+  };
+
   let testUser1: User;
   let testUser2: User;
   let testUser3: User;
@@ -24,31 +33,32 @@ describe("Workspace Service - Integration Tests", () => {
     testUser1 = await db.user.create({
       data: {
         name: "Test User 1",
-        email: "user1@example.com",
+        email: `user1_${generateRandomString()}@example.com`,
       },
     });
 
     testUser2 = await db.user.create({
       data: {
         name: "Test User 2", 
-        email: "user2@example.com",
+        email: `user2_${generateRandomString()}@example.com`,
       },
     });
 
     testUser3 = await db.user.create({
       data: {
         name: "Test User 3",
-        email: "user3@example.com",
+        email: `user3_${generateRandomString()}@example.com`,
       },
     });
   });
 
   describe("createWorkspace", () => {
     test("should create workspace successfully", async () => {
+      const slug_value = `test-workspace${generateRandomString()}`
       const workspaceData = {
         name: "Test Workspace",
         description: "A test workspace for integration testing",
-        slug: "test-workspace",
+        slug: slug_value,
         ownerId: testUser1.id,
       };
 
@@ -57,7 +67,7 @@ describe("Workspace Service - Integration Tests", () => {
       expect(result).toMatchObject({
         name: "Test Workspace",
         description: "A test workspace for integration testing",
-        slug: "test-workspace",
+        slug: slug_value,
         ownerId: testUser1.id,
       });
       expect(result.id).toBeDefined();
@@ -69,13 +79,14 @@ describe("Workspace Service - Integration Tests", () => {
         where: { id: result.id },
       });
       expect(workspaceInDb).toBeTruthy();
-      expect(workspaceInDb?.slug).toBe("test-workspace");
+      expect(workspaceInDb?.slug).toBe(slug_value);
     });
 
     test("should throw error for duplicate slug", async () => {
+      const slug_value = `duplicat-slug${generateRandomString()}`
       const workspaceData = {
         name: "Test Workspace",
-        slug: "duplicate-slug",
+        slug: slug_value,
         ownerId: testUser1.id,
       };
 
@@ -95,9 +106,10 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should handle workspace creation with minimal data", async () => {
+      const slug_value = `minimal-workspace${generateRandomString()}`
       const workspaceData = {
         name: "Minimal Workspace",
-        slug: "minimal-workspace",
+        slug: slug_value,
         ownerId: testUser1.id,
       };
 
@@ -110,11 +122,14 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("getWorkspacesByUserId", () => {
     test("should return workspaces owned by user", async () => {
+      const slug_value = `workspace-1${generateRandomString()}`
+      const slug_value_2 = `workspace-2${generateRandomString()}`
+      const other_slug_value = `other-workspace${generateRandomString()}`
       // Create workspaces for user1
       await db.workspace.create({
         data: {
           name: "Workspace 1",
-          slug: "workspace-1",
+          slug: slug_value,
           ownerId: testUser1.id,
         },
       });
@@ -122,7 +137,7 @@ describe("Workspace Service - Integration Tests", () => {
       await db.workspace.create({
         data: {
           name: "Workspace 2",
-          slug: "workspace-2", 
+          slug: slug_value_2, 
           ownerId: testUser1.id,
         },
       });
@@ -131,7 +146,7 @@ describe("Workspace Service - Integration Tests", () => {
       await db.workspace.create({
         data: {
           name: "Other Workspace",
-          slug: "other-workspace",
+          slug: other_slug_value,
           ownerId: testUser2.id,
         },
       });
@@ -139,9 +154,9 @@ describe("Workspace Service - Integration Tests", () => {
       const result = await getWorkspacesByUserId(testUser1.id);
 
       expect(result).toHaveLength(2);
-      expect(result.map(w => w.slug)).toContain("workspace-1");
-      expect(result.map(w => w.slug)).toContain("workspace-2");
-      expect(result.map(w => w.slug)).not.toContain("other-workspace");
+      expect(result.map(w => w.slug)).toContain(slug_value);
+      expect(result.map(w => w.slug)).toContain(slug_value_2);
+      expect(result.map(w => w.slug)).not.toContain(other_slug_value);
     });
 
     test("should return empty array for user with no workspaces", async () => {
@@ -151,15 +166,19 @@ describe("Workspace Service - Integration Tests", () => {
   });
 
   describe("getWorkspaceBySlug", () => {
+    let slug_value: string;
+    let name_value: string;
     let testWorkspace: Workspace;
     let testSwarm: Swarm;
 
     beforeEach(async () => {
+      slug_value = `test-workspace${generateRandomString()}`
+      name_value = `test-swarm${generateRandomString()}`
       testWorkspace = await db.workspace.create({
         data: {
           name: "Test Workspace",
           description: "Test description",
-          slug: "test-workspace",
+          slug: slug_value,
           ownerId: testUser1.id,
           stakworkApiKey: "test-api-key",
         },
@@ -167,7 +186,7 @@ describe("Workspace Service - Integration Tests", () => {
 
       testSwarm = await db.swarm.create({
         data: {
-          name: "test-swarm",
+          name: name_value,
           status: "ACTIVE",
           instanceType: "XL",
           workspaceId: testWorkspace.id,
@@ -176,13 +195,13 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should return workspace for owner", async () => {
-      const result = await getWorkspaceBySlug("test-workspace", testUser1.id);
+      const result = await getWorkspaceBySlug(slug_value, testUser1.id);
 
       expect(result).toMatchObject({
         id: testWorkspace.id,
         name: "Test Workspace",
         description: "Test description",
-        slug: "test-workspace",
+        slug: slug_value,
         ownerId: testUser1.id,
         userRole: "OWNER",
         hasKey: true,
@@ -205,7 +224,7 @@ describe("Workspace Service - Integration Tests", () => {
         },
       });
 
-      const result = await getWorkspaceBySlug("test-workspace", testUser2.id);
+      const result = await getWorkspaceBySlug(slug_value, testUser2.id);
 
       expect(result).toMatchObject({
         id: testWorkspace.id,
@@ -216,7 +235,7 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should return null for non-member", async () => {
-      const result = await getWorkspaceBySlug("test-workspace", testUser2.id);
+      const result = await getWorkspaceBySlug(slug_value, testUser2.id);
       expect(result).toBeNull();
     });
 
@@ -226,15 +245,17 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should handle workspace without swarm", async () => {
+      const slug_value_no_swarm = `no-swarm${generateRandomString()}`
+
       await db.workspace.create({
         data: {
           name: "No Swarm Workspace",
-          slug: "no-swarm",
+          slug: slug_value_no_swarm,
           ownerId: testUser1.id,
         },
       });
 
-      const result = await getWorkspaceBySlug("no-swarm", testUser1.id);
+      const result = await getWorkspaceBySlug(slug_value_no_swarm, testUser1.id);
 
       expect(result?.isCodeGraphSetup).toBe(false);
     });
@@ -245,7 +266,7 @@ describe("Workspace Service - Integration Tests", () => {
         data: { status: "FAILED" },
       });
 
-      const result = await getWorkspaceBySlug("test-workspace", testUser1.id);
+      const result = await getWorkspaceBySlug(slug_value, testUser1.id);
 
       expect(result?.isCodeGraphSetup).toBe(false);
     });
@@ -253,20 +274,22 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("getUserWorkspaces", () => {
     beforeEach(async () => {
+      const slug_value = `owned-workspace${generateRandomString()}`
       // Create owned workspace
       const ownedWorkspace = await db.workspace.create({
         data: {
           name: "Owned Workspace",
-          slug: "owned-workspace",
+          slug: slug_value,
           ownerId: testUser1.id,
         },
       });
 
+      const slug_value_2 = `member-workspace${generateRandomString()}`
       // Create member workspace
       const memberWorkspace = await db.workspace.create({
         data: {
           name: "Member Workspace",
-          slug: "member-workspace",
+          slug: slug_value_2,
           ownerId: testUser2.id,
         },
       });
@@ -314,11 +337,12 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should handle user with no workspace access", async () => {
+      const email_value = `isolated${generateRandomString()}@example.com`
       // Create a new user with no workspace access
       const isolatedUser = await db.user.create({
         data: {
           name: "Isolated User",
-          email: "isolated@example.com",
+          email: email_value,
         },
       });
 
@@ -327,10 +351,11 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should exclude left members from count", async () => {
+      const slug_value = `test-count${generateRandomString()}`
       const workspace = await db.workspace.create({
         data: {
           name: "Test Count Workspace",
-          slug: "test-count",
+          slug: slug_value,
           ownerId: testUser1.id,
         },
       });
@@ -355,7 +380,7 @@ describe("Workspace Service - Integration Tests", () => {
       });
 
       const result = await getUserWorkspaces(testUser1.id);
-      const testWorkspace = result.find(w => w.slug === "test-count");
+      const testWorkspace = result.find(w => w.slug === slug_value);
 
       expect(testWorkspace?.memberCount).toBe(2); // owner + active member only
     });
@@ -363,19 +388,21 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("validateWorkspaceAccess", () => {
     let testWorkspace: Workspace;
+    let slug_value: string
 
     beforeEach(async () => {
+      slug_value = `access-test${generateRandomString()}`
       testWorkspace = await db.workspace.create({
         data: {
           name: "Access Test Workspace",
-          slug: "access-test",
+          slug: slug_value,
           ownerId: testUser1.id,
         },
       });
     });
 
     test("should validate owner access", async () => {
-      const result = await validateWorkspaceAccess("access-test", testUser1.id);
+      const result = await validateWorkspaceAccess(slug_value, testUser1.id);
 
       expect(result).toMatchObject({
         hasAccess: true,
@@ -386,7 +413,7 @@ describe("Workspace Service - Integration Tests", () => {
       });
       expect(result.workspace).toMatchObject({
         id: testWorkspace.id,
-        slug: "access-test",
+        slug: slug_value,
       });
     });
 
@@ -414,7 +441,7 @@ describe("Workspace Service - Integration Tests", () => {
           },
         });
 
-        const result = await validateWorkspaceAccess("access-test", testUser2.id);
+        const result = await validateWorkspaceAccess(slug_value, testUser2.id);
 
         expect(result).toMatchObject({
           hasAccess: true,
@@ -427,7 +454,7 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should deny access for non-member", async () => {
-      const result = await validateWorkspaceAccess("access-test", testUser2.id);
+      const result = await validateWorkspaceAccess(slug_value, testUser2.id);
 
       expect(result).toMatchObject({
         hasAccess: false,
@@ -454,10 +481,12 @@ describe("Workspace Service - Integration Tests", () => {
   describe("getDefaultWorkspaceForUser", () => {
     test("should return oldest owned workspace", async () => {
       // Create workspaces with different creation times
+      const slug_value = `first-workspace${generateRandomString()}`
+      const slug_value_2 = `second-workspace${generateRandomString()}`
       const firstWorkspace = await db.workspace.create({
         data: {
           name: "First Workspace",
-          slug: "first-workspace",
+          slug: slug_value,
           ownerId: testUser1.id,
           createdAt: new Date("2024-01-01"),
         },
@@ -466,7 +495,7 @@ describe("Workspace Service - Integration Tests", () => {
       await db.workspace.create({
         data: {
           name: "Second Workspace",
-          slug: "second-workspace",
+          slug: slug_value_2,
           ownerId: testUser1.id,
           createdAt: new Date("2024-01-02"),
         },
@@ -475,14 +504,15 @@ describe("Workspace Service - Integration Tests", () => {
       const result = await getDefaultWorkspaceForUser(testUser1.id);
 
       expect(result?.id).toBe(firstWorkspace.id);
-      expect(result?.slug).toBe("first-workspace");
+      expect(result?.slug).toBe(slug_value);
     });
 
     test("should return oldest member workspace if no owned", async () => {
+      const slug_value = `member-workspace${generateRandomString()}`
       const memberWorkspace = await db.workspace.create({
         data: {
           name: "Member Workspace",
-          slug: "member-workspace", 
+          slug: slug_value, 
           ownerId: testUser2.id,
         },
       });
@@ -496,11 +526,12 @@ describe("Workspace Service - Integration Tests", () => {
         },
       });
 
+      const slug_value_2 = `another-workspace${generateRandomString()}`
       // Create another membership to ensure it picks the oldest
       const anotherWorkspace = await db.workspace.create({
         data: {
           name: "Another Workspace",
-          slug: "another-workspace",
+          slug: slug_value_2,
           ownerId: testUser2.id,
         },
       });
@@ -517,7 +548,7 @@ describe("Workspace Service - Integration Tests", () => {
       const result = await getDefaultWorkspaceForUser(testUser1.id);
 
       expect(result?.id).toBe(memberWorkspace.id);
-      expect(result?.slug).toBe("member-workspace");
+      expect(result?.slug).toBe(slug_value);
     });
 
     test("should return null if user has no workspaces", async () => {
@@ -528,12 +559,13 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("deleteWorkspaceBySlug", () => {
     let testWorkspace: Workspace;
-
+    let slug_value: string
     beforeEach(async () => {
+      slug_value = `delete-test${generateRandomString()}`
       testWorkspace = await db.workspace.create({
         data: {
           name: "Delete Test Workspace",
-          slug: "delete-test",
+          slug: slug_value,
           ownerId: testUser1.id,
         },
       });
@@ -556,7 +588,7 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should delete workspace as owner", async () => {
-      await deleteWorkspaceBySlug("delete-test", testUser1.id);
+      await deleteWorkspaceBySlug(slug_value, testUser1.id);
 
       // Verify workspace is deleted
       const deletedWorkspace = await db.workspace.findUnique({
@@ -577,7 +609,7 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should throw error if user is not owner", async () => {
-      await expect(deleteWorkspaceBySlug("delete-test", testUser2.id))
+      await expect(deleteWorkspaceBySlug(slug_value, testUser2.id))
         .rejects.toThrow("Only workspace owners can delete workspaces");
 
       // Verify workspace still exists
@@ -600,10 +632,11 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("Complex scenarios", () => {
     test("should handle workspace with left members correctly", async () => {
+      const slug_value = `complex-workspace${generateRandomString()}`
       const workspace = await db.workspace.create({
         data: {
           name: "Complex Workspace",
-          slug: "complex-workspace",
+          slug: slug_value,
           ownerId: testUser1.id,
         },
       });
@@ -628,27 +661,29 @@ describe("Workspace Service - Integration Tests", () => {
       });
 
       // Test getWorkspaceBySlug - should not find access for left member
-      const resultForLeftMember = await getWorkspaceBySlug("complex-workspace", testUser3.id);
+      const resultForLeftMember = await getWorkspaceBySlug(slug_value, testUser3.id);
       expect(resultForLeftMember).toBeNull();
 
       // Test getUserWorkspaces - should not include left member in count
       const userWorkspaces = await getUserWorkspaces(testUser1.id);
-      const complexWorkspace = userWorkspaces.find(w => w.slug === "complex-workspace");
+      const complexWorkspace = userWorkspaces.find(w => w.slug === slug_value);
       expect(complexWorkspace?.memberCount).toBe(2); // owner + active member only
     });
 
     test("should handle workspace operations across multiple users", async () => {
+      const slug_value = `multi-user-1${generateRandomString()}`
+      const slug_value_2 = `multi-user-2${generateRandomString()}`
       // Create workspace as user1
       await createWorkspace({
         name: "Multi-User Test 1",
-        slug: "multi-user-1",
+        slug: slug_value,
         ownerId: testUser1.id,
       });
 
       // Create workspace as user2  
       const workspace2 = await createWorkspace({
         name: "Multi-User Test 2",
-        slug: "multi-user-2",
+        slug: slug_value_2,
         ownerId: testUser2.id,
       });
 
@@ -664,13 +699,13 @@ describe("Workspace Service - Integration Tests", () => {
       // Test user1's workspaces (should see both)
       const user1Workspaces = await getUserWorkspaces(testUser1.id);
       expect(user1Workspaces).toHaveLength(2);
-      expect(user1Workspaces.find(w => w.slug === "multi-user-1")?.userRole).toBe("OWNER");
-      expect(user1Workspaces.find(w => w.slug === "multi-user-2")?.userRole).toBe("PM");
+      expect(user1Workspaces.find(w => w.slug === slug_value)?.userRole).toBe("OWNER");
+      expect(user1Workspaces.find(w => w.slug === slug_value_2)?.userRole).toBe("PM");
 
       // Test user2's workspaces (should see only owned)
       const user2Workspaces = await getUserWorkspaces(testUser2.id);
       expect(user2Workspaces).toHaveLength(1);
-      expect(user2Workspaces[0].slug).toBe("multi-user-2");
+      expect(user2Workspaces[0].slug).toBe(slug_value_2);
       expect(user2Workspaces[0].userRole).toBe("OWNER");
 
       // Test user3's workspaces (should see none)
