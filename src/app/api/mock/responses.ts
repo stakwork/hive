@@ -130,6 +130,7 @@ export function generateBugReportResponse(artifacts: { type: string; content: un
   let response = "Found source locations:\n";
   
   for (const artifact of bugReportArtifacts) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const content = artifact.content as any;
     if (content?.sourceFiles && Array.isArray(content.sourceFiles)) {
       for (const sourceFile of content.sourceFiles) {
@@ -155,7 +156,7 @@ export function generateLongformResponse() {
     createArtifact({
       id: "longform-1",
       messageId,
-      type: ArtifactType.LONGFORM,
+      type: "LONGFORM" as ArtifactType,
       content: {
         title: "Repomap: Project Hive Overview",
         text: REPOMAP,
