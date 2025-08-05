@@ -7,6 +7,7 @@ import {
 } from "@/types/workspace";
 import { WORKSPACE_ERRORS } from "@/lib/constants";
 import { validateWorkspaceSlug } from "./workspace-validation";
+import { getWorkspaceBySlug } from "./workspace-access";
 
 /**
  * Creates a new workspace
@@ -198,9 +199,7 @@ export async function deleteWorkspaceBySlug(
   slug: string,
   userId: string,
 ): Promise<void> {
-  // Import here to avoid circular dependency
-  const { getWorkspaceBySlug } = await import("./workspace-access");
-  
+  // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
   if (!workspace) {

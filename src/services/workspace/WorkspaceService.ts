@@ -5,13 +5,13 @@ import {
   WorkspaceWithAccess,
   WorkspaceAccessValidation,
   WorkspaceRole,
-  SlugValidationResult,
 } from "@/types/workspace";
 
 // Import all modules
 import * as crud from "./workspace-crud";
 import * as access from "./workspace-access";
 import * as validation from "./workspace-validation";
+import * as members from "./workspace-members";
 
 /**
  * Main WorkspaceService class that orchestrates all workspace operations
@@ -48,43 +48,28 @@ export class WorkspaceService {
     return access.validateWorkspaceAccess(slug, userId);
   }
 
-  static async hasWorkspacePermission(
-    slug: string,
-    userId: string,
-    requiredLevel: keyof typeof import("@/lib/constants").WORKSPACE_PERMISSION_LEVELS,
-  ): Promise<boolean> {
-    return access.hasWorkspacePermission(slug, userId, requiredLevel);
-  }
-
-  static async isWorkspaceOwner(slug: string, userId: string): Promise<boolean> {
-    return access.isWorkspaceOwner(slug, userId);
-  }
-
-  static async getUserRoleInWorkspace(slug: string, userId: string): Promise<WorkspaceRole | null> {
-    return access.getUserRoleInWorkspace(slug, userId);
-  }
-
   // Validation Operations
-  static validateWorkspaceSlug(slug: string): SlugValidationResult {
+  static validateWorkspaceSlug(slug: string): { isValid: boolean; error?: string } {
     return validation.validateWorkspaceSlug(slug);
   }
 
-  static validateWorkspaceName(name: string): SlugValidationResult {
-    return validation.validateWorkspaceName(name);
+  // Member Management Operations
+  static async getWorkspaceMembers(workspaceId: string) {
+    return members.getWorkspaceMembers(workspaceId);
   }
 
-  static validateWorkspaceDescription(description?: string): SlugValidationResult {
-    return validation.validateWorkspaceDescription(description);
+  static async addWorkspaceMember(workspaceId: string, githubUsername: string, role: WorkspaceRole) {
+    return members.addWorkspaceMember(workspaceId, githubUsername, role);
   }
 
-  static validateWorkspaceData(data: {
-    name: string;
-    slug: string;
-    description?: string;
-  }): SlugValidationResult {
-    return validation.validateWorkspaceData(data);
+  static async updateWorkspaceMemberRole(workspaceId: string, userId: string, newRole: WorkspaceRole) {
+    return members.updateWorkspaceMemberRole(workspaceId, userId, newRole);
+  }
+
+  static async removeWorkspaceMember(workspaceId: string, userId: string) {
+    return members.removeWorkspaceMember(workspaceId, userId);
   }
 }
 
 // Also export individual modules for granular access if needed
-export { crud, access, validation };
+export { crud, access, validation, members };
