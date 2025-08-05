@@ -7,6 +7,7 @@ import {
 } from "@/types/workspace";
 import { WORKSPACE_ERRORS } from "@/lib/constants";
 import { validateWorkspaceSlug } from "./workspace-validation";
+import { getWorkspaceBySlug } from "./workspace-access";
 
 /**
  * Creates a new workspace
@@ -196,9 +197,7 @@ export async function deleteWorkspaceBySlug(
   slug: string,
   userId: string,
 ): Promise<void> {
-  // Import here to avoid circular dependency
-  const { getWorkspaceBySlug } = await import("./workspace-access");
-  
+  // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
   if (!workspace) {
@@ -209,6 +208,7 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
+  // Delete the workspace (cascade will handle related records)
   await db.workspace.delete({
     where: {
       id: workspace.id,

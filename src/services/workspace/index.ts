@@ -13,16 +13,10 @@ export {
 export {
   getWorkspaceBySlug,
   validateWorkspaceAccess,
-  hasWorkspacePermission,
-  isWorkspaceOwner,
-  getUserRoleInWorkspace,
 } from "./workspace-access";
 
 export {
   validateWorkspaceSlug,
-  validateWorkspaceName,
-  validateWorkspaceDescription,
-  validateWorkspaceData,
 } from "./workspace-validation";
 
 // Module exports for granular access

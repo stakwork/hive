@@ -4,8 +4,6 @@ import {
   WorkspaceWithRole,
   WorkspaceWithAccess,
   WorkspaceAccessValidation,
-  WorkspaceRole,
-  SlugValidationResult,
 } from "@/types/workspace";
 
 // Import all modules
@@ -48,41 +46,9 @@ export class WorkspaceService {
     return access.validateWorkspaceAccess(slug, userId);
   }
 
-  static async hasWorkspacePermission(
-    slug: string,
-    userId: string,
-    requiredLevel: keyof typeof import("@/lib/constants").WORKSPACE_PERMISSION_LEVELS,
-  ): Promise<boolean> {
-    return access.hasWorkspacePermission(slug, userId, requiredLevel);
-  }
-
-  static async isWorkspaceOwner(slug: string, userId: string): Promise<boolean> {
-    return access.isWorkspaceOwner(slug, userId);
-  }
-
-  static async getUserRoleInWorkspace(slug: string, userId: string): Promise<WorkspaceRole | null> {
-    return access.getUserRoleInWorkspace(slug, userId);
-  }
-
   // Validation Operations
-  static validateWorkspaceSlug(slug: string): SlugValidationResult {
+  static validateWorkspaceSlug(slug: string): { isValid: boolean; error?: string } {
     return validation.validateWorkspaceSlug(slug);
-  }
-
-  static validateWorkspaceName(name: string): SlugValidationResult {
-    return validation.validateWorkspaceName(name);
-  }
-
-  static validateWorkspaceDescription(description?: string): SlugValidationResult {
-    return validation.validateWorkspaceDescription(description);
-  }
-
-  static validateWorkspaceData(data: {
-    name: string;
-    slug: string;
-    description?: string;
-  }): SlugValidationResult {
-    return validation.validateWorkspaceData(data);
   }
 }
 
