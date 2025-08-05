@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
-import { EnvironmentVariable } from "@/types";
-import { SwarmStatus, SwarmWizardStep, StepStatus } from "@prisma/client";
+import { StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
 
 // Add ServiceConfig interface for the services array
 export interface ServiceConfig {
@@ -34,6 +33,7 @@ interface SaveOrUpdateSwarmParams {
   stepStatus?: StepStatus;
   containerFiles?: Record<string, string>;
   wizardData?: unknown;
+  defaultBranch?: string;
 }
 
 export const select = {
@@ -59,15 +59,13 @@ export const select = {
   ingestRefId: true,
   environmentVariables: true,
   containerFiles: true,
+  defaultBranch: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   let swarm = await db.swarm.findUnique({
     where: { workspaceId: params.workspaceId },
   });
-   
-  console.log("swarm-data-next", params);
-  console.log("swarm-data-current", swarm);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: Record<string, any> = {};
@@ -87,6 +85,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.swarmApiKey !== undefined) data.swarmApiKey = params.swarmApiKey;
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
+  if (params.defaultBranch !== undefined) data.defaultBranch = params.defaultBranch;
   if (params.swarmSecretAlias !== undefined)
     data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
@@ -138,6 +137,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       swarmSecretAlias: params.swarmSecretAlias || "",
       wizardStep: params.wizardStep,
       stepStatus: params.stepStatus,
+      defaultBranch: params.defaultBranch || "",
       wizardData: params.wizardData,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;

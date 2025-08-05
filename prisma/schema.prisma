@@ -195,10 +195,11 @@ model Swarm {
   instanceType String      @default("XL") @map("instance_type")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
-  
+
   // Stakgraph configuration fields
   poolName              String? @map("pool_name")
   repositoryName        String? @map("repository_name")
+  defaultBranch         String? @map("default_branch")
   repositoryDescription String? @map("repository_description")
   repositoryUrl         String? @map("repository_url")
   swarmApiKey           String? @map("swarm_api_key")
@@ -481,6 +482,7 @@ enum ArtifactType {
   MEDIA
   STREAM
   BUG_REPORT
+  LONGFORM
 }
 
 // =============================================

@@ -40,6 +40,7 @@ export interface SwarmSelectResult {
   environmentVariables: Record<string, string>[];
   services: ServicesConfig[] | string; // string if not parsed yet
   containerFiles: Record<string, string>;
+  defaultBranch: string;
 }
 
 export interface ServicesConfig {

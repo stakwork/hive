@@ -272,7 +272,9 @@ export default function TaskChatPage() {
 
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
-  const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM");
+  const hasNonFormArtifacts = allArtifacts.some(
+    (a) => a.type !== "FORM" && a.type !== "LONGFORM",
+  );
 
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {

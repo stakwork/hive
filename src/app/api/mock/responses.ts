@@ -4,6 +4,7 @@ import {
   ArtifactType,
   PYTHON_CODE,
   JSON_CODE,
+  REPOMAP,
 } from "./helpers";
 
 // Generate unique IDs to prevent collisions
@@ -129,7 +130,7 @@ export function generateBugReportResponse(artifacts: { type: string; content: un
   let response = "Found source locations:\n";
   
   for (const artifact of bugReportArtifacts) {
-    const content = artifact.content;
+    const content = artifact.content as any;
     if (content?.sourceFiles && Array.isArray(content.sourceFiles)) {
       for (const sourceFile of content.sourceFiles) {
         if (sourceFile.file && sourceFile.lines && sourceFile.lines.length > 0) {
@@ -145,6 +146,22 @@ export function generateBugReportResponse(artifacts: { type: string; content: un
   }
 
   return makeRes(response);
+}
+
+export function generateLongformResponse() {
+  const messageId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  return makeRes("Project Hive RepoMap", [
+    createArtifact({
+      id: "longform-1",
+      messageId,
+      type: ArtifactType.LONGFORM,
+      content: {
+        title: "Repomap: Project Hive Overview",
+        text: REPOMAP,
+      },
+    }),
+  ]);
 }
 
 export function generateResponseBasedOnMessage(
@@ -164,6 +181,8 @@ export function generateResponseBasedOnMessage(
     return generateCodeResponse();
   } else if (messageText.includes("chat")) {
     return generateChatFormResponse();
+  } else if (messageText.includes("longform")) {
+    return generateLongformResponse();
   } else if (messageText.includes("form")) {
     return generateFormResponse();
   } else if (messageText.includes("confirmed")) {

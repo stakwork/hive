@@ -9,6 +9,7 @@ export interface Repository {
   fork: boolean;
   stargazers_count: number;
   watchers_count: number;
+  html_url: string;
   language: string | null;
   default_branch: string;
   updated_at: string;

@@ -1,17 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
-import { RepositoryStatus } from "@prisma/client";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { RepositoryStatus } from "@prisma/client";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
-interface WizardData {
-  selectedRepo?: { html_url?: string; default_branch?: string };
-}
 
 export async function POST(request: NextRequest) {
-  console.log("..............INGEST API BEING CALLED............");
 
   try {
     const session = await getServerSession(authOptions);
@@ -65,20 +61,15 @@ export async function POST(request: NextRequest) {
 
     const repoWorkspaceId = workspaceId || swarm.workspaceId;
 
-    console.log("*************");
-    console.log(swarm);
 
     let final_repo_url;
     let branch = "";
 
     if (
-      swarm.wizardData &&
-      typeof swarm.wizardData === "object" &&
-      "selectedRepo" in swarm.wizardData
+      swarm.repositoryUrl && swarm.defaultBranch
     ) {
-      final_repo_url = (swarm.wizardData as WizardData).selectedRepo?.html_url;
-      branch =
-        (swarm.wizardData as WizardData).selectedRepo?.default_branch || "";
+      final_repo_url = swarm.repositoryUrl;
+      branch = swarm.defaultBranch || "";
     }
 
     if (!final_repo_url) {
@@ -120,11 +111,8 @@ export async function POST(request: NextRequest) {
       pat,
     };
 
-    console.log("dataApi", dataApi);
-
     const stakgraphUrl = `https://${swarm.name}:7799`;
 
-    console.log(">>>>>>>>.stakgraphUrl", stakgraphUrl);
 
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({

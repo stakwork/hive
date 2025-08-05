@@ -1,8 +1,8 @@
-import { create } from "zustand";
-import { devtools } from "zustand/middleware";
+import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { Repository } from "@/types";
 import { EnvironmentVariable } from "@/types/wizard";
-import { ServiceDataConfig } from "@/components/stakgraph/types";
+import { create } from "zustand";
+import { devtools } from "zustand/middleware";
 
 type WizardStepStatus =
   | "PENDING"
@@ -187,6 +187,10 @@ export const useWizardStore = create<WizardStore>()(
           body: JSON.stringify({
             workspaceId: state.workspaceId,
             name: state.projectName,
+            repositoryName: state.selectedRepo?.name,
+            repositoryUrl: state.selectedRepo?.html_url,
+            repositoryDescription: state.selectedRepo?.description,
+            repositoryDefaultBranch: state.selectedRepo?.default_branch,
           }),
         });
 
@@ -199,18 +203,11 @@ export const useWizardStore = create<WizardStore>()(
 
         const { swarmId } = json.data;
 
-        const swarmData = {
-          name: state.projectName,
-          selectedRepo: state.selectedRepo,
-          projectName: state.projectName,
-          repoName: state.repoName,
-          swarmId,
-        };
 
         await state.updateWizardProgress({
           wizardStep: "GRAPH_INFRASTRUCTURE",
           stepStatus: "PROCESSING",
-          wizardData: swarmData,
+          wizardData: {},
         });
 
         set({

@@ -13,6 +13,7 @@ export const mockRepositories: Repository[] = [
     language: "TypeScript",
     default_branch: "main",
     updated_at: "2024-01-15T10:30:00Z",
+    html_url: "https://github.com/user/my-awesome-project",
   },
   {
     id: 2,
@@ -26,6 +27,7 @@ export const mockRepositories: Repository[] = [
     language: "Python",
     default_branch: "develop",
     updated_at: "2024-01-14T15:45:00Z",
+    html_url: "https://github.com/user/api_v2_backend",
   },
   {
     id: 3,
@@ -39,6 +41,7 @@ export const mockRepositories: Repository[] = [
     language: "JavaScript",
     default_branch: "master",
     updated_at: "2024-01-13T09:20:00Z",
+    html_url: "https://github.com/user/ReactComponentLibrary",
   },
   {
     id: 4,
@@ -52,5 +55,6 @@ export const mockRepositories: Repository[] = [
     language: "Python",
     default_branch: "main",
     updated_at: "2024-01-12T14:10:00Z",
+    html_url: "https://github.com/user/data-science-toolkit",
   },
 ];

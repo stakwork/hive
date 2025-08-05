@@ -95,23 +95,37 @@ export async function POST(request: NextRequest) {
 
             const sanitizedName = (session.user.name || "").replace(/\s+/g, "");
 
-            const { user: poolUser } = await poolManager.createUser({
-                email: session.user.email,
-                password,
-                username: `${sanitizedName}-${swarmId}`.toLowerCase(),
-            });
+            try {
 
-            poolApiKey = poolUser.authentication_token;
+                const { user: poolUser } = await poolManager.createUser({
+                    email: session.user.email,
+                    password,
+                    username: `${sanitizedName}-${swarmId}`.toLowerCase(),
+                });
+
+                await db.user.update({
+                    where: {
+                        email: session?.user.email || "",
+                    },
+                    data: {
+                        poolApiKey,
+                    },
+                });
+
+                console.log(poolUser, "poolUser");
+
+                if (!poolUser) {
+                    return NextResponse.json({ error: "Failed to create pool user" }, { status: 500 });
+                }
+
+                poolApiKey = poolUser.authentication_token;
+            } catch (error) {
+                console.error("Error creating pool user:", error);
+                return NextResponse.json({ error: "Failed to create pool user" }, { status: 500 });
+            }
         }
 
-        await db.user.update({
-            where: {
-                email: session?.user.email || "",
-            },
-            data: {
-                poolApiKey,
-            },
-        });
+
 
         saveOrUpdateSwarm({
             swarmId,
