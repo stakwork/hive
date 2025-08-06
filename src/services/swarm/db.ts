@@ -1,5 +1,8 @@
 import { db } from "@/lib/db";
 import { StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Add ServiceConfig interface for the services array
 export interface ServiceConfig {
@@ -85,7 +88,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     data.repositoryDescription = params.repositoryDescription;
   if (params.repositoryUrl !== undefined)
     data.repositoryUrl = params.repositoryUrl;
-  if (params.swarmApiKey !== undefined) data.swarmApiKey = params.swarmApiKey;
+  if (params.swarmApiKey !== undefined)
+    data.swarmApiKey = encryptionService.encryptField(
+      "swarmApiKey",
+      params.swarmApiKey,
+    ).data;
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.defaultBranch !== undefined)
@@ -135,7 +142,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       repositoryName: params.repositoryName || "",
       repositoryDescription: params.repositoryDescription || "",
       repositoryUrl: params.repositoryUrl || "",
-      swarmApiKey: params.swarmApiKey || "",
+      swarmApiKey:
+        params.swarmApiKey !== undefined
+          ? encryptionService.encryptField("swarmApiKey", params.swarmApiKey)
+              .data
+          : undefined,
       poolName: params.poolName || "",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",

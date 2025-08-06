@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { EncryptedData, EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST() {
   try {
@@ -43,7 +46,10 @@ export async function POST() {
               ).toString("base64")}`,
             },
             body: JSON.stringify({
-              access_token: account.access_token,
+              access_token: encryptionService.decryptField(
+                "access_token",
+                account.access_token as unknown as EncryptedData,
+              ),
             }),
           },
         );

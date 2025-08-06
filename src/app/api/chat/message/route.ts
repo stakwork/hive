@@ -12,6 +12,11 @@ import {
   type ChatMessage,
 } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
+import { EncryptionService } from "@/lib/encryption";
+
+import { EncryptedData } from "@/types/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -114,7 +119,7 @@ async function callStakwork(
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
     }
-    
+
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
     // stakwork workflow vars
@@ -341,8 +346,11 @@ export async function POST(request: NextRequest) {
     // Extract data for Stakwork payload
     const userName = githubAuth?.githubUsername || null;
     const accessToken =
-      user.accounts.find((account) => account.access_token)?.access_token ||
-      null;
+      encryptionService.decryptField(
+        "access_token",
+        user.accounts.find((account) => account.access_token)
+          ?.access_token as unknown as EncryptedData,
+      ) || null;
 
     const swarm = task.workspace.swarm;
     const swarmUrl = swarm?.swarmUrl
@@ -372,7 +380,7 @@ export async function POST(request: NextRequest) {
         webhook,
         mode,
       );
-      
+
       // Update workflow status based on Stakwork call result
       if (stakworkData.success) {
         const updateData: {

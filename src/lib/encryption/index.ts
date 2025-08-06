@@ -6,12 +6,14 @@ export class EncryptionService {
   private fieldEncryption: FieldEncryptionService;
   private static instance: EncryptionService;
 
-  private constructor(keyHex: string) {
-    this.fieldEncryption = new FieldEncryptionService(keyHex);
+  private constructor() {
+    this.fieldEncryption = new FieldEncryptionService(
+      process.env.TOKEN_ENCRYPTION_KEY!,
+    );
   }
 
-  static initialize(keyHex: string): void {
-    EncryptionService.instance = new EncryptionService(keyHex);
+  static initialize(): void {
+    EncryptionService.instance = new EncryptionService();
   }
 
   static getInstance(): EncryptionService {

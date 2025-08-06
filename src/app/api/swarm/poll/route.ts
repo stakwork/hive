@@ -6,6 +6,9 @@ import { fetchSwarmDetails } from "@/services/swarm/api/swarm";
 import { isFakeMode, fakePollSwarm } from "@/services/swarm/fake";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
@@ -125,7 +128,10 @@ export async function POST(request: NextRequest) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
         status: SwarmStatus.ACTIVE,
-        swarmApiKey: xApiKey,
+        swarmApiKey: encryptionService.encryptField(
+          "swarmApiKey",
+          xApiKey || "",
+        ).data,
         swarmSecretAlias,
       });
 
@@ -253,7 +259,10 @@ export async function GET(request: NextRequest) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
         status: SwarmStatus.ACTIVE,
-        swarmApiKey: xApiKey,
+        swarmApiKey: encryptionService.encryptField(
+          "swarmApiKey",
+          xApiKey || "",
+        ).data,
         swarmSecretAlias,
       });
 

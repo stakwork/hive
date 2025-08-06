@@ -1,16 +1,20 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
+import { EncryptedData } from "@/types/encryption";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Validation schema for stakgraph settings
 const stakgraphSettingsSchema = z.object({
@@ -245,7 +249,18 @@ export async function PUT(
       },
     });
 
-    const poolApiKey = user?.poolApiKey;
+    const poolApiKey = encryptionService.encryptField(
+      "poolApiKey",
+      user?.poolApiKey || "",
+    ).data;
+
+    console.log(
+      ">>>>>>>>>decryptedPoolApiKey",
+      encryptionService.decryptField(
+        "poolApiKey",
+        poolApiKey as unknown as EncryptedData,
+      ),
+    );
 
     console.log(">>>>>>>>>settings.services", settings.services);
 
