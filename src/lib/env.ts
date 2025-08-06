@@ -7,6 +7,7 @@ const requiredEnvVars = {
   SWARM_SUPER_ADMIN_URL: process.env.SWARM_SUPER_ADMIN_URL,
   STAKWORK_CUSTOMERS_EMAIL: process.env.STAKWORK_CUSTOMERS_EMAIL,
   STAKWORK_CUSTOMERS_PASSWORD: process.env.STAKWORK_CUSTOMERS_PASSWORD,
+  //ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 } as const;
 
 // Validate environment variables
