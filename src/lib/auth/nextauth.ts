@@ -234,12 +234,12 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Check if we already have GitHub data
-        let githubAuth = await db.gitHubAuth.findUnique({
+        let githubProfile = await db.gitHubProfile.findUnique({
           where: { userId: user.id },
         });
 
         // If not, try to fetch from GitHub and upsert
-        if (!githubAuth) {
+        if (!githubProfile) {
           // Find the GitHub account for this user
           const account = await db.account.findFirst({
             where: {
@@ -251,62 +251,60 @@ export const authOptions: NextAuthOptions = {
           if (account && account.access_token) {
             try {
               // Fetch profile from GitHub API
-              const { data: githubProfile } = await axios.get<GitHubProfile>(
-                "https://api.github.com/user",
-                {
+              const { data: githubProfileData } =
+                await axios.get<GitHubProfile>("https://api.github.com/user", {
                   headers: {
                     Authorization: `token ${account.access_token}`,
                   },
-                },
-              );
+                });
 
-              githubAuth = await db.gitHubAuth.upsert({
+              githubProfile = await db.gitHubProfile.upsert({
                 where: { userId: user.id },
                 update: {
-                  githubUserId: githubProfile.id.toString(),
-                  githubUsername: githubProfile.login,
-                  githubNodeId: githubProfile.node_id,
-                  name: githubProfile.name,
-                  bio: githubProfile.bio,
-                  company: githubProfile.company,
-                  location: githubProfile.location,
-                  blog: githubProfile.blog,
-                  twitterUsername: githubProfile.twitter_username,
-                  publicRepos: githubProfile.public_repos,
-                  publicGists: githubProfile.public_gists,
-                  followers: githubProfile.followers,
-                  following: githubProfile.following,
-                  githubCreatedAt: githubProfile.created_at
-                    ? new Date(githubProfile.created_at)
+                  githubUserId: githubProfileData.id.toString(),
+                  githubUsername: githubProfileData.login,
+                  githubNodeId: githubProfileData.node_id,
+                  name: githubProfileData.name,
+                  bio: githubProfileData.bio,
+                  company: githubProfileData.company,
+                  location: githubProfileData.location,
+                  blog: githubProfileData.blog,
+                  twitterUsername: githubProfileData.twitter_username,
+                  publicRepos: githubProfileData.public_repos,
+                  publicGists: githubProfileData.public_gists,
+                  followers: githubProfileData.followers,
+                  following: githubProfileData.following,
+                  githubCreatedAt: githubProfileData.created_at
+                    ? new Date(githubProfileData.created_at)
                     : null,
-                  githubUpdatedAt: githubProfile.updated_at
-                    ? new Date(githubProfile.updated_at)
+                  githubUpdatedAt: githubProfileData.updated_at
+                    ? new Date(githubProfileData.updated_at)
                     : null,
-                  accountType: githubProfile.type,
+                  accountType: githubProfileData.type,
                   scopes: account.scope ? account.scope.split(",") : [],
                 },
                 create: {
                   userId: user.id,
-                  githubUserId: githubProfile.id.toString(),
-                  githubUsername: githubProfile.login,
-                  githubNodeId: githubProfile.node_id,
-                  name: githubProfile.name,
-                  bio: githubProfile.bio,
-                  company: githubProfile.company,
-                  location: githubProfile.location,
-                  blog: githubProfile.blog,
-                  twitterUsername: githubProfile.twitter_username,
-                  publicRepos: githubProfile.public_repos,
-                  publicGists: githubProfile.public_gists,
-                  followers: githubProfile.followers,
-                  following: githubProfile.following,
-                  githubCreatedAt: githubProfile.created_at
-                    ? new Date(githubProfile.created_at)
+                  githubUserId: githubProfileData.id.toString(),
+                  githubUsername: githubProfileData.login,
+                  githubNodeId: githubProfileData.node_id,
+                  name: githubProfileData.name,
+                  bio: githubProfileData.bio,
+                  company: githubProfileData.company,
+                  location: githubProfileData.location,
+                  blog: githubProfileData.blog,
+                  twitterUsername: githubProfileData.twitter_username,
+                  publicRepos: githubProfileData.public_repos,
+                  publicGists: githubProfileData.public_gists,
+                  followers: githubProfileData.followers,
+                  following: githubProfileData.following,
+                  githubCreatedAt: githubProfileData.created_at
+                    ? new Date(githubProfileData.created_at)
                     : null,
-                  githubUpdatedAt: githubProfile.updated_at
-                    ? new Date(githubProfile.updated_at)
+                  githubUpdatedAt: githubProfileData.updated_at
+                    ? new Date(githubProfileData.updated_at)
                     : null,
-                  accountType: githubProfile.type,
+                  accountType: githubProfileData.type,
                   scopes: account.scope ? account.scope.split(",") : [],
                 },
               });
@@ -322,7 +320,7 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        if (githubAuth) {
+        if (githubProfile) {
           (
             session.user as {
               github?: {
@@ -332,9 +330,9 @@ export const authOptions: NextAuthOptions = {
               };
             }
           ).github = {
-            username: githubAuth.githubUsername,
-            publicRepos: githubAuth.publicRepos ?? undefined,
-            followers: githubAuth.followers ?? undefined,
+            username: githubProfile.githubUsername,
+            publicRepos: githubProfile.publicRepos ?? undefined,
+            followers: githubProfile.followers ?? undefined,
           };
         }
       }
@@ -382,15 +380,17 @@ export async function getGithubUsernameAndPAT(
     return null;
   }
 
-  // Get GitHub username from GitHubAuth
-  const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
+  // Get GitHub username from GitHubProfile
+  const githubProfile = await db.gitHubProfile.findUnique({
+    where: { userId },
+  });
   // Get PAT from Account
   const githubAccount = await db.account.findFirst({
     where: { userId, provider: "github" },
   });
-  if (githubAuth?.githubUsername && githubAccount?.access_token) {
+  if (githubProfile?.githubUsername && githubAccount?.access_token) {
     return {
-      username: githubAuth.githubUsername,
+      username: githubProfile.githubUsername,
       pat: githubAccount.access_token,
     };
   }

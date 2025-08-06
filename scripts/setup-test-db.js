@@ -39,7 +39,7 @@ async function setupTestDatabase() {
     await prisma.verificationToken.deleteMany();
     await prisma.session.deleteMany();
     await prisma.account.deleteMany();
-    await prisma.gitHubAuth.deleteMany();
+    await prisma.gitHubProfile.deleteMany();
     await prisma.user.deleteMany();
 
     // Create some test users for integration tests
