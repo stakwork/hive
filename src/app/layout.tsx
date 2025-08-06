@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <Script src="/js/staktrak.js" />
+      <Script src="/js/replay.js" />
       <Script src="/js/playwright-generator.js" type="module" />
       <body className="min-h-screen bg-background text-foreground antialiased font-sans">
         <ToastProvider>

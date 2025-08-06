@@ -4,6 +4,7 @@ import {
   ChatStatus,
   ContextTagType,
   ArtifactType,
+  WorkflowStatus,
 } from "@prisma/client";
 import type {
   ChatMessage as PrismaChatMessage,
@@ -11,7 +12,7 @@ import type {
 } from "@prisma/client";
 
 // Re-export Prisma enums
-export { ChatRole, ChatStatus, ContextTagType, ArtifactType };
+export { ChatRole, ChatStatus, ContextTagType, ArtifactType, WorkflowStatus };
 
 export interface ContextTag {
   type: ContextTagType;

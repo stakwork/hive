@@ -13,6 +13,7 @@ import {
   parseContextTags,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { WorkflowStatus } from "@prisma/client";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -25,6 +26,7 @@ interface ArtifactRequest {
 interface StakworkWorkflowPayload {
   name: string;
   workflow_id: number;
+  webhook_url?: string; // New webhook URL for workflow status updates
   workflow_params: {
     set_var: {
       attributes: {
@@ -110,6 +112,9 @@ async function callStakwork(
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
     }
+    
+    // New webhook URL for workflow status updates
+    const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
     // stakwork workflow vars
     const vars = {
       taskId,
@@ -135,6 +140,7 @@ async function callStakwork(
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
       workflow_id: parseInt(workflowId),
+      webhook_url: workflowWebhookUrl, // Add workflow status webhook URL
       workflow_params: {
         set_var: {
           attributes: {
@@ -376,6 +382,24 @@ export async function POST(request: NextRequest) {
         webhook,
         mode,
       );
+      
+      // Update workflow status based on Stakwork call result
+      if (stakworkData.success) {
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            workflowStatus: WorkflowStatus.IN_PROGRESS,
+            workflowStartedAt: new Date(),
+          },
+        });
+      } else {
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            workflowStatus: WorkflowStatus.FAILED,
+          },
+        });
+      }
     } else {
       stakworkData = await callMock(taskId, message, userId, artifacts, request);
     }

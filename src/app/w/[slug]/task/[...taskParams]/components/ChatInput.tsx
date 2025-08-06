@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Artifact } from "@/lib/chat";
+import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
+import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 
 interface ChatInputProps {
   onSend: (message: string) => Promise<void>;
@@ -12,6 +13,7 @@ interface ChatInputProps {
   isLoading?: boolean;
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
+  workflowStatus?: WorkflowStatus | null;
 }
 
 export function ChatInput({
@@ -20,6 +22,7 @@ export function ChatInput({
   isLoading = false,
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
+  workflowStatus,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
 
@@ -34,8 +37,12 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t bg-background sticky bottom-0 z-10">
-      {/* Pending Debug Attachment */}
+    <div>
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <WorkflowStatusBadge status={workflowStatus} />
+      </div>
+
+      {/* Keep our debug attachment feature but add it to the master structure */}
       {pendingDebugAttachment && (
         <div className="px-6 pt-3">
           <InputDebugAttachment
@@ -44,7 +51,6 @@ export function ChatInput({
           />
         </div>
       )}
-      
       <form
         onSubmit={handleSubmit}
         className="flex gap-2 px-6 py-4"

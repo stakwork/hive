@@ -133,6 +133,7 @@ export default function SignInPage() {
           <CardContent className="space-y-6">
             {providers?.github && (
               <Button
+                data-testid="github-signin-button"
                 onClick={handleGitHubSignIn}
                 disabled={isSigningIn || isMockSigningIn}
                 className="w-full h-12 text-base font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
@@ -179,6 +180,7 @@ export default function SignInPage() {
                     />
                   </div>
                   <Button
+                    data-testid="mock-signin-button"
                     onClick={handleMockSignIn}
                     disabled={isMockSigningIn || isSigningIn}
                     className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"

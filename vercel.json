@@ -1,8 +1,9 @@
 {
-  "git": {
-    "deploymentEnabled": {
-      "master": true,
-      "*": false
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "git": {
+        "deploymentEnabled": {
+            "master": true,
+            "*": false
+        }
     }
-  }
 }

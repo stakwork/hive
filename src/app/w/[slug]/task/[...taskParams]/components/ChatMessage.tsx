@@ -41,15 +41,17 @@ export function ChatMessage({
             <AvatarFallback>A</AvatarFallback>
           </Avatar>
         )}
-        <div
-          className={`px-4 py-2 rounded-xl text-sm max-w-xs shadow-sm whitespace-pre-wrap ${
-            message.role === "USER"
-              ? "bg-primary text-primary-foreground rounded-br-none"
-              : "bg-background text-foreground rounded-bl-none border"
-          }`}
-        >
-          {message.message}
-        </div>
+        {message.message && (
+          <div
+            className={`px-4 py-2 rounded-xl text-sm max-w-xs shadow-sm whitespace-pre-wrap ${
+              message.role === "USER"
+                ? "bg-primary text-primary-foreground rounded-br-none"
+                : "bg-background text-foreground rounded-bl-none border"
+            }`}
+          >
+            {message.message}
+          </div>
+        )}
         {message.role === "USER" && (
           <Avatar>
             <AvatarImage src="" alt="You" />

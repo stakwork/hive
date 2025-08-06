@@ -129,7 +129,7 @@ export function Sidebar({ user }: SidebarProps) {
             variant="outline"
             size="icon"
             className={
-              isTaskPage ? "block absolute left-3 top-2 z-50" : "md:hidden"
+              isTaskPage ? "flex items-center justify-center absolute left-3 top-2 z-50" : "md:hidden"
             }
           >
             <Menu className="h-4 w-4" />

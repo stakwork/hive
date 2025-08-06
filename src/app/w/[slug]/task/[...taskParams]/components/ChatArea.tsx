@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChatMessage as ChatMessageType, Option, Artifact } from "@/lib/chat";
+import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 
@@ -21,6 +21,7 @@ interface ChatAreaProps {
   lastLogLine?: string;
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
+  workflowStatus?: WorkflowStatus | null;
 }
 
 export function ChatArea({
@@ -34,6 +35,7 @@ export function ChatArea({
   lastLogLine = "",
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
+  workflowStatus,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +86,7 @@ export function ChatArea({
               <div className="text-sm">
                 {lastLogLine
                   ? lastLogLine
-                  : `I've got your message. Let me have a think.`}
+                  : `Communicating with workflow...`}
               </div>
               {/* Optional: Add a subtle loading indicator */}
               {isChainVisible && (
@@ -116,6 +118,7 @@ export function ChatArea({
         isLoading={isLoading}
         pendingDebugAttachment={pendingDebugAttachment}
         onRemoveDebugAttachment={onRemoveDebugAttachment}
+        workflowStatus={workflowStatus}
       />
     </motion.div>
   );

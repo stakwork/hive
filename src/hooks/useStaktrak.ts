@@ -21,9 +21,33 @@ type StaktrakCommandType =
   | "staktrak-enable-selection"
   | "staktrak-disable-selection";
 
+// Updated interfaces to match the new structure
+interface ClickDetail {
+  x: number;
+  y: number;
+  timestamp: number;
+  selectors: {
+    primary: string;
+    fallbacks: string[];
+    text?: string;
+    ariaLabel?: string;
+    title?: string;
+    role?: string;
+    tagName: string;
+    xpath?: string;
+  };
+  elementInfo: {
+    tagName: string;
+    id?: string;
+    className?: string;
+    attributes: Record<string, string>;
+  };
+}
+
 interface PlaywrightTrackingData {
   clicks?: {
-    clickDetails?: number[][];
+    clickCount: number;
+    clickDetails: ClickDetail[]; // Changed from number[][]
   };
   inputChanges?: Array<{
     elementSelector: string;
@@ -49,6 +73,29 @@ interface PlaywrightTrackingData {
     timestamp: number;
   }>;
   focusChanges?: unknown[];
+  // Add other properties that might be in the results
+  pageNavigation?: Array<{
+    type: string;
+    url: string;
+    timestamp: number;
+  }>;
+  keyboardActivities?: Array<[string, number]>;
+  mouseMovement?: Array<[number, number, number]>;
+  mouseScroll?: Array<[number, number, number]>;
+  visibilitychanges?: Array<[string, number]>;
+  windowSizes?: Array<[number, number, number]>;
+  touchEvents?: Array<{
+    type: string;
+    x: number;
+    y: number;
+    timestamp: number;
+  }>;
+  audioVideoInteractions?: unknown[];
+  time?: {
+    startedAt: number;
+    completedAt: number;
+    totalSeconds: number;
+  };
 }
 
 function sendCommand(
@@ -137,6 +184,7 @@ export const useStaktrak = (initialUrl?: string) => {
                 setShowPlaywrightModal(true);
               } catch (error) {
                 console.error("Error generating Playwright test:", error);
+                // You might want to show an error message to the user here
               }
             }
             break;
