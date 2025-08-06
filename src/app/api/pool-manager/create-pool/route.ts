@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
 
       const poolManager = new PoolManagerService({
         baseURL: "https://workspaces.sphinx.chat/api",
-        apiKey: loginData.token,
+        apiKey: encryptionService.encryptField("poolApiKey", loginData.token)
+          .data,
         headers: {
           Authorization: `Bearer ${loginData.token}`,
         },

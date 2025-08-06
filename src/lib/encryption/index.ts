@@ -12,15 +12,9 @@ export class EncryptionService {
     );
   }
 
-  static initialize(): void {
-    EncryptionService.instance = new EncryptionService();
-  }
-
   static getInstance(): EncryptionService {
     if (!EncryptionService.instance) {
-      throw new Error(
-        "EncryptionService not initialized. Call initialize() first.",
-      );
+      EncryptionService.instance = new EncryptionService();
     }
     return EncryptionService.instance;
   }

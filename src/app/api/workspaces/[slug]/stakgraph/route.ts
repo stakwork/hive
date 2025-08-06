@@ -283,7 +283,10 @@ export async function PUT(
         if (swarm) {
           const currentEnvVars = await poolManager.getPoolEnvVars(
             swarm.id,
-            poolApiKey,
+            encryptionService.decryptField(
+              "poolApiKey",
+              poolApiKey as unknown as EncryptedData,
+            ),
           );
 
           // TODO: This is a solution to preserve data structure.
@@ -292,7 +295,10 @@ export async function PUT(
           // Always send all vars, with correct masked/changed status
           await poolManager.updatePoolData(
             swarm.id,
-            poolApiKey,
+            encryptionService.decryptField(
+              "poolApiKey",
+              poolApiKey as unknown as EncryptedData,
+            ),
             settings.environmentVariables as unknown as Array<{
               name: string;
               value: string;
@@ -322,7 +328,10 @@ export async function PUT(
         repositoryUrl: typedSwarm.repositoryUrl,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
-        poolApiKey: typedSwarm.poolApiKey || "",
+        poolApiKey: encryptionService.decryptField(
+          "poolApiKey",
+          typedSwarm.poolApiKey as unknown as EncryptedData,
+        ),
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services:
           typeof typedSwarm.services === "string"
