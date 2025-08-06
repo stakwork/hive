@@ -11,8 +11,14 @@ import {
   Target,
   Copy,
   Bug,
+  Search,
 } from "lucide-react";
-import { Artifact, BrowserContent, BugReportContent, ArtifactType } from "@/lib/chat";
+import {
+  Artifact,
+  BrowserContent,
+  BugReportContent,
+  ArtifactType,
+} from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import {
   Dialog,
@@ -97,13 +103,28 @@ function PlaywrightTestModal({
 interface DebugOverlayProps {
   isActive: boolean;
   isSubmitting: boolean;
-  onDebugSelection: (x: number, y: number, width: number, height: number) => void;
+  onDebugSelection: (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => void;
 }
 
-function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlayProps) {
+function DebugOverlay({
+  isActive,
+  isSubmitting,
+  onDebugSelection,
+}: DebugOverlayProps) {
   const [isSelecting, setIsSelecting] = useState(false);
-  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
-  const [selectionCurrent, setSelectionCurrent] = useState<{ x: number; y: number } | null>(null);
+  const [selectionStart, setSelectionStart] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectionCurrent, setSelectionCurrent] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   if (!isActive) return null;
 
@@ -111,7 +132,7 @@ function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlay
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     setIsSelecting(true);
     setSelectionStart({ x, y });
     setSelectionCurrent({ x, y });
@@ -119,29 +140,29 @@ function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlay
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isSelecting || !selectionStart) return;
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     setSelectionCurrent({ x, y });
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
     if (!selectionStart) return;
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const endX = e.clientX - rect.left;
     const endY = e.clientY - rect.top;
-    
+
     // Calculate selection area (works for both clicks and drags)
     const x = Math.min(selectionStart.x, endX);
     const y = Math.min(selectionStart.y, endY);
     const width = Math.abs(endX - selectionStart.x);
     const height = Math.abs(endY - selectionStart.y);
-    
+
     onDebugSelection(x, y, width, height);
-    
+
     // Reset selection state
     setIsSelecting(false);
     setSelectionStart(null);
@@ -150,12 +171,12 @@ function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlay
 
   const getSelectionStyle = () => {
     if (!isSelecting || !selectionStart || !selectionCurrent) return {};
-    
+
     const x = Math.min(selectionStart.x, selectionCurrent.x);
     const y = Math.min(selectionStart.y, selectionCurrent.y);
     const width = Math.abs(selectionCurrent.x - selectionStart.x);
     const height = Math.abs(selectionCurrent.y - selectionStart.y);
-    
+
     return {
       left: x,
       top: y,
@@ -170,7 +191,7 @@ function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlay
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}
+      style={{ backgroundColor: "rgba(59, 130, 246, 0.1)" }}
     >
       {/* Selection rectangle (only show if actively selecting and has some size) */}
       {isSelecting && selectionStart && selectionCurrent && (
@@ -179,7 +200,7 @@ function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlay
           style={getSelectionStyle()}
         />
       )}
-      
+
       {/* Debug mode indicator */}
       <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
         {isSubmitting ? (
@@ -205,10 +226,15 @@ export function BrowserArtifactPanel({
   const [refreshKey, setRefreshKey] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
   const [isSubmittingDebug, setIsSubmittingDebug] = useState(false);
-  
+
   // Check if debug mode is available (when using Babel instead of Turbopack)
-  const isDebugAvailable = process.env.NODE_ENV === 'development' && 
-    process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+  const isDebugAvailable =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_DEBUG_MODE === "true";
+
+  // Check if debug scanner button should be shown (separate from debug mode)
+  const isScannerEnabled =
+    process.env.NEXT_PUBLIC_DEBUG_SCANNER_ENABLED === "true";
 
   // Reset debug mode when switching tabs
   const handleTabChange = (newTab: number) => {
@@ -245,38 +271,48 @@ export function BrowserArtifactPanel({
     setDebugMode(!debugMode);
   };
 
-  const handleDebugSelection = async (x: number, y: number, width: number, height: number) => {
+  const handleDebugSelection = async (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => {
     const activeArtifact = artifacts[activeTab];
     const content = activeArtifact.content as BrowserContent;
-    
+
     setIsSubmittingDebug(true);
-    
+
     try {
       // Get the iframe element for the active tab
       const iframeElement = iframeRef.current;
       if (!iframeElement) {
-        throw new Error('Iframe not found');
+        throw new Error("Iframe not found");
       }
-      
+
       // Create unique message ID for tracking responses
       const messageId = `debug-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
       // Set up response listener
-      const responsePromise = new Promise<Array<{file: string; lines: number[]; context?: string}>>((resolve) => {
+      const responsePromise = new Promise<
+        Array<{ file: string; lines: number[]; context?: string }>
+      >((resolve) => {
         const timeout = setTimeout(() => {
           // If postMessage fails, use empty source files array
           resolve([]);
         }, 10000); // 10 second timeout
-        
+
         const handleMessage = (event: MessageEvent) => {
           // Verify origin matches iframe URL for security
           const iframeOrigin = new URL(content.url).origin;
           if (event.origin !== iframeOrigin) return;
-          
-          if (event.data?.type === 'debug-response' && event.data?.messageId === messageId) {
+
+          if (
+            event.data?.type === "debug-response" &&
+            event.data?.messageId === messageId
+          ) {
             clearTimeout(timeout);
-            window.removeEventListener('message', handleMessage);
-            
+            window.removeEventListener("message", handleMessage);
+
             if (event.data.success) {
               resolve(event.data.sourceFiles || []);
             } else {
@@ -284,76 +320,82 @@ export function BrowserArtifactPanel({
             }
           }
         };
-        
-        window.addEventListener('message', handleMessage);
+
+        window.addEventListener("message", handleMessage);
       });
-      
+
       // Send coordinates to iframe via postMessage
-      iframeElement.contentWindow?.postMessage({
-        type: 'debug-request',
-        messageId,
-        coordinates: { x, y, width, height }
-      }, new URL(content.url).origin);
-      
+      iframeElement.contentWindow?.postMessage(
+        {
+          type: "debug-request",
+          messageId,
+          coordinates: { x, y, width, height },
+        },
+        new URL(content.url).origin,
+      );
+
       // Wait for response from iframe
       const sourceFiles = await responsePromise;
-      
+
       // Create BugReportContent artifact
       const bugReportContent: BugReportContent = {
-        bugDescription: width === 0 && height === 0 
-          ? `Debug click at coordinates (${x}, ${y})`
-          : `Debug selection area ${width}×${height} at coordinates (${x}, ${y})`,
+        bugDescription:
+          width === 0 && height === 0
+            ? `Debug click at coordinates (${x}, ${y})`
+            : `Debug selection area ${width}×${height} at coordinates (${x}, ${y})`,
         iframeUrl: content.url,
-        method: width === 0 && height === 0 ? 'click' : 'selection',
+        method: width === 0 && height === 0 ? "click" : "selection",
         sourceFiles: sourceFiles,
-        coordinates: { x, y, width, height }
+        coordinates: { x, y, width, height },
       };
-      
+
       // Create debug artifact
       const debugArtifact: Artifact = {
         id: `debug-${Date.now()}`,
-        messageId: '', // Will be set by chat system
+        messageId: "", // Will be set by chat system
         type: ArtifactType.BUG_REPORT,
         content: bugReportContent,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       };
-      
+
       // Send artifact without visible chat message (debug attachment will appear directly)
       if (onDebugMessage) {
-        await onDebugMessage('', debugArtifact); // Empty message - no chat bubble will be created
+        await onDebugMessage("", debugArtifact); // Empty message - no chat bubble will be created
       }
-      
+
       // Auto-disable debug mode after successful interaction
       setDebugMode(false);
-      
     } catch (error) {
-      console.error('Failed to process debug selection:', error);
-      
+      console.error("Failed to process debug selection:", error);
+
       // Fallback: create debug artifact with error info
       const bugReportContent: BugReportContent = {
-        bugDescription: `Debug ${width === 0 && height === 0 ? 'click' : 'selection'} failed - communication error with iframe`,
+        bugDescription: `Debug ${width === 0 && height === 0 ? "click" : "selection"} failed - communication error with iframe`,
         iframeUrl: content.url,
-        method: width === 0 && height === 0 ? 'click' : 'selection',
+        method: width === 0 && height === 0 ? "click" : "selection",
         sourceFiles: [],
-        coordinates: { x, y, width, height }
+        coordinates: { x, y, width, height },
       };
-      
+
       const debugArtifact: Artifact = {
         id: `debug-error-${Date.now()}`,
-        messageId: '',
+        messageId: "",
         type: ArtifactType.BUG_REPORT,
         content: bugReportContent,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       };
-      
+
       if (onDebugMessage) {
         try {
-          await onDebugMessage(`🐛 Debug element analysis (with errors)`, debugArtifact);
+          await onDebugMessage(
+            `🐛 Debug element analysis (with errors)`,
+            debugArtifact,
+          );
           setDebugMode(false);
         } catch (chatError) {
-          console.error('Failed to send fallback debug message:', chatError);
+          console.error("Failed to send fallback debug message:", chatError);
           // Keep debug mode active on error so user can retry
         }
       }
@@ -364,6 +406,99 @@ export function BrowserArtifactPanel({
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
+  };
+
+  const handleDebugScan = async () => {
+    const activeArtifact = artifacts[activeTab];
+    const content = activeArtifact.content as BrowserContent;
+
+    // Get the iframe element for the active tab
+    const iframeElement = document.querySelector(
+      `iframe[title="Live Preview ${activeTab + 1}"]`,
+    ) as HTMLIFrameElement;
+    if (!iframeElement) {
+      console.error("Failed to find iframe for scanning");
+      return;
+    }
+
+    try {
+      // Send message to iframe to trigger scan
+      const messageId = `scan-${Date.now()}`;
+
+      // Set up response listener
+      const responsePromise = new Promise<{
+        totalElements: number;
+        elementsWithAnyDebugData: number;
+        elementsWithDataAttrs: number;
+        elementsWithFiberSources: number;
+        coverage: number;
+        sourceFileCount: number;
+      } | null>((resolve) => {
+        const timeout = setTimeout(() => {
+          window.removeEventListener("message", handleMessage);
+          resolve(null);
+        }, 5000);
+
+        const handleMessage = (event: MessageEvent) => {
+          // Verify origin matches the iframe URL
+          const iframeOrigin = new URL(content.url).origin;
+          if (event.origin !== iframeOrigin) return;
+
+          if (
+            event.data?.type === "scan-response" &&
+            event.data?.messageId === messageId
+          ) {
+            clearTimeout(timeout);
+            window.removeEventListener("message", handleMessage);
+            resolve(event.data.results);
+          }
+        };
+
+        window.addEventListener("message", handleMessage);
+      });
+
+      // Send scan request to iframe
+      iframeElement.contentWindow?.postMessage(
+        {
+          type: "scan-request",
+          messageId,
+        },
+        new URL(content.url).origin,
+      );
+
+      const scanResults = await responsePromise;
+
+      if (scanResults) {
+        // Log results to console where debugScan functions are available
+        console.group("🔍 Debug Data Scan Results from iframe");
+        console.log("Coverage:", `${scanResults.coverage?.toFixed(2)}%`);
+        console.log("Total elements:", scanResults.totalElements);
+        console.log(
+          "Elements with debug data:",
+          scanResults.elementsWithAnyDebugData,
+        );
+        console.log("Source files found:", scanResults.sourceFileCount);
+        console.groupEnd();
+      } else {
+        // Fallback: Direct scan if iframe communication fails
+        console.log(
+          "Direct scan fallback - run debugScan.quick() in the console to scan the current page",
+        );
+        // Try to run scan if available
+        if (
+          typeof window !== "undefined" &&
+          (window as { debugScan?: { quick: (verbose: boolean) => void } })
+            .debugScan
+        ) {
+          (
+            window as { debugScan?: { quick: (verbose: boolean) => void } }
+          ).debugScan.quick(true);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to perform debug scan:", error);
+      console.log("Run debugScan.quick() in the console to scan manually");
+    }
   };
 
   const handleTabOut = (url: string) => {
@@ -472,15 +607,28 @@ export function BrowserArtifactPanel({
                       </Button>
                     )}
                     {isDebugAvailable && (
-                      <Button
-                        variant={debugMode ? "default" : "ghost"}
-                        size="sm"
-                        onClick={handleDebugElement}
-                        className="h-8 w-8 p-0"
-                        title="Debug Element"
-                      >
-                        <Bug className="w-4 h-4" />
-                      </Button>
+                      <>
+                        <Button
+                          variant={debugMode ? "default" : "ghost"}
+                          size="sm"
+                          onClick={handleDebugElement}
+                          className="h-8 w-8 p-0"
+                          title="Debug Element"
+                        >
+                          <Bug className="w-4 h-4" />
+                        </Button>
+                        {isScannerEnabled && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDebugScan}
+                            className="h-8 w-8 p-0"
+                            title="Scan Debug Data Coverage"
+                          >
+                            <Search className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </>
                     )}
                     <Button
                       variant="ghost"

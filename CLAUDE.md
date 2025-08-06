@@ -143,6 +143,12 @@ npx shadcn@latest add [component-name]
 - Separate test database configuration
 - Use `vitest.config.ts` for test configuration
 
+### Debug Features
+- DOM inspector available in `npm run dev:debug` mode for component identification
+- Debug scanner via console (`debugScan.quick()`) for coverage analysis and diagnostics
+- Cross-iframe debug communication for browser artifacts
+- Detailed documentation in `docs/dom-inspector.md`
+
 ### Environment Setup
 Required environment variables:
 - `DATABASE_URL` - PostgreSQL connection string

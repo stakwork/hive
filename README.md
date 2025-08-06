@@ -226,10 +226,30 @@ src/
 ### Available Scripts
 
 - `npm run dev` - Start development server with Turbopack
+- `npm run dev:debug` - Start development server with Babel (enables DOM debugging features)
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 - `npm run setup` - Generate JWT secret
+
+### DOM Inspector & Debugging
+
+Hive includes a DOM inspector feature for debugging React components in browser artifacts:
+
+**Debug Mode Features:**
+- Click on any element to identify the specific React component and its source file
+- Drag to select a rectangular area and analyze all components within that region
+- View component source mappings with file paths and line numbers
+- Send debug information directly to chat for analysis
+
+**How to Enable Debug Mode:**
+1. Run `npm run dev:debug` (uses Babel instead of Turbopack)
+2. Navigate to any task with browser artifacts
+3. Click the Bug icon in the browser panel to enable debug mode
+4. **Click mode**: Click directly on any element in the browser preview to identify its source component
+5. **Selection mode**: Click and drag to select a rectangular area - all components within that area will be analyzed
+
+The debug mode automatically injects source mapping information into React components, allowing you to quickly identify which files and line numbers correspond to DOM elements in your running application.
 
 ### Database Commands
 

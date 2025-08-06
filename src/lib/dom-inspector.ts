@@ -21,15 +21,11 @@ export interface DebugSelection {
   };
 }
 
-
-
-
-
 // Helper functions
 
 function rectsIntersect(
   rect1: { x: number; y: number; width: number; height: number },
-  rect2: { x: number; y: number; width: number; height: number }
+  rect2: { x: number; y: number; width: number; height: number },
 ): boolean {
   return !(
     rect1.x + rect1.width < rect2.x ||
@@ -43,12 +39,14 @@ function rectsIntersect(
  * Extract React fiber debug source information from a DOM element
  */
 function extractReactDebugSource(
-  element: Element
+  element: Element,
 ): { fileName?: string; lineNumber?: number; columnNumber?: number } | null {
   try {
     // Find React fiber key
     const fiberKey = Object.keys(element).find(
-      (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
+      (key) =>
+        key.startsWith("__reactFiber$") ||
+        key.startsWith("__reactInternalInstance$"),
     );
 
     if (!fiberKey) {
@@ -58,12 +56,19 @@ function extractReactDebugSource(
     // @ts-expect-error - Accessing React internals
     let fiber = element[fiberKey];
     let level = 0;
-    
+
     // Get max traversal depth from env variable, default to 10
-    const maxTraversalDepth = Number(process.env.NEXT_PUBLIC_REACT_FIBER_TRAVERSAL_DEPTH) || 10;
+    const maxTraversalDepth =
+      Number(process.env.NEXT_PUBLIC_REACT_FIBER_TRAVERSAL_DEPTH) || 10;
 
     // Helper to extract source from an object
-    const extractSource = (source: { fileName?: string; lineNumber?: number; columnNumber?: number } | null) => {
+    const extractSource = (
+      source: {
+        fileName?: string;
+        lineNumber?: number;
+        columnNumber?: number;
+      } | null,
+    ) => {
       if (!source) return null;
       return {
         fileName: source.fileName,
@@ -75,11 +80,11 @@ function extractReactDebugSource(
     // Traverse up the fiber tree to find debug source
     while (fiber && level < maxTraversalDepth) {
       // Check various locations where source info might be stored
-      const source = 
+      const source =
         fiber._debugSource ||
         fiber.memoizedProps?.__source ||
         fiber.pendingProps?.__source;
-      
+
       if (source) {
         return extractSource(source);
       }
@@ -103,7 +108,54 @@ export function initializeDebugMessageListener() {
   if (typeof window === "undefined") return;
 
   window.addEventListener("message", async (event) => {
-    // Only handle debug requests
+    // Handle both debug requests and scan requests
+    if (
+      event.data?.type !== "debug-request" &&
+      event.data?.type !== "scan-request"
+    )
+      return;
+
+    // Handle scan requests
+    if (event.data?.type === "scan-request") {
+      const { messageId } = event.data;
+
+      try {
+        // Dynamically import scanner and run quick scan
+        const { scanDebugDataInjection } = await import("./debug-data-scanner");
+        const results = scanDebugDataInjection({ maxElements: 5000 });
+
+        // Send compact results back
+        event.source?.postMessage(
+          {
+            type: "scan-response",
+            messageId,
+            results: {
+              totalElements: results.totalElements,
+              elementsWithAnyDebugData: results.elementsWithAnyDebugData,
+              elementsWithDataAttrs: results.elementsWithDataAttrs,
+              elementsWithFiberSources: results.elementsWithFiberSources,
+              coverage: results.coverage,
+              sourceFileCount: results.sourceFiles.size,
+            },
+          },
+          event.origin as WindowPostMessageOptions,
+        );
+      } catch (error) {
+        console.error("Error running debug scan:", error);
+        event.source?.postMessage(
+          {
+            type: "scan-response",
+            messageId,
+            error:
+              error instanceof Error ? error.message : "Failed to run scan",
+          },
+          event.origin as WindowPostMessageOptions,
+        );
+      }
+      return;
+    }
+
+    // Original debug-request handling continues below
     if (event.data?.type !== "debug-request") return;
 
     const { messageId, coordinates } = event.data;
@@ -112,12 +164,15 @@ export function initializeDebugMessageListener() {
       // Handle element finding directly since we're inside the target document
 
       // For direct DOM access (since we're inside the iframe), we need to search differently
-      const sourceFiles: Array<{ file: string; lines: number[]; context?: string }> = [];
+      const sourceFiles: Array<{
+        file: string;
+        lines: number[];
+        context?: string;
+      }> = [];
       const processedFiles = new Map<string, Set<number>>();
 
       // Get element at point or elements in region
       let elementsToProcess: Element[] = [];
-
 
       if (coordinates.width === 0 && coordinates.height === 0) {
         // Click mode - get element at point
@@ -138,8 +193,13 @@ export function initializeDebugMessageListener() {
         elementsToProcess = Array.from(allElements).filter((el) => {
           const rect = el.getBoundingClientRect();
           return rectsIntersect(
-            { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-            coordinates
+            {
+              x: rect.left,
+              y: rect.top,
+              width: rect.width,
+              height: rect.height,
+            },
+            coordinates,
           );
         });
       }
@@ -151,11 +211,15 @@ export function initializeDebugMessageListener() {
           element.getAttribute("data-source") ||
           element.getAttribute("data-inspector-relative-path");
         const dataLine =
-          element.getAttribute("data-line") || element.getAttribute("data-inspector-line");
+          element.getAttribute("data-line") ||
+          element.getAttribute("data-inspector-line");
 
         if (dataSource && dataLine) {
           const lineNum = parseInt(dataLine, 10);
-          if (!processedFiles.has(dataSource) || !processedFiles.get(dataSource)?.has(lineNum)) {
+          if (
+            !processedFiles.has(dataSource) ||
+            !processedFiles.get(dataSource)?.has(lineNum)
+          ) {
             if (!processedFiles.has(dataSource)) {
               processedFiles.set(dataSource, new Set());
             }
@@ -176,7 +240,10 @@ export function initializeDebugMessageListener() {
             const fileName = debugSource.fileName;
             const lineNum = debugSource.lineNumber;
 
-            if (!processedFiles.has(fileName) || !processedFiles.get(fileName)?.has(lineNum)) {
+            if (
+              !processedFiles.has(fileName) ||
+              !processedFiles.get(fileName)?.has(lineNum)
+            ) {
               if (!processedFiles.has(fileName)) {
                 processedFiles.set(fileName, new Set());
               }
@@ -192,7 +259,9 @@ export function initializeDebugMessageListener() {
 
               // Add context about the element
               const tagName = element.tagName.toLowerCase();
-              const className = element.className ? `.${element.className.split(" ")[0]}` : "";
+              const className = element.className
+                ? `.${element.className.split(" ")[0]}`
+                : "";
               fileEntry.context = `${tagName}${className}`;
             }
           }
@@ -204,7 +273,6 @@ export function initializeDebugMessageListener() {
         file.lines.sort((a, b) => a - b);
       });
 
-
       // Send response back to parent frame
       event.source?.postMessage(
         {
@@ -213,7 +281,7 @@ export function initializeDebugMessageListener() {
           success: true,
           sourceFiles,
         },
-        event.origin as WindowPostMessageOptions
+        event.origin as WindowPostMessageOptions,
       );
     } catch (error) {
       console.error("Error processing debug request:", error);
@@ -227,9 +295,18 @@ export function initializeDebugMessageListener() {
           error: error instanceof Error ? error.message : "Unknown error",
           sourceFiles: [],
         },
-        event.origin as WindowPostMessageOptions
+        event.origin as WindowPostMessageOptions,
       );
     }
   });
+}
 
+// Initialize debug data scanner for comprehensive testing
+if (typeof window !== "undefined") {
+  import("./debug-data-scanner").then(() => {
+    // Scanner functions are automatically made available globally via the scanner module
+    console.log(
+      "🔍 Debug data scanner loaded. Use debugScan.quick() to test debug injection coverage.",
+    );
+  });
 }
