@@ -13,3 +13,6 @@ export * from "./workspace";
 // Existing types
 export * from "./wizard";
 export * from "./swarm";
+
+// Encryption types
+export * from "./encryption";
