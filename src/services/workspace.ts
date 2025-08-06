@@ -13,6 +13,10 @@ import {
   WORKSPACE_ERRORS,
   WORKSPACE_PERMISSION_LEVELS,
 } from "@/lib/constants";
+import { EncryptionService } from "@/lib/encryption";
+import { EncryptedData } from "@/types/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Type assertion to help IDE recognize Prisma client methods
 
@@ -74,7 +78,7 @@ export async function getWorkspacesByUserId(
     where: { ownerId: userId, deleted: false },
   });
 
-  return workspaces.map((workspace: any) => ({
+  return workspaces.map((workspace) => ({
     ...workspace,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
@@ -113,7 +117,10 @@ export async function getWorkspaceBySlug(
     return {
       id: workspace.id,
       name: workspace.name,
-      hasKey: !!workspace.stakworkApiKey,
+      hasKey: !!encryptionService.decryptField(
+        "stakworkApiKey",
+        workspace.stakworkApiKey as unknown as EncryptedData,
+      ),
       description: workspace.description,
       slug: workspace.slug,
       ownerId: workspace.ownerId,
@@ -149,7 +156,10 @@ export async function getWorkspaceBySlug(
     updatedAt: workspace.updatedAt.toISOString(),
     userRole: membership.role as WorkspaceRole,
     owner: workspace.owner,
-    hasKey: !!workspace.stakworkApiKey,
+    hasKey: !!encryptionService.decryptField(
+      "stakworkApiKey",
+      workspace.stakworkApiKey as unknown as EncryptedData,
+    ),
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
   };

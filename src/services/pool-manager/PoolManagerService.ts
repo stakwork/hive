@@ -20,6 +20,10 @@ import {
   updatePoolApi,
 } from "@/services/pool-manager/api/pool";
 import { DevContainerFile } from "@/utils/devContainerUtils";
+import { EncryptionService } from "@/lib/encryption";
+import { EncryptedData } from "@/types/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 interface IPoolManagerService {
   createUser: (user: CreateUserRequest) => Promise<PoolUserResponse>;
@@ -74,7 +78,13 @@ export class PoolManagerService
     poolName: string,
     poolApiKey: string,
   ): Promise<Array<{ key: string; value: string }>> {
-    return fetchPoolEnvVars(poolName, poolApiKey);
+    return fetchPoolEnvVars(
+      poolName,
+      encryptionService.decryptField(
+        "poolApiKey",
+        poolApiKey as unknown as EncryptedData,
+      ),
+    );
   }
 
   async updatePoolData(
@@ -86,7 +96,10 @@ export class PoolManagerService
   ): Promise<void> {
     return updatePoolDataApi(
       poolName,
-      poolApiKey,
+      encryptionService.decryptField(
+        "poolApiKey",
+        poolApiKey as unknown as EncryptedData,
+      ),
       envVars,
       currentEnvVars,
       containerFiles,
