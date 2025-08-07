@@ -594,18 +594,18 @@ describe("Workspace Service - Integration Tests", () => {
       const deletedWorkspace = await db.workspace.findUnique({
         where: { id: testWorkspace.id },
       });
-      expect(deletedWorkspace).toBeNull();
+      expect(deletedWorkspace?.deleted).toBeTruthy();
 
-      // Verify related data is also deleted (cascade)
+      // Verify related data is not deleted (cascade)
       const members = await db.workspaceMember.findMany({
         where: { workspaceId: testWorkspace.id },
       });
-      expect(members).toHaveLength(0);
+      expect(members).toHaveLength(1);
 
       const products = await db.product.findMany({
         where: { workspaceId: testWorkspace.id },
       });
-      expect(products).toHaveLength(0);
+      expect(products).toHaveLength(1);
     });
 
     test("should throw error if user is not owner", async () => {
