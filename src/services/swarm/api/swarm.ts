@@ -6,8 +6,6 @@ import {
   ValidateUriResponse,
 } from "@/types";
 import { EncryptionService } from "@/lib/encryption";
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function createSwarmApi(
@@ -94,10 +92,7 @@ export async function swarmApiRequest({
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${encryptionService.decryptField(
-        "swarmApiKey",
-        apiKey as unknown as EncryptedData,
-      )}`,
+      Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey)}`,
       "Content-Type": "application/json",
     };
 
@@ -141,10 +136,7 @@ export async function swarmApiRequestAuth({
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
     const headers: Record<string, string> = {
-      "x-api-token": `${encryptionService.decryptField(
-        "swarmApiKey",
-        apiKey as unknown as EncryptedData,
-      )}`,
+      "x-api-token": `${encryptionService.decryptField("swarmApiKey", apiKey)}`,
       "Content-Type": "application/json",
     };
 

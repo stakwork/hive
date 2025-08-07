@@ -14,7 +14,6 @@ import {
   WORKSPACE_PERMISSION_LEVELS,
 } from "@/lib/constants";
 import { EncryptionService } from "@/lib/encryption";
-import { EncryptedData } from "@/types/encryption";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -119,7 +118,7 @@ export async function getWorkspaceBySlug(
       name: workspace.name,
       hasKey: !!encryptionService.decryptField(
         "stakworkApiKey",
-        workspace.stakworkApiKey as unknown as EncryptedData,
+        workspace.stakworkApiKey || "",
       ),
       description: workspace.description,
       slug: workspace.slug,
@@ -158,7 +157,7 @@ export async function getWorkspaceBySlug(
     owner: workspace.owner,
     hasKey: !!encryptionService.decryptField(
       "stakworkApiKey",
-      workspace.stakworkApiKey as unknown as EncryptedData,
+      workspace.stakworkApiKey || "",
     ),
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",

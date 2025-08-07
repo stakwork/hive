@@ -6,8 +6,6 @@ import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { EncryptionService } from "@/lib/encryption";
 
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {
@@ -56,10 +54,7 @@ export async function GET(request: NextRequest) {
       swarmUrl: `https://${swarm.name}:3355`,
       endpoint: "/services",
       method: "GET",
-      apiKey: encryptionService.decryptField(
-        "swarmApiKey",
-        swarm.swarmApiKey as unknown as EncryptedData,
-      ),
+      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 
     // Transform response format: wrap array in {services: [...]} for new format

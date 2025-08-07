@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptedData, EncryptionService } from "@/lib/encryption";
+import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -48,7 +48,7 @@ export async function POST() {
             body: JSON.stringify({
               access_token: encryptionService.decryptField(
                 "access_token",
-                account.access_token as unknown as EncryptedData,
+                account.access_token,
               ),
             }),
           },

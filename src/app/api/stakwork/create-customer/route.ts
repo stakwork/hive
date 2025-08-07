@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { stakworkService } from "@/lib/service-factory";
-import { EncryptedData, type ApiError } from "@/types";
+import { type ApiError } from "@/types";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       );
       const decryptedStakworkApiKey = encryptionService.decryptField(
         "stakworkApiKey",
-        (swarm?.swarmApiKey as unknown as EncryptedData) || "",
+        swarm?.swarmApiKey || "",
       );
 
       if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {

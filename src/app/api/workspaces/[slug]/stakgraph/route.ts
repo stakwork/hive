@@ -6,7 +6,6 @@ import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
-import { EncryptedData } from "@/types/encryption";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
@@ -256,10 +255,7 @@ export async function PUT(
 
     console.log(
       ">>>>>>>>>decryptedPoolApiKey",
-      encryptionService.decryptField(
-        "poolApiKey",
-        poolApiKey as unknown as EncryptedData,
-      ),
+      encryptionService.decryptField("poolApiKey", poolApiKey),
     );
 
     console.log(">>>>>>>>>settings.services", settings.services);
@@ -283,10 +279,7 @@ export async function PUT(
         if (swarm) {
           const currentEnvVars = await poolManager.getPoolEnvVars(
             swarm.id,
-            encryptionService.decryptField(
-              "poolApiKey",
-              poolApiKey as unknown as EncryptedData,
-            ),
+            encryptionService.decryptField("poolApiKey", poolApiKey),
           );
 
           // TODO: This is a solution to preserve data structure.
@@ -295,10 +288,7 @@ export async function PUT(
           // Always send all vars, with correct masked/changed status
           await poolManager.updatePoolData(
             swarm.id,
-            encryptionService.decryptField(
-              "poolApiKey",
-              poolApiKey as unknown as EncryptedData,
-            ),
+            encryptionService.decryptField("poolApiKey", poolApiKey),
             settings.environmentVariables as unknown as Array<{
               name: string;
               value: string;
@@ -330,7 +320,7 @@ export async function PUT(
         poolName: typedSwarm.poolName,
         poolApiKey: encryptionService.decryptField(
           "poolApiKey",
-          typedSwarm.poolApiKey as unknown as EncryptedData,
+          typedSwarm.poolApiKey || "",
         ),
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services:

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager/PoolManagerService";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { EncryptedData, EnvironmentVariable, type ApiError } from "@/types";
+import { EnvironmentVariable, type ApiError } from "@/types";
 import { generateRandomPassword } from "@/utils/randomPassword";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
       headers: {
         Authorization: `Bearer ${encryptionService.decryptField(
           "poolApiKey",
-          poolApiKey as unknown as EncryptedData,
+          poolApiKey,
         )}`,
       },
     });
@@ -226,12 +226,7 @@ export async function POST(request: NextRequest) {
     console.log(
       "--------------------------------createPool--------------------------------",
     );
-    console.log(
-      encryptionService.decryptField(
-        "poolApiKey",
-        poolApiKey as unknown as EncryptedData,
-      ),
-    );
+    console.log(encryptionService.decryptField("poolApiKey", poolApiKey));
     console.log(
       "--------------------------------createPool--------------------------------",
     );

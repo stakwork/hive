@@ -14,8 +14,6 @@ import {
 import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Disable caching for real-time messaging
@@ -335,6 +333,8 @@ export async function POST(request: NextRequest) {
       })) as Artifact[],
     };
 
+    console.log("clientMessage", clientMessage); // TODO: remove this
+
     const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
 
     // Check if Stakwork environment variables are defined
@@ -348,8 +348,8 @@ export async function POST(request: NextRequest) {
     const accessToken =
       encryptionService.decryptField(
         "access_token",
-        user.accounts.find((account) => account.access_token)
-          ?.access_token as unknown as EncryptedData,
+        user.accounts.find((account) => account.access_token)?.access_token ||
+          "",
       ) || null;
 
     const swarm = task.workspace.swarm;

@@ -3,8 +3,6 @@ import { ServiceConfig } from "@/types";
 import { config } from "@/lib/env";
 import { EncryptionService } from "@/lib/encryption";
 
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export class StakworkService extends BaseServiceClass {
@@ -29,7 +27,7 @@ export class StakworkService extends BaseServiceClass {
       "Content-Type": "application/json",
       Authorization: `Token token=${encryptionService.decryptField(
         "stakworkApiKey",
-        this.config.apiKey as unknown as EncryptedData,
+        this.config.apiKey,
       )}`,
     };
 
@@ -120,7 +118,7 @@ export class StakworkService extends BaseServiceClass {
       "Content-Type": "application/json",
       Authorization: `Token token=${encryptionService.decryptField(
         "stakworkApiKey",
-        this.config.apiKey as unknown as EncryptedData,
+        this.config.apiKey,
       )}`,
     };
 

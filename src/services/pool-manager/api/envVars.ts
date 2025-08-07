@@ -2,8 +2,6 @@ import { config } from "@/lib/env";
 import { DevContainerFile } from "@/utils/devContainerUtils";
 import { EncryptionService } from "@/lib/encryption";
 
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function fetchPoolEnvVars(
@@ -14,7 +12,7 @@ export async function fetchPoolEnvVars(
   const headers = {
     Authorization: `Bearer ${encryptionService.decryptField(
       "poolApiKey",
-      poolApiKey as unknown as EncryptedData,
+      poolApiKey,
     )}`,
     "Content-Type": "application/json",
   };
@@ -79,10 +77,7 @@ export async function updatePoolDataApi(
   const response = await fetch(url, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${encryptionService.decryptField(
-        "poolApiKey",
-        poolApiKey as unknown as EncryptedData,
-      )}`,
+      Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
       "Content-Type": "application/json",
     },
     body,

@@ -5,8 +5,6 @@ import { db } from "@/lib/db";
 import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
 
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET() {
@@ -35,10 +33,7 @@ export async function GET() {
     // Fetch repositories from GitHub API
     const response = await axios.get("https://api.github.com/user/repos", {
       headers: {
-        Authorization: `token ${encryptionService.decryptField(
-          "access_token",
-          account.access_token as unknown as EncryptedData,
-        )}`,
+        Authorization: `token ${encryptionService.decryptField("access_token", account.access_token)}`,
         Accept: "application/vnd.github.v3+json",
       },
       params: {

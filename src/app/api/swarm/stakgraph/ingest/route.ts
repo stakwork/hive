@@ -7,8 +7,6 @@ import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { EncryptionService } from "@/lib/encryption";
 
-import { EncryptedData } from "@/types/encryption";
-
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
@@ -118,10 +116,7 @@ export async function POST(request: NextRequest) {
       swarmUrl: stakgraphUrl,
       endpoint: "/ingest_async",
       method: "POST",
-      apiKey: encryptionService.decryptField(
-        "swarmApiKey",
-        swarm.swarmApiKey as unknown as EncryptedData,
-      ),
+      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
       data: dataApi,
     });
 
@@ -234,10 +229,7 @@ export async function GET(request: NextRequest) {
       swarmUrl: stakgraphUrl,
       endpoint: `/status/${id}`,
       method: "GET",
-      apiKey: encryptionService.decryptField(
-        "swarmApiKey",
-        swarm.swarmApiKey as unknown as EncryptedData,
-      ),
+      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 
     console.log("apiResult", apiResult);

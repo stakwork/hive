@@ -33,10 +33,24 @@ export class FieldEncryptionService {
 
   decryptField(
     fieldName: EncryptableField,
-    encryptedData: EncryptedData,
+    encryptedData: EncryptedData | string,
   ): string {
     try {
-      return decrypt(encryptedData, this.key);
+      if (typeof encryptedData === "string") {
+        try {
+          const parsed = JSON.parse(encryptedData);
+          if (isEncrypted(parsed)) {
+            return decrypt(parsed, this.key);
+          }
+        } catch {
+          return encryptedData;
+        }
+        return encryptedData;
+      } else if (isEncrypted(encryptedData)) {
+        return decrypt(encryptedData, this.key);
+      } else {
+        throw new Error("Invalid encrypted data format");
+      }
     } catch (error) {
       const decryptionError = new Error(
         `Failed to decrypt field: ${fieldName}`,
@@ -90,6 +104,7 @@ export class FieldEncryptionService {
       "poolApiKey",
       "swarmApiKey",
       "stakworkApiKey",
+      "githubApiKey", // TODO: implement github api key encryption
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);

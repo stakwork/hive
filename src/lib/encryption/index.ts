@@ -25,7 +25,7 @@ export class EncryptionService {
 
   decryptField(
     fieldName: EncryptableField,
-    encryptedData: EncryptedData,
+    encryptedData: EncryptedData | string,
   ): string {
     return this.fieldEncryption.decryptField(fieldName, encryptedData);
   }
