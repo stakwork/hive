@@ -345,13 +345,24 @@ export async function POST(request: NextRequest) {
 
     // Extract data for Stakwork payload
     const userName = githubAuth?.githubUsername || null;
-    const accessToken =
-      encryptionService.decryptField(
-        "access_token",
-        user.accounts.find((account) => account.access_token)?.access_token ||
-          "",
-      ) || null;
-
+    let accessToken: string | null = null;
+    try {
+      const accountWithToken = user.accounts.find(
+        (account) => account.access_token,
+      );
+      if (accountWithToken?.access_token) {
+        accessToken = encryptionService.decryptField(
+          "access_token",
+          accountWithToken.access_token,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to decrypt access_token:", error);
+      const accountWithToken = user.accounts.find(
+        (account) => account.access_token,
+      );
+      accessToken = accountWithToken?.access_token || null;
+    }
     const swarm = task.workspace.swarm;
     const swarmUrl = swarm?.swarmUrl
       ? swarm.swarmUrl.replace("/api", ":8444/api")

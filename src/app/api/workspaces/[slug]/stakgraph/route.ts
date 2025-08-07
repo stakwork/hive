@@ -248,22 +248,23 @@ export async function PUT(
       },
     });
 
-    const poolApiKey = encryptionService.encryptField(
-      "poolApiKey",
-      user?.poolApiKey || "",
-    ).data;
+    const userPoolApiKey = user?.poolApiKey || "";
+    let decryptedPoolApiKey: string;
 
-    console.log(
-      ">>>>>>>>>decryptedPoolApiKey",
-      encryptionService.decryptField("poolApiKey", poolApiKey),
-    );
-
-    console.log(">>>>>>>>>settings.services", settings.services);
+    try {
+      decryptedPoolApiKey = encryptionService.decryptField(
+        "poolApiKey",
+        userPoolApiKey,
+      );
+    } catch (error) {
+      console.error("Failed to decrypt poolApiKey:", error);
+      decryptedPoolApiKey = userPoolApiKey;
+    }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
     if (
       settings.poolName &&
-      poolApiKey &&
+      decryptedPoolApiKey &&
       Array.isArray(settings.environmentVariables)
     ) {
       try {
@@ -279,7 +280,7 @@ export async function PUT(
         if (swarm) {
           const currentEnvVars = await poolManager.getPoolEnvVars(
             swarm.id,
-            encryptionService.decryptField("poolApiKey", poolApiKey),
+            decryptedPoolApiKey,
           );
 
           // TODO: This is a solution to preserve data structure.
@@ -288,7 +289,7 @@ export async function PUT(
           // Always send all vars, with correct masked/changed status
           await poolManager.updatePoolData(
             swarm.id,
-            encryptionService.decryptField("poolApiKey", poolApiKey),
+            decryptedPoolApiKey,
             settings.environmentVariables as unknown as Array<{
               name: string;
               value: string;
@@ -318,10 +319,7 @@ export async function PUT(
         repositoryUrl: typedSwarm.repositoryUrl,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
-        poolApiKey: encryptionService.decryptField(
-          "poolApiKey",
-          typedSwarm.poolApiKey || "",
-        ),
+        poolApiKey: decryptedPoolApiKey,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services:
           typeof typedSwarm.services === "string"
