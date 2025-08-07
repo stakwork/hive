@@ -49,7 +49,7 @@ const baseStyles = {
   listDisc: "list-disc",
   listDecimal: "list-decimal",
   listItem: "leading-7",
-  codeInline: "relative rounded text-sm font-mono border",
+  codeInline: "relative rounded-xs bg-muted/15 px-1 py-0.5 text-sm font-mono",
   codeBlock: "relative rounded-lg border overflow-x-auto",
   table: "w-full border-collapse",
   tableWrapper: "my-6 w-full overflow-y-auto rounded-lg border",
@@ -227,36 +227,19 @@ const createComponents = (
   hr: ({ ...props }) => (
     <hr className={cn(baseStyles.hr, styles.border)} {...props} />
   ),
-  code: ({ inline, className, children, ...props }: CodeProps) => {
+  code: ({ className, children }: CodeProps) => {
     const match = /language-(\w+)/.exec(className || "");
-
-    if (inline) {
-      return (
-        <code
-          className={cn(
-            baseStyles.codeInline,
-            styles.bg,
-            styles.text,
-            styles.border,
-          )}
-          {...props}
-        >
-          {children}
-        </code>
-      );
-    }
-
-    return (
-      <div>
-        <SyntaxHighlighter
-          language={match ? match[1] : "text"}
-          style={tomorrow}
-          wrapLongLines={true}
-          PreTag="div"
-        >
-          {String(children).replace(/\n$/, "")}
-        </SyntaxHighlighter>
-      </div>
+    return match ? (
+      <SyntaxHighlighter
+        PreTag="div"
+        wrapLines={true}
+        language={match[1]}
+        style={tomorrow}
+      >
+        {String(children).replace(/\n$/, "")}
+      </SyntaxHighlighter>
+    ) : (
+      <code className={cn(baseStyles.codeInline)}>{children}</code>
     );
   },
 });
@@ -269,6 +252,15 @@ export function MarkdownRenderer({
   const isUser = variant === "user";
   const styles = createStyles(isUser);
   const components = createComponents(styles);
+
+  const processedContent =
+    typeof children === "string"
+      ? children
+          .replace(/\\n/g, "\n")
+          .replace(/\\t/g, "\t")
+          .replace(/\\"/g, '"')
+          .replace(/\\'/g, "'")
+      : children;
 
   return (
     <div className={cn("prose dark:prose-invert max-w-full", className)}>
@@ -283,7 +275,7 @@ export function MarkdownRenderer({
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeFormat]}
         components={components}
       >
-        {children}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );
