@@ -42,7 +42,7 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
     <motion.div
       layout
       initial={{ opacity: 0, x: 100, width: 0 }}
-      animate={{ opacity: 1, x: 0, width: "65%" }}
+      animate={{ opacity: 1, x: 0, width: "60%" }}
       exit={{ opacity: 0, x: 100, width: 0 }}
       transition={{
         duration: 0.4,

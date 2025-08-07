@@ -46,6 +46,8 @@ const stakgraphSettingsSchema = z.object({
           install: z.string().optional(),
           build: z.string().optional(),
           test: z.string().optional(),
+          preStart: z.string().optional(),
+          postStart: z.string().optional(),
         }),
         // Add optional fields that might be in your payload
         dev: z.boolean().optional(),
@@ -121,19 +123,15 @@ export async function GET(
     // Fetch environment variables from Pool Manager using poolName and poolApiKey
     const environmentVariables = swarm?.environmentVariables;
 
-    const repository = await db.repository.findFirst({
-      where: {
-        workspaceId: workspace.id,
-      },
-    });
+    console.log(">>>>>>>>>swarm.services", swarm);
 
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings retrieved successfully",
       data: {
-        name: repository?.name || "",
+        name: swarm.name || "",
         description: swarm.repositoryDescription || "",
-        repositoryUrl: repository?.repositoryUrl || "",
+        repositoryUrl: swarm.repositoryUrl || "",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
@@ -228,7 +226,7 @@ export async function PUT(
     // Save or update Swarm using shared service
     const swarm = await saveOrUpdateSwarm({
       workspaceId: workspace.id,
-      name: `${workspace.name}.sphinx.chat`, // Use workspace name for swarm name
+      name: settings.name,
       repositoryName: settings.name,
       repositoryDescription: settings.description,
       repositoryUrl: settings.repositoryUrl,

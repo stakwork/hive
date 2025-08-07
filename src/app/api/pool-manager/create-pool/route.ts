@@ -38,10 +38,30 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { swarmId, workspaceId, container_files } = body;
 
-        const where: Record<string, string> = {};
-        if (swarmId) where.swarmId = swarmId;
-        if (!swarmId && workspaceId) where.workspaceId = workspaceId;
-        const swarm = await db.swarm.findFirst({ where });
+        const userId = (session.user as { id?: string })?.id;
+        if (!userId) {
+            return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+        }
+
+        // Find the swarm and verify user has access to the workspace
+        const swarm = await db.swarm.findFirst({
+            where: {
+                ...(swarmId ? { swarmId } : {}),
+                ...(workspaceId ? { workspaceId } : {}),
+            },
+            include: {
+                workspace: {
+                    select: {
+                        id: true,
+                        ownerId: true,
+                        members: {
+                            where: { userId },
+                            select: { role: true },
+                        },
+                    },
+                },
+            },
+        });
 
         const github_pat = await getGithubUsernameAndPAT(session?.user.id);
 
@@ -135,6 +155,18 @@ export async function POST(request: NextRequest) {
 
         if (!swarm) {
             return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
+        }
+
+        // Check if user has access to the workspace
+        if (!swarm.workspace) {
+            return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+        }
+
+        const isOwner = swarm.workspace.ownerId === userId;
+        const isMember = swarm.workspace.members.length > 0;
+
+        if (!isOwner && !isMember) {
+            return NextResponse.json({ error: "Access denied" }, { status: 403 });
         }
 
         // Validate required fields

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       const { token } = data;
 
       const workspace = await db.workspace.findFirst({
-        where: { id: workspaceId },
+        where: { id: workspaceId, deleted: false },
       });
 
       if (workspace) {

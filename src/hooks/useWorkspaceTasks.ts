@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { WorkflowStatus } from "@/lib/chat";
 
 export interface TaskData {
   id: string;
@@ -9,6 +10,7 @@ export interface TaskData {
   description: string | null;
   status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
   priority: "LOW" | "MEDIUM" | "HIGH";
+  workflowStatus: WorkflowStatus | null;
   createdAt: string;
   updatedAt: string;
   assignee?: {

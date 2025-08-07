@@ -1,3 +1,4 @@
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { LongformContent, Artifact } from "@/lib/chat";
 import { useRef, useState, useEffect } from "react";
 
@@ -26,7 +27,7 @@ export function LongformArtifactPanel({
     <div className="h-full flex flex-col relative">
       <div
         ref={scrollRef}
-        className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto text-sm whitespace-pre-wrap relative"
+        className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto whitespace-pre-wrap relative"
       >
         {artifacts.map((artifact) => {
           const content = artifact.content as LongformContent;
@@ -37,7 +38,7 @@ export function LongformArtifactPanel({
                   {content.title}
                 </div>
               )}
-              <div>{content.text}</div>
+              <MarkdownRenderer>{content.text}</MarkdownRenderer>
             </div>
           );
         })}

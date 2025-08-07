@@ -10,88 +10,15 @@ import {
 } from "@/components/ui/card";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { EnvironmentVariable } from "@/types/wizard";
-import {
-  AlertCircle,
-  ArrowRight
-} from "lucide-react";
+import { AlertCircle, ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-
-const generatePM2Apps = (
-  repoName: string,
-  servicesData: ServiceDataConfig[],
-) => {
-  if (!servicesData || !servicesData || servicesData.length === 0) {
-    // Return default configuration if no services
-    return [
-      {
-        name: "default-service",
-        script: "npm start",
-        cwd: `/workspaces/${repoName}`,
-        instances: 1,
-        autorestart: true,
-        watch: false,
-        max_memory_restart: "1G",
-        env: {
-          INSTALL_COMMAND: "npm install",
-          TEST_COMMAND: "npm test",
-          BUILD_COMMAND: "npm run build",
-          PORT: "3000",
-        },
-      },
-    ];
-  }
-
-  return servicesData.map((service) => ({
-    name: service.name,
-    script: service.scripts?.start || "",
-    cwd: `/workspaces/${repoName}`,
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: "1G",
-    env: {
-      INSTALL_COMMAND: service.scripts?.install || "",
-      TEST_COMMAND: service.scripts?.test || "",
-      BUILD_COMMAND: service.scripts?.build || "",
-      PORT: service.port?.toString() || "",
-    },
-  }));
-};
-
-// Helper function to format PM2 apps as JavaScript string
-const formatPM2Apps = (
-  apps: Array<{
-    name: string;
-    script: string;
-    cwd: string;
-    instances: number;
-    autorestart: boolean;
-    watch: boolean;
-    max_memory_restart: string;
-    env: Record<string, string>;
-  }>,
-) => {
-  const formattedApps = apps.map((app) => {
-    const envEntries = Object.entries(app.env)
-      .map(([key, value]) => `        ${key}: "${value}"`)
-      .join(",\n");
-
-    return `    {
-      name: "${app.name}",
-      script: "${app.script}",
-      cwd: "${app.cwd}",
-      instances: ${app.instances},
-      autorestart: ${app.autorestart},
-      watch: ${app.watch},
-      max_memory_restart: "${app.max_memory_restart}",
-      env: {
-${envEntries}
-      }
-    }`;
-  });
-
-  return `[\n${formattedApps.join(",\n")}\n  ]`;
-};
+import {
+  generatePM2Apps,
+  formatPM2Apps,
+  devcontainerJsonContent,
+  dockerComposeContent,
+  dockerfileContent,
+} from "../../../../utils/devContainerUtils";
 
 const getFiles = (
   repoName: string,
@@ -101,73 +28,15 @@ const getFiles = (
   const pm2Apps = generatePM2Apps(repoName, servicesData);
 
   return {
-    "devcontainer.json": `{
-  "name": "${projectName}",
-  "dockerComposeFile": "./docker-compose.yml",
-  "workspaceFolder": "/workspaces",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
-  },
-  "customizations": {
-    "vscode": {
-      "settings": {
-        "git.autofetch": true,
-        "editor.formatOnSave": true,
-        "telemetry.telemetryLevel": "off",
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-      },
-      "extensions": [
-        "stakwork.staklink",
-        "esbenp.prettier-vscode"
-      ]
-    }
-  }
-}`,
+    "devcontainer.json": devcontainerJsonContent(projectName),
     "pm2.config.js": `module.exports = {
   apps: ${formatPM2Apps(pm2Apps)},
 };
 `,
-    "docker-compose.yml": `version: '3.8'
-volumes:
-networks:
-  app_network:
-    driver: bridge
-services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ../..:/workspaces:cached
-    command: sleep infinity
-    networks:
-      - app_network
-    extra_hosts:
-      - "localhost:172.17.0.1"
-      - "host.docker.internal:host-gateway"
-`,
-    Dockerfile: `FROM mcr.microsoft.com/devcontainers/universal
-
-# [Optional] Uncomment this section to install additional OS packages.
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \\
-    && apt-get -y install --no-install-recommends wget sed
-
-RUN sudo mkdir -p -m 755 /etc/apt/keyrings \\
-    && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \\
-    && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \\
-    && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \\
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\
-    && sudo apt update -y \\
-    && sudo apt install gh -y
-
-# Install PM2 globally and ensure it's accessible
-RUN npm install -g pm2 && \\
-    ln -sf /usr/local/node/bin/pm2 /usr/local/bin/pm2 && \\
-    pm2 --version
-`,
+    "docker-compose.yml": dockerComposeContent(),
+    Dockerfile: dockerfileContent(),
   };
 };
-
 
 interface ReviewPoolEnvironmentStepProps {
   repoName: string;
@@ -200,11 +69,9 @@ export const ReviewPoolEnvironmentStep = ({
   const swarmId = useWizardStore((s) => s.swarmId);
   const workspaceId = useWizardStore((s) => s.workspaceId);
 
-
   const files = getFiles(repoName, projectName, services);
 
   useEffect(() => {
-
     setOriginalContents(files);
     setFileContents(files);
   }, [services]);
@@ -264,7 +131,6 @@ export const ReviewPoolEnvironmentStep = ({
       console.error(error);
     }
   }, [onNext, fileContents, poolName]);
-
 
   return (
     <Card className="max-w-4xl mx-auto">

@@ -8,6 +8,7 @@ import {
   FormContent,
 } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel } from "../artifacts";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -33,7 +34,7 @@ export function ChatMessage({
       transition={{ duration: 0.4 }}
     >
       <div
-        className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}
+        className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end ml-12" : "justify-start"}`}
       >
         {message.role === "ASSISTANT" && (
           <Avatar>
@@ -41,15 +42,20 @@ export function ChatMessage({
             <AvatarFallback>A</AvatarFallback>
           </Avatar>
         )}
+
         {message.message && (
           <div
-            className={`px-4 py-2 rounded-xl text-sm max-w-xs shadow-sm whitespace-pre-wrap ${
+            className={`px-4 py-1 rounded-md max-w-full shadow-sm ${
               message.role === "USER"
                 ? "bg-primary text-primary-foreground rounded-br-none"
                 : "bg-background text-foreground rounded-bl-none border"
             }`}
           >
-            {message.message}
+            <MarkdownRenderer
+              variant={message.role === "USER" ? "user" : "assistant"}
+            >
+              {message.message}
+            </MarkdownRenderer>
           </div>
         )}
         {message.role === "USER" && (
