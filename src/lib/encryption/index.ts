@@ -3,13 +3,20 @@ import { generateKey, bufferToHex } from "./crypto";
 import { EncryptableField, EncryptedData } from "@/types";
 
 export class EncryptionService {
-  private fieldEncryption: FieldEncryptionService;
+  private fieldEncryption: FieldEncryptionService | null = null;
   private static instance: EncryptionService;
 
-  private constructor() {
-    this.fieldEncryption = new FieldEncryptionService(
-      process.env.TOKEN_ENCRYPTION_KEY!,
-    );
+  private constructor() {}
+
+  private getFieldEncryption(): FieldEncryptionService {
+    if (!this.fieldEncryption) {
+      const key = process.env.TOKEN_ENCRYPTION_KEY;
+      if (!key) {
+        throw new Error("TOKEN_ENCRYPTION_KEY environment variable is not set");
+      }
+      this.fieldEncryption = new FieldEncryptionService(key);
+    }
+    return this.fieldEncryption;
   }
 
   static getInstance(): EncryptionService {
@@ -20,22 +27,22 @@ export class EncryptionService {
   }
 
   encryptField(fieldName: EncryptableField, value: string): EncryptedData {
-    return this.fieldEncryption.encryptField(fieldName, value);
+    return this.getFieldEncryption().encryptField(fieldName, value);
   }
 
   decryptField(
     fieldName: EncryptableField,
     encryptedData: EncryptedData | string,
   ): string {
-    return this.fieldEncryption.decryptField(fieldName, encryptedData);
+    return this.getFieldEncryption().decryptField(fieldName, encryptedData);
   }
 
   encryptObject<T extends Record<string, unknown>>(obj: T): T {
-    return this.fieldEncryption.encryptObject(obj);
+    return this.getFieldEncryption().encryptObject(obj);
   }
 
   decryptObject<T extends Record<string, unknown>>(obj: T): T {
-    return this.fieldEncryption.decryptObject(obj);
+    return this.getFieldEncryption().decryptObject(obj);
   }
 
   static generateKey(): string {
