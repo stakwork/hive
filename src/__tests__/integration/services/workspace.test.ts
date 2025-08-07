@@ -590,22 +590,19 @@ describe("Workspace Service - Integration Tests", () => {
     test("should delete workspace as owner", async () => {
       await deleteWorkspaceBySlug(slug_value, testUser1.id);
 
-      // Verify workspace is deleted
+      // Verify workspace is soft deleted
       const deletedWorkspace = await db.workspace.findUnique({
         where: { id: testWorkspace.id },
       });
-      expect(deletedWorkspace).toBeNull();
+      expect(deletedWorkspace).not.toBeNull();
+      expect(deletedWorkspace?.deleted).toBe(true);
+      expect(deletedWorkspace?.deletedAt).toBeInstanceOf(Date);
 
-      // Verify related data is also deleted (cascade)
-      const members = await db.workspaceMember.findMany({
-        where: { workspaceId: testWorkspace.id },
+      // Verify the workspace is no longer accessible through filtered queries
+      const accessibleWorkspace = await db.workspace.findUnique({
+        where: { id: testWorkspace.id, deleted: false },
       });
-      expect(members).toHaveLength(0);
-
-      const products = await db.product.findMany({
-        where: { workspaceId: testWorkspace.id },
-      });
-      expect(products).toHaveLength(0);
+      expect(accessibleWorkspace).toBeNull();
     });
 
     test("should throw error if user is not owner", async () => {
