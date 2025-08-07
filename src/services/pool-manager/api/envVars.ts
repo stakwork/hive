@@ -17,9 +17,6 @@ export async function fetchPoolEnvVars(
     "Content-Type": "application/json",
   };
 
-  console.log("url", url);
-  console.log("headers", headers);
-
   const response = await fetch(url, {
     method: "GET",
     headers: headers,

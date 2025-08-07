@@ -52,7 +52,6 @@ const stakgraphSettingsSchema = z.object({
           preStart: z.string().optional(),
           postStart: z.string().optional(),
         }),
-        // Add optional fields that might be in your payload
         dev: z.boolean().optional(),
         env: z.record(z.string()).optional(),
         language: z.string().optional(),
@@ -123,10 +122,7 @@ export async function GET(
       );
     }
 
-    // Fetch environment variables from Pool Manager using poolName and poolApiKey
     const environmentVariables = swarm?.environmentVariables;
-
-    console.log(">>>>>>>>>swarm.services", swarm);
 
     return NextResponse.json({
       success: true,
@@ -195,7 +191,6 @@ export async function PUT(
       );
     }
 
-    // Get workspace and verify access
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json(
@@ -208,7 +203,6 @@ export async function PUT(
       );
     }
 
-    // Parse and validate request body
     const body = await request.json();
     const validationResult = stakgraphSettingsSchema.safeParse(body);
 
@@ -226,7 +220,6 @@ export async function PUT(
 
     const settings = validationResult.data;
 
-    // Save or update Swarm using shared service
     const swarm = await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       name: settings.name,
@@ -286,7 +279,6 @@ export async function PUT(
           // TODO: This is a solution to preserve data structure.
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
-          // Always send all vars, with correct masked/changed status
           await poolManager.updatePoolData(
             swarm.id,
             decryptedPoolApiKey,
@@ -304,7 +296,6 @@ export async function PUT(
         }
       } catch (err) {
         console.error("Failed to update env vars in Pool Manager:", err);
-        // Optionally, return error or continue
       }
     }
 

@@ -27,12 +27,6 @@ export async function POST(request: NextRequest) {
       user?.poolApiKey || "",
     ).data;
 
-    if (!poolApiKey) {
-      console.log(session?.user);
-    } else {
-      console.log(poolApiKey);
-    }
-
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -76,18 +70,7 @@ export async function POST(request: NextRequest) {
 
     const password = generateRandomPassword(12);
 
-    console.log(
-      "--------------------------------password--------------------------------",
-    );
-    console.log(password);
-    console.log(
-      "--------------------------------password--------------------------------",
-    );
-
     if (!poolApiKey) {
-      console.log(
-        "--------------------------------login--------------------------------",
-      );
       const loginResponse = await fetch(
         "https://workspaces.sphinx.chat/api/auth/login",
         {
@@ -113,16 +96,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log(
-        "--------------------------------createUser--------------------------------",
-      );
-      console.log(session.user.email);
-      console.log(password);
-      console.log((session.user.name || "").toLowerCase());
-      console.log(
-        "--------------------------------createUser--------------------------------",
-      );
-
       const sanitizedName = (session.user.name || "").replace(/\s+/g, "");
 
       try {
@@ -141,8 +114,6 @@ export async function POST(request: NextRequest) {
               .data,
           },
         });
-
-        console.log(poolUser, "poolUser");
 
         if (!poolUser) {
           return NextResponse.json(
@@ -174,7 +145,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
     }
 
-    // Check if user has access to the workspace
     if (!swarm.workspace) {
       return NextResponse.json(
         { error: "Workspace not found" },
@@ -209,10 +179,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log(account, "account---account");
-    console.log(repository, "repository---repository");
-    console.log(swarm, "swarm---swarm");
-
     const poolManager = new PoolManagerService({
       ...serviceConfigs.poolManager,
       headers: {
@@ -222,14 +188,6 @@ export async function POST(request: NextRequest) {
         )}`,
       },
     });
-
-    console.log(
-      "--------------------------------createPool--------------------------------",
-    );
-    console.log(encryptionService.decryptField("poolApiKey", poolApiKey));
-    console.log(
-      "--------------------------------createPool--------------------------------",
-    );
 
     let envVars: EnvironmentVariable[] = [
       {

@@ -42,8 +42,6 @@ export async function fetchSwarmDetails(
     try {
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
-      console.log("fetch searm details url", url);
-
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -51,8 +49,6 @@ export async function fetchSwarmDetails(
         },
       });
       const data = await response.json();
-
-      console.log("fetch swarm details data", data);
 
       if (response.ok) {
         return { ok: true, data, status: response.status };
@@ -62,7 +58,7 @@ export async function fetchSwarmDetails(
     } catch {
       lastError = { ok: false, status: 500 };
     }
-    // Exponential backoff
+
     await new Promise((resolve) => setTimeout(resolve, delay));
     delay *= 2;
   }

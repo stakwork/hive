@@ -89,7 +89,7 @@ export async function POST() {
         },
       });
     } catch (error) {
-      console.log(
+      console.error(
         "Sessions already deleted or error deleting sessions:",
         error,
       );

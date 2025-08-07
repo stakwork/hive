@@ -102,8 +102,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
   if (params.stepStatus !== undefined) data.stepStatus = params.stepStatus;
   if (params.wizardData !== undefined) {
-    console.log("params.wizardData", params.wizardData);
-    console.log("data.wizardData", data.wizardData);
     const previousWizardData = swarm?.wizardData || {};
 
     const newWizardData = {
@@ -123,7 +121,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   data.updatedAt = new Date();
 
   if (swarm) {
-    console.log("[saveOrUpdateSwarm] Update data:", data);
     swarm = await db.swarm.update({
       where: { workspaceId: params.workspaceId },
       data,

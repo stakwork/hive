@@ -84,8 +84,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("repositoryupsertstart");
-    // Upsert Repository record with status PENDING
     const repository = await db.repository.upsert({
       where: {
         repositoryUrl_workspaceId: {
@@ -154,7 +152,7 @@ export async function POST(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch (error) {
-    console.log("Error ingesting code:", error);
+    console.error("Error ingesting code:", error);
     return NextResponse.json(
       { success: false, message: "Failed to ingest code" },
       { status: 500 },
@@ -163,8 +161,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  console.log("..............GET INGEST STATUS API BEING CALLED............");
-
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   const swarmId = searchParams.get("swarmId");
@@ -231,8 +227,6 @@ export async function GET(request: NextRequest) {
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
-
-    console.log("apiResult", apiResult);
 
     return NextResponse.json(
       {
