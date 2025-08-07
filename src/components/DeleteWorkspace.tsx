@@ -67,8 +67,8 @@ export function DeleteWorkspace({
         variant: "default",
       });
 
-      // Redirect to workspaces page after successful deletion
-      router.push("/workspaces");
+      // Redirect to home page after successful deletion
+      router.push("/");
       router.refresh();
     } catch (error) {
       console.error("Error deleting workspace:", error);
