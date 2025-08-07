@@ -18,16 +18,16 @@ export function WorkflowUrlLink({
 
   return (
     <div 
-      className={`absolute top-2 right-2 transition-opacity duration-200 ${className}`}
+      className={`absolute -top-2 -right-2 transition-opacity duration-200 z-10 ${className}`}
     >
       <Button
         onClick={handleClick}
         variant="ghost"
         size="sm"
-        className="h-8 w-8 p-0 hover:bg-muted/50"
+        className="h-6 w-6 p-0 hover:bg-background/80 border border-border/50 shadow-sm bg-background"
         aria-label="Open workflow in new tab"
       >
-        <ExternalLink className="h-4 w-4" />
+        <ExternalLink className="h-3 w-3" />
       </Button>
     </div>
   );
