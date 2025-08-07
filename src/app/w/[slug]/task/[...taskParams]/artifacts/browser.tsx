@@ -307,7 +307,7 @@ export function BrowserArtifactPanel({
           if (event.origin !== iframeOrigin) return;
 
           if (
-            event.data?.type === "debug-response" &&
+            event.data?.type === "staktrak-debug-response" &&
             event.data?.messageId === messageId
           ) {
             clearTimeout(timeout);
@@ -327,7 +327,7 @@ export function BrowserArtifactPanel({
       // Send coordinates to iframe via postMessage
       iframeElement.contentWindow?.postMessage(
         {
-          type: "debug-request",
+          type: "staktrak-debug-request",
           messageId,
           coordinates: { x, y, width, height },
         },
