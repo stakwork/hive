@@ -203,6 +203,7 @@ export async function POST(request: NextRequest) {
     const {
       taskId,
       message,
+      workflowUrl,
       contextTags = [] as ContextTag[],
       sourceWebsocketID,
       artifacts = [] as ArtifactRequest[],
@@ -295,6 +296,7 @@ export async function POST(request: NextRequest) {
       data: {
         taskId,
         message,
+        workflowUrl,
         role: ChatRole.USER,
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
