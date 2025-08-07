@@ -230,10 +230,10 @@ export function scanDebugDataInjection(
         tagName: element.tagName.toLowerCase(),
         className: element.className.toString(),
         id: element.id,
-        dataSource,
+        dataSource: dataSource || undefined,
         dataLine,
         dataColumn,
-        fiberSource,
+        fiberSource: fiberSource || undefined,
         bounds: {
           x: rect.left,
           y: rect.top,

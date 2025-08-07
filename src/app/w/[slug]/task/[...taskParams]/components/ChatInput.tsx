@@ -38,9 +38,12 @@ export function ChatInput({
 
   return (
     <div>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <WorkflowStatusBadge status={workflowStatus} />
-      </div>
+      {/* Only show workflow status if it exists */}
+      {workflowStatus && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <WorkflowStatusBadge status={workflowStatus} />
+        </div>
+      )}
 
       {/* Keep our debug attachment feature but add it to the master structure */}
       {pendingDebugAttachment && (

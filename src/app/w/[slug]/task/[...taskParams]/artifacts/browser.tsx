@@ -492,7 +492,7 @@ export function BrowserArtifactPanel({
         ) {
           (
             window as { debugScan?: { quick: (verbose: boolean) => void } }
-          ).debugScan.quick(true);
+          ).debugScan?.quick(true);
         }
       }
     } catch (error) {

@@ -6,10 +6,7 @@ import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   ChatMessage,
-  ChatRole,
-  ChatStatus,
   WorkflowStatus,
-  createChatMessage,
   Option,
   Artifact,
 } from "@/lib/chat";
@@ -42,7 +39,7 @@ export default function TaskChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
