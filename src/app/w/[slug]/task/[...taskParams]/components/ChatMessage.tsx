@@ -56,6 +56,8 @@ export function ChatMessage({
                 ? "bg-primary text-primary-foreground rounded-br-none"
                 : "bg-background text-foreground rounded-bl-none border"
             }`}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer
               variant={message.role === "USER" ? "user" : "assistant"}
@@ -67,7 +69,7 @@ export function ChatMessage({
             {message.workflowUrl && (
               <WorkflowUrlLink 
                 workflowUrl={message.workflowUrl}
-                className={`${isHovered ? "opacity-100" : "opacity-0"} -top-2 -right-2`}
+                className={isHovered ? "opacity-100" : "opacity-0"}
               />
             )}
           </div>
