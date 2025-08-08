@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { triggerSync } from "@/services/swarm/stakgraph-actions";
+import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import crypto from "node:crypto";
 
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const apiResult = await triggerSync(
+    const apiResult = await triggerAsyncSync(
       swarm.name,
       swarm.swarmApiKey,
       repository.repositoryUrl,

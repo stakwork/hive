@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { WebhookService } from "@/services/github/WebhookService";
+import type { ServiceConfig } from "@/types";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,7 +13,6 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
-
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -31,19 +32,6 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-
-    // Get user's GitHub username and PAT using the reusable utility
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id);
-    if (!githubCreds) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "No GitHub credentials found for user",
-        },
-        { status: 400 },
-      );
-    }
-    const { username, pat } = githubCreds;
 
     // Resolve Swarm
     const where: Record<string, string> = {};
@@ -104,10 +92,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const creds = await getGithubUsernameAndPAT(session.user.id);
     const dataApi = {
       repo_url: final_repo_url,
-      username,
-      pat,
+      username: creds?.username,
+      pat: creds?.pat,
     };
 
     const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
@@ -120,6 +109,22 @@ export async function POST(request: NextRequest) {
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
       data: dataApi,
     });
+
+    try {
+      const host = new URL(request.url).host;
+      const protocol = host.includes("localhost") ? "http" : "https";
+      const callbackUrl = `${protocol}://${host}/api/github/webhook`;
+      const webhookService = new WebhookService({
+        baseURL: "",
+        apiKey: "",
+      } as ServiceConfig);
+      await webhookService.ensureRepoWebhook({
+        userId: session.user.id,
+        workspaceId: repoWorkspaceId,
+        repositoryUrl: final_repo_url,
+        callbackUrl,
+      });
+    } catch {}
 
     // If success, update repository status to SYNCED
     let finalStatus = repository.status;

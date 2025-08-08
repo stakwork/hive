@@ -12,6 +12,8 @@ import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { WebhookService } from "@/services/github/WebhookService";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -301,6 +303,78 @@ export async function PUT(
     } catch (error) {
       console.error("Failed to decrypt poolApiKey:", error);
       decryptedPoolApiKey = swarmPoolApiKey;
+    }
+
+    // Upsert repository and detect default branch, then ensure webhook
+    try {
+      const repo = await db.repository.upsert({
+        where: {
+          repositoryUrl_workspaceId: {
+            repositoryUrl: settings.repositoryUrl,
+            workspaceId: workspace.id,
+          },
+        },
+        update: {},
+        create: {
+          name:
+            settings.name || settings.repositoryUrl.split("/").pop() || "repo",
+          repositoryUrl: settings.repositoryUrl,
+          workspaceId: workspace.id,
+        },
+      });
+
+      const account = await db.account.findFirst({
+        where: { userId, provider: "github" },
+        select: { access_token: true },
+      });
+
+      if (account?.access_token) {
+        const { owner, repo: repoName } = parseGithubOwnerRepo(
+          settings.repositoryUrl,
+        );
+        const resp = await fetch(
+          `https://api.github.com/repos/${owner}/${repoName}`,
+          {
+            headers: {
+              Authorization: `token ${account.access_token}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          },
+        );
+        if (resp.ok) {
+          const repoInfo = (await resp.json()) as { default_branch?: string };
+          const defaultBranch = repoInfo.default_branch;
+          if (defaultBranch) {
+            await Promise.all([
+              db.repository.update({
+                where: { id: repo.id },
+                data: { branch: defaultBranch },
+              }),
+              db.swarm.update({
+                where: { id: swarm.id },
+                data: { defaultBranch },
+              }),
+            ]);
+          }
+        }
+      }
+
+      //TODO: Update Callback URL
+      const host = request.headers.get("host") || "localhost:3000";
+      const protocol = host.includes("localhost") ? "http" : "https";
+      const callbackUrl = `${protocol}://${host}/api/github/webhook`;
+      const webhookService = new WebhookService({
+        baseURL: "",
+        apiKey: "",
+      } as ServiceConfig);
+      await webhookService.ensureRepoWebhook({
+        userId,
+        workspaceId: workspace.id,
+        repositoryUrl: settings.repositoryUrl,
+        callbackUrl,
+      });
+    } catch (err) {
+      console.error("Failed to ensure webhook/default branch:", err);
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present

@@ -21,6 +21,25 @@ export async function triggerSync(
   });
 }
 
+export async function triggerAsyncSync(
+  swarmName: string,
+  apiKey: string,
+  repoUrl: string,
+  creds?: Creds,
+) {
+  const stakgraphUrl = `https://${swarmName}:7799`;
+  const data: Record<string, string> = { repo_url: repoUrl };
+  if (creds?.username) data.username = creds.username;
+  if (creds?.pat) data.pat = creds.pat;
+  return swarmApiRequest({
+    swarmUrl: stakgraphUrl,
+    endpoint: "/async_sync",
+    method: "POST",
+    apiKey,
+    data,
+  });
+}
+
 export async function triggerIngestAsync(
   swarmName: string,
   apiKey: string,

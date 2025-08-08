@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import type { ServiceConfig } from "@/types";
 import type { EnsureWebhookParams, DeleteWebhookParams } from "@/types/github";
 import crypto from "node:crypto";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
 export class WebhookService extends BaseServiceClass {
   public readonly serviceName = "githubWebhook";
@@ -20,7 +21,7 @@ export class WebhookService extends BaseServiceClass {
     active = true,
   }: EnsureWebhookParams): Promise<{ id: number; secret: string }> {
     const token = await this.getUserGithubAccessToken(userId);
-    const { owner, repo } = this.parseOwnerRepo(repositoryUrl);
+    const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
     const repoRec = await db.repository.findUnique({
       where: {
@@ -88,7 +89,7 @@ export class WebhookService extends BaseServiceClass {
     workspaceId,
   }: DeleteWebhookParams): Promise<void> {
     const token = await this.getUserGithubAccessToken(userId);
-    const { owner, repo } = this.parseOwnerRepo(repositoryUrl);
+    const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
     const repoRec = await db.repository.findUnique({
       where: {
@@ -108,31 +109,6 @@ export class WebhookService extends BaseServiceClass {
         githubWebhookSecret: null,
       },
     });
-  }
-
-  private parseOwnerRepo(repositoryUrl: string): {
-    owner: string;
-    repo: string;
-  } {
-    const ssh = repositoryUrl.match(
-      /^git@github\.com:(.+?)\/(.+?)(?:\.git)?$/i,
-    );
-    if (ssh) return { owner: ssh[1], repo: ssh[2].replace(/\.git$/i, "") };
-
-    try {
-      const u = new URL(repositoryUrl);
-      if (!/github\.com$/i.test(u.hostname)) throw new Error("Not GitHub host");
-      const parts = u.pathname.replace(/^\/+/, "").split("/");
-      if (parts.length < 2) throw new Error("Invalid repo path");
-      return { owner: parts[0], repo: parts[1].replace(/\.git$/i, "") };
-    } catch {
-      const https = repositoryUrl.match(
-        /github\.com\/([^/]+)\/([^/?#]+)(?:\.git)?/i,
-      );
-      if (https)
-        return { owner: https[1], repo: https[2].replace(/\.git$/i, "") };
-      throw new Error("Unable to parse GitHub repository URL");
-    }
   }
 
   private async getUserGithubAccessToken(userId: string): Promise<string> {
