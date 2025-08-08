@@ -408,7 +408,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data: stakworkData.data,
+        message: clientMessage,
+        workflow: stakworkData.data,
       },
       { status: 201 },
     );

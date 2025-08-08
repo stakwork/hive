@@ -432,6 +432,7 @@ model ChatMessage {
   taskId              String?     @map("task_id")
   task                Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
   message             String
+  workflowUrl         String?     @map("workflow_url")
   role                ChatRole
   timestamp           DateTime    @default(now())
   contextTags         Json        @default("[]") @map("context_tags") // stores ContextTag[]

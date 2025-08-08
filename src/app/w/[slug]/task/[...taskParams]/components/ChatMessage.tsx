@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel } from "../artifacts";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { WorkflowUrlLink } from "./WorkflowUrlLink";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -25,13 +27,17 @@ export function ChatMessage({
   replyMessage,
   onArtifactAction,
 }: ChatMessageProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
     <motion.div
       key={message.id}
-      className="space-y-3"
+      className="space-y-3 relative"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div
         className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end ml-12" : "justify-start"}`}
@@ -45,17 +51,27 @@ export function ChatMessage({
 
         {message.message && (
           <div
-            className={`px-4 py-1 rounded-md max-w-full shadow-sm ${
+            className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
               message.role === "USER"
                 ? "bg-primary text-primary-foreground rounded-br-none"
                 : "bg-background text-foreground rounded-bl-none border"
             }`}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer
               variant={message.role === "USER" ? "user" : "assistant"}
             >
               {message.message}
             </MarkdownRenderer>
+            
+            {/* Workflow URL Link for message bubble */}
+            {message.workflowUrl && (
+              <WorkflowUrlLink 
+                workflowUrl={message.workflowUrl}
+                className={isHovered ? "opacity-100" : "opacity-0"}
+              />
+            )}
           </div>
         )}
         {message.role === "USER" && (
@@ -116,7 +132,10 @@ export function ChatMessage({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
               >
-                <LongformArtifactPanel artifacts={[artifact]} />
+                <LongformArtifactPanel 
+                  artifacts={[artifact]} 
+                  workflowUrl={message.workflowUrl ?? undefined}
+                />
               </motion.div>
             </div>
           </div>
