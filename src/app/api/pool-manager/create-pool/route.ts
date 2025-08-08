@@ -11,15 +11,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
+    const session = await getServerSession(authOptions);
 
-        const user = await db.user.findUnique({
-            where: {
-                email: session?.user.email || "",
-            },
-        });
+    await db.user.findUnique({
+      where: {
+        email: session?.user.email || "",
+      },
+    });
 
-        let poolApiKey = user?.poolApiKey;
+    let poolApiKey: string | undefined;
 
         if (!poolApiKey) {
             console.log(session?.user);
@@ -75,6 +75,9 @@ export async function POST(request: NextRequest) {
             "--------------------------------password--------------------------------",
         );
 
+        poolApiKey =
+      (swarm as unknown as { poolApiKey?: string })?.poolApiKey || poolApiKey;
+
         if (!poolApiKey) {
             console.log(
                 "--------------------------------login--------------------------------",
@@ -121,15 +124,6 @@ export async function POST(request: NextRequest) {
                     email: session.user.email,
                     password,
                     username: `${sanitizedName}-${swarmId}`.toLowerCase(),
-                });
-
-                await db.user.update({
-                    where: {
-                        email: session?.user.email || "",
-                    },
-                    data: {
-                        poolApiKey,
-                    },
                 });
 
                 console.log(poolUser, "poolUser");
