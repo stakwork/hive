@@ -19,7 +19,6 @@ export const fetchCache = "force-no-store";
 interface ArtifactRequest {
   type: ArtifactType;
   content?: Record<string, unknown>;
-  icon?: string;
 }
 
 interface StakworkWorkflowPayload {
@@ -305,7 +304,6 @@ export async function POST(request: NextRequest) {
           create: artifacts.map((artifact: ArtifactRequest) => ({
             type: artifact.type,
             content: artifact.content,
-            icon: artifact.icon,
           })),
         },
       },

@@ -6,12 +6,12 @@ import { Code, Bot, Phone, MessageSquare } from "lucide-react";
 
 const getArtifactIcon = (iconType: string) => {
   const icons = {
-    Code: <Code className="h-5 w-5 flex-shrink-0" />,
-    Agent: <Bot className="h-5 w-5 flex-shrink-0" />,
-    Call: <Phone className="h-5 w-5 flex-shrink-0" />,
-    Message: <MessageSquare className="h-5 w-5 flex-shrink-0" />
+    code: <Code className="h-5 w-5 flex-shrink-0" />,
+    agent: <Bot className="h-5 w-5 flex-shrink-0" />,
+    call: <Phone className="h-5 w-5 flex-shrink-0" />,
+    message: <MessageSquare className="h-5 w-5 flex-shrink-0" />
   };
-  return icons[iconType as keyof typeof icons] || null;
+  return icons[iconType?.toLowerCase() as keyof typeof icons] || null;
 };
 
 export function LongformArtifactPanel({
@@ -54,7 +54,7 @@ export function LongformArtifactPanel({
             <div key={artifact.id}>
               {content.title && (
                 <div className="font-semibold text-lg mb-2 flex items-center gap-2">
-                  {getArtifactIcon(artifact.icon || 'Agent')}
+                  {getArtifactIcon(artifact.icon || 'agent')}
                   <span className="line-clamp-2">{content.title}</span>
                 </div>
               )}
