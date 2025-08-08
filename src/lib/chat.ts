@@ -42,6 +42,9 @@ export interface FormContent {
   webhook: string;
   options: Option[];
 }
+// Artifact icon system - modular and reusable across all artifact types
+export type ArtifactIcon = 'Code' | 'Agent' | 'Call' | 'Message';
+
 export interface LongformContent {
   text: string;
   title?: string;
@@ -50,6 +53,7 @@ export interface LongformContent {
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  artifactIcon?: ArtifactIcon; // Modular icon system for any artifact type
 }
 
 export interface ChatMessage

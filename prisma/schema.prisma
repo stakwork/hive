@@ -456,12 +456,14 @@ model Artifact {
   message       ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
   type          ArtifactType
   content       Json?         // stores FormContent | CodeContent | BrowserContent
+  artifactIcon  String?       @map("artifact_icon") // Modular icon system for any artifact type
   
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
   
   @@index([messageId])
   @@index([type])
+  @@index([artifactIcon])
   @@map("artifacts")
 }
 
