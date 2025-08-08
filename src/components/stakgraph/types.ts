@@ -9,6 +9,9 @@ export interface ServiceDataConfig {
     install?: string;
     build?: string;
     test?: string;
+    preStart?: string;
+    postStart?: string;
+    rebuild?: string;
   };
 }
 
@@ -56,7 +59,7 @@ export interface FormSectionProps<T> {
   errors: Record<string, string>;
   loading: boolean;
   onChange: T extends Array<infer U>
-  ? (data: U[]) => void
-  : (data: Partial<T>) => void;
+    ? (data: U[]) => void
+    : (data: Partial<T>) => void;
   onValidationChange?: (errors: Record<string, string>) => void;
 }

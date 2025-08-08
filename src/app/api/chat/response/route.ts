@@ -16,6 +16,7 @@ export const fetchCache = "force-no-store";
 interface ArtifactRequest {
   type: ArtifactType;
   content?: Record<string, unknown>;
+  icon?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
     const {
       taskId,
       message,
+      workflowUrl,
       contextTags = [] as ContextTag[],
       sourceWebsocketID,
       artifacts = [] as ArtifactRequest[],
@@ -48,6 +50,7 @@ export async function POST(request: NextRequest) {
       data: {
         taskId,
         message: message || "",
+        workflowUrl,
         role: ChatRole.ASSISTANT,
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
@@ -56,6 +59,7 @@ export async function POST(request: NextRequest) {
           create: artifacts.map((artifact: ArtifactRequest) => ({
             type: artifact.type,
             content: artifact.content,
+            icon: artifact.icon,
           })),
         },
       },

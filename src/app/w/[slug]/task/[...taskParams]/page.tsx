@@ -66,13 +66,14 @@ export default function TaskChatPage() {
     (message: ChatMessage) => {
       setMessages((prev) => [...prev, message]);
 
-      // Clear logs when we get a new message (similar to old implementation)
-      if (message.artifacts?.length === 0) {
-        clearLogs();
+      // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
+      // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
+      const hasActionArtifact = message.artifacts?.some(artifact => artifact.type === 'FORM');
+      
+      if (hasActionArtifact) {
+        setIsChainVisible(false);
       }
-
-      // Hide chain visibility when message processing is complete
-      setIsChainVisible(false);
+      // For all other artifact types (message, ide, etc.), keep thinking logs visible
     },
     [clearLogs],
   );
@@ -124,6 +125,12 @@ export default function TaskChatPage() {
         // Set initial workflow status from task data
         if (result.data.task?.workflowStatus) {
           setWorkflowStatus(result.data.task.workflowStatus);
+        }
+        
+        // Set project ID for log subscription if available
+        if (result.data.task?.stakworkProjectId) {
+          console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
+          setProjectId(result.data.task.stakworkProjectId.toString());
         }
       }
     } catch (error) {
@@ -240,9 +247,9 @@ export default function TaskChatPage() {
         throw new Error(result.error || "Failed to send message");
       }
 
-      if (result.data?.project_id) {
-        console.log("Project ID:", result.data.project_id);
-        setProjectId(result.data.project_id);
+      if (result.workflow?.project_id) {
+        console.log("Project ID:", result.workflow.project_id);
+        setProjectId(result.workflow.project_id);
         setIsChainVisible(true);
         clearLogs();
       }

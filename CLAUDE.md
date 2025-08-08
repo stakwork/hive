@@ -130,9 +130,12 @@ npx shadcn@latest add [component-name]
 - Workspace context is provided by `WorkspaceProvider`
 
 ### Database Migrations
+- **CRITICAL**: When adding new columns/tables to `prisma/schema.prisma`, ALWAYS create a migration with `npx prisma migrate dev --name <description>`
+- Never modify the schema without creating a migration - this causes production database sync issues
 - Always run `npx prisma migrate dev` for schema changes
 - Use `npx prisma generate` after schema modifications
 - Test database changes with integration tests
+- Verify migration files are committed and deployed to production
 
 ### Testing Strategy
 - Unit tests for utilities and hooks
@@ -153,18 +156,3 @@ Required environment variables:
 - Tailwind CSS for styling
 - TypeScript strict mode enabled
 - Prettier for code formatting
-
-## Task Master Integration
-
-This project uses Task Master AI for task management. Key patterns:
-- Use MCP tools when available in development environment
-- Task lists are organized by tags for different contexts
-- Research tool provides up-to-date information beyond AI knowledge cutoff
-- Complexity analysis helps break down large tasks
-
-### Common Task Master Commands
-- `task-master init` - Initialize project task management
-- `task-master parse-prd` - Generate tasks from requirements
-- `task-master list` - Show current tasks
-- `task-master next` - Get next available task
-- `task-master research` - Perform AI-powered research with project context

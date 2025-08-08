@@ -100,6 +100,9 @@ export const JSON_CODE = `{
 }`;
 
 export const REPOMAP = `
+
+# REPO MAP
+
 Repository: fayekelmith/demo-repo
 ├─┬ Directory: frontend
 │ ├─┬ Directory: public
@@ -131,6 +134,114 @@ Repository: fayekelmith/demo-repo
 ├── File: routes.go (660)
 └── File: utils.go (47)
 
+
+-----
+
+The user is requesting the addition of a *copy button* feature for a \`​code​\` artifact. The requirements include:\n\n- Placing a *copy button* in the top right corner of the code​ artifact.\n- Ensuring the *copy button* allows users to copy the \`code\` contents.\n- The *copy button* should be consistent with the one used at the file name.
+
 `;
 
 export { createArtifact, ArtifactType };
+
+export const MARKDOWN_EXAMPLE = `
+# Hive Markdown Test
+
+Welcome to the **Hive Markdown Test**!  
+This message covers all major markdown features.
+
+---
+
+## Headings
+
+### H3 Heading
+
+#### H4 Heading
+
+## Lists
+
+- Unordered item 1
+- Unordered item 2
+  - Nested item
+- [x] Task complete
+- [ ] Task incomplete
+
+1. Ordered item 1
+2. Ordered item 2
+
+## Links
+
+[Hive on GitHub](https://github.com/fayekelmith/hive)
+
+## Blockquote
+
+> This is a blockquote.  
+> It supports multiple lines.
+
+## Code
+
+Inline code: \`console.log("Hello, Hive!")\`
+
+\`\`\`rust
+// Code block with RUST syntax
+pub async fn get_changed_files_between(
+    repo_path: &str,
+    old_commit: &str,
+    new_commit: &str,
+) -> Result<Vec<String>> {
+    let output = crate::utils::run_res_in_dir(
+        "git",
+        &["diff", "--name-only", old_commit, new_commit],
+        repo_path,
+    )
+    .await?;
+    Ok(output.lines().map(|s| s.to_string()).collect())
+}
+\`\`\`
+
+\`\`\`python
+# Python code block
+def hello():
+    print("Hello, Hive!")
+\`\`\`
+
+## Table
+
+| Name   | Role    | Status   |
+|--------|---------|----------|
+| Alice  | Admin   | ✅       |
+| Bob    | User    | ❌       |
+
+# Math Support
+Inline math: $E = mc^2$
+
+Block math:
+$$
+\sum_{i=1}^{n} x_i = x_1 + x_2 + \cdots + x_n
+$$
+
+# Directives
+::note[This is a custom directive]
+
+# Raw HTML (sanitized)
+<div style="color: red;">This HTML will be sanitized</div>
+
+# GFM Features
+- [x] Task lists
+- [ ] Unchecked
+
+| Tables | Work |
+|--------|------|
+| Cell 1 | Cell 2 |
+
+## Image
+
+![Random Image](https://picsum.photos/seed/picsum/200/300)
+
+---
+
+The user is requesting the addition of a *copy button* feature for a \`​code​\` artifact. The requirements include:\n\n- Placing a *copy button* in the top right corner of the code​ artifact.\n- Ensuring the *copy button* allows users to copy the \`code\` contents.\n- The *copy button* should be consistent with the one used at the file name.
+
+---
+
+Enjoy testing markdown!
+`;
