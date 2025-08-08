@@ -1,397 +1,199 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
-import type { User, Workspace, WorkspaceMember } from "@prisma/client";
-import type { WorkspaceRole } from "@/types/workspace";
+import { TaskStatus, Priority } from "@prisma/client";
 
-// Test data factories for creating consistent test data
+// Mock NextAuth session
+export const mockSession = (userId: string, name: string = "Test User", email: string = "test@example.com") => ({
+  user: { id: userId, name, email },
+  expires: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(), // 24 hours
+});
 
-export interface CreateTestUserOptions {
+// Mock getServerSession
+export const mockGetServerSession = (session: any) => {
+  (getServerSession as jest.Mock) = jest.fn().mockResolvedValue(session);
+};
+
+// Create test user
+export const createTestUser = async (data: {
   name?: string;
   email?: string;
-  role?: "USER" | "ADMIN";
-}
+  id?: string;
+} = {}) => {
+  return await db.user.create({
+    data: {
+      id: data.id || "test-user-id",
+      name: data.name || "Test User",
+      email: data.email || "test@example.com",
+      emailVerified: new Date(),
+    },
+  });
+};
 
-export interface CreateTestWorkspaceOptions {
+// Create test workspace
+export const createTestWorkspace = async (ownerId: string, data: {
   name?: string;
-  description?: string;
   slug?: string;
-  ownerId: string;
-  stakworkApiKey?: string;
-}
+  id?: string;
+} = {}) => {
+  return await db.workspace.create({
+    data: {
+      id: data.id || "test-workspace-id", 
+      name: data.name || "Test Workspace",
+      slug: data.slug || "test-workspace",
+      ownerId,
+      deleted: false,
+    },
+  });
+};
 
-export interface CreateTestMembershipOptions {
-  workspaceId: string;
-  userId: string;
-  role?: WorkspaceRole;
-  leftAt?: Date;
-}
+// Create test workspace member
+export const createTestWorkspaceMember = async (workspaceId: string, userId: string, role: string = "MEMBER") => {
+  return await db.workspaceMember.create({
+    data: {
+      workspaceId,
+      userId,
+      role,
+    },
+  });
+};
 
-export interface CreateTestSwarmOptions {
+// Create test repository
+export const createTestRepository = async (workspaceId: string, data: {
   name?: string;
+  repositoryUrl?: string;
+  id?: string;
+} = {}) => {
+  return await db.repository.create({
+    data: {
+      id: data.id || "test-repo-id",
+      name: data.name || "Test Repository", 
+      repositoryUrl: data.repositoryUrl || "https://github.com/test/repo",
+      workspaceId,
+    },
+  });
+};
+
+// Create test task
+export const createTestTask = async (data: {
+  title?: string;
+  description?: string;
   workspaceId: string;
-  status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
-  instanceType?: string;
-}
-
-/**
- * Creates a test user with consistent default data
- */
-export async function createTestUser(
-  options: CreateTestUserOptions = {}
-): Promise<User> {
-  const timestamp = Date.now();
-  return db.user.create({
+  status?: TaskStatus;
+  priority?: Priority;
+  assigneeId?: string;
+  repositoryId?: string;
+  createdById: string;
+  estimatedHours?: number;
+  actualHours?: number;
+  id?: string;
+}) => {
+  return await db.task.create({
     data: {
-      name: options.name || `Test User ${timestamp}`,
-      email: options.email || `test-${timestamp}@example.com`,
-      role: options.role || "USER",
+      id: data.id || "test-task-id",
+      title: data.title || "Test Task",
+      description: data.description,
+      workspaceId: data.workspaceId,
+      status: data.status || TaskStatus.TODO,
+      priority: data.priority || Priority.MEDIUM,
+      assigneeId: data.assigneeId,
+      repositoryId: data.repositoryId,
+      estimatedHours: data.estimatedHours,
+      actualHours: data.actualHours,
+      createdById: data.createdById,
+      updatedById: data.createdById,
+      deleted: false,
     },
-  });
-}
-
-/**
- * Creates multiple test users
- */
-export async function createTestUsers(count: number): Promise<User[]> {
-  const users: User[] = [];
-  for (let i = 0; i < count; i++) {
-    const user = await createTestUser({
-      name: `Test User ${i + 1}`,
-      email: `test-user-${i + 1}@example.com`,
-    });
-    users.push(user);
-  }
-  return users;
-}
-
-/**
- * Creates a test workspace with consistent default data
- */
-export async function createTestWorkspace(
-  options: CreateTestWorkspaceOptions
-): Promise<Workspace> {
-  const timestamp = Date.now();
-  return db.workspace.create({
-    data: {
-      name: options.name || `Test Workspace ${timestamp}`,
-      description: options.description || null,
-      slug: options.slug || `test-workspace-${timestamp}`,
-      ownerId: options.ownerId,
-      stakworkApiKey: options.stakworkApiKey || null,
-    },
-  });
-}
-
-/**
- * Creates a workspace membership
- */
-export async function createTestMembership(
-  options: CreateTestMembershipOptions
-): Promise<WorkspaceMember> {
-  return db.workspaceMember.create({
-    data: {
-      workspaceId: options.workspaceId,
-      userId: options.userId,
-      role: options.role || "VIEWER",
-      leftAt: options.leftAt || null,
-    },
-  });
-}
-
-/**
- * Creates a test swarm
- */
-export async function createTestSwarm(options: CreateTestSwarmOptions) {
-  const timestamp = Date.now();
-  return db.swarm.create({
-    data: {
-      name: options.name || `test-swarm-${timestamp}`,
-      workspaceId: options.workspaceId,
-      status: options.status || "ACTIVE",
-      instanceType: options.instanceType || "XL",
-    },
-  });
-}
-
-/**
- * Creates a complete workspace setup with owner, members, and optionally a swarm
- */
-export async function createCompleteWorkspaceSetup(options: {
-  workspaceName?: string;
-  workspaceSlug?: string;
-  ownerName?: string;
-  memberCount?: number;
-  withSwarm?: boolean;
-  swarmStatus?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
-}) {
-  const {
-    workspaceName,
-    workspaceSlug,
-    ownerName,
-    memberCount = 2,
-    withSwarm = false,
-    swarmStatus = "ACTIVE",
-  } = options;
-
-  // Create owner
-  const owner = await createTestUser({
-    name: ownerName || "Workspace Owner",
-  });
-
-  // Create workspace
-  const workspace = await createTestWorkspace({
-    name: workspaceName,
-    slug: workspaceSlug,
-    ownerId: owner.id,
-    stakworkApiKey: "test-api-key",
-  });
-
-  // Create members
-  const members: User[] = [];
-  const memberships: WorkspaceMember[] = [];
-  const roles: WorkspaceRole[] = ["ADMIN", "PM", "DEVELOPER", "STAKEHOLDER", "VIEWER"];
-
-  for (let i = 0; i < memberCount; i++) {
-    const member = await createTestUser({
-      name: `Member ${i + 1}`,
-    });
-    members.push(member);
-
-    const membership = await createTestMembership({
-      workspaceId: workspace.id,
-      userId: member.id,
-      role: roles[i % roles.length],
-    });
-    memberships.push(membership);
-  }
-
-  // Optionally create swarm
-  let swarm = null;
-  if (withSwarm) {
-    swarm = await createTestSwarm({
-      workspaceId: workspace.id,
-      status: swarmStatus,
-    });
-  }
-
-  return {
-    owner,
-    workspace,
-    members,
-    memberships,
-    swarm,
-  };
-}
-
-/**
- * Assertion helpers for testing workspace data
- */
-export const workspaceAssertions = {
-  /**
-   * Asserts that a workspace response has the correct structure
-   */
-  hasCorrectStructure(workspace: unknown) {
-    expect(workspace).toHaveProperty("id");
-    expect(workspace).toHaveProperty("name");
-    expect(workspace).toHaveProperty("slug");
-    expect(workspace).toHaveProperty("ownerId");
-    expect(workspace).toHaveProperty("createdAt");
-    expect(workspace).toHaveProperty("updatedAt");
-    expect(typeof workspace.createdAt).toBe("string");
-    expect(typeof workspace.updatedAt).toBe("string");
-  },
-
-  /**
-   * Asserts that a workspace with access has the correct structure
-   */
-  hasCorrectAccessStructure(workspace: unknown) {
-    this.hasCorrectStructure(workspace);
-    expect(workspace).toHaveProperty("userRole");
-    expect(workspace).toHaveProperty("hasKey");
-    expect(workspace).toHaveProperty("owner");
-    expect(workspace).toHaveProperty("isCodeGraphSetup");
-    expect(typeof workspace.hasKey).toBe("boolean");
-    expect(typeof workspace.isCodeGraphSetup).toBe("boolean");
-  },
-
-  /**
-   * Asserts that a workspace with role has the correct structure
-   */
-  hasCorrectRoleStructure(workspace: unknown) {
-    this.hasCorrectStructure(workspace);
-    expect(workspace).toHaveProperty("userRole");
-    expect(workspace).toHaveProperty("memberCount");
-    expect(typeof workspace.memberCount).toBe("number");
-  },
-
-  /**
-   * Asserts that access validation has the correct structure
-   */
-  hasCorrectValidationStructure(validation: unknown) {
-    expect(validation).toHaveProperty("hasAccess");
-    expect(validation).toHaveProperty("canRead");
-    expect(validation).toHaveProperty("canWrite");
-    expect(validation).toHaveProperty("canAdmin");
-    expect(typeof validation.hasAccess).toBe("boolean");
-    expect(typeof validation.canRead).toBe("boolean");
-    expect(typeof validation.canWrite).toBe("boolean");
-    expect(typeof validation.canAdmin).toBe("boolean");
-  },
-};
-
-/**
- * Mock data generators for unit tests
- */
-export const mockData = {
-  /**
-   * Generates a mock workspace
-   */
-  workspace(overrides: Record<string, unknown> = {}) {
-    return {
-      id: "ws-123",
-      name: "Mock Workspace",
-      description: "Mock description",
-      slug: "mock-workspace",
-      ownerId: "user-123",
-      createdAt: new Date("2024-01-01"),
-      updatedAt: new Date("2024-01-01"),
-      stakworkApiKey: null,
-      ...overrides,
-    };
-  },
-
-  /**
-   * Generates a mock user
-   */
-  user(overrides: Record<string, unknown> = {}) {
-    return {
-      id: "user-123",
-      name: "Mock User",
-      email: "mock@example.com",
-      role: "USER",
-      createdAt: new Date("2024-01-01"),
-      updatedAt: new Date("2024-01-01"),
-      ...overrides,
-    };
-  },
-
-  /**
-   * Generates a mock workspace member
-   */
-  workspaceMember(overrides: Record<string, unknown> = {}) {
-    return {
-      id: "member-123",
-      workspaceId: "ws-123",
-      userId: "user-123",
-      role: "DEVELOPER",
-      joinedAt: new Date("2024-01-01"),
-      leftAt: null,
-      ...overrides,
-    };
-  },
-
-  /**
-   * Generates a mock swarm
-   */
-  swarm(overrides: Record<string, unknown> = {}) {
-    return {
-      id: "swarm-123",
-      name: "mock-swarm",
-      status: "ACTIVE",
-      instanceType: "XL",
-      workspaceId: "ws-123",
-      createdAt: new Date("2024-01-01"),
-      updatedAt: new Date("2024-01-01"),
-      ...overrides,
-    };
-  },
-};
-
-/**
- * Database query helpers for testing
- */
-export const dbHelpers = {
-  /**
-   * Counts total workspaces
-   */
-  async countWorkspaces(): Promise<number> {
-    return db.workspace.count();
-  },
-
-  /**
-   * Counts workspace members for a workspace
-   */
-  async countWorkspaceMembers(workspaceId: string): Promise<number> {
-    return db.workspaceMember.count({
-      where: { workspaceId, leftAt: null },
-    });
-  },
-
-  /**
-   * Gets workspace with all related data
-   */
-  async getWorkspaceWithRelations(workspaceId: string) {
-    return db.workspace.findUnique({
-      where: { id: workspaceId },
-      include: {
-        owner: true,
-        members: {
-          where: { leftAt: null },
-          include: { user: true },
+    include: {
+      assignee: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
         },
-        swarm: true,
-        products: true,
       },
-    });
-  },
-
-  /**
-   * Checks if a workspace slug exists
-   */
-  async workspaceSlugExists(slug: string): Promise<boolean> {
-    const workspace = await db.workspace.findUnique({
-      where: { slug },
-    });
-    return !!workspace;
-  },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      _count: {
+        select: {
+          chatMessages: true,
+          comments: true,
+        },
+      },
+    },
+  });
 };
 
-/**
- * Test cleanup helpers
- */
-export const cleanup = {
-  /**
-   * Deletes a workspace and all related data
-   */
-  async deleteWorkspace(workspaceId: string) {
-    await db.workspace.delete({
-      where: { id: workspaceId },
-    });
-  },
+// Mock NextRequest with URL and search params
+export const mockNextRequest = (url: string, options: RequestInit = {}) => {
+  const request = new NextRequest(url, options);
+  return request;
+};
 
-  /**
-   * Deletes a user and all related data
-   */
-  async deleteUser(userId: string) {
-    await db.user.delete({
-      where: { id: userId },
-    });
-  },
+// Mock NextResponse for testing
+export const mockNextResponse = () => ({
+  json: jest.fn((data: any, init?: ResponseInit) => ({
+    status: init?.status || 200,
+    data,
+  })),
+});
 
-  /**
-   * Deletes multiple workspaces
-   */
-  async deleteWorkspaces(workspaceIds: string[]) {
-    await db.workspace.deleteMany({
-      where: { id: { in: workspaceIds } },
-    });
-  },
+// Database cleanup helper
+export const cleanupDatabase = async () => {
+  await db.task.deleteMany({});
+  await db.workspaceMember.deleteMany({});
+  await db.repository.deleteMany({});
+  await db.workspace.deleteMany({});
+  await db.user.deleteMany({});
+};
 
-  /**
-   * Deletes multiple users
-   */
-  async deleteUsers(userIds: string[]) {
-    await db.user.deleteMany({
-      where: { id: { in: userIds } },
-    });
-  },
+// Create mock request body
+export const mockRequestWithBody = (url: string, body: any) => {
+  return mockNextRequest(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+};
+
+// Assert error response structure
+export const expectErrorResponse = (response: any, status: number, errorMessage?: string) => {
+  expect(response.status).toBe(status);
+  expect(response.data).toHaveProperty("error");
+  if (errorMessage) {
+    expect(response.data.error).toBe(errorMessage);
+  }
+};
+
+// Assert success response structure
+export const expectSuccessResponse = (response: any, status: number = 200) => {
+  expect(response.status).toBe(status);
+  expect(response.data).toHaveProperty("success", true);
+  expect(response.data).toHaveProperty("data");
+};
+
+// Mock console methods to reduce test noise
+export const mockConsole = () => {
+  const originalConsole = { ...console };
+  beforeEach(() => {
+    console.log = jest.fn();
+    console.error = jest.fn();
+  });
+  afterEach(() => {
+    Object.assign(console, originalConsole);
+  });
 };
