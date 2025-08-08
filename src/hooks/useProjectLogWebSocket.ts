@@ -63,6 +63,11 @@ export const useProjectLogWebSocket = (
           (messageData.type === "on_step_start" ||
             messageData.type === "on_step_complete")
         ) {
+          // Skip empty messages to keep the current thinking log visible
+          if (!messageData.message || messageData.message.trim() === "") {
+            return;
+          }
+
           const logEntry: LogEntry = {
             timestamp: new Date().toISOString(),
             projectId,

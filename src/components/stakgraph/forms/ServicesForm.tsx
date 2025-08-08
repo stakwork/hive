@@ -2,15 +2,91 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Play, Download, Hammer, TestTube } from "lucide-react";
-import { ServicesData, FormSectionProps, ServiceDataConfig } from "../types";
+import {
+  Play,
+  Download,
+  Hammer,
+  TestTube,
+  PlusCircle,
+  XCircle,
+  FastForward,
+  Rewind,
+  RefreshCw,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FormSectionProps, ServiceDataConfig } from "../types";
+
+type ScriptConfig = {
+  key: keyof ServiceDataConfig["scripts"];
+  label: string;
+  icon: React.ReactNode;
+  placeholder: string;
+  description: string;
+  required?: boolean;
+};
 
 export default function ServicesForm({
   data,
   loading,
   onChange,
 }: Omit<FormSectionProps<ServiceDataConfig[]>, "errors">) {
-  console.log("SERVICES DATA: ", data);
+  const scriptConfigs: Record<string, ScriptConfig> = {
+    start: {
+      key: "start",
+      label: "Start",
+      icon: <Play className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm start",
+      description: "start your dev server",
+      required: true,
+    },
+    install: {
+      key: "install",
+      label: "Install",
+      icon: <Download className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm install",
+      description: "install dependencies",
+    },
+    test: {
+      key: "test",
+      label: "Test",
+      icon: <TestTube className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm test",
+      description: "test command",
+    },
+    preStart: {
+      key: "preStart",
+      label: "Pre-Start",
+      icon: <Rewind className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npx prisma migrate dev",
+      description: "run before the start command",
+    },
+    postStart: {
+      key: "postStart",
+      label: "Post-Start",
+      icon: <FastForward className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "echo 'Service started'",
+      description: "run after the start command",
+    },
+    rebuild: {
+      key: "rebuild",
+      label: "Rebuild",
+      icon: <RefreshCw className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm run build",
+      description: "rebuild on code change",
+    },
+    build: {
+      key: "build",
+      label: "Build",
+      icon: <Hammer className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm run build",
+      description: "build for production",
+    },
+  };
 
   const handleAddService = () => {
     const newServices = [
@@ -18,7 +94,7 @@ export default function ServicesForm({
       {
         name: "",
         port: 0,
-        scripts: { start: "", install: "", build: "", test: "" },
+        scripts: { start: "", install: "" },
         env: {},
       },
     ];
@@ -56,6 +132,37 @@ export default function ServicesForm({
         ? { ...svc, scripts: { ...svc.scripts, [scriptKey]: value } }
         : svc,
     );
+    onChange(updatedServices);
+  };
+
+  const handleAddScript = (
+    idx: number,
+    scriptKey: keyof ServiceDataConfig["scripts"],
+  ) => {
+    const updatedServices = data.map((svc, i) => {
+      if (i === idx) {
+        return {
+          ...svc,
+          scripts: { ...svc.scripts, [scriptKey]: "" },
+        };
+      }
+      return svc;
+    });
+    onChange(updatedServices);
+  };
+
+  const handleRemoveScript = (
+    idx: number,
+    scriptKey: keyof ServiceDataConfig["scripts"],
+  ) => {
+    const updatedServices = data.map((svc, i) => {
+      if (i === idx) {
+        const updatedScripts = { ...svc.scripts };
+        delete updatedScripts[scriptKey];
+        return { ...svc, scripts: updatedScripts };
+      }
+      return svc;
+    });
     onChange(updatedServices);
   };
 
@@ -146,12 +253,16 @@ export default function ServicesForm({
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Play className="w-4 h-4 text-muted-foreground" />
-                    <Label htmlFor={`service-start-${idx}`}>Start</Label>
+                    {scriptConfigs.start.icon}
+                    <Label
+                      htmlFor={`service-${scriptConfigs.start.key}-${idx}`}
+                    >
+                      {scriptConfigs.start.label}
+                    </Label>
                   </div>
                   <Input
-                    id={`service-start-${idx}`}
-                    placeholder="npm start"
+                    id={`service-${scriptConfigs.start.key}-${idx}`}
+                    placeholder={scriptConfigs.start.placeholder}
                     value={svc.scripts.start}
                     onChange={(e) =>
                       handleServiceScriptChange(idx, "start", e.target.value)
@@ -161,50 +272,155 @@ export default function ServicesForm({
                     required
                   />
 
-                  <div className="flex items-center gap-2 mt-3">
-                    <Download className="w-4 h-4 text-muted-foreground" />
-                    <Label htmlFor={`service-install-${idx}`}>Install</Label>
-                  </div>
-                  <Input
-                    id={`service-install-${idx}`}
-                    placeholder="npm install"
-                    value={svc.scripts.install || ""}
-                    onChange={(e) =>
-                      handleServiceScriptChange(idx, "install", e.target.value)
-                    }
-                    className="font-mono"
-                    disabled={loading}
-                  />
+                  {svc.scripts.install !== undefined && (
+                    <>
+                      <div className="flex items-center gap-2 mt-3 justify-between">
+                        <div className="flex items-center gap-2">
+                          {scriptConfigs.install.icon}
+                          <Label
+                            htmlFor={`service-${scriptConfigs.install.key}-${idx}`}
+                          >
+                            {scriptConfigs.install.label}
+                          </Label>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveScript(idx, "install")}
+                          disabled={loading}
+                          className="h-6 w-6"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <Input
+                        id={`service-${scriptConfigs.install.key}-${idx}`}
+                        placeholder={scriptConfigs.install.placeholder}
+                        value={svc.scripts.install || ""}
+                        onChange={(e) =>
+                          handleServiceScriptChange(
+                            idx,
+                            "install",
+                            e.target.value,
+                          )
+                        }
+                        className="font-mono"
+                        disabled={loading}
+                      />
+                    </>
+                  )}
 
-                  <div className="flex items-center gap-2 mt-3">
-                    <Hammer className="w-4 h-4 text-muted-foreground" />
-                    <Label htmlFor={`service-build-${idx}`}>Build</Label>
-                  </div>
-                  <Input
-                    id={`service-build-${idx}`}
-                    placeholder="npm run build"
-                    value={svc.scripts.build || ""}
-                    onChange={(e) =>
-                      handleServiceScriptChange(idx, "build", e.target.value)
-                    }
-                    className="font-mono"
-                    disabled={loading}
-                  />
+                  {Object.entries(scriptConfigs)
+                    .filter(([key]) => key !== "start" && key !== "install")
+                    .map(([key, config]) => {
+                      if (
+                        svc.scripts[
+                          key as keyof ServiceDataConfig["scripts"]
+                        ] === undefined
+                      ) {
+                        return null;
+                      }
 
-                  <div className="flex items-center gap-2 mt-3">
-                    <TestTube className="w-4 h-4 text-muted-foreground" />
-                    <Label htmlFor={`service-test-${idx}`}>Test</Label>
-                  </div>
-                  <Input
-                    id={`service-test-${idx}`}
-                    placeholder="npm test"
-                    value={svc.scripts.test || ""}
-                    onChange={(e) =>
-                      handleServiceScriptChange(idx, "test", e.target.value)
-                    }
-                    className="font-mono"
-                    disabled={loading}
-                  />
+                      return (
+                        <div key={key}>
+                          <div className="flex items-center gap-2 mt-3 justify-between">
+                            <div className="flex items-center gap-2">
+                              {config.icon}
+                              <Label htmlFor={`service-${key}-${idx}`}>
+                                {config.label}
+                              </Label>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                handleRemoveScript(
+                                  idx,
+                                  key as keyof ServiceDataConfig["scripts"],
+                                )
+                              }
+                              disabled={loading}
+                              className="h-6 w-6"
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <Input
+                            id={`service-${key}-${idx}`}
+                            placeholder={config.placeholder}
+                            value={
+                              svc.scripts[
+                                key as keyof ServiceDataConfig["scripts"]
+                              ] || ""
+                            }
+                            onChange={(e) =>
+                              handleServiceScriptChange(
+                                idx,
+                                key as keyof ServiceDataConfig["scripts"],
+                                e.target.value,
+                              )
+                            }
+                            className="font-mono"
+                            disabled={loading}
+                          />
+                        </div>
+                      );
+                    })}
+
+                  {Object.entries(scriptConfigs).some(
+                    ([key]) =>
+                      key !== "start" &&
+                      svc.scripts[key as keyof ServiceDataConfig["scripts"]] ===
+                        undefined,
+                  ) && (
+                    <div className="mt-4">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={loading}
+                            className="w-full flex items-center justify-center"
+                          >
+                            <PlusCircle className="h-4 w-4 mr-2" />
+                            Add Script
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {Object.entries(scriptConfigs)
+                            .filter(
+                              ([key]) =>
+                                key !== "start" &&
+                                svc.scripts[
+                                  key as keyof ServiceDataConfig["scripts"]
+                                ] === undefined,
+                            )
+                            .map(([key, config]) => (
+                              <DropdownMenuItem
+                                key={key}
+                                onClick={() =>
+                                  handleAddScript(
+                                    idx,
+                                    key as keyof ServiceDataConfig["scripts"],
+                                  )
+                                }
+                                disabled={loading}
+                                className="flex items-center gap-2"
+                              >
+                                {config.icon}
+                                {config.label}
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  ({config.description})
+                                </span>
+                              </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

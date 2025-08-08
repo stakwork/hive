@@ -23,6 +23,7 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       findFirst: vi.fn(),
       delete: vi.fn(),
+      update: vi.fn(),
     },
     workspaceMember: {
       findFirst: vi.fn(),
@@ -117,7 +118,7 @@ describe("Workspace Service - Unit Tests", () => {
       const result = await createWorkspace(mockWorkspaceData);
 
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: "test-workspace" },
+        where: { slug: "test-workspace", deleted: false },
       });
       expect(db.workspace.create).toHaveBeenCalledWith({
         data: mockWorkspaceData,
@@ -193,7 +194,7 @@ describe("Workspace Service - Unit Tests", () => {
       const result = await getWorkspacesByUserId("user1");
 
       expect(db.workspace.findMany).toHaveBeenCalledWith({
-        where: { ownerId: "user1" },
+        where: { ownerId: "user1", deleted: false },
       });
       expect(result).toEqual([
         {
@@ -245,7 +246,7 @@ describe("Workspace Service - Unit Tests", () => {
       const result = await getWorkspaceBySlug("test-workspace", "owner1");
 
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { slug: "test-workspace" },
+        where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
           swarm: { select: { id: true, status: true } },
@@ -437,7 +438,7 @@ describe("Workspace Service - Unit Tests", () => {
       const result = await getDefaultWorkspaceForUser("user1");
 
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: "user1" },
+        where: { ownerId: "user1", deleted: false },
         orderBy: { createdAt: "asc" },
       });
       expect(result).toEqual({
@@ -501,12 +502,16 @@ describe("Workspace Service - Unit Tests", () => {
 
       // Mock database calls for getWorkspaceBySlug
       (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
-      (db.workspace.delete as Mock).mockResolvedValue({});
+      (db.workspace.update as Mock).mockResolvedValue({});
 
       await deleteWorkspaceBySlug("test-workspace", "user1");
 
-      expect(db.workspace.delete).toHaveBeenCalledWith({
+      expect(db.workspace.update).toHaveBeenCalledWith({
         where: { id: "ws1" },
+        data: { 
+          deleted: true,
+          deletedAt: expect.any(Date)
+        },
       });
     });
 

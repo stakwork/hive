@@ -36,4 +36,5 @@ export const getTaskChannelName = (taskId: string) => `task-${taskId}`;
 export const PUSHER_EVENTS = {
   NEW_MESSAGE: "new-message",
   CONNECTION_COUNT: "connection-count",
+  WORKFLOW_STATUS_UPDATE: "workflow-status-update",
 } as const;

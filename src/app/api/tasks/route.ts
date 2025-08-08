@@ -21,10 +21,20 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "5");
 
     if (!workspaceId) {
       return NextResponse.json(
         { error: "workspaceId query parameter is required" },
+        { status: 400 },
+      );
+    }
+
+    // Validate pagination parameters
+    if (page < 1 || limit < 1 || limit > 50) {
+      return NextResponse.json(
+        { error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-50" },
         { status: 400 },
       );
     }
@@ -64,50 +74,72 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Get tasks for the workspace
-    const tasks = await db.task.findMany({
-      where: {
-        workspaceId,
-        deleted: false,
-      },
-      include: {
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+    // Get tasks for the workspace with pagination
+    const skip = (page - 1) * limit;
+    
+    const [tasks, totalCount] = await Promise.all([
+      db.task.findMany({
+        where: {
+          workspaceId,
+          deleted: false,
+        },
+        include: {
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          repository: {
+            select: {
+              id: true,
+              name: true,
+              repositoryUrl: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              chatMessages: true,
+              comments: true,
+            },
           },
         },
-        repository: {
-          select: {
-            id: true,
-            name: true,
-            repositoryUrl: true,
-          },
+        orderBy: {
+          createdAt: "desc",
         },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+        skip,
+        take: limit,
+      }),
+      db.task.count({
+        where: {
+          workspaceId,
+          deleted: false,
         },
-        _count: {
-          select: {
-            chatMessages: true,
-            comments: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasMore = page < totalPages;
 
     return NextResponse.json(
       {
         success: true,
         data: tasks,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages,
+          hasMore,
+        },
       },
       { status: 200 },
     );

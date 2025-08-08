@@ -4,6 +4,7 @@ import {
   ChatStatus,
   ContextTagType,
   ArtifactType,
+  WorkflowStatus,
 } from "@prisma/client";
 import type {
   ChatMessage as PrismaChatMessage,
@@ -11,7 +12,7 @@ import type {
 } from "@prisma/client";
 
 // Re-export Prisma enums
-export { ChatRole, ChatStatus, ContextTagType, ArtifactType };
+export { ChatRole, ChatStatus, ContextTagType, ArtifactType, WorkflowStatus };
 
 export interface ContextTag {
   type: ContextTagType;
@@ -64,6 +65,7 @@ export function createChatMessage(data: {
   role: ChatRole;
   status: ChatStatus;
   taskId?: string;
+  workflowUrl?: string;
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
   sourceWebsocketID?: string;
@@ -73,6 +75,7 @@ export function createChatMessage(data: {
     id: data.id,
     taskId: data.taskId || null,
     message: data.message,
+    workflowUrl: data.workflowUrl || null,
     role: data.role,
     timestamp: new Date(),
     contextTags: data.contextTags || [],

@@ -34,7 +34,7 @@ export default function StakgraphPage() {
     handleEnvironmentChange,
     handleEnvVarsChange,
     handleServicesChange,
-    handleFileChange
+    handleFileChange,
   } = useStakgraphStore();
 
   const { toast } = useToast();
@@ -55,16 +55,16 @@ export default function StakgraphPage() {
     refreshCurrentWorkspace();
   };
 
-  const allFieldsFilled =
-    formData.name &&
-      formData.repositoryUrl &&
-      formData.swarmUrl &&
-      formData.swarmSecretAlias &&
-      formData.poolName
-      ? true
-      : false;
+  // const allFieldsFilled =
+  //   formData.name &&
+  //     formData.repositoryUrl &&
+  //     formData.swarmUrl &&
+  //     formData.swarmSecretAlias &&
+  //     formData.poolName
+  //     ? true
+  //     : false;
 
-  console.log("allFieldsFilled", allFieldsFilled);
+  // console.log("allFieldsFilled", allFieldsFilled);
 
   if (initialLoading) {
     return (

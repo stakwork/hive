@@ -4,7 +4,7 @@ import {
   RepositoryData,
   ServiceDataConfig,
   StakgraphSettings,
-  SwarmData
+  SwarmData,
 } from "@/components/stakgraph/types";
 import { ToastProps } from "@/components/ui/toast";
 import { EnvironmentVariable } from "@/types/wizard";
@@ -97,10 +97,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
             console.log("result.data>>>>", result.data);
 
-            const files = Object.entries(settings.containerFiles || {}).reduce((acc, curr) => {
-              acc[curr[0]] = atob(curr[1] as string);
-              return acc;
-            }, {} as Record<string, string>);
+            const files = Object.entries(settings.containerFiles || {}).reduce(
+              (acc, curr) => {
+                acc[curr[0]] = atob(curr[1] as string);
+                return acc;
+              },
+              {} as Record<string, string>,
+            );
 
             const newFormData = {
               name: settings.name || "",
@@ -201,11 +204,12 @@ export const useStakgraphStore = create<StakgraphStore>()(
       set({ loading: true });
 
       try {
-
         const containerFiles = {
           ...state.formData.containerFiles,
-          'pm2.config.js': getPM2AppsContent(state.formData.name, state.formData.services)?.content || '',
-        }
+          "pm2.config.js":
+            getPM2AppsContent(state.formData.name, state.formData.services)
+              ?.content || "",
+        };
 
         const base64EncodedFiles = Object.entries(containerFiles).reduce(
           (acc, [name, content]) => {
@@ -392,7 +396,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
     handleFileChange: (fileName: string, content: string) => {
       const state = get();
       set({
-        formData: { ...state.formData, containerFiles: { ...state.formData.containerFiles, [fileName]: content } },
+        formData: {
+          ...state.formData,
+          containerFiles: {
+            ...state.formData.containerFiles,
+            [fileName]: content,
+          },
+        },
         saved: false,
       });
     },

@@ -1,6 +1,7 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { Repository } from "@/types";
 import { EnvironmentVariable } from "@/types/wizard";
+import { parseRepositoryName } from "@/utils/repositoryParser";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
@@ -255,7 +256,14 @@ export const useWizardStore = create<WizardStore>()(
     setError: (error) => set({ error }),
     setCurrentStep: (step) => set({ currentStep: step }),
     setCurrentStepStatus: (status) => set({ currentStepStatus: status }),
-    setSelectedRepo: (repo) => set({ selectedRepo: repo }),
+    setSelectedRepo: (repo) => {
+      if (repo?.html_url) {
+        const extractedRepoName = parseRepositoryName(repo.html_url);
+        set({ selectedRepo: repo, repoName: extractedRepoName });
+      } else {
+        set({ selectedRepo: repo });
+      }
+    },
     setSearchTerm: (term) => set({ searchTerm: term }),
     setProjectName: (name) => set({ projectName: name }),
     setRepoName: (name) => set({ repoName: name }),

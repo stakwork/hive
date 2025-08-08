@@ -3,17 +3,21 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { WorkflowStatus } from "@/lib/chat";
+import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 
 interface ChatInputProps {
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   isLoading?: boolean;
+  workflowStatus?: WorkflowStatus | null;
 }
 
 export function ChatInput({
   onSend,
   disabled = false,
   isLoading = false,
+  workflowStatus,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -35,7 +39,9 @@ export function ChatInput({
   return (
     <div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        {mode}
+        <span>{mode}</span>
+        <span>|</span>
+        <WorkflowStatusBadge status={workflowStatus} />
       </div>
 
       <form

@@ -389,10 +389,18 @@ model Task {
   repositoryId  String?     @map("repository_id")
   repository    Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   
-  status        TaskStatus  @default(TODO)
-  priority      Priority    @default(MEDIUM)
-  estimatedHours Int?       @map("estimated_hours")
-  actualHours   Int?        @map("actual_hours")
+  status        TaskStatus     @default(TODO)
+  priority      Priority       @default(MEDIUM)
+  estimatedHours Int?          @map("estimated_hours")
+  actualHours   Int?           @map("actual_hours")
+  
+  // Workflow status tracking
+  workflowStatus     WorkflowStatus? @default(PENDING) @map("workflow_status")
+  workflowStartedAt  DateTime?       @map("workflow_started_at")
+  workflowCompletedAt DateTime?      @map("workflow_completed_at")
+  
+  // Stakwork project ID for log subscription
+  stakworkProjectId Int?            @map("stakwork_project_id")
   
   // Audit fields
   createdById   String      @map("created_by_id")
@@ -424,6 +432,7 @@ model ChatMessage {
   taskId              String?     @map("task_id")
   task                Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
   message             String
+  workflowUrl         String?     @map("workflow_url")
   role                ChatRole
   timestamp           DateTime    @default(now())
   contextTags         Json        @default("[]") @map("context_tags") // stores ContextTag[]
@@ -630,6 +639,15 @@ enum TaskStatus {
   IN_PROGRESS
   DONE
   CANCELLED
+}
+
+enum WorkflowStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  ERROR
+  HALTED
+  FAILED
 }
 
 enum Priority {

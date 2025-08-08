@@ -8,11 +8,12 @@ import {
   ChatMessage,
   ChatRole,
   ChatStatus,
+  WorkflowStatus,
   createChatMessage,
   Option,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
-import { usePusherConnection } from "@/hooks/usePusherConnection";
+import { usePusherConnection, WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
@@ -44,6 +45,7 @@ export default function TaskChatPage() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -64,21 +66,31 @@ export default function TaskChatPage() {
     (message: ChatMessage) => {
       setMessages((prev) => [...prev, message]);
 
-      // Clear logs when we get a new message (similar to old implementation)
-      if (message.artifacts?.length === 0) {
-        clearLogs();
+      // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
+      // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
+      const hasActionArtifact = message.artifacts?.some(artifact => artifact.type === 'FORM');
+      
+      if (hasActionArtifact) {
+        setIsChainVisible(false);
       }
-
-      // Hide chain visibility when message processing is complete
-      setIsChainVisible(false);
+      // For all other artifact types (message, ide, etc.), keep thinking logs visible
     },
     [clearLogs],
+  );
+
+  // Handle workflow status updates
+  const handleWorkflowStatusUpdate = useCallback(
+    (update: WorkflowStatusUpdate) => {
+      setWorkflowStatus(update.workflowStatus);
+    },
+    [],
   );
 
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
     onMessage: handleSSEMessage,
+    onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
   });
 
   // Show connection errors as toasts
@@ -109,6 +121,17 @@ export default function TaskChatPage() {
       if (result.success && result.data.messages) {
         setMessages(result.data.messages);
         console.log(`Loaded ${result.data.count} existing messages for task`);
+        
+        // Set initial workflow status from task data
+        if (result.data.task?.workflowStatus) {
+          setWorkflowStatus(result.data.task.workflowStatus);
+        }
+        
+        // Set project ID for log subscription if available
+        if (result.data.task?.stakworkProjectId) {
+          console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
+          setProjectId(result.data.task.stakworkProjectId.toString());
+        }
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
@@ -224,9 +247,9 @@ export default function TaskChatPage() {
         throw new Error(result.error || "Failed to send message");
       }
 
-      if (result.data?.project_id) {
-        console.log("Project ID:", result.data.project_id);
-        setProjectId(result.data.project_id);
+      if (result.workflow?.project_id) {
+        console.log("Project ID:", result.workflow.project_id);
+        setProjectId(result.workflow.project_id);
         setIsChainVisible(true);
         clearLogs();
       }
@@ -323,6 +346,7 @@ export default function TaskChatPage() {
             hasNonFormArtifacts={hasNonFormArtifacts}
             isChainVisible={isChainVisible}
             lastLogLine={lastLogLine}
+            workflowStatus={workflowStatus}
           />
 
           <AnimatePresence>

@@ -28,7 +28,7 @@ export async function createWorkspace(
 
   // Check if the slug already exists
   const existing = await db.workspace.findUnique({
-    where: { slug: data.slug },
+    where: { slug: data.slug, deleted: false },
   });
   if (existing) {
     throw new Error(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
@@ -71,7 +71,7 @@ export async function getWorkspacesByUserId(
   userId: string,
 ): Promise<WorkspaceResponse[]> {
   const workspaces = await db.workspace.findMany({
-    where: { ownerId: userId },
+    where: { ownerId: userId, deleted: false },
   });
 
   return workspaces.map((workspace: any) => ({
@@ -92,6 +92,7 @@ export async function getWorkspaceBySlug(
   const workspace = await db.workspace.findFirst({
     where: {
       slug,
+      deleted: false,
     },
     include: {
       owner: {
@@ -166,6 +167,7 @@ export async function getUserWorkspaces(
   const ownedWorkspaces = await db.workspace.findMany({
     where: {
       ownerId: userId,
+      deleted: false,
     },
   });
 
@@ -201,7 +203,7 @@ export async function getUserWorkspaces(
 
   // Add member workspaces
   for (const membership of memberships) {
-    if (membership.workspace) {
+    if (membership.workspace && !membership.workspace.deleted) {
       const memberCount = await db.workspaceMember.count({
         where: { workspaceId: membership.workspace.id, leftAt: null },
       });
@@ -272,6 +274,7 @@ export async function getDefaultWorkspaceForUser(
   const ownedWorkspace = await db.workspace.findFirst({
     where: {
       ownerId: userId,
+      deleted: false,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -308,6 +311,19 @@ export async function getDefaultWorkspaceForUser(
 // Enhanced functions
 
 /**
+ * Soft deletes a workspace by ID
+ */
+export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
+  await db.workspace.update({
+    where: { id: workspaceId },
+    data: { 
+      deleted: true,
+      deletedAt: new Date()
+    },
+  });
+}
+
+/**
  * Deletes a workspace by slug if user has admin access (owner)
  */
 export async function deleteWorkspaceBySlug(
@@ -325,12 +341,8 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
-  // Delete the workspace (cascade will handle related records)
-  await db.workspace.delete({
-    where: {
-      id: workspace.id,
-    },
-  });
+  // Soft delete the workspace
+  await softDeleteWorkspace(workspace.id);
 }
 
 /**

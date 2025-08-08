@@ -72,26 +72,27 @@ npm install
 
 3. **Set up environment variables**
 
-Create a `.env.local` file in the root directory:
+To create a `.env.local` file in the root directory, run: 
+
+```bash
+cp env.example .env.local
+```
+
+And then update `.env.local` with correct values for:
+
+```env
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+```
+
+[GitHub Developer Settings](https://github.com/settings/developers)
 
 ```env
 # Database
 DATABASE_URL="postgresql://hive_user:hive_password@localhost:5432/hive_db"
-
-# NextAuth.js
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-secret-key-here"
-
-# GitHub OAuth (Required)
-GITHUB_CLIENT_ID="your-github-client-id"
-GITHUB_CLIENT_SECRET="your-github-client-secret"
-
-# Optional: Development mock authentication
-POD_URL="http://localhost:3000"  # Enables mock login for development
-
-# Optional: External API keys
-STAKWORK_API_KEY="your-stakwork-api-key"
 ```
+
+> Note: Your Database URL and GITHUB credentials are required to login and setup the project.
 
 4. **Generate development secrets**
 
@@ -239,6 +240,14 @@ npx shadcn@latest add dropdown-menu
 - Use `useWorkspace()` hook for workspace data and operations
 - Use `useWorkspaceAccess()` hook for permission checks
 - Workspace context is provided by `WorkspaceProvider`
+
+### [DEV Mode] Creating a Task
+
+- Log in with Github
+- Create a Workspace
+- Go to `StakGraph`
+- Fill out the fields with Mock data for a Project
+- Go to back to `Tasks` and you'll see `+ New Task` top-right
 
 ## 🐳 Docker Deployment
 

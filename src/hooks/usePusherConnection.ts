@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChatMessage } from "@/lib/chat";
+import { ChatMessage, WorkflowStatus } from "@/lib/chat";
 import {
   getPusherClient,
   getTaskChannelName,
@@ -7,10 +7,19 @@ import {
 } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
 
+export interface WorkflowStatusUpdate {
+  taskId: string;
+  workflowStatus: WorkflowStatus;
+  workflowStartedAt?: Date;
+  workflowCompletedAt?: Date;
+  timestamp: Date;
+}
+
 interface UsePusherConnectionOptions {
   taskId: string | null;
   enabled?: boolean;
   onMessage?: (message: ChatMessage) => void;
+  onWorkflowStatusUpdate?: (update: WorkflowStatusUpdate) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -28,6 +37,7 @@ export function usePusherConnection({
   taskId,
   enabled = true,
   onMessage,
+  onWorkflowStatusUpdate,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -37,9 +47,11 @@ export function usePusherConnection({
   // Use refs to avoid circular dependencies
   const channelRef = useRef<Channel | null>(null);
   const onMessageRef = useRef(onMessage);
+  const onWorkflowStatusUpdateRef = useRef(onWorkflowStatusUpdate);
   const currentTaskIdRef = useRef<string | null>(null);
 
   onMessageRef.current = onMessage;
+  onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -109,7 +121,7 @@ export function usePusherConnection({
         // Bind to new message events
         channel.bind(PUSHER_EVENTS.NEW_MESSAGE, (message: ChatMessage) => {
           if (LOGS) {
-            console.log(`📥 Received Pusher message:`, {
+            console.log("Received Pusher message:", {
               id: message.id,
               message: message.message,
               role: message.role,
@@ -119,6 +131,20 @@ export function usePusherConnection({
           }
           if (onMessageRef.current) {
             onMessageRef.current(message);
+          }
+        });
+
+        // Bind to workflow status update events
+        channel.bind(PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, (update: WorkflowStatusUpdate) => {
+          if (LOGS) {
+            console.log("Received workflow status update:", {
+              taskId: update.taskId,
+              workflowStatus: update.workflowStatus,
+              channelName,
+            });
+          }
+          if (onWorkflowStatusUpdateRef.current) {
+            onWorkflowStatusUpdateRef.current(update);
           }
         });
 

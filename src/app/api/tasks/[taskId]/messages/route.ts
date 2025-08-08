@@ -44,6 +44,8 @@ export async function GET(
         id: true,
         title: true,
         workspaceId: true,
+        workflowStatus: true,
+        stakworkProjectId: true,
         workspace: {
           select: {
             id: true,
@@ -109,6 +111,8 @@ export async function GET(
             id: task.id,
             title: task.title,
             workspaceId: task.workspaceId,
+            workflowStatus: task.workflowStatus,
+            stakworkProjectId: task.stakworkProjectId,
           },
           messages: clientMessages,
           count: clientMessages.length,

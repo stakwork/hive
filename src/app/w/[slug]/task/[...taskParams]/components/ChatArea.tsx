@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChatMessage as ChatMessageType, Option } from "@/lib/chat";
+import { ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 
@@ -19,6 +19,7 @@ interface ChatAreaProps {
   hasNonFormArtifacts?: boolean;
   isChainVisible?: boolean;
   lastLogLine?: string;
+  workflowStatus?: WorkflowStatus | null;
 }
 
 export function ChatArea({
@@ -30,6 +31,7 @@ export function ChatArea({
   hasNonFormArtifacts = false,
   isChainVisible = false,
   lastLogLine = "",
+  workflowStatus,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export function ChatArea({
       className={`flex flex-col bg-background rounded-xl border shadow-sm overflow-hidden ${hasNonFormArtifacts ? "max-w-2xl" : ""}`}
       layout
       initial={{ width: "100%" }}
-      animate={{ width: hasNonFormArtifacts ? "35%" : "100%" }}
+      animate={{ width: hasNonFormArtifacts ? "40%" : "100%" }}
       transition={{
         duration: 0.6,
         ease: [0.4, 0.0, 0.2, 1],
@@ -78,9 +80,7 @@ export function ChatArea({
                 Hive
               </div>
               <div className="text-sm">
-                {lastLogLine
-                  ? lastLogLine
-                  : `Communicating with workflow...`}
+                {lastLogLine ? lastLogLine : `Communicating with workflow...`}
               </div>
               {/* Optional: Add a subtle loading indicator */}
               {isChainVisible && (
@@ -110,6 +110,7 @@ export function ChatArea({
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}
+        workflowStatus={workflowStatus}
       />
     </motion.div>
   );
