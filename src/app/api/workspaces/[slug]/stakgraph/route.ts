@@ -12,6 +12,7 @@ import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { WebhookService } from "@/services/github/WebhookService";
+import { getServiceConfig } from "@/config/services";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { z } from "zod";
@@ -340,10 +341,7 @@ export async function PUT(
 
       //TODO: Update Callback URL
       const callbackUrl = getGithubWebhookCallbackUrl(request);
-      const webhookService = new WebhookService({
-        baseURL: "",
-        apiKey: "",
-      } as ServiceConfig);
+      const webhookService = new WebhookService(getServiceConfig("github"));
       await webhookService.ensureRepoWebhook({
         userId,
         workspaceId: workspace.id,
