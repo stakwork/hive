@@ -239,13 +239,10 @@ export async function PUT(
       containerFiles: settings.containerFiles,
     });
 
-    const user = await db.user.findUnique({
-      where: {
-        email: session?.user?.email || "",
-      },
-    });
-
-    const poolApiKey = user?.poolApiKey;
+    const swarmWithApiKey = (await db.swarm.findUnique({
+      where: { workspaceId: workspace.id },
+    })) as unknown as { poolApiKey?: string } | null;
+    const poolApiKey = swarmWithApiKey?.poolApiKey || "";
 
     console.log(">>>>>>>>>settings.services", settings.services);
 
@@ -296,25 +293,24 @@ export async function PUT(
       }
     }
 
-    const typedSwarm = swarm as SwarmSelectResult & { poolApiKey?: string };
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings saved successfully",
       data: {
-        id: typedSwarm.id,
-        name: typedSwarm.repositoryName,
-        description: typedSwarm.repositoryDescription,
-        repositoryUrl: typedSwarm.repositoryUrl,
-        swarmUrl: typedSwarm.swarmUrl,
-        poolName: typedSwarm.poolName,
-        poolApiKey: typedSwarm.poolApiKey || "",
-        swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
+        id: swarm.id,
+        name: (swarm as SwarmSelectResult).repositoryName,
+        description: (swarm as SwarmSelectResult).repositoryDescription,
+        repositoryUrl: (swarm as SwarmSelectResult).repositoryUrl,
+        swarmUrl: (swarm as SwarmSelectResult).swarmUrl,
+        poolName: (swarm as SwarmSelectResult).poolName,
+        poolApiKey: (swarm as unknown as SwarmSelectResult).poolApiKey || "",
+        swarmSecretAlias: (swarm as SwarmSelectResult).swarmSecretAlias || "",
         services:
-          typeof typedSwarm.services === "string"
-            ? JSON.parse(typedSwarm.services)
-            : typedSwarm.services || [],
-        status: typedSwarm.status,
-        updatedAt: typedSwarm.updatedAt,
+          typeof (swarm as SwarmSelectResult).services === "string"
+            ? JSON.parse((swarm as SwarmSelectResult).services as string)
+            : (swarm as SwarmSelectResult).services || [],
+        status: (swarm as SwarmSelectResult).status,
+        updatedAt: (swarm as SwarmSelectResult).updatedAt,
       },
     });
   } catch (error) {

@@ -63,9 +63,6 @@ model User {
   sessions      Session[]
   githubAuth    GitHubAuth?
 
-  // Pool api key
-  poolApiKey            String? @map("pool_api_key") // NEW: Pool API Key for Pool Manager
-  
   // Workspace relationships
   ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
   workspaceMembers   WorkspaceMember[]
@@ -203,6 +200,7 @@ model Swarm {
   repositoryDescription String? @map("repository_description")
   repositoryUrl         String? @map("repository_url")
   swarmApiKey           String? @map("swarm_api_key")
+  poolApiKey            String? @map("pool_api_key")
   swarmSecretAlias      String? @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
   environmentVariables  Json    @default("[]") @map("environment_variables")
   services              Json    @default("[]")

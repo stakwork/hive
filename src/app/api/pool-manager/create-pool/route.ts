@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
         saveOrUpdateSwarm({
             swarmId,
             workspaceId,
+            poolApiKey,
             containerFiles: container_files,
         });
 

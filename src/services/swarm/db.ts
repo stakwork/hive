@@ -27,6 +27,7 @@ interface SaveOrUpdateSwarmParams {
   repositoryDescription?: string;
   repositoryUrl?: string;
   swarmApiKey?: string;
+  poolApiKey?: string;
   poolName?: string;
   services?: ServiceConfig[]; // Use ServiceConfig[]
   swarmId?: string;
@@ -52,6 +53,7 @@ export const select = {
   repositoryDescription: true,
   repositoryUrl: true,
   swarmApiKey: true,
+  poolApiKey: true,
   poolName: true,
   services: true,
   swarmSecretAlias: true,
@@ -86,6 +88,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.repositoryUrl !== undefined)
     data.repositoryUrl = params.repositoryUrl;
   if (params.swarmApiKey !== undefined) data.swarmApiKey = params.swarmApiKey;
+  if (params.poolApiKey !== undefined) data.poolApiKey = params.poolApiKey;
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.defaultBranch !== undefined)
@@ -136,6 +139,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       repositoryDescription: params.repositoryDescription || "",
       repositoryUrl: params.repositoryUrl || "",
       swarmApiKey: params.swarmApiKey || "",
+      poolApiKey: params.poolApiKey || "",
       poolName: params.poolName || "",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",
