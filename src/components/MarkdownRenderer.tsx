@@ -11,19 +11,12 @@ import rehypeSanitize from "rehype-sanitize";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/hooks/use-theme";
 
 interface MarkdownRendererProps {
   children: string;
   className?: string;
   variant?: "user" | "assistant";
-}
-
-interface CodeProps {
-  node?: any;
-  inline?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-  [key: string]: any;
 }
 
 const createStyles = (isUser: boolean) => ({
@@ -45,11 +38,11 @@ const baseStyles = {
   h6: "text-sm lg:text-base mt-2 mb-1",
   paragraph: "leading-7 [&:not(:first-child)]:mt-4",
   blockquote: "border-l-4 pl-4 py-2 my-4 rounded-r-md italic",
-  list: "my-4 ml-6 space-y-1 [&>li]:mt-1",
+  list: "ml-6 space-y-1 [&>li]:mt-1",
   listDisc: "list-disc",
   listDecimal: "list-decimal",
   listItem: "leading-7",
-  codeInline: "relative rounded-xs bg-muted/15 px-1 py-0.5 text-sm font-mono",
+  codeInline: "relative rounded-xs px-0.75 py-0.5 text-sm font-mono",
   codeBlock: "relative rounded-lg border overflow-x-auto",
   table: "w-full border-collapse",
   tableWrapper: "my-6 w-full overflow-y-auto rounded-lg border",
@@ -65,6 +58,7 @@ const baseStyles = {
 
 const createComponents = (
   styles: ReturnType<typeof createStyles>,
+  codeInlineClass: string,
 ): Components => ({
   h1: ({ children, ...props }) => (
     <h1
@@ -216,6 +210,7 @@ const createComponents = (
     </a>
   ),
   img: ({ src, alt, ...props }) => (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       className={cn(`${(baseStyles.image, styles.border)} rounded-md`)}
       src={src ?? ""}
@@ -227,7 +222,7 @@ const createComponents = (
   hr: ({ ...props }) => (
     <hr className={cn(baseStyles.hr, styles.border)} {...props} />
   ),
-  code: ({ className, children }: CodeProps) => {
+  code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
     return match ? (
       <SyntaxHighlighter
@@ -239,7 +234,9 @@ const createComponents = (
         {String(children).replace(/\n$/, "")}
       </SyntaxHighlighter>
     ) : (
-      <code className={cn(baseStyles.codeInline)}>{children}</code>
+      <code className={cn(baseStyles.codeInline, codeInlineClass, className)}>
+        {children}
+      </code>
     );
   },
 });
@@ -251,7 +248,10 @@ export function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
   const styles = createStyles(isUser);
-  const components = createComponents(styles);
+  const { theme } = useTheme();
+  const isDarkTheme = theme === "dark";
+  const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
+  const components = createComponents(styles, codeInlineClass);
 
   const processedContent =
     typeof children === "string"
@@ -267,10 +267,10 @@ export function MarkdownRenderer({
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
-          remarkBreaks,
           remarkFrontmatter,
           remarkDirective,
           remarkMath,
+          remarkBreaks,
         ]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeFormat]}
         components={components}
