@@ -75,15 +75,22 @@ export default function TaskChatPage() {
       }
       // For all other artifact types (message, ide, etc.), keep thinking logs visible
     },
-    [clearLogs],
+    [],
   );
 
   // Handle workflow status updates
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
+      
+      // If task is completed, keep thinking logs visible for 2 seconds then clear them
+      if (update.workflowStatus === WorkflowStatus.COMPLETED && isChainVisible) {
+        setTimeout(() => {
+          setIsChainVisible(false);
+        }, 2000);
+      }
     },
-    [],
+    [isChainVisible],
   );
 
   // Use the Pusher connection hook
