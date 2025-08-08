@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
@@ -46,6 +46,22 @@ export default function TaskChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const isChainVisibleRef = useRef(isChainVisible);
+  const clearLogsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    isChainVisibleRef.current = isChainVisible;
+  }, [isChainVisible]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clearLogsTimeoutRef.current) {
+        clearTimeout(clearLogsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -82,6 +98,20 @@ export default function TaskChatPage() {
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
+      
+      // Clear any existing timeout to prevent multiple timeouts
+      if (clearLogsTimeoutRef.current) {
+        clearTimeout(clearLogsTimeoutRef.current);
+        clearLogsTimeoutRef.current = null;
+      }
+      
+      // If task is completed, keep thinking logs visible for 2 seconds then clear them
+      if (update.workflowStatus === WorkflowStatus.COMPLETED && isChainVisibleRef.current) {
+        clearLogsTimeoutRef.current = setTimeout(() => {
+          setIsChainVisible(false);
+          clearLogsTimeoutRef.current = null;
+        }, 2000);
+      }
     },
     [],
   );
