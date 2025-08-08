@@ -441,9 +441,7 @@ export async function PUT(
       }
 
       //TODO: Update Callback URL
-      const host = request.headers.get("host") || "localhost:3000";
-      const protocol = host.includes("localhost") ? "http" : "https";
-      const callbackUrl = `${protocol}://${host}/api/github/webhook`;
+      const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService({
         baseURL: "",
         apiKey: "",
