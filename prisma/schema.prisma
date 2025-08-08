@@ -463,7 +463,6 @@ model Artifact {
   
   @@index([messageId])
   @@index([type])
-  @@index([artifactIcon])
   @@map("artifacts")
 }
 
