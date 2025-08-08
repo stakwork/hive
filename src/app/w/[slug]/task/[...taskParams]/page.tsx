@@ -247,9 +247,9 @@ export default function TaskChatPage() {
         throw new Error(result.error || "Failed to send message");
       }
 
-      if (result.data?.project_id) {
-        console.log("Project ID:", result.data.project_id);
-        setProjectId(result.data.project_id);
+      if (result.workflow?.project_id) {
+        console.log("Project ID:", result.workflow.project_id);
+        setProjectId(result.workflow.project_id);
         setIsChainVisible(true);
         clearLogs();
       }
