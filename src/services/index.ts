@@ -1,7 +1,7 @@
 // Export service classes
 export { StakworkService } from "./stakwork";
 export { PoolManagerService } from "./pool-manager";
-export { WebhookService } from "./github/WebhookService";
+export { WebhookService } from "./github";
 
 // Export service factory and convenience functions
 export {
