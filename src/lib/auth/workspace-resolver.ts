@@ -47,7 +47,7 @@ export async function resolveUserWorkspaceRedirect(
       const workspace = userWorkspaces[0];
       return {
         shouldRedirect: true,
-        redirectUrl: `/w/${workspace.slug}`,
+        redirectUrl: `/w/${workspace.slug}/tasks`,
         workspaceCount: 1,
         defaultWorkspaceSlug: workspace.slug,
       };
@@ -59,7 +59,7 @@ export async function resolveUserWorkspaceRedirect(
     if (defaultWorkspace) {
       return {
         shouldRedirect: true,
-        redirectUrl: `/w/${defaultWorkspace.slug}`,
+        redirectUrl: `/w/${defaultWorkspace.slug}/tasks`,
         workspaceCount: userWorkspaces.length,
         defaultWorkspaceSlug: defaultWorkspace.slug,
       };
@@ -69,7 +69,7 @@ export async function resolveUserWorkspaceRedirect(
     const fallbackWorkspace = userWorkspaces[0];
     return {
       shouldRedirect: true,
-      redirectUrl: `/w/${fallbackWorkspace.slug}`,
+      redirectUrl: `/w/${fallbackWorkspace.slug}/tasks`,
       workspaceCount: userWorkspaces.length,
       defaultWorkspaceSlug: fallbackWorkspace.slug,
     };
