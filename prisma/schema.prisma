@@ -399,6 +399,9 @@ model Task {
   workflowStartedAt  DateTime?       @map("workflow_started_at")
   workflowCompletedAt DateTime?      @map("workflow_completed_at")
   
+  // Stakwork project ID for log subscription
+  stakworkProjectId Int?            @map("stakwork_project_id")
+  
   // Audit fields
   createdById   String      @map("created_by_id")
   createdBy     User        @relation("TaskCreator", fields: [createdById], references: [id])

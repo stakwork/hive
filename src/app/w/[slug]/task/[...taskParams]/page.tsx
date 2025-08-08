@@ -126,6 +126,12 @@ export default function TaskChatPage() {
         if (result.data.task?.workflowStatus) {
           setWorkflowStatus(result.data.task.workflowStatus);
         }
+        
+        // Set project ID for log subscription if available
+        if (result.data.task?.stakworkProjectId) {
+          console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
+          setProjectId(result.data.task.stakworkProjectId.toString());
+        }
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
