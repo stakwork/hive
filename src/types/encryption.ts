@@ -2,6 +2,8 @@ export interface EncryptedData {
   data: string;
   iv: string;
   tag: string;
+  keyId?: string;
+  version: string;
   encryptedAt: string;
 }
 
@@ -17,8 +19,7 @@ export type EncryptableField =
   | "environmentVariables"
   | "poolApiKey"
   | "swarmApiKey"
-  | "stakworkApiKey"
-  | "githubApiKey";
+  | "stakworkApiKey";
 
 export interface EncryptionError extends Error {
   code:

@@ -12,7 +12,13 @@ const CONFIG: EncryptionConfig = {
   tagLength: 16,
 };
 
-export function encrypt(data: string, key: Buffer): EncryptedData {
+const VERSION = "1";
+
+export function encrypt(
+  data: string,
+  key: Buffer,
+  keyId?: string,
+): EncryptedData {
   try {
     const iv = crypto.randomBytes(CONFIG.ivLength);
 
@@ -26,6 +32,8 @@ export function encrypt(data: string, key: Buffer): EncryptedData {
       data: encrypted,
       iv: iv.toString("base64"),
       tag: tag.toString("base64"),
+      keyId,
+      version: VERSION,
       encryptedAt: new Date().toISOString(),
     };
   } catch (error) {
@@ -65,6 +73,9 @@ export function isEncrypted(data: unknown): data is EncryptedData {
     typeof (data as EncryptedData).data === "string" &&
     typeof (data as EncryptedData).iv === "string" &&
     typeof (data as EncryptedData).tag === "string" &&
+    (typeof (data as EncryptedData).keyId === "string" ||
+      typeof (data as EncryptedData).keyId === "undefined") &&
+    typeof (data as EncryptedData).version === "string" &&
     typeof (data as EncryptedData).encryptedAt === "string"
   );
 }

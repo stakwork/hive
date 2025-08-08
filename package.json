@@ -22,7 +22,9 @@
     "test:db:reset": "npm run test:db:cleanup && npm run test:db:setup",
     "test:integration:full": "npm run test:db:start && sleep 5 && npm run test:db:setup && npm run test:integration && npm run test:db:stop",
     "mock-server": "node mock-server.js",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "migrate:encrypt": "tsx scripts/migrate-encrypt-existing-data.ts",
+    "rotate-keys": "tsx scripts/rotate-encryption-key.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",

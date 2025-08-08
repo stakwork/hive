@@ -63,40 +63,6 @@ export class FieldEncryptionService {
     }
   }
 
-  encryptObject<T extends Record<string, unknown>>(obj: T): T {
-    const encrypted = { ...obj };
-
-    for (const [key, value] of Object.entries(obj)) {
-      if (
-        this.isEncryptableField(key) &&
-        typeof value === "string" &&
-        value.trim() !== ""
-      ) {
-        (encrypted as Record<string, unknown>)[key] = this.encryptField(
-          key as EncryptableField,
-          value,
-        );
-      }
-    }
-
-    return encrypted;
-  }
-
-  decryptObject<T extends Record<string, unknown>>(obj: T): T {
-    const decrypted = { ...obj };
-
-    for (const [key, value] of Object.entries(obj)) {
-      if (this.isEncryptableField(key) && isEncrypted(value)) {
-        (decrypted as Record<string, unknown>)[key] = this.decryptField(
-          key as EncryptableField,
-          value,
-        );
-      }
-    }
-
-    return decrypted;
-  }
-
   private isEncryptableField(fieldName: string): fieldName is EncryptableField {
     const encryptableFields: EncryptableField[] = [
       "access_token",
@@ -104,7 +70,6 @@ export class FieldEncryptionService {
       "poolApiKey",
       "swarmApiKey",
       "stakworkApiKey",
-      "githubApiKey", // TODO: implement github api key encryption
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
