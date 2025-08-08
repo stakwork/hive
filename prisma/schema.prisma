@@ -61,7 +61,7 @@ model User {
   // Authentication relationships
   accounts      Account[]
   sessions      Session[]
-  githubAuth    GitHubAuth?
+  githubProfile GitHubProfile?
 
   // Pool api key
   poolApiKey            String? @map("pool_api_key") // NEW: Pool API Key for Pool Manager
@@ -99,7 +99,7 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-model GitHubAuth {
+model GitHubProfile {
   id                String    @id @default(cuid())
   userId            String    @unique @map("user_id")
   githubUserId      String    @map("github_user_id")
@@ -126,7 +126,7 @@ model GitHubAuth {
 
   @@index([githubUserId])
   @@index([githubUsername])
-  @@map("github_auth")
+  @@map("github_profiles")
 }
 
 // =============================================

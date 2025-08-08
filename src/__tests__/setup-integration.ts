@@ -52,7 +52,7 @@ async function cleanDatabase() {
       'swarm', 
       'workspaceMember',
       'workspace',
-      'githubAuth',
+      'gitHubProfile',
       'user'
     ];
 

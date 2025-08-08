@@ -67,8 +67,8 @@ export async function POST() {
       },
     });
 
-    // Also delete the GitHub auth data
-    await db.gitHubAuth.deleteMany({
+    // Also delete the GitHub profile data
+    await db.gitHubProfile.deleteMany({
       where: {
         userId: userId,
       },

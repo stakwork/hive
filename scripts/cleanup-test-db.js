@@ -50,9 +50,9 @@ async function cleanupTestDatabase() {
     }
 
     try {
-      await prisma.gitHubAuth.deleteMany();
+      await prisma.gitHubProfile.deleteMany();
     } catch (error) {
-      console.log("⚠️  GitHubAuth table does not exist, skipping...");
+      console.log("⚠️  GitHubProfile table does not exist, skipping...");
     }
 
     try {
