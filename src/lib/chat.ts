@@ -51,9 +51,8 @@ export interface LongformContent {
 }
 
 // Client-side types that extend Prisma types with proper JSON field typing
-export interface Artifact extends Omit<PrismaArtifact, "content" | "artifactIcon"> {
+export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?: FormContent | CodeContent | BrowserContent | LongformContent;
-  artifactIcon?: ArtifactIcon | null; // Modular icon system for any artifact type
 }
 
 export interface ChatMessage
@@ -97,12 +96,14 @@ export function createArtifact(data: {
   messageId: string;
   type: ArtifactType;
   content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  icon?: ArtifactIcon;
 }): Artifact {
   return {
     id: data.id,
     messageId: data.messageId,
     type: data.type,
     content: data.content,
+    icon: data.icon || null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

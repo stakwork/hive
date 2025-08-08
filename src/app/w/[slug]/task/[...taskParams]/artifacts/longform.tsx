@@ -54,7 +54,7 @@ export function LongformArtifactPanel({
             <div key={artifact.id}>
               {content.title && (
                 <div className="font-semibold text-lg mb-2 flex items-center gap-2">
-                  {getArtifactIcon(artifact.artifactIcon || 'Agent')}
+                  {getArtifactIcon(artifact.icon || 'Agent')}
                   {content.title}
                 </div>
               )}
