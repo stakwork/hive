@@ -14,7 +14,7 @@ import { useWizardStore } from "@/stores/useWizardStore";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useCallback, useEffect } from "react";
 
-export const STEPS_ARRAY = [
+const STEPS_ARRAY = [
   "GRAPH_INFRASTRUCTURE",
   "INGEST_CODE",
   "STAKWORK_SETUP",
@@ -30,7 +30,6 @@ export default function CodeGraphPage() {
   const loading = useWizardStore((s) => s.loading);
   const fetchWizardState = useWizardStore((s) => s.fetchWizardState);
   const currentStep = useWizardStore((s) => s.currentStep);
-  const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const error = useWizardStore((s) => s.error);
   const swarmId = useWizardStore((s) => s.swarmId);
   const updateWizardProgress = useWizardStore((s) => s.updateWizardProgress);
