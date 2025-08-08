@@ -20,13 +20,13 @@ model Account {
   type              String
   provider          String
   providerAccountId String  @map("provider_account_id")
-  refresh_token      String? 
-  access_token       String?
-  expires_at         Int?
-  token_type         String?
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
   scope             String?
-  id_token           String?
-  session_state      String?
+  id_token          String?
+  session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
@@ -44,45 +44,44 @@ model Session {
 }
 
 model User {
-  id            String       @id @default(cuid())
+  id            String    @id @default(cuid())
   name          String?
-  email         String?      @unique
-  emailVerified DateTime?    @map("email_verified")
+  email         String?   @unique
+  emailVerified DateTime? @map("email_verified")
   image         String?
-  role          UserRole     @default(USER)
-  timezone      String?      @default("UTC")
-  locale        String?      @default("en")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  deleted       Boolean      @default(false)
-  deletedAt     DateTime?    @map("deleted_at")
-  lastLoginAt   DateTime?    @map("last_login_at")
-  poolApiKey    String?      @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
-  
-  // Authentication relationships
-  accounts      Account[]
-  sessions      Session[]
-  githubAuth    GitHubAuth?
+  role          UserRole  @default(USER)
+  timezone      String?   @default("UTC")
+  locale        String?   @default("en")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deleted       Boolean   @default(false)
+  deletedAt     DateTime? @map("deleted_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+  poolApiKey    String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
 
-  
+  // Authentication relationships
+  accounts   Account[]
+  sessions   Session[]
+  githubAuth GitHubAuth?
+
   // Workspace relationships
-  ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers   WorkspaceMember[]
-  
+  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
+  workspaceMembers WorkspaceMember[]
+
   // Task assignments
-  assignedTasks      Task[]            @relation("TaskAssignee")
-  
+  assignedTasks Task[] @relation("TaskAssignee")
+
   // Audit trail
-  createdFeatures    Feature[]         @relation("FeatureCreator")
-  updatedFeatures    Feature[]         @relation("FeatureUpdater")
-  createdUserStories UserStory[]       @relation("UserStoryCreator")
-  updatedUserStories UserStory[]       @relation("UserStoryUpdater")
-  createdTasks       Task[]            @relation("TaskCreator")
-  updatedTasks       Task[]            @relation("TaskUpdater")
-  
+  createdFeatures    Feature[]   @relation("FeatureCreator")
+  updatedFeatures    Feature[]   @relation("FeatureUpdater")
+  createdUserStories UserStory[] @relation("UserStoryCreator")
+  updatedUserStories UserStory[] @relation("UserStoryUpdater")
+  createdTasks       Task[]      @relation("TaskCreator")
+  updatedTasks       Task[]      @relation("TaskUpdater")
+
   // Comments and discussions
-  comments           Comment[]
-  
+  comments Comment[]
+
   // Janitor recommendations
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
   dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
@@ -137,14 +136,14 @@ model GitHubAuth {
 // =============================================
 
 model Workspace {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   description String?
-  slug        String   @unique
-  deleted     Boolean  @default(false)
+  slug        String    @unique
+  deleted     Boolean   @default(false)
   deletedAt   DateTime? @map("deleted_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // Owner of the workspace
   ownerId String @map("owner_id")
@@ -152,18 +151,18 @@ model Workspace {
 
   // Members of the workspace
   members WorkspaceMember[]
-  
+
   // Infrastructure
   swarm        Swarm?
   repositories Repository[]
-  
+
   // PM Structure
   products Product[]
   tasks    Task[]
 
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
-  
+
   // Janitor configuration
   janitorConfig JanitorConfig?
 
@@ -181,7 +180,7 @@ model WorkspaceMember {
   role        WorkspaceRole @default(VIEWER)
   joinedAt    DateTime      @default(now()) @map("joined_at")
   leftAt      DateTime?     @map("left_at")
-  
+
   @@unique([workspaceId, userId])
   @@index([workspaceId])
   @@index([userId])
@@ -214,12 +213,11 @@ model Swarm {
   environmentVariables  Json    @default("[]") @map("environment_variables")
   services              Json    @default("[]")
 
-
   // Wizard progress tracking
-  wizardStep   SwarmWizardStep @default(WELCOME) @map("wizard_step")
-  stepStatus   StepStatus      @default(PENDING) @map("step_status")
-  wizardData   Json     @default("{}") @map("wizard_data")
-  ingestRefId String? @map("ingest_ref_id")
+  wizardStep  SwarmWizardStep @default(WELCOME) @map("wizard_step")
+  stepStatus  StepStatus      @default(PENDING) @map("step_status")
+  wizardData  Json            @default("{}") @map("wizard_data")
+  ingestRefId String?         @map("ingest_ref_id")
 
   // Generated container files
   containerFiles Json? @map("container_files")
@@ -228,7 +226,7 @@ model Swarm {
   swarmPassword String? @map("swarm_password")
 
   // One-to-one relationship with workspace
-  workspaceId String @unique @map("workspace_id")
+  workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([swarmId])
@@ -243,16 +241,20 @@ model Repository {
   status        RepositoryStatus @default(PENDING)
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
-  
+
+  // Webhook integration
+  githubWebhookId     String? @map("github_webhook_id")
+  githubWebhookSecret String? @map("github_webhook_secret")
+
   // Repository belongs to workspace
-  workspaceId String @map("workspace_id")
+  workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
+
   // Tasks can be linked to repositories
   tasks Task[]
 
-  @@index([workspaceId])
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
+  @@index([workspaceId])
   @@map("repositories")
 }
 
@@ -261,22 +263,22 @@ model Repository {
 // =============================================
 
 model Product {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
   vision      String?
-  
-  workspaceId String @map("workspace_id")
+
+  workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
-  deleted     Boolean   @default(false)
-  deletedAt   DateTime? @map("deleted_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  
-  features    Feature[]
-  roadmaps    Roadmap[]
-  
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  features Feature[]
+  roadmaps Roadmap[]
+
   @@index([workspaceId])
   @@index([deleted])
   @@map("products")
@@ -284,38 +286,38 @@ model Product {
 
 // Goal / Objective
 model Feature {
-  id          String        @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String
   description String?
-  
-  productId   String        @map("product_id")
-  product     Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
   // Phase support - 0 for main feature, 1,2,3... for phases
-  phase       Int           @default(0)
-  parentId    String?       @map("parent_id")
-  parent      Feature?      @relation("FeaturePhases", fields: [parentId], references: [id])
-  phases      Feature[]     @relation("FeaturePhases")
-  
-  status      FeatureStatus @default(IDEA)
-  priority    Priority      @default(MEDIUM)
-  
+  phase    Int       @default(0)
+  parentId String?   @map("parent_id")
+  parent   Feature?  @relation("FeaturePhases", fields: [parentId], references: [id])
+  phases   Feature[] @relation("FeaturePhases")
+
+  status   FeatureStatus @default(IDEA)
+  priority Priority      @default(MEDIUM)
+
   // Audit fields
-  createdById String        @map("created_by_id")
-  createdBy   User          @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedById String        @map("updated_by_id")
-  updatedBy   User          @relation("FeatureUpdater", fields: [updatedById], references: [id])
-  
-  deleted     Boolean       @default(false)
-  deletedAt   DateTime?     @map("deleted_at")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-  
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("FeatureUpdater", fields: [updatedById], references: [id])
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
   userStories  UserStory[]
   requirements Requirement[]
   roadmapItems RoadmapItem[]
   comments     Comment[]     @relation("FeatureComments")
-  
+
   @@index([productId])
   @@index([parentId])
   @@index([status])
@@ -325,31 +327,31 @@ model Feature {
 }
 
 model UserStory {
-  id                  String      @id @default(cuid())
-  title               String
-  description         String?
-  acceptanceCriteria  String?     @map("acceptance_criteria")
-  
-  featureId           String      @map("feature_id")
-  feature             Feature     @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  
-  priority            Priority    @default(MEDIUM)
-  storyPoints         Int?        @map("story_points")
-  status              StoryStatus @default(BACKLOG)
-  
+  id                 String  @id @default(cuid())
+  title              String
+  description        String?
+  acceptanceCriteria String? @map("acceptance_criteria")
+
+  featureId String  @map("feature_id")
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  priority    Priority    @default(MEDIUM)
+  storyPoints Int?        @map("story_points")
+  status      StoryStatus @default(BACKLOG)
+
   // Audit fields
-  createdById         String      @map("created_by_id")
-  createdBy           User        @relation("UserStoryCreator", fields: [createdById], references: [id])
-  updatedById         String      @map("updated_by_id")
-  updatedBy           User        @relation("UserStoryUpdater", fields: [updatedById], references: [id])
-  
-  deleted             Boolean     @default(false)
-  deletedAt           DateTime?   @map("deleted_at")
-  createdAt           DateTime    @default(now()) @map("created_at")
-  updatedAt           DateTime    @updatedAt @map("updated_at")
-  
-  comments            Comment[]   @relation("UserStoryComments")
-  
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("UserStoryCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("UserStoryUpdater", fields: [updatedById], references: [id])
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  comments Comment[] @relation("UserStoryComments")
+
   @@index([featureId])
   @@index([status])
   @@index([priority])
@@ -358,24 +360,24 @@ model UserStory {
 }
 
 model Requirement {
-  id          String             @id @default(cuid())
+  id          String          @id @default(cuid())
   title       String
   description String?
-  type        RequirementType    @default(FUNCTIONAL)
-  
-  featureId   String             @map("feature_id")
-  feature     Feature            @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  
-  priority    MoSCoWPriority     @default(SHOULD_HAVE)
-  status      RequirementStatus  @default(DRAFT)
-  
-  deleted     Boolean            @default(false)
-  deletedAt   DateTime?          @map("deleted_at")
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
-  
-  comments    Comment[]          @relation("RequirementComments")
-  
+  type        RequirementType @default(FUNCTIONAL)
+
+  featureId String  @map("feature_id")
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  priority MoSCoWPriority    @default(SHOULD_HAVE)
+  status   RequirementStatus @default(DRAFT)
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  comments Comment[] @relation("RequirementComments")
+
   @@index([featureId])
   @@index([type])
   @@index([status])
@@ -385,49 +387,49 @@ model Requirement {
 
 // Chat
 model Task {
-  id            String      @id @default(cuid())
-  title         String
-  description   String?
-  
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
   // Direct workspace relationship
-  workspaceId   String      @map("workspace_id")
-  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   // Assignment and repository linking
-  assigneeId    String?     @map("assignee_id")
-  assignee      User?       @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  repositoryId  String?     @map("repository_id")
-  repository    Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
-  
-  status        TaskStatus     @default(TODO)
-  priority      Priority       @default(MEDIUM)
-  estimatedHours Int?          @map("estimated_hours")
-  actualHours   Int?           @map("actual_hours")
-  
+  assigneeId   String?     @map("assignee_id")
+  assignee     User?       @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  repositoryId String?     @map("repository_id")
+  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+
+  status         TaskStatus @default(TODO)
+  priority       Priority   @default(MEDIUM)
+  estimatedHours Int?       @map("estimated_hours")
+  actualHours    Int?       @map("actual_hours")
+
   // Workflow status tracking
-  workflowStatus     WorkflowStatus? @default(PENDING) @map("workflow_status")
-  workflowStartedAt  DateTime?       @map("workflow_started_at")
-  workflowCompletedAt DateTime?      @map("workflow_completed_at")
-  
+  workflowStatus      WorkflowStatus? @default(PENDING) @map("workflow_status")
+  workflowStartedAt   DateTime?       @map("workflow_started_at")
+  workflowCompletedAt DateTime?       @map("workflow_completed_at")
+
   // Stakwork project ID for log subscription
-  stakworkProjectId Int?            @map("stakwork_project_id")
-  
+  stakworkProjectId Int? @map("stakwork_project_id")
+
   // Task source tracking
-  sourceType                TaskSourceType          @default(USER) @map("source_type")
-  
+  sourceType TaskSourceType @default(USER) @map("source_type")
+
   // Audit fields
-  createdById   String      @map("created_by_id")
-  createdBy     User        @relation("TaskCreator", fields: [createdById], references: [id])
-  updatedById   String      @map("updated_by_id")
-  updatedBy     User        @relation("TaskUpdater", fields: [updatedById], references: [id])
-  
-  deleted       Boolean     @default(false)
-  deletedAt     DateTime?   @map("deleted_at")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-  
-  comments      Comment[]   @relation("TaskComments")
-  chatMessages  ChatMessage[]
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("TaskUpdater", fields: [updatedById], references: [id])
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  comments     Comment[]     @relation("TaskComments")
+  chatMessages ChatMessage[]
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -441,57 +443,56 @@ model Task {
 // =============================================
 
 model ChatMessage {
-  id                  String      @id @default(cuid())
-  taskId              String?     @map("task_id")
-  task                Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  message             String
-  workflowUrl         String?     @map("workflow_url")
-  role                ChatRole
-  timestamp           DateTime    @default(now())
-  contextTags         Json        @default("[]") @map("context_tags") // stores ContextTag[]
-  status              ChatStatus  @default(SENDING)
-  sourceWebsocketID   String?     @map("source_websocket_id")
-  replyId             String?     @map("reply_id")
-  
-  artifacts           Artifact[]
-  attachments         Attachment[]
-  
-  createdAt           DateTime    @default(now()) @map("created_at")
-  updatedAt           DateTime    @updatedAt @map("updated_at")
-  
+  id                String     @id @default(cuid())
+  taskId            String?    @map("task_id")
+  task              Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  message           String
+  workflowUrl       String?    @map("workflow_url")
+  role              ChatRole
+  timestamp         DateTime   @default(now())
+  contextTags       Json       @default("[]") @map("context_tags") // stores ContextTag[]
+  status            ChatStatus @default(SENDING)
+  sourceWebsocketID String?    @map("source_websocket_id")
+  replyId           String?    @map("reply_id")
+
+  artifacts   Artifact[]
+  attachments Attachment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@index([taskId])
   @@index([timestamp])
   @@map("chat_messages")
 }
 
 model Artifact {
-  id            String        @id @default(cuid())
-  messageId     String        @map("message_id")
-  message       ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  type          ArtifactType
-  content       Json?         // stores FormContent | CodeContent | BrowserContent
-  icon          String?       // Icon for this artifact
-  
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  
+  id        String       @id @default(cuid())
+  messageId String       @map("message_id")
+  message   ChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type      ArtifactType
+  content   Json? // stores FormContent | CodeContent | BrowserContent
+  icon      String? // Icon for this artifact
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@index([messageId])
-  @@index([type])
-  @@map("artifacts")
+  @@map("attachments")
 }
 
 model Attachment {
-  id            String        @id @default(cuid())
-  messageId     String        @map("message_id")
-  message       ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  path          String        // S3 path (bucket-relative path)
-  filename      String        // Original filename
-  mimeType      String        @map("mime_type") // File MIME type
-  size          Int           // File size in bytes
-  
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  
+  id        String      @id @default(cuid())
+  messageId String      @map("message_id")
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  path      String // S3 path (bucket-relative path)
+  filename  String // Original filename
+  mimeType  String      @map("mime_type") // File MIME type
+  size      Int // File size in bytes
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@index([messageId])
   @@map("attachments")
 }
@@ -529,48 +530,48 @@ enum ArtifactType {
 // =============================================
 
 model Roadmap {
-  id          String         @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
-  
-  productId   String         @map("product_id")
-  product     Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
-  timeHorizon TimeHorizon    @default(QUARTER) @map("time_horizon")
-  startDate   DateTime       @map("start_date")
-  endDate     DateTime       @map("end_date")
-  
-  deleted     Boolean        @default(false)
-  deletedAt   DateTime?      @map("deleted_at")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  
-  items       RoadmapItem[]
-  
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  timeHorizon TimeHorizon @default(QUARTER) @map("time_horizon")
+  startDate   DateTime    @map("start_date")
+  endDate     DateTime    @map("end_date")
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  items RoadmapItem[]
+
   @@index([productId])
   @@index([deleted])
   @@map("roadmaps")
 }
 
 model RoadmapItem {
-  id                String    @id @default(cuid())
-  roadmapId         String    @map("roadmap_id")
-  roadmap           Roadmap   @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
-  featureId         String    @map("feature_id")
-  feature           Feature   @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  
-  plannedStartDate  DateTime  @map("planned_start_date")
-  plannedEndDate    DateTime  @map("planned_end_date")
-  actualStartDate   DateTime? @map("actual_start_date")
-  actualEndDate     DateTime? @map("actual_end_date")
-  
+  id        String  @id @default(cuid())
+  roadmapId String  @map("roadmap_id")
+  roadmap   Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  featureId String  @map("feature_id")
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  plannedStartDate DateTime  @map("planned_start_date")
+  plannedEndDate   DateTime  @map("planned_end_date")
+  actualStartDate  DateTime? @map("actual_start_date")
+  actualEndDate    DateTime? @map("actual_end_date")
+
   // Dependencies stored as array of roadmap item IDs
-  dependencies      String[]  @default([])
-  milestone         Boolean   @default(false)
-  
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  
+  dependencies String[] @default([])
+  milestone    Boolean  @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@unique([roadmapId, featureId])
   @@index([roadmapId])
   @@index([featureId])
@@ -582,33 +583,33 @@ model RoadmapItem {
 // =============================================
 
 model Comment {
-  id          String        @id @default(cuid())
-  content     String
-  
+  id      String @id @default(cuid())
+  content String
+
   // Polymorphic relationship - can comment on different entity types
-  entityType  CommentEntity @map("entity_type")
-  featureId   String?       @map("feature_id")
-  feature     Feature?      @relation("FeatureComments", fields: [featureId], references: [id], onDelete: Cascade)
-  userStoryId String?       @map("user_story_id")
-  userStory   UserStory?    @relation("UserStoryComments", fields: [userStoryId], references: [id], onDelete: Cascade)
-  taskId      String?       @map("task_id")
-  task        Task?         @relation("TaskComments", fields: [taskId], references: [id], onDelete: Cascade)
-  requirementId String?     @map("requirement_id")
-  requirement Requirement? @relation("RequirementComments", fields: [requirementId], references: [id], onDelete: Cascade)
-  
+  entityType    CommentEntity @map("entity_type")
+  featureId     String?       @map("feature_id")
+  feature       Feature?      @relation("FeatureComments", fields: [featureId], references: [id], onDelete: Cascade)
+  userStoryId   String?       @map("user_story_id")
+  userStory     UserStory?    @relation("UserStoryComments", fields: [userStoryId], references: [id], onDelete: Cascade)
+  taskId        String?       @map("task_id")
+  task          Task?         @relation("TaskComments", fields: [taskId], references: [id], onDelete: Cascade)
+  requirementId String?       @map("requirement_id")
+  requirement   Requirement?  @relation("RequirementComments", fields: [requirementId], references: [id], onDelete: Cascade)
+
   // Threading support
-  parentId    String?       @map("parent_id")
-  parent      Comment?      @relation("CommentThread", fields: [parentId], references: [id])
-  replies     Comment[]     @relation("CommentThread")
-  
-  authorId    String        @map("author_id")
-  author      User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  deleted     Boolean       @default(false)
-  deletedAt   DateTime?     @map("deleted_at")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-  
+  parentId String?   @map("parent_id")
+  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentThread")
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
   @@index([featureId])
   @@index([userStoryId])
   @@index([taskId])
@@ -623,40 +624,40 @@ model Comment {
 // =============================================
 
 model JanitorConfig {
-  id                        String    @id @default(cuid())
-  workspaceId               String    @unique @map("workspace_id")
-  
+  id          String @id @default(cuid())
+  workspaceId String @unique @map("workspace_id")
+
   // Individual janitor toggles
-  unitTestsEnabled          Boolean   @default(false) @map("unit_tests_enabled")
-  integrationTestsEnabled   Boolean   @default(false) @map("integration_tests_enabled")
-    
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
-  
-  workspace                 Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  janitorRuns               JanitorRun[]
-  
+  unitTestsEnabled        Boolean @default(false) @map("unit_tests_enabled")
+  integrationTestsEnabled Boolean @default(false) @map("integration_tests_enabled")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  janitorRuns JanitorRun[]
+
   @@index([workspaceId])
   @@map("janitor_configs")
 }
 
 model JanitorRun {
-  id                String           @id @default(cuid())
-  janitorConfigId   String           @map("janitor_config_id")
-  janitorType       JanitorType      @map("janitor_type")
-  status            JanitorStatus    @default(PENDING)
-  triggeredBy       JanitorTrigger   @default(SCHEDULED) @map("triggered_by")
-  stakworkProjectId Int?             @map("stakwork_project_id")
-  startedAt         DateTime?        @map("started_at")
-  completedAt       DateTime?        @map("completed_at")
+  id                String         @id @default(cuid())
+  janitorConfigId   String         @map("janitor_config_id")
+  janitorType       JanitorType    @map("janitor_type")
+  status            JanitorStatus  @default(PENDING)
+  triggeredBy       JanitorTrigger @default(SCHEDULED) @map("triggered_by")
+  stakworkProjectId Int?           @map("stakwork_project_id")
+  startedAt         DateTime?      @map("started_at")
+  completedAt       DateTime?      @map("completed_at")
   error             String?
-  metadata          Json             @default("{}")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
-  
-  janitorConfig     JanitorConfig    @relation(fields: [janitorConfigId], references: [id], onDelete: Cascade)
-  recommendations   JanitorRecommendation[]
-  
+  metadata          Json           @default("{}")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  janitorConfig   JanitorConfig           @relation(fields: [janitorConfigId], references: [id], onDelete: Cascade)
+  recommendations JanitorRecommendation[]
+
   @@index([janitorConfigId])
   @@index([janitorType])
   @@index([status])
@@ -665,29 +666,29 @@ model JanitorRun {
 }
 
 model JanitorRecommendation {
-  id                String               @id @default(cuid())
-  janitorRunId      String               @map("janitor_run_id")
-  
-  // Recommendation details
-  title             String
-  description       String
-  priority          Priority             @default(MEDIUM)
-  impact            String?
+  id           String @id @default(cuid())
+  janitorRunId String @map("janitor_run_id")
 
-  status            RecommendationStatus @default(PENDING)
-  acceptedAt        DateTime?            @map("accepted_at")
-  dismissedAt       DateTime?            @map("dismissed_at")
-  acceptedById      String?              @map("accepted_by_id")
-  dismissedById     String?              @map("dismissed_by_id")
-  
-  metadata          Json                 @default("{}")
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  
-  janitorRun        JanitorRun           @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
-  acceptedBy        User?                @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
-  dismissedBy       User?                @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
-  
+  // Recommendation details
+  title       String
+  description String
+  priority    Priority @default(MEDIUM)
+  impact      String?
+
+  status        RecommendationStatus @default(PENDING)
+  acceptedAt    DateTime?            @map("accepted_at")
+  dismissedAt   DateTime?            @map("dismissed_at")
+  acceptedById  String?              @map("accepted_by_id")
+  dismissedById String?              @map("dismissed_by_id")
+
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  janitorRun  JanitorRun @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
+  acceptedBy  User?      @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
+  dismissedBy User?      @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
+
   @@index([janitorRunId])
   @@index([status])
   @@index([priority])
