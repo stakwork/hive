@@ -13,6 +13,7 @@ import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { WebhookService } from "@/services/github/WebhookService";
+import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { z } from "zod";
 
@@ -360,9 +361,7 @@ export async function PUT(
       }
 
       //TODO: Update Callback URL
-      const host = request.headers.get("host") || "localhost:3000";
-      const protocol = host.includes("localhost") ? "http" : "https";
-      const callbackUrl = `${protocol}://${host}/api/github/webhook`;
+      const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService({
         baseURL: "",
         apiKey: "",
