@@ -12,9 +12,7 @@ import {
 import { useWizardStore } from "@/stores/useWizardStore";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
 import { useCallback, useEffect } from "react";
-import { WizardProgress } from "./WizardProgress";
 import { WizardStepRenderer } from "./WizardStepRenderer";
 
 export const STEPS_ARRAY = [
@@ -28,7 +26,6 @@ export default function WorkspaceWizard() {
   const loading = useWizardStore((s) => s.loading);
   const fetchWizardState = useWizardStore((s) => s.fetchWizardState);
   const currentStep = useWizardStore((s) => s.currentStep);
-  const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const error = useWizardStore((s) => s.error);
   const repositoryUrlDraft = useWizardStore((s) => s.repositoryUrlDraft);
   const setRepositoryUrlDraft = useWizardStore((s) => s.setRepositoryUrlDraft);
@@ -118,11 +115,7 @@ export default function WorkspaceWizard() {
     );
   }
 
-  const resetProgress = () => {
-    localStorage.removeItem("repoUrl");
-    resetWizard();
-    redirect("/");
-  }
+
 
   // Get current step status for display
 
@@ -132,25 +125,6 @@ export default function WorkspaceWizard() {
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
-          {/* Header */}
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-foreground">
-              Setting up Workspace
-            </h1>
-          </div>
-
-          <WizardProgress
-            currentStep={currentStep}
-            totalSteps={STEPS_ARRAY.length}
-            stepStatus={currentStepStatus}
-          />
-
-          <div className="flex justify-center">
-            <Button onClick={resetProgress}>
-              Reset progress
-            </Button>
-          </div>
-
           <WizardStepRenderer
             onNext={handleNext}
             step={currentStep}
