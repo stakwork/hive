@@ -75,7 +75,7 @@ export default function TaskChatPage() {
       }
       // For all other artifact types (message, ide, etc.), keep thinking logs visible
     },
-    [],
+    [clearLogs],
   );
 
   // Handle workflow status updates
