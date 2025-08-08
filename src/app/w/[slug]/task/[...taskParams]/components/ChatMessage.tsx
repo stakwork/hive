@@ -40,21 +40,14 @@ export function ChatMessage({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end ml-12" : "justify-start"}`}
+        className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}
       >
-        {message.role === "ASSISTANT" && (
-          <Avatar>
-            <AvatarImage src="" alt="Assistant" />
-            <AvatarFallback>A</AvatarFallback>
-          </Avatar>
-        )}
-
         {message.message && (
           <div
             className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
               message.role === "USER"
-                ? "bg-primary text-primary-foreground rounded-br-none"
-                : "bg-background text-foreground rounded-bl-none border"
+                ? "bg-primary text-primary-foreground rounded-br-md"
+                : "bg-background text-foreground rounded-bl-md border"
             }`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -73,12 +66,6 @@ export function ChatMessage({
               />
             )}
           </div>
-        )}
-        {message.role === "USER" && (
-          <Avatar>
-            <AvatarImage src="" alt="You" />
-            <AvatarFallback>Y</AvatarFallback>
-          </Avatar>
         )}
       </div>
 
