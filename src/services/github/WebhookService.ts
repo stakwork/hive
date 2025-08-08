@@ -132,7 +132,7 @@ export class WebhookService extends BaseServiceClass {
       {
         method: "GET",
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
       },
@@ -158,7 +158,7 @@ export class WebhookService extends BaseServiceClass {
       {
         method: "POST",
         headers: {
-          Authorization: `token ${params.token}`,
+          Authorization: `Bearer ${params.token}`,
           Accept: "application/vnd.github.v3+json",
           "Content-Type": "application/json",
         },
@@ -197,7 +197,7 @@ export class WebhookService extends BaseServiceClass {
       {
         method: "PATCH",
         headers: {
-          Authorization: `token ${params.token}`,
+          Authorization: `Bearer ${params.token}`,
           Accept: "application/vnd.github.v3+json",
           "Content-Type": "application/json",
         },
@@ -224,7 +224,7 @@ export class WebhookService extends BaseServiceClass {
       {
         method: "DELETE",
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
       },

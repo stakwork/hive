@@ -29,7 +29,8 @@ export async function POST(request: NextRequest) {
     let payload;
     try {
       payload = JSON.parse(rawBody);
-    } catch {
+    } catch (error) {
+      console.error(`Error parsing payload: ${error}`);
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -146,7 +147,8 @@ export async function POST(request: NextRequest) {
       { success: apiResult.ok, delivery },
       { status: 202 },
     );
-  } catch {
+  } catch (error) {
+    console.error(`Error processing webhook: ${error}`);
     return NextResponse.json({ success: false }, { status: 500 });
   }
 }

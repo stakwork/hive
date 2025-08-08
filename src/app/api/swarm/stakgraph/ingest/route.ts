@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const callbackUrl = getGithubWebhookCallbackUrl(request);
+      //TODO: Add the right configuration for the webhook service
       const webhookService = new WebhookService({
         baseURL: "",
         apiKey: "",
@@ -123,7 +124,9 @@ export async function POST(request: NextRequest) {
         repositoryUrl: final_repo_url,
         callbackUrl,
       });
-    } catch {}
+    } catch (error) {
+      console.error(`Error ensuring repo webhook: ${error}`);
+    }
 
     // If success, update repository status to SYNCED
     let finalStatus = repository.status;
@@ -241,7 +244,8 @@ export async function GET(request: NextRequest) {
       },
       { status: apiResult.status },
     );
-  } catch {
+  } catch (error) {
+    console.error(`Error getting ingest status: ${error}`);
     return NextResponse.json(
       { success: false, message: "Failed to ingest code" },
       { status: 500 },

@@ -41,7 +41,9 @@ export function parseGithubOwnerRepo(repositoryUrl: string): {
   owner: string;
   repo: string;
 } {
-  const ssh = repositoryUrl.match(/^git@github\.com:(.+?)\/(.+?)(?:\.git)?$/i);
+  const ssh = repositoryUrl.match(
+    /^git@github\.com:([^/]+)\/([^/]+)(?:\.git)?$/i,
+  );
   if (ssh) return { owner: ssh[1], repo: ssh[2].replace(/\.git$/i, "") };
   try {
     const u = new URL(repositoryUrl);
