@@ -134,6 +134,11 @@ Repository: fayekelmith/demo-repo
 ├── File: routes.go (660)
 └── File: utils.go (47)
 
+
+-----
+
+The user is requesting the addition of a *copy button* feature for a \`​code​\` artifact. The requirements include:\n\n- Placing a *copy button* in the top right corner of the code​ artifact.\n- Ensuring the *copy button* allows users to copy the \`code\` contents.\n- The *copy button* should be consistent with the one used at the file name.
+
 `;
 
 export { createArtifact, ArtifactType };

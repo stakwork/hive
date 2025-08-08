@@ -35,7 +35,7 @@ export function LongformArtifactPanel({
     >
       <div
         ref={scrollRef}
-        className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto whitespace-pre-wrap relative"
+        className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto whitespace-normal relative"
       >
         {artifacts.map((artifact) => {
           const content = artifact.content as LongformContent;

@@ -36,12 +36,12 @@ const baseStyles = {
   h4: "text-lg lg:text-xl mt-4 mb-2",
   h5: "text-base lg:text-lg mt-3 mb-1",
   h6: "text-sm lg:text-base mt-2 mb-1",
-  paragraph: "leading-normal [&:not(:first-child)]:mt-4",
+  paragraph: "leading-7 [&:not(:first-child)]:mt-4",
   blockquote: "border-l-4 pl-4 py-2 my-4 rounded-r-md italic",
-  list: "ml-6 space-y-0.5",
+  list: "my-4 ml-6 space-y-1 [&>li]:mt-1",
   listDisc: "list-disc",
   listDecimal: "list-decimal",
-  listItem: "leading-normal",
+  listItem: "leading-7",
   codeInline: "relative rounded-xs px-0.75 py-0.5 text-sm font-mono",
   codeBlock: "relative rounded-lg border overflow-x-auto",
   table: "w-full border-collapse",
@@ -224,19 +224,24 @@ const createComponents = (
   ),
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
-    return match ? (
+
+    if (!match) {
+      return (
+        <code className={cn(baseStyles.codeInline, codeInlineClass, className)}>
+          {children}
+        </code>
+      );
+    }
+
+    return (
       <SyntaxHighlighter
-        PreTag="div"
+        PreTag="pre"
         wrapLines={true}
         language={match[1]}
         style={tomorrow}
       >
         {String(children).replace(/\n$/, "")}
       </SyntaxHighlighter>
-    ) : (
-      <code className={cn(baseStyles.codeInline, codeInlineClass, className)}>
-        {children}
-      </code>
     );
   },
 });
