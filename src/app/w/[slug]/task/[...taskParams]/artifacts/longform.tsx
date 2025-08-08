@@ -6,10 +6,10 @@ import { Code, Bot, Phone, MessageSquare } from "lucide-react";
 
 const getArtifactIcon = (iconType: string) => {
   const icons = {
-    Code: <Code className="h-5 w-5" />,
-    Agent: <Bot className="h-5 w-5" />,
-    Call: <Phone className="h-5 w-5" />,
-    Message: <MessageSquare className="h-5 w-5" />
+    Code: <Code className="h-5 w-5 flex-shrink-0" />,
+    Agent: <Bot className="h-5 w-5 flex-shrink-0" />,
+    Call: <Phone className="h-5 w-5 flex-shrink-0" />,
+    Message: <MessageSquare className="h-5 w-5 flex-shrink-0" />
   };
   return icons[iconType as keyof typeof icons] || null;
 };
