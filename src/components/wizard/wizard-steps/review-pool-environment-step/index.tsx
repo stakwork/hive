@@ -28,7 +28,7 @@ const getFiles = (
   const pm2Apps = generatePM2Apps(repoName, servicesData);
 
   return {
-    "devcontainer.json": devcontainerJsonContent(projectName),
+    "devcontainer.json": devcontainerJsonContent(repoName),
     "pm2.config.js": `module.exports = {
   apps: ${formatPM2Apps(pm2Apps)},
 };

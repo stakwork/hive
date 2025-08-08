@@ -375,12 +375,23 @@ export async function POST(request: NextRequest) {
       
       // Update workflow status based on Stakwork call result
       if (stakworkData.success) {
+        const updateData: {
+          workflowStatus: WorkflowStatus;
+          workflowStartedAt: Date;
+          stakworkProjectId?: number;
+        } = {
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: new Date(),
+        };
+        
+        // Store the Stakwork project ID if available
+        if (stakworkData.data?.project_id) {
+          updateData.stakworkProjectId = stakworkData.data.project_id;
+        }
+        
         await db.task.update({
           where: { id: taskId },
-          data: {
-            workflowStatus: WorkflowStatus.IN_PROGRESS,
-            workflowStartedAt: new Date(),
-          },
+          data: updateData,
         });
       } else {
         await db.task.update({

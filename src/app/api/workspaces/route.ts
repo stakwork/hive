@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { createWorkspace, getWorkspacesByUserId } from "@/services/workspace";
+import { createWorkspace, getWorkspacesByUserId, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
 
 // Prevent caching of user-specific data
@@ -58,7 +58,7 @@ export async function DELETE() {
   const userId = (session.user as { id: string }).id;
   // Find the workspace owned by this user
   const workspace = await db.workspace.findFirst({
-    where: { ownerId: userId },
+    where: { ownerId: userId, deleted: false },
   });
   if (!workspace) {
     return NextResponse.json(
@@ -66,6 +66,6 @@ export async function DELETE() {
       { status: 404 },
     );
   }
-  await db.workspace.delete({ where: { id: workspace.id } });
+  await softDeleteWorkspace(workspace.id);
   return NextResponse.json({ success: true }, { status: 200 });
 }
