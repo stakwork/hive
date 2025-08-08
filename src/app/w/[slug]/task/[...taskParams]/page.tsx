@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
@@ -46,6 +46,12 @@ export default function TaskChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const isChainVisibleRef = useRef(isChainVisible);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    isChainVisibleRef.current = isChainVisible;
+  }, [isChainVisible]);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -84,13 +90,13 @@ export default function TaskChatPage() {
       setWorkflowStatus(update.workflowStatus);
       
       // If task is completed, keep thinking logs visible for 2 seconds then clear them
-      if (update.workflowStatus === WorkflowStatus.COMPLETED && isChainVisible) {
+      if (update.workflowStatus === WorkflowStatus.COMPLETED && isChainVisibleRef.current) {
         setTimeout(() => {
           setIsChainVisible(false);
         }, 2000);
       }
     },
-    [isChainVisible],
+    [],
   );
 
   // Use the Pusher connection hook
