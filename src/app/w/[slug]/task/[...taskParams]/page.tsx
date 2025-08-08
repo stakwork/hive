@@ -6,22 +6,15 @@ import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   ChatMessage,
-  ChatRole,
-  ChatStatus,
   WorkflowStatus,
-  createChatMessage,
   Option,
+  Artifact,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import { usePusherConnection, WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
-
-// Generate unique IDs to prevent collisions
-function generateUniqueId() {
-  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
 
 export default function TaskChatPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -45,7 +38,8 @@ export default function TaskChatPage() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -184,22 +178,31 @@ export default function TaskChatPage() {
       window.history.replaceState({}, "", newUrl);
 
       setStarted(true);
-      await sendMessage(msg, { taskId: newTaskId });
+      await sendMessage(msg, undefined, { taskId: newTaskId });
     } else {
       setStarted(true);
-      await sendMessage(msg);
+      await sendMessage(msg, undefined);
     }
   };
 
   const handleSend = async (message: string) => {
+    // Allow sending if we have either text or a pending debug attachment
+    if (!message.trim() && !pendingDebugAttachment) return;
+
+    // For artifact-only messages, provide a default message
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    
     await sendMessage(
-      message,
+      messageText,
+      pendingDebugAttachment || undefined,
       chatWebhook ? { webhook: chatWebhook } : undefined,
     );
+    setPendingDebugAttachment(null); // Clear attachment after sending
   };
 
   const sendMessage = async (
     messageText: string,
+    artifact?: Artifact,
     options?: {
       taskId?: string;
       replyId?: string;
@@ -208,27 +211,20 @@ export default function TaskChatPage() {
   ) => {
     if (isLoading) return;
 
-    const newMessage: ChatMessage = createChatMessage({
-      id: generateUniqueId(),
-      message: messageText,
-      role: ChatRole.USER,
-      status: ChatStatus.SENDING,
-      replyId: options?.replyId,
-    });
-
-    setMessages((msgs) => [...msgs, newMessage]);
+    // Don't add optimistic messages - let them come from Pusher only
     setIsLoading(true);
 
     // console.log("Sending message:", messageText, options);
 
     try {
-      const body: { [k: string]: string | string[] | null } = {
+      const body: { [k: string]: unknown } = {
         taskId: options?.taskId || currentTaskId,
         message: messageText,
         contextTags: [],
         mode: taskMode,
         ...(options?.replyId && { replyId: options.replyId }),
         ...(options?.webhook && { webhook: options.webhook }),
+        ...(artifact && { artifacts: [artifact] }),
       };
       const response = await fetch("/api/chat/message", {
         method: "POST",
@@ -254,22 +250,9 @@ export default function TaskChatPage() {
         clearLogs();
       }
 
-      // Update the temporary message status instead of replacing entirely
-      // This prevents re-animation since React sees it as the same message
-      setMessages((msgs) =>
-        msgs.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg,
-        ),
-      );
+      // Message will be added via Pusher broadcast
     } catch (error) {
       console.error("Error sending message:", error);
-
-      // Update message status to ERROR
-      setMessages((msgs) =>
-        msgs.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg,
-        ),
-      );
 
       toast({
         title: "Error",
@@ -294,10 +277,19 @@ export default function TaskChatPage() {
     if (originalMessage) {
       setIsChainVisible(true);
       // Send the artifact action response to the backend
-      await sendMessage(action.optionResponse, {
+      await sendMessage(action.optionResponse, undefined, {
         replyId: originalMessage.id,
         webhook: webhook,
       });
+    }
+  };
+
+  const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
+    if (debugArtifact) {
+      // Set pending attachment instead of sending immediately
+      setPendingDebugAttachment(debugArtifact);
+      // Focus the input for user to add context
+      // Note: This will be handled by the ChatInput component
     }
   };
 
@@ -346,11 +338,13 @@ export default function TaskChatPage() {
             hasNonFormArtifacts={hasNonFormArtifacts}
             isChainVisible={isChainVisible}
             lastLogLine={lastLogLine}
+            pendingDebugAttachment={pendingDebugAttachment}
+            onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
             workflowStatus={workflowStatus}
           />
 
           <AnimatePresence>
-            {hasNonFormArtifacts && <ArtifactsPanel artifacts={allArtifacts} />}
+            {hasNonFormArtifacts && <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />}
           </AnimatePresence>
         </motion.div>
       )}

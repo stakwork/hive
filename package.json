@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "mv .babelrc.js .babelrc.js.disabled 2>/dev/null || true && NEXT_PUBLIC_DEBUG_MODE=false next dev --turbopack",
+    "dev:debug": "mv .babelrc.js.disabled .babelrc.js 2>/dev/null || true && NEXT_PUBLIC_DEBUG_MODE=true next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -91,6 +92,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@react-dev-inspector/babel-plugin": "^2.0.1",
     "@tailwindcss/postcss": "^4.1.11",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",

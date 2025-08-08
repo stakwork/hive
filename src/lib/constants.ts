@@ -136,3 +136,9 @@ export const SWARM_DEFAULT_ENV_VARS = {
 export function getSwarmVanityAddress(name: string) {
   return `${name}.sphinx.chat`;
 }
+
+// Preview targets for bug identification feature
+export const PREVIEW_TARGETS = {
+  DEV_DEFAULT: 'https://hive-vercel.sphinx.chat',
+  LOCAL_PROXY: '/api/proxy-preview'
+} as const;

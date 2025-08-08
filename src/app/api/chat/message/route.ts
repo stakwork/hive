@@ -10,7 +10,9 @@ import {
   type ContextTag,
   type Artifact,
   type ChatMessage,
+  parseContextTags,
 } from "@/lib/chat";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { WorkflowStatus } from "@prisma/client";
 
 // Disable caching for real-time messaging
@@ -47,14 +49,10 @@ async function callMock(
   taskId: string,
   message: string,
   userId: string,
-  request?: NextRequest,
+  artifacts?: ArtifactRequest[],
+  request?: NextRequest
 ) {
   const baseUrl = getBaseUrl(request);
-  console.log("Sending message to mock server", {
-    taskId,
-    message,
-    baseUrl,
-  });
 
   try {
     const response = await fetch(`${baseUrl}/api/mock`, {
@@ -63,6 +61,7 @@ async function callMock(
         taskId,
         message,
         userId,
+        artifacts,
       }),
       headers: {
         "Content-Type": "application/json",
@@ -77,7 +76,6 @@ async function callMock(
     }
 
     const result = await response.json();
-    console.log("mock result", result);
     return { success: true, data: result };
   } catch (error) {
     console.error("Error calling mock server:", error);
@@ -155,10 +153,6 @@ async function callStakwork(
 
     const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
 
-    console.log("Sending message to Stakwork", {
-      url: stakworkURL,
-      payload: stakworkPayload,
-    });
 
     const response = await fetch(stakworkURL, {
       method: "POST",
@@ -212,11 +206,11 @@ export async function POST(request: NextRequest) {
       mode,
     } = body;
 
-    // Validate required fields
-    if (!message) {
+    // Validate required fields - allow empty message if artifacts are present
+    if (!message && (!artifacts || artifacts.length === 0)) {
       return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 },
+        { error: "Message is required when no artifacts are provided" },
+        { status: 400 }
       );
     }
     if (!taskId) {
@@ -323,14 +317,29 @@ export async function POST(request: NextRequest) {
     // Convert to client-side type
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string,
-      ) as ContextTag[],
+      contextTags: parseContextTags(chatMessage.contextTags),
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
       })) as Artifact[],
     };
+
+    // Broadcast the user message via Pusher to all connected clients for this task
+    if (taskId) {
+      try {
+        const channelName = getTaskChannelName(taskId);
+
+        await pusherServer.trigger(
+          channelName,
+          PUSHER_EVENTS.NEW_MESSAGE,
+          clientMessage
+        );
+
+      } catch (error) {
+        console.error("❌ Error broadcasting user message to Pusher:", error);
+        // Don't fail the request if Pusher fails
+      }
+    }
 
     const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
 
@@ -359,6 +368,7 @@ export async function POST(request: NextRequest) {
 
     let stakworkData = null;
     // Call appropriate service based on environment configuration
+    // Note: Debug artifacts (BUG_REPORT) are stored with the message but processing is handled separately
     if (useStakwork) {
       stakworkData = await callStakwork(
         taskId,
@@ -404,7 +414,7 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      stakworkData = await callMock(taskId, message, userId, request);
+      stakworkData = await callMock(taskId, message, userId, artifacts, request);
     }
 
     return NextResponse.json(

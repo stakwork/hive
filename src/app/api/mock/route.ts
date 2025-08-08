@@ -7,7 +7,7 @@ export const fetchCache = "force-no-store";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, taskId, userId } = await req.json();
+    const { message, taskId, userId, artifacts } = await req.json();
 
     console.log("📨 Mock received message:", {
       message,
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       console.log("🔗 Mock base URL:", baseUrl);
 
       // Generate mock response
-      const mockResponse = generateResponseBasedOnMessage(message, baseUrl);
+      const mockResponse = generateResponseBasedOnMessage(message, baseUrl, artifacts);
 
       console.log("🤖 Mock generated response:", {
         originalMessage: message,

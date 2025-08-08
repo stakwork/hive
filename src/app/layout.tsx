@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -7,30 +6,25 @@ import { ToastProvider } from "@/components/ui/toast-provider";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import Script from "next/script";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
   title: "Hive",
   description: "A fresh start",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <Script src="/js/staktrak.js" />
-      <Script src="/js/replay.js" />
-      <Script src="/js/playwright-generator.js" type="module" />
-      <body
-        className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
-      >
+      <head>
+        <Script src="/js/replay.js" />
+        <Script src="/js/playwright-generator.js" type="module" />
+      </head>
+      <body className="min-h-screen bg-background text-foreground antialiased font-sans">
         <ToastProvider>
           <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>
-              <WorkspaceProvider>{children}</WorkspaceProvider>
+              <WorkspaceProvider>
+                {children}
+              </WorkspaceProvider>
             </SessionProvider>
           </ThemeProvider>
         </ToastProvider>

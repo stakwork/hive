@@ -5,11 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ### Core Development
-- `npm run dev` - Start development server with Turbopack
+- `npm run dev` - Start development server with Turbopack (fast development, disables Babel)
+- `npm run dev:debug` - Start development server with Babel (enables DOM debugging features, slower)
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 - `npm run setup` - Generate JWT secret for development
+
+**Note:** The dev scripts automatically toggle the Babel configuration since Turbopack cannot coexist with `.babelrc.js`. The debug button (Bug icon) in browser previews is automatically hidden when using Turbopack mode and only appears when debugging features are available.
 
 ### Testing
 - `npm run test` - Run all tests with Vitest
@@ -142,6 +145,12 @@ npx shadcn@latest add [component-name]
 - Integration tests for API routes and database operations
 - Separate test database configuration
 - Use `vitest.config.ts` for test configuration
+
+### Debug Features
+- DOM inspector available in `npm run dev:debug` mode for component identification
+- Debug scanner via console (`debugScan.quick()`) for coverage analysis and diagnostics
+- Cross-iframe debug communication for browser artifacts
+- Detailed documentation in `docs/dom-inspector.md`
 
 ### Environment Setup
 Required environment variables:

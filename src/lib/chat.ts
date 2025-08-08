@@ -31,6 +31,23 @@ export interface BrowserContent {
   url: string;
 }
 
+export interface BugReportContent {
+  bugDescription: string;
+  iframeUrl: string;
+  method: 'click' | 'selection';
+  sourceFiles: Array<{
+    file: string;
+    lines: number[];
+    context?: string;
+  }>;
+  coordinates?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 export interface Option {
   actionType: "button" | "chat";
   optionLabel: string;
@@ -52,7 +69,7 @@ export interface LongformContent {
 
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  content?: FormContent | CodeContent | BrowserContent | BugReportContent | LongformContent;
 }
 
 export interface ChatMessage
@@ -107,4 +124,41 @@ export function createArtifact(data: {
     createdAt: new Date(),
     updatedAt: new Date(),
   };
+}
+
+// Safe JSON parsing utility for contextTags field
+export function parseContextTags(contextTags: unknown): ContextTag[] {
+  try {
+    // Handle null or undefined
+    if (contextTags == null) {
+      return [];
+    }
+
+    // Handle empty string
+    if (contextTags === '') {
+      return [];
+    }
+
+    // Handle already parsed objects
+    if (Array.isArray(contextTags)) {
+      return contextTags as ContextTag[];
+    }
+
+    // Handle string values
+    if (typeof contextTags === 'string') {
+      // Handle empty JSON string
+      if (contextTags.trim() === '') {
+        return [];
+      }
+      
+      const parsed = JSON.parse(contextTags);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+
+    // Fallback for any other types
+    return [];
+  } catch (error) {
+    console.warn('Failed to parse contextTags:', error, 'Input:', contextTags);
+    return [];
+  }
 }

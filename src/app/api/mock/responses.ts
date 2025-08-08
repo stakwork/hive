@@ -120,6 +120,36 @@ export function generateBrowserResponse(baseUrl: string) {
   ]);
 }
 
+export function generateBugReportResponse(artifacts: { type: string; content: unknown }[]) {
+  // Find BUG_REPORT artifacts and extract source file information
+  const bugReportArtifacts = artifacts?.filter(artifact => artifact.type === "BUG_REPORT") || [];
+  
+  if (bugReportArtifacts.length === 0) {
+    return makeRes("No debug information found in the request.");
+  }
+
+  let response = "Found source locations:\n";
+  
+  for (const artifact of bugReportArtifacts) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const content = artifact.content as any;
+    if (content?.sourceFiles && Array.isArray(content.sourceFiles)) {
+      for (const sourceFile of content.sourceFiles) {
+        if (sourceFile.file && sourceFile.lines && sourceFile.lines.length > 0) {
+          response += `\n${sourceFile.file}\n(Lines ${sourceFile.lines.join(', ')})`;
+        }
+      }
+    }
+  }
+  
+  // If no source files found, provide a helpful fallback message
+  if (response === "Found source locations:\n") {
+    response = "Debug information captured, but no source file mappings were available. This may indicate the element was generated dynamically or the source mapping failed.";
+  }
+
+  return makeRes(response);
+}
+
 export function generateLongformResponse() {
   const messageId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -127,7 +157,7 @@ export function generateLongformResponse() {
     createArtifact({
       id: "longform-1",
       messageId,
-      type: ArtifactType.LONGFORM,
+      type: "LONGFORM" as ArtifactType,
       content: {
         title: "Repomap: Project Hive Overview",
         text: REPOMAP,
@@ -139,7 +169,12 @@ export function generateLongformResponse() {
 export function generateResponseBasedOnMessage(
   message: string,
   baseUrl: string,
+  artifacts?: { type: string; content: unknown }[]
 ) {
+  // Check for BUG_REPORT artifacts first
+  if (artifacts && artifacts.some(artifact => artifact.type === "BUG_REPORT")) {
+    return generateBugReportResponse(artifacts);
+  }
   const messageText = message.toLowerCase();
 
   if (messageText.includes("browser")) {
