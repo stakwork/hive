@@ -48,7 +48,7 @@ export function WorkspaceForm() {
             error={errors.slug}
             helpText="This will be your workspace's unique URL. Only lowercase letters, numbers, and hyphens allowed."
             disabled={loading}
-            prefix="hive.app/"
+            prefix="hive.sphinx.chat/w/"
           />
 
           <FormField
