@@ -55,7 +55,7 @@ export function LongformArtifactPanel({
               {content.title && (
                 <div className="font-semibold text-lg mb-2 flex items-center gap-2">
                   {getArtifactIcon(artifact.icon || 'Agent')}
-                  {content.title}
+                  <span className="line-clamp-2">{content.title}</span>
                 </div>
               )}
               <MarkdownRenderer>{content.text}</MarkdownRenderer>
