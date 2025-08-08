@@ -16,7 +16,7 @@ export class WebhookService extends BaseServiceClass {
     workspaceId,
     repositoryUrl,
     callbackUrl,
-    events = ["push"],
+    events = ["push", "pull_request"],
     active = true,
   }: EnsureWebhookParams): Promise<{ id: number; secret: string }> {
     const token = await this.getUserGithubAccessToken(userId);
