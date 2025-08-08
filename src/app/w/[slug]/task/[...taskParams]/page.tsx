@@ -47,11 +47,21 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const isChainVisibleRef = useRef(isChainVisible);
+  const clearLogsTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Keep ref in sync with state
   useEffect(() => {
     isChainVisibleRef.current = isChainVisible;
   }, [isChainVisible]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clearLogsTimeoutRef.current) {
+        clearTimeout(clearLogsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -89,10 +99,17 @@ export default function TaskChatPage() {
     (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
       
+      // Clear any existing timeout to prevent multiple timeouts
+      if (clearLogsTimeoutRef.current) {
+        clearTimeout(clearLogsTimeoutRef.current);
+        clearLogsTimeoutRef.current = undefined;
+      }
+      
       // If task is completed, keep thinking logs visible for 2 seconds then clear them
       if (update.workflowStatus === WorkflowStatus.COMPLETED && isChainVisibleRef.current) {
-        setTimeout(() => {
+        clearLogsTimeoutRef.current = setTimeout(() => {
           setIsChainVisible(false);
+          clearLogsTimeoutRef.current = undefined;
         }, 2000);
       }
     },
