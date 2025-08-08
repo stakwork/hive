@@ -13,7 +13,7 @@ import { useWizardStore } from "@/stores/useWizardStore";
 import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 
@@ -37,7 +37,8 @@ export function ProjectNameSetupStep() {
   const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
   const projectName = useWizardStore((s) => s.projectName);
   const setProjectName = useWizardStore((s) => s.setProjectName);
-  const { setSelectedRepo } = useWizardStore((s) => s);
+  const setSelectedRepo = useWizardStore((s) => s.setSelectedRepo);
+  const resetWizard = useWizardStore((s) => s.resetWizard);
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
   const { refreshWorkspaces } = useWorkspace();
@@ -155,7 +156,13 @@ export function ProjectNameSetupStep() {
     if (!swarmId && workspaceSlug && workspaceId && projectName) {
       handleCreateSwarm();
     }
-  }, [createSwarm, projectName, setCurrentStepStatus, swarmId, workspaceId, workspaceSlug]);
+  }, [createSwarm, projectName, router, setCurrentStepStatus, swarmId, workspaceId, workspaceSlug]);
+
+  const resetProgress = () => {
+    localStorage.removeItem("repoUrl");
+    resetWizard();
+    redirect("/");
+  }
 
 
   return isLoading ? (
@@ -305,6 +312,10 @@ export function ProjectNameSetupStep() {
         <div className="flex justify-between pt-4">
           {!swarmId ? (
             <>
+
+              <Button variant="outline" type="button" onClick={resetProgress}>
+                Reset
+              </Button>
               <Button
                 disabled={swarmIsLoading}
                 className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
