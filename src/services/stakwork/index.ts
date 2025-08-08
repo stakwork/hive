@@ -83,7 +83,7 @@ export class StakworkService extends BaseServiceClass {
     const requestFn = () => {
       return client.post<T>(
         endpoint,
-        { secret: { name: name, value: value } },
+        { source: "hive", secret: { name: name, value: value } },
         headers,
         this.serviceName,
       );
