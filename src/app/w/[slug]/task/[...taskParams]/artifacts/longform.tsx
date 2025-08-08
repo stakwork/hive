@@ -2,17 +2,7 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { LongformContent, Artifact } from "@/lib/chat";
 import { useRef, useState, useEffect } from "react";
 import { WorkflowUrlLink } from "../components/WorkflowUrlLink";
-import { Code, Bot, Phone, MessageSquare } from "lucide-react";
-
-const getArtifactIcon = (iconType: string) => {
-  const icons = {
-    code: <Code className="h-5 w-5 flex-shrink-0" />,
-    agent: <Bot className="h-5 w-5 flex-shrink-0" />,
-    call: <Phone className="h-5 w-5 flex-shrink-0" />,
-    message: <MessageSquare className="h-5 w-5 flex-shrink-0" />
-  };
-  return icons[iconType?.toLowerCase() as keyof typeof icons] || null;
-};
+import { getArtifactIcon } from "@/lib/icons";
 
 export function LongformArtifactPanel({
   artifacts,
