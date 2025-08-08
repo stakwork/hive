@@ -1,51 +1,29 @@
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
+  CardTitle
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ArrowRight } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
 import { useWizardStore } from "@/stores/useWizardStore";
-import { sanitizeWorkspaceName } from "@/utils/repositoryParser";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useState } from "react";
 
 interface GraphInfrastructureStepProps {
   onNext: () => void;
-  onBack: () => void;
 }
 
 export function GraphInfrastructureStep({
   onNext,
-  onBack,
 }: GraphInfrastructureStepProps) {
   const [error, setError] = useState<string>("");
   const swarmId = useWizardStore((s) => s.swarmId);
-  const swarmName = useWizardStore((s) => s.swarmName);
-  const projectName = useWizardStore((s) => s.projectName);
-  const graphDomain = sanitizeWorkspaceName(projectName);
 
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
-  const createSwarm = useWizardStore((s) => s.createSwarm);
   const updateWizardProgress = useWizardStore((s) => s.updateWizardProgress);
-  const swarmIsLoading = useWizardStore((s) => s.swarmIsLoading);
 
   const isPending = currentStepStatus === "PENDING";
 
-  const handleCreate = async () => {
-    try {
-      await createSwarm();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
-      setCurrentStepStatus("FAILED");
-      throw error;
-    }
-  };
 
   const handleComplete = useCallback(async () => {
     try {
@@ -58,6 +36,7 @@ export function GraphInfrastructureStep({
       setCurrentStepStatus("COMPLETED");
       onNext();
     } catch (error) {
+      setError(error as string);
       setCurrentStepStatus("FAILED");
       throw error;
     }
@@ -94,7 +73,7 @@ export function GraphInfrastructureStep({
     return () => {
       isCancelled = true;
     };
-  }, [swarmId, handleComplete]);
+  }, [swarmId, handleComplete, setCurrentStepStatus]);
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
@@ -210,53 +189,6 @@ export function GraphInfrastructureStep({
         </AnimatePresence>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        <div>
-          <Label
-            htmlFor="graphDomain"
-            className="text-sm font-medium text-foreground"
-          >
-            Graph Domain
-          </Label>
-          <Input
-            id="graphDomain"
-            value={swarmName || `${graphDomain}.sphinx.chat`}
-            readOnly
-            tabIndex={-1}
-            className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
-            style={{ pointerEvents: "none" }}
-          />
-        </div>
-
-        <div className="flex justify-between pt-4">
-          {!swarmId ? (
-            <>
-              <Button variant="outline" type="button" onClick={onBack}>
-                Back
-              </Button>
-              <Button
-                disabled={swarmIsLoading}
-                className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                type="button"
-                onClick={handleCreate}
-              >
-                Create
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </>
-          ) : (
-            <div className="flex flex-col items-end gap-2 w-full">
-              <Button
-                className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
-                type="button"
-                disabled
-              >
-                Generating Swarm...
-              </Button>
-            </div>
-          )}
-        </div>
-      </CardContent>
     </Card>
   );
 }

@@ -1,12 +1,12 @@
 import { WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
-import { 
-  CheckCircle, 
-  Clock, 
-  XCircle, 
-  Pause, 
+import {
   AlertCircle,
-  Loader2 
+  CheckCircle,
+  Clock,
+  Loader2,
+  Pause,
+  XCircle
 } from "lucide-react";
 
 interface WorkflowStatusBadgeProps {
@@ -60,7 +60,7 @@ export function WorkflowStatusBadge({
   // Default to PENDING if no status provided
   const effectiveStatus = status || WorkflowStatus.PENDING;
   const config = statusConfig[effectiveStatus];
-  
+
   if (!config) {
     return null;
   }

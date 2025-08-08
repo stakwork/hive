@@ -1,6 +1,6 @@
-import { CreateSwarmRequest, CreateSwarmResponse } from "@/types";
-import { HttpClient } from "@/lib/http-client";
 import { env } from "@/lib/env";
+import { HttpClient } from "@/lib/http-client";
+import { CreateSwarmRequest, CreateSwarmResponse, ValidateUriResponse } from "@/types";
 
 export async function createSwarmApi(
   client: HttpClient,
@@ -13,6 +13,13 @@ export async function createSwarmApi(
     { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
     serviceName,
   );
+}
+
+export async function validateUriApi(
+  client: HttpClient,
+  domain: string,
+): Promise<ValidateUriResponse> {
+  return client.get<ValidateUriResponse>(`/api/super/check-domain?domain=${domain}`, { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string });
 }
 
 export async function fetchSwarmDetails(

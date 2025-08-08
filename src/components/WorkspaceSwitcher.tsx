@@ -1,7 +1,6 @@
 "use client";
 
-import * as React from "react";
-import { ChevronsUpDown, Plus, Building2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,10 +10,11 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useRouter } from "next/navigation";
 import type { WorkspaceWithRole } from "@/types/workspace";
+import { Building2, ChevronsUpDown, Plus } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface WorkspaceSwitcherProps {
   // Legacy props for backward compatibility
@@ -175,42 +175,43 @@ export function WorkspaceSwitcher({
           {/* Other Workspaces */}
           {workspaces.filter((ws) => ws.id !== activeWorkspace.id).length >
             0 && (
-            <>
-              <DropdownMenuSeparator />
-              {workspaces
-                .filter((ws) => ws.id !== activeWorkspace.id)
-                .map((workspace, index) => (
-                  <DropdownMenuItem
-                    key={workspace.id}
-                    onClick={() => handleWorkspaceSelect(workspace)}
-                    className="flex items-center gap-2 p-2"
-                  >
-                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
-                      <Building2 className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">
-                        {workspace.name}
+              <>
+                <DropdownMenuSeparator />
+                {workspaces
+                  .filter((ws) => ws.id !== activeWorkspace.id)
+                  .map((workspace, index) => (
+                    <DropdownMenuItem
+                      key={workspace.id}
+                      onClick={() => handleWorkspaceSelect(workspace)}
+                      className="flex items-center gap-2 p-2"
+                    >
+                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
+                        <Building2 className="w-3.5 h-3.5" />
                       </div>
-                    </div>
-                    <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                ))}
-            </>
-          )}
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">
+                          {workspace.name}
+                        </div>
+                      </div>
+                      <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                  ))}
+              </>
+            )}
 
           {/* Create New Workspace */}
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={handleCreateWorkspace}
             className="flex items-center gap-2 p-2"
           >
             <div className="flex items-center justify-center w-6 h-6 rounded-md border border-dashed">
               <Plus className="w-4 h-4" />
             </div>
-            <div className="font-medium text-sm text-muted-foreground">
-              Create new workspace
-            </div>
+            <Link href="/onboarding/workspace">
+              <div className="font-medium text-sm text-muted-foreground">
+                Create new workspace
+              </div>
+            </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

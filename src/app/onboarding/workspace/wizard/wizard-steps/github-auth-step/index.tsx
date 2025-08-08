@@ -10,14 +10,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
+import { Github, Loader2, UserCheck } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export default function SignInPage() {
+export function GithubAuthStep() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [isSigningIn, setIsSigningIn] = useState(false);
@@ -111,14 +110,6 @@ export default function SignInPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <Link
-          href="/"
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Home
-        </Link>
-
         <Card className="border-0 shadow-xl bg-card text-card-foreground">
           <CardHeader className="text-center pb-6">
             <CardTitle className="text-2xl font-bold">

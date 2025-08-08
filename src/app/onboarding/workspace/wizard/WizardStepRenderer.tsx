@@ -7,15 +7,15 @@ import { DefaultStep } from "./wizard-steps/default-step";
 interface WizardStepRendererProps {
   step: TWizardStep;
   onNext: () => void;
-  onBack: () => void;
 }
 
 export function WizardStepRenderer({
   step,
   onNext,
-  onBack,
 }: WizardStepRendererProps) {
   const StepComponent = componentsMap[step];
+
+  console.log("StepComponent", step);
 
   if (!StepComponent) {
     return <DefaultStep step={step} handleBackToStep={() => { }} />;
@@ -23,7 +23,6 @@ export function WizardStepRenderer({
 
   const sharedProps = {
     onNext,
-    onBack,
   };
 
   return <StepComponent {...sharedProps} />;

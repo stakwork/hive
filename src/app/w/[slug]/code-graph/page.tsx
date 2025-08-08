@@ -1,9 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { WizardProgress } from "@/components/wizard/WizardProgress";
-import { WizardStepRenderer } from "@/components/wizard/WizardStepRenderer";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -11,9 +8,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle } from "lucide-react";
-import { STEPS_ARRAY, useWizardStore } from "@/stores/useWizardStore";
+import { WizardStepRenderer } from "@/components/wizard/WizardStepRenderer";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWizardStore } from "@/stores/useWizardStore";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { useCallback, useEffect } from "react";
+
+export const STEPS_ARRAY = [
+  "GRAPH_INFRASTRUCTURE",
+  "INGEST_CODE",
+  "STAKWORK_SETUP",
+  "ADD_SERVICES",
+  "ENVIRONMENT_SETUP",
+  "REVIEW_POOL_ENVIRONMENT",
+  "COMPLETION",
+];
 
 export default function CodeGraphPage() {
   const { workspace } = useWorkspace();
@@ -185,11 +194,9 @@ export default function CodeGraphPage() {
             </h1>
           </div>
 
-          <WizardProgress
-            currentStep={currentStep}
-            totalSteps={10}
-            stepStatus={currentStepStatus}
-          />
+          <div className="flex justify-center">
+            It will take up to 5 minutes to complete the setup.
+          </div>
 
           <WizardStepRenderer
             onNext={handleNext}
