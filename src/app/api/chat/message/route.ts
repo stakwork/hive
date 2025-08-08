@@ -132,16 +132,27 @@ async function callStakwork(
       repo2graph_url: repo2GraphUrl,
     };
 
-    const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
+    const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
 
     console.log("config.STAKWORK_WORKFLOW_ID", config.STAKWORK_WORKFLOW_ID);
     console.log("mode", mode);
 
-    const workflowId =
-      mode === "live" ? stakworkWorkflowIds[0] : stakworkWorkflowIds[1];
+    const selectedIdStr =
+      mode === "live"
+        ? stakworkWorkflowIds[0]
+        : stakworkWorkflowIds[1] ?? stakworkWorkflowIds[0];
+    const workflowId = Number.parseInt(selectedIdStr ?? "", 10);
+    if (Number.isNaN(workflowId)) {
+      throw new Error(
+        `Invalid STAKWORK_WORKFLOW_ID: "${config.STAKWORK_WORKFLOW_ID}". Expected a number or comma-separated list like "LIVE_ID,TEST_ID"`,
+      );
+    }
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
-      workflow_id: parseInt(workflowId),
+      workflow_id: workflowId,
       webhook_url: workflowWebhookUrl, // Add workflow status webhook URL
       workflow_params: {
         set_var: {
