@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { WebhookService } from "@/services/github/WebhookService";
+import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import type { ServiceConfig } from "@/types";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
@@ -110,9 +111,7 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      const host = new URL(request.url).host;
-      const protocol = host.includes("localhost") ? "http" : "https";
-      const callbackUrl = `${protocol}://${host}/api/github/webhook`;
+      const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService({
         baseURL: "",
         apiKey: "",
