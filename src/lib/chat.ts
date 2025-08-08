@@ -42,6 +42,9 @@ export interface FormContent {
   webhook: string;
   options: Option[];
 }
+// Artifact icon system - modular and reusable across all artifact types
+export type ArtifactIcon = 'Code' | 'Agent' | 'Call' | 'Message';
+
 export interface LongformContent {
   text: string;
   title?: string;
@@ -93,12 +96,14 @@ export function createArtifact(data: {
   messageId: string;
   type: ArtifactType;
   content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  icon?: ArtifactIcon;
 }): Artifact {
   return {
     id: data.id,
     messageId: data.messageId,
     type: data.type,
     content: data.content,
+    icon: data.icon || null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
