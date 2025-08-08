@@ -1,4 +1,3 @@
-import { env } from "@/lib/env";
 import { ServiceConfig } from "@/types";
 
 // Service endpoint configurations
@@ -29,6 +28,14 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     timeout: 30000, // Longer timeout for wizard operations
     headers: {
       "Content-Type": "application/json",
+    },
+  },
+  github: {
+    baseURL: "https://api.github.com",
+    apiKey: "",
+    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    headers: {
+      Accept: "application/vnd.github.v3+json",
     },
   },
   swarm: {

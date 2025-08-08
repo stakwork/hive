@@ -5,8 +5,8 @@ import { EncryptionService } from "@/lib/encryption";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { WebhookService } from "@/services/github/WebhookService";
+import { getServiceConfig } from "@/config/services";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
-import type { ServiceConfig } from "@/types";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -114,10 +114,7 @@ export async function POST(request: NextRequest) {
     try {
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       //TODO: Add the right configuration for the webhook service
-      const webhookService = new WebhookService({
-        baseURL: "",
-        apiKey: "",
-      } as ServiceConfig);
+      const webhookService = new WebhookService(getServiceConfig("github"));
       await webhookService.ensureRepoWebhook({
         userId: session.user.id,
         workspaceId: repoWorkspaceId,
