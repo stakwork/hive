@@ -279,7 +279,7 @@ export default async function HomePage() {
           </p>
           <Link href="/auth/signin">
             <Button size="lg" variant="secondary" className="text-lg px-8 py-6">
-              Get Started Free
+              Welcome PM's
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>

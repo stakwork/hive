@@ -1,0 +1,20 @@
+{
+  "name": "paul-hive",
+  "dockerComposeFile": "./docker-compose.yml",
+  "workspaceFolder": "/workspaces/hive",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
+  },
+  "containerEnv": {},
+  "customizations": {
+    "vscode": {
+        "settings": {
+          "git.autofetch": true,
+          "editor.formatOnSave": true
+        },
+        "extensions": [
+            "stakwork.staklink"
+        ]
+    }
+  }
+}
