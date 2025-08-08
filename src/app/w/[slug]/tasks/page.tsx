@@ -17,7 +17,7 @@ export default function TasksPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Tasks</h1>
           <p className="text-muted-foreground mt-2">
-            Manage and track your development tasks and issues.
+            Manage and track your tasks.
           </p>
         </div>
         {workspace?.isCodeGraphSetup && (
