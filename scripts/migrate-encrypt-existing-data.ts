@@ -41,44 +41,82 @@ async function encryptValue(fieldName: string, value: string): Promise<string> {
   }
 }
 
-async function migrateAccounts(): Promise<void> {
+type MigrationStats = {
+  processed: number;
+  encrypted: number;
+  skipped: number;
+  errors: number;
+};
+
+function newStats(): MigrationStats {
+  return { processed: 0, encrypted: 0, skipped: 0, errors: 0 };
+}
+
+function logStats(label: string, stats: MigrationStats) {
+  console.log(`${label} migration complete`);
+  console.log(stats);
+}
+
+async function migrateAccounts(stats: MigrationStats): Promise<void> {
   const accounts = await prisma.account.findMany({
     where: {
-      access_token: {
-        not: null,
-      },
+      OR: [
+        { access_token: { not: null } },
+        { refresh_token: { not: null } },
+        { id_token: { not: null } },
+      ],
     },
     select: {
       id: true,
       access_token: true,
+      refresh_token: true,
+      id_token: true,
     },
   });
 
   for (const account of accounts) {
     try {
+      stats.processed++;
+      const data: Record<string, string> = {};
+      let updated = false;
       if (
-        !account.access_token ||
-        (await isAlreadyEncrypted(account.access_token))
+        account.access_token &&
+        !(await isAlreadyEncrypted(account.access_token))
       ) {
-        continue;
+        data.access_token = await encryptValue(
+          "access_token",
+          account.access_token,
+        );
+        updated = true;
       }
-
-      const encryptedToken = await encryptValue(
-        "access_token",
-        account.access_token,
-      );
-
-      await prisma.account.update({
-        where: { id: account.id },
-        data: { access_token: encryptedToken },
-      });
+      if (
+        account.refresh_token &&
+        !(await isAlreadyEncrypted(account.refresh_token))
+      ) {
+        data.refresh_token = await encryptValue(
+          "refresh_token",
+          account.refresh_token,
+        );
+        updated = true;
+      }
+      if (account.id_token && !(await isAlreadyEncrypted(account.id_token))) {
+        data.id_token = await encryptValue("id_token", account.id_token);
+        updated = true;
+      }
+      if (updated) {
+        await prisma.account.update({ where: { id: account.id }, data });
+        stats.encrypted++;
+      } else {
+        stats.skipped++;
+      }
     } catch (error) {
+      stats.errors++;
       console.error(`Failed to encrypt account ${account.id}:`, error);
     }
   }
 }
 
-async function migrateSwarms(): Promise<void> {
+async function migrateSwarms(stats: MigrationStats): Promise<void> {
   const swarms = await prisma.swarm.findMany({
     select: {
       id: true,
@@ -90,6 +128,7 @@ async function migrateSwarms(): Promise<void> {
 
   for (const swarm of swarms) {
     try {
+      stats.processed++;
       let updated = false;
       const updateData: Record<string, string> = {};
 
@@ -155,14 +194,42 @@ async function migrateSwarms(): Promise<void> {
           where: { id: swarm.id },
           data: updateData,
         });
+        stats.encrypted++;
+      } else {
+        stats.skipped++;
       }
     } catch (error) {
+      stats.errors++;
       console.error(`Failed to encrypt swarm ${swarm.id}:`, error);
     }
   }
 }
 
-async function migrateWorkspaces(): Promise<void> {
+async function migrateRepositories(stats: MigrationStats): Promise<void> {
+  const rows = await prisma.repository.findMany({
+    where: { githubWebhookSecret: { not: null } },
+    select: { id: true, githubWebhookSecret: true },
+  });
+
+  for (const row of rows) {
+    try {
+      stats.processed++;
+      const current = row.githubWebhookSecret as string | null;
+      if (!current || (await isAlreadyEncrypted(current))) continue;
+      const encrypted = await encryptValue("githubWebhookSecret", current);
+      await prisma.repository.update({
+        where: { id: row.id },
+        data: { githubWebhookSecret: encrypted },
+      });
+      stats.encrypted++;
+    } catch (error) {
+      stats.errors++;
+      console.error(`Failed to encrypt repository ${row.id}:`, error);
+    }
+  }
+}
+
+async function migrateWorkspaces(stats: MigrationStats): Promise<void> {
   const workspaces = await prisma.workspace.findMany({
     where: {
       stakworkApiKey: {
@@ -177,10 +244,12 @@ async function migrateWorkspaces(): Promise<void> {
 
   for (const workspace of workspaces) {
     try {
+      stats.processed++;
       if (
         !workspace.stakworkApiKey ||
         (await isAlreadyEncrypted(workspace.stakworkApiKey))
       ) {
+        stats.skipped++;
         continue;
       }
 
@@ -193,8 +262,44 @@ async function migrateWorkspaces(): Promise<void> {
         where: { id: workspace.id },
         data: { stakworkApiKey: encryptedKey },
       });
+      stats.encrypted++;
     } catch (error) {
+      stats.errors++;
       console.error(`Failed to encrypt workspace ${workspace.id}:`, error);
+    }
+  }
+}
+async function migrateUsers(stats: MigrationStats): Promise<void> {
+  const users = await prisma.user.findMany({
+    where: {
+      poolApiKey: {
+        not: null,
+      },
+    },
+    select: {
+      id: true,
+      poolApiKey: true,
+    },
+  });
+
+  for (const user of users) {
+    try {
+      stats.processed++;
+      if (!user.poolApiKey || (await isAlreadyEncrypted(user.poolApiKey))) {
+        stats.skipped++;
+        continue;
+      }
+
+      const encryptedKey = await encryptValue("poolApiKey", user.poolApiKey);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { poolApiKey: encryptedKey },
+      });
+      stats.encrypted++;
+    } catch (error) {
+      stats.errors++;
+      console.error(`Failed to encrypt user ${user.id}:`, error);
     }
   }
 }
@@ -208,9 +313,25 @@ async function main() {
   try {
     await prisma.$connect();
 
-    await migrateAccounts();
-    await migrateSwarms();
-    await migrateWorkspaces();
+    const accStats = newStats();
+    await migrateAccounts(accStats);
+    logStats("Accounts", accStats);
+
+    const swarmStats = newStats();
+    await migrateSwarms(swarmStats);
+    logStats("Swarms", swarmStats);
+
+    const repoStats = newStats();
+    await migrateRepositories(repoStats);
+    logStats("Repositories", repoStats);
+
+    const wsStats = newStats();
+    await migrateWorkspaces(wsStats);
+    logStats("Workspaces", wsStats);
+
+    const userStats = newStats();
+    await migrateUsers(userStats);
+    logStats("Users", userStats);
   } catch (error) {
     console.error("Migration failed:", error);
     process.exit(1);
