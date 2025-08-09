@@ -8,6 +8,7 @@ export async function triggerSync(
   repoUrl: string,
   creds?: Creds,
 ) {
+  console.log("===Trigger Sync was hit");
   const stakgraphUrl = `https://${swarmName}:7799`;
   const data: Record<string, string> = { repo_url: repoUrl };
   if (creds?.username) data.username = creds.username;
@@ -27,6 +28,7 @@ export async function triggerAsyncSync(
   repoUrl: string,
   creds?: Creds,
 ) {
+  console.log("===Trigger AsyncSync was hit");
   const stakgraphUrl = `https://${swarmName}:7799`;
   const data: Record<string, string> = { repo_url: repoUrl };
   if (creds?.username) data.username = creds.username;
@@ -46,6 +48,7 @@ export async function triggerIngestAsync(
   repoUrl: string,
   creds: { username: string; pat: string },
 ) {
+  console.log("===Trigger IngestAsync was hit");
   const stakgraphUrl = `https://${swarmName}:7799`;
   const data = { repo_url: repoUrl, username: creds.username, pat: creds.pat };
   return swarmApiRequest({
