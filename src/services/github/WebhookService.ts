@@ -10,6 +10,9 @@ import {
   updateRepoHook,
   deleteRepoHook,
 } from "@/services/github/api/webhooks";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService = EncryptionService.getInstance();
 
 export class WebhookService extends BaseServiceClass {
   public readonly serviceName = "githubWebhook";
@@ -48,14 +51,21 @@ export class WebhookService extends BaseServiceClass {
         events,
         active,
       });
-      const secret =
-        repoRec.githubWebhookSecret || crypto.randomBytes(32).toString("hex");
+      const storedSecret = repoRec.githubWebhookSecret
+        ? encryptionService.decryptField(
+            "githubWebhookSecret",
+            repoRec.githubWebhookSecret,
+          )
+        : null;
+      const secret = storedSecret || crypto.randomBytes(32).toString("hex");
       if (!repoRec.githubWebhookSecret) {
         await db.repository.update({
           where: { id: repoRec.id },
           data: {
             githubWebhookId: String(existing.id),
-            githubWebhookSecret: secret,
+            githubWebhookSecret: JSON.stringify(
+              encryptionService.encryptField("githubWebhookSecret", secret),
+            ),
           },
         });
       } else if (!repoRec.githubWebhookId) {
@@ -82,7 +92,9 @@ export class WebhookService extends BaseServiceClass {
       where: { id: repoRec.id },
       data: {
         githubWebhookId: String(created.id),
-        githubWebhookSecret: secret,
+        githubWebhookSecret: JSON.stringify(
+          encryptionService.encryptField("githubWebhookSecret", secret),
+        ),
       },
     });
 
@@ -125,8 +137,6 @@ export class WebhookService extends BaseServiceClass {
     if (!account?.access_token) {
       throw new Error("GitHub access token not found for user");
     }
-    const { EncryptionService } = await import("@/lib/encryption");
-    const enc = EncryptionService.getInstance();
-    return enc.decryptField("access_token", account.access_token);
+    return encryptionService.decryptField("access_token", account.access_token);
   }
 }

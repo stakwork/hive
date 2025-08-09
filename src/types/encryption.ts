@@ -16,11 +16,14 @@ export interface EncryptionConfig {
 
 export type EncryptableField =
   | "access_token"
+  | "refresh_token"
+  | "id_token"
   | "environmentVariables"
   | "poolApiKey"
   | "swarmApiKey"
   | "swarmPassword"
-  | "stakworkApiKey";
+  | "stakworkApiKey"
+  | "githubWebhookSecret";
 
 export interface EncryptionError extends Error {
   code:
