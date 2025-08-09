@@ -22,10 +22,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    let poolApiKey = encryptionService.encryptField(
-      "poolApiKey",
-      user?.poolApiKey || "",
-    ).data;
+    let poolApiKey = JSON.stringify(
+      encryptionService.encryptField("poolApiKey", user?.poolApiKey || ""),
+    );
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -89,8 +88,9 @@ export async function POST(request: NextRequest) {
 
       const poolManager = new PoolManagerService({
         baseURL: "https://workspaces.sphinx.chat/api",
-        apiKey: encryptionService.encryptField("poolApiKey", loginData.token)
-          .data,
+        apiKey: JSON.stringify(
+          encryptionService.encryptField("poolApiKey", loginData.token),
+        ),
         headers: {
           Authorization: `Bearer ${loginData.token}`,
         },
@@ -110,8 +110,9 @@ export async function POST(request: NextRequest) {
             email: session?.user.email || "",
           },
           data: {
-            poolApiKey: encryptionService.encryptField("poolApiKey", poolApiKey)
-              .data,
+            poolApiKey: JSON.stringify(
+              encryptionService.encryptField("poolApiKey", poolApiKey),
+            ),
           },
         });
 
@@ -122,10 +123,12 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        poolApiKey = encryptionService.encryptField(
-          "poolApiKey",
-          poolUser.authentication_token,
-        ).data;
+        poolApiKey = JSON.stringify(
+          encryptionService.encryptField(
+            "poolApiKey",
+            poolUser.authentication_token,
+          ),
+        );
       } catch (error) {
         console.error("Error creating pool user:", error);
         return NextResponse.json(
@@ -206,10 +209,12 @@ export async function POST(request: NextRequest) {
       minimum_vms: 2,
       repo_name: repository?.repositoryUrl || "",
       branch_name: repository?.branch || "",
-      github_pat: encryptionService.encryptField(
-        "access_token",
-        account?.access_token || "",
-      ).data,
+      github_pat: JSON.stringify(
+        encryptionService.decryptField(
+          "access_token",
+          account?.access_token || "",
+        ),
+      ),
       github_username: github_pat?.username || "",
       env_vars: envVars,
       container_files,

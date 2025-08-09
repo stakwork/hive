@@ -89,10 +89,9 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.repositoryUrl !== undefined)
     data.repositoryUrl = params.repositoryUrl;
   if (params.swarmApiKey !== undefined)
-    data.swarmApiKey = encryptionService.encryptField(
-      "swarmApiKey",
-      params.swarmApiKey,
-    ).data;
+    data.swarmApiKey = JSON.stringify(
+      encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
+    );
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.defaultBranch !== undefined)
@@ -141,8 +140,9 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       repositoryUrl: params.repositoryUrl || "",
       swarmApiKey:
         params.swarmApiKey !== undefined
-          ? encryptionService.encryptField("swarmApiKey", params.swarmApiKey)
-              .data
+          ? JSON.stringify(
+              encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
+            )
           : undefined,
       poolName: params.poolName || "",
       services: params.services ? params.services : [],

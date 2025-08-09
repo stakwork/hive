@@ -128,10 +128,9 @@ export async function POST(request: NextRequest) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
         status: SwarmStatus.ACTIVE,
-        swarmApiKey: encryptionService.encryptField(
-          "swarmApiKey",
-          xApiKey || "",
-        ).data,
+        swarmApiKey: JSON.stringify(
+          encryptionService.encryptField("swarmApiKey", xApiKey || ""),
+        ),
         swarmSecretAlias,
       });
 
@@ -259,10 +258,9 @@ export async function GET(request: NextRequest) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
         status: SwarmStatus.ACTIVE,
-        swarmApiKey: encryptionService.encryptField(
-          "swarmApiKey",
-          xApiKey || "",
-        ).data,
+        swarmApiKey: JSON.stringify(
+          encryptionService.encryptField("swarmApiKey", xApiKey || ""),
+        ),
         swarmSecretAlias,
       });
 
