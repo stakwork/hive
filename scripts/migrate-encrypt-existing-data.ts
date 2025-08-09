@@ -269,6 +269,7 @@ async function migrateWorkspaces(stats: MigrationStats): Promise<void> {
     }
   }
 }
+
 async function migrateUsers(stats: MigrationStats): Promise<void> {
   const users = await prisma.user.findMany({
     where: {
