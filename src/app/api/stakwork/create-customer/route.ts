@@ -6,6 +6,8 @@ import { type ApiError } from "@/types";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 
+export const runtime = "nodejs";
+
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {

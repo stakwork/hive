@@ -13,6 +13,8 @@ import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Validation schema for stakgraph settings

@@ -6,6 +6,8 @@ import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { EncryptionService } from "@/lib/encryption";
 
+export const runtime = "nodejs";
+
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {

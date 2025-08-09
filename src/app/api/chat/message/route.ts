@@ -14,6 +14,8 @@ import {
 import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 
+export const runtime = "nodejs";
+
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Disable caching for real-time messaging
@@ -384,12 +386,12 @@ export async function POST(request: NextRequest) {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
         };
-        
+
         // Store the Stakwork project ID if available
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
         }
-        
+
         await db.task.update({
           where: { id: taskId },
           data: updateData,

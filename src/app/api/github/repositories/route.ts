@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
 
+export const runtime = "nodejs";
+
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET() {
