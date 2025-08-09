@@ -9,7 +9,14 @@ const encryption = EncryptionService.getInstance();
 
 async function logAccounts() {
   const accounts = await prisma.account.findMany({
-    select: { id: true, userId: true, provider: true, access_token: true },
+    select: {
+      id: true,
+      userId: true,
+      provider: true,
+      access_token: true,
+      refresh_token: true,
+      id_token: true,
+    },
   });
 
   console.log("\n=== ACCOUNTS (access_token) ===");
@@ -23,6 +30,12 @@ async function logAccounts() {
         `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
       );
       console.log(`  access_token (decrypted): ${decrypted}`);
+      const rt = a.refresh_token ?? null;
+      const rtDec = rt ? encryption.decryptField("refresh_token", rt) : null;
+      console.log(`  refresh_token (decrypted): ${rtDec}`);
+      const idt = a.id_token ?? null;
+      const idtDec = idt ? encryption.decryptField("id_token", idt) : null;
+      console.log(`  id_token (decrypted): ${idtDec}`);
     } catch (err) {
       console.log(
         `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
