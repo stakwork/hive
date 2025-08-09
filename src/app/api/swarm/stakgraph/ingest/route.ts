@@ -113,7 +113,6 @@ export async function POST(request: NextRequest) {
 
     try {
       const callbackUrl = getGithubWebhookCallbackUrl(request);
-      //TODO: Add the right configuration for the webhook service
       const webhookService = new WebhookService(getServiceConfig("github"));
       await webhookService.ensureRepoWebhook({
         userId: session.user.id,

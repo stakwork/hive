@@ -4,6 +4,12 @@ import type { ServiceConfig } from "@/types";
 import type { EnsureWebhookParams, DeleteWebhookParams } from "@/types/github";
 import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import {
+  listRepoHooks,
+  createRepoHook,
+  updateRepoHook,
+  deleteRepoHook,
+} from "@/services/github/api/webhooks";
 
 export class WebhookService extends BaseServiceClass {
   public readonly serviceName = "githubWebhook";
@@ -30,11 +36,11 @@ export class WebhookService extends BaseServiceClass {
     });
     if (!repoRec) throw new Error("Repository not found for workspace");
 
-    const hooks = await this.listHooks(token, owner, repo);
+    const hooks = await listRepoHooks(token, owner, repo);
     const existing = hooks.find((h) => h.config?.url === callbackUrl);
 
     if (existing) {
-      await this.updateHook({
+      await updateRepoHook({
         token,
         owner,
         repo,
@@ -62,7 +68,7 @@ export class WebhookService extends BaseServiceClass {
     }
 
     const secret = crypto.randomBytes(32).toString("hex");
-    const created = await this.createHook({
+    const created = await createRepoHook({
       token,
       owner,
       repo,
@@ -99,7 +105,7 @@ export class WebhookService extends BaseServiceClass {
     });
     if (!repoRec?.githubWebhookId) return;
 
-    await this.deleteHook(token, owner, repo, Number(repoRec.githubWebhookId));
+    await deleteRepoHook(token, owner, repo, Number(repoRec.githubWebhookId));
     await db.repository.update({
       where: {
         repositoryUrl_workspaceId: { repositoryUrl, workspaceId },
@@ -120,118 +126,5 @@ export class WebhookService extends BaseServiceClass {
       throw new Error("GitHub access token not found for user");
     }
     return account.access_token;
-  }
-
-  private async listHooks(
-    token: string,
-    owner: string,
-    repo: string,
-  ): Promise<Array<{ id: number; config?: { url?: string } }>> {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/hooks?per_page=100`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      },
-    );
-    if (!res.ok) throw new Error(`Failed to list webhooks: ${res.status}`);
-    return (await res.json()) as Array<{
-      id: number;
-      config?: { url?: string };
-    }>;
-  }
-
-  private async createHook(params: {
-    token: string;
-    owner: string;
-    repo: string;
-    url: string;
-    secret: string;
-    events: string[];
-    active: boolean;
-  }): Promise<{ id: number }> {
-    const res = await fetch(
-      `https://api.github.com/repos/${params.owner}/${params.repo}/hooks`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${params.token}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: "web",
-          config: {
-            url: params.url,
-            content_type: "json",
-            secret: params.secret,
-            insecure_ssl: "0",
-          },
-          events: params.events,
-          active: params.active,
-        }),
-      },
-    );
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(
-        `Failed to create webhook: ${res.status} ${JSON.stringify(data)}`,
-      );
-    }
-    return { id: data.id as number };
-  }
-
-  private async updateHook(params: {
-    token: string;
-    owner: string;
-    repo: string;
-    hookId: number;
-    events: string[];
-    active: boolean;
-  }): Promise<void> {
-    const res = await fetch(
-      `https://api.github.com/repos/${params.owner}/${params.repo}/hooks/${params.hookId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${params.token}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          events: params.events,
-          active: params.active,
-        }),
-      },
-    );
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Failed to update webhook: ${res.status} ${err}`);
-    }
-  }
-
-  private async deleteHook(
-    token: string,
-    owner: string,
-    repo: string,
-    hookId: number,
-  ): Promise<void> {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      },
-    );
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Failed to delete webhook: ${res.status} ${err}`);
-    }
   }
 }
