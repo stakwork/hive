@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve Swarm
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
@@ -101,7 +100,6 @@ export async function POST(request: NextRequest) {
 
     const stakgraphUrl = `https://${swarm.name}:7799`;
 
-    // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: "/ingest_async",
@@ -123,7 +121,6 @@ export async function POST(request: NextRequest) {
       console.error(`Error ensuring repo webhook: ${error}`);
     }
 
-    // If success, update repository status to SYNCED
     let finalStatus = repository.status;
     if (
       apiResult.ok &&
@@ -139,7 +136,6 @@ export async function POST(request: NextRequest) {
       finalStatus = RepositoryStatus.SYNCED;
     }
 
-    // ts-expect-error
     if (apiResult?.data?.request_id) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
@@ -187,7 +183,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user's GitHub username and PAT using the reusable utility
     const githubCreds = await getGithubUsernameAndPAT(session.user.id);
     if (!githubCreds) {
       return NextResponse.json(
@@ -200,7 +195,6 @@ export async function GET(request: NextRequest) {
     }
     // const { username, pat } = githubCreds;
 
-    // Resolve Swarm
     const where: Record<string, string> = {};
     if (swarmId) {
       where.swarmId = swarmId;
@@ -225,7 +219,6 @@ export async function GET(request: NextRequest) {
 
     const stakgraphUrl = `https://${swarm.name}:7799`;
 
-    // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: `/status/${id}`,
