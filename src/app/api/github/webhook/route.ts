@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import crypto from "node:crypto";
@@ -64,12 +65,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 404 });
     }
 
+    const enc = EncryptionService.getInstance();
+    const secret = enc.decryptField(
+      "githubWebhookSecret",
+      repository.githubWebhookSecret,
+    );
+
     const expected =
       "sha256=" +
-      crypto
-        .createHmac("sha256", repository.githubWebhookSecret)
-        .update(rawBody)
-        .digest("hex");
+      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
 
     if (!timingSafeEqual(expected, signature)) {
       return NextResponse.json({ success: false }, { status: 401 });
