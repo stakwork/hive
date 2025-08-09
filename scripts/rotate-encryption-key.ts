@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
+import { config as dotenvConfig } from "dotenv";
+dotenvConfig({ path: ".env.local" });
 
 const prisma = new PrismaClient();
 
@@ -16,6 +18,8 @@ function getEnvOrThrow(name: string): string {
   return v;
 }
 
+// To generate a new key, run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
 function seedKeyRegistry(service: EncryptionService) {
   const newKeyId = getEnvOrThrow("TOKEN_ENCRYPTION_KEY_ID");
   const newKeyHex = getEnvOrThrow("TOKEN_ENCRYPTION_KEY");
@@ -23,8 +27,6 @@ function seedKeyRegistry(service: EncryptionService) {
   service.setActiveKeyId(newKeyId);
 
   const oldKeysJson = process.env.ROTATION_OLD_KEYS; // JSON: {"k1":"hex", "k2":"hex"}
-  const singleOldKey = process.env.OLD_TOKEN_ENCRYPTION_KEY;
-  const singleOldKeyId = process.env.OLD_TOKEN_ENCRYPTION_KEY_ID;
 
   if (oldKeysJson) {
     try {
@@ -38,10 +40,6 @@ function seedKeyRegistry(service: EncryptionService) {
         "ROTATION_OLD_KEYS must be valid JSON mapping {keyId: hex}",
       );
     }
-  }
-
-  if (singleOldKey && singleOldKeyId) {
-    service.setKey(singleOldKeyId, singleOldKey);
   }
 }
 

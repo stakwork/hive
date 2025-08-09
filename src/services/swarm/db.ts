@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -79,7 +79,12 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.instanceType !== undefined)
     data.instanceType = params.instanceType;
   if (params.environmentVariables !== undefined)
-    data.environmentVariables = params.environmentVariables;
+    data.environmentVariables = encryptEnvVars(
+      params.environmentVariables as unknown as Array<{
+        name: string;
+        value: string;
+      }>,
+    );
   if (params.status !== undefined) data.status = params.status;
   if (params.swarmUrl !== undefined) data.swarmUrl = params.swarmUrl;
   if (params.repositoryName !== undefined)
@@ -131,8 +136,13 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       name: params.name || "",
       instanceType: params.instanceType || "",
       environmentVariables: params.environmentVariables
-        ? JSON.stringify(params.environmentVariables)
-        : "[]",
+        ? (encryptEnvVars(
+            params.environmentVariables as unknown as Array<{
+              name: string;
+              value: string;
+            }>,
+          ) as unknown)
+        : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,
       repositoryName: params.repositoryName || "",

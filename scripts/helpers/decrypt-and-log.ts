@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config as dotenvConfig } from "dotenv";
 
 dotenvConfig({ path: ".env.local" });
@@ -12,7 +12,7 @@ async function logAccounts() {
     select: { id: true, userId: true, provider: true, access_token: true },
   });
 
-  console.log("\n--- Accounts (access_token) ---");
+  console.log("\n=== ACCOUNTS (access_token) ===");
   for (const a of accounts) {
     try {
       const token = a.access_token ?? null;
@@ -20,22 +20,14 @@ async function logAccounts() {
         ? encryption.decryptField("access_token", token)
         : null;
       console.log(
-        JSON.stringify({
-          id: a.id,
-          userId: a.userId,
-          provider: a.provider,
-          access_token: decrypted,
-        }),
+        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
       );
+      console.log(`  access_token (decrypted): ${decrypted}`);
     } catch (err) {
       console.log(
-        JSON.stringify({
-          id: a.id,
-          userId: a.userId,
-          provider: a.provider,
-          error: String(err),
-        }),
+        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
       );
+      console.log(`  error: ${String(err)}`);
     }
   }
 }
@@ -45,18 +37,16 @@ async function logUsers() {
     select: { id: true, email: true, poolApiKey: true },
   });
 
-  console.log("\n--- Users (poolApiKey) ---");
+  console.log("\n=== USERS (poolApiKey) ===");
   for (const u of users) {
     try {
       const key = u.poolApiKey ?? null;
       const decrypted = key ? encryption.decryptField("poolApiKey", key) : null;
-      console.log(
-        JSON.stringify({ id: u.id, email: u.email, poolApiKey: decrypted }),
-      );
+      console.log(`[USER] id=${u.id} email=${u.email}`);
+      console.log(`  poolApiKey (decrypted): ${decrypted}`);
     } catch (err) {
-      console.log(
-        JSON.stringify({ id: u.id, email: u.email, error: String(err) }),
-      );
+      console.log(`[USER] id=${u.id} email=${u.email}`);
+      console.log(`  error: ${String(err)}`);
     }
   }
 }
@@ -66,20 +56,18 @@ async function logWorkspaces() {
     select: { id: true, slug: true, stakworkApiKey: true },
   });
 
-  console.log("\n--- Workspaces (stakworkApiKey) ---");
+  console.log("\n=== WORKSPACES (stakworkApiKey) ===");
   for (const w of workspaces) {
     try {
       const key = w.stakworkApiKey ?? null;
       const decrypted = key
         ? encryption.decryptField("stakworkApiKey", key)
         : null;
-      console.log(
-        JSON.stringify({ id: w.id, slug: w.slug, stakworkApiKey: decrypted }),
-      );
+      console.log(`[WORKSPACE] id=${w.id} slug=${w.slug}`);
+      console.log(`  stakworkApiKey (decrypted): ${decrypted}`);
     } catch (err) {
-      console.log(
-        JSON.stringify({ id: w.id, slug: w.slug, error: String(err) }),
-      );
+      console.log(`[WORKSPACE] id=${w.id} slug=${w.slug}`);
+      console.log(`  error: ${String(err)}`);
     }
   }
 }
@@ -95,7 +83,7 @@ async function logSwarms() {
     },
   });
 
-  console.log("\n--- Swarms (swarmApiKey, environmentVariables) ---");
+  console.log("\n=== SWARMS (swarmApiKey, environmentVariables) ===");
   for (const s of swarms) {
     try {
       const swarmKey = s.swarmApiKey ?? null;
@@ -103,32 +91,48 @@ async function logSwarms() {
         ? encryption.decryptField("swarmApiKey", swarmKey)
         : null;
 
-      let envVarsOut: unknown = s.environmentVariables;
+      let envVarsOut: Array<{ name: string; value: string }> | unknown =
+        s.environmentVariables;
       if (typeof s.environmentVariables === "string") {
         try {
-          envVarsOut = encryption.decryptField(
-            "environmentVariables",
-            s.environmentVariables,
+          const parsed = JSON.parse(s.environmentVariables);
+          if (Array.isArray(parsed)) {
+            envVarsOut = decryptEnvVars(
+              parsed as Array<{ name: string; value: unknown }>,
+            );
+          } else {
+            envVarsOut = parsed;
+          }
+        } catch (err) {
+          console.error("Error parsing environmentVariables", err);
+          envVarsOut = s.environmentVariables;
+        }
+      } else if (Array.isArray(s.environmentVariables)) {
+        try {
+          envVarsOut = decryptEnvVars(
+            s.environmentVariables as Array<{ name: string; value: unknown }>,
           );
         } catch (err) {
-          console.error("Error decrypting environmentVariables", err);
+          console.error("Error decrypting environmentVariables array", err);
           envVarsOut = s.environmentVariables;
         }
       }
 
       console.log(
-        JSON.stringify({
-          id: s.id,
-          name: s.name,
-          workspaceId: s.workspaceId,
-          swarmApiKey: decryptedKey,
-          environmentVariables: envVarsOut,
-        }),
+        `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId}`,
       );
+      console.log(`  swarmApiKey (decrypted): ${decryptedKey}`);
+      if (Array.isArray(envVarsOut)) {
+        console.log("  environmentVariables (decrypted):");
+        for (const ev of envVarsOut as Array<{ name: string; value: string }>) {
+          console.log(`    - ${ev.name}=${ev.value}`);
+        }
+      } else {
+        console.log(`  environmentVariables: ${JSON.stringify(envVarsOut)}`);
+      }
     } catch (err) {
-      console.log(
-        JSON.stringify({ id: s.id, name: s.name, error: String(err) }),
-      );
+      console.log(`[SWARM] id=${s.id} name=${s.name}`);
+      console.log(`  error: ${String(err)}`);
     }
   }
 }

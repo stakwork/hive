@@ -117,3 +117,27 @@ export class EncryptionService {
 export * from "./crypto";
 export * from "./field-encryption";
 export * from "@/types/encryption";
+
+export type EnvVar = { name: string; value: string };
+export type EncryptedEnvVar = { name: string; value: EncryptedData };
+
+export function encryptEnvVars(vars: EnvVar[]): EncryptedEnvVar[] {
+  const enc = EncryptionService.getInstance();
+  return vars.map((v) => ({
+    name: v.name,
+    value: enc.encryptField("environmentVariables", v.value),
+  }));
+}
+
+export function decryptEnvVars(
+  vars: Array<{ name: string; value: unknown }>,
+): EnvVar[] {
+  const enc = EncryptionService.getInstance();
+  return vars.map((v) => ({
+    name: v.name,
+    value: enc.decryptField(
+      "environmentVariables",
+      v.value as EncryptedData | string,
+    ),
+  }));
+}

@@ -8,7 +8,7 @@ import { EnvironmentVariable, type ApiError } from "@/types";
 import { generateRandomPassword } from "@/utils/randomPassword";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
@@ -201,9 +201,39 @@ export async function POST(request: NextRequest) {
       },
     ];
     if (typeof swarm.environmentVariables === "string") {
-      envVars = JSON.parse(swarm.environmentVariables) as EnvironmentVariable[];
+      try {
+        const parsed = JSON.parse(swarm.environmentVariables);
+        if (Array.isArray(parsed)) {
+          const maybeEncrypted = parsed as Array<{
+            name: string;
+            value: unknown;
+          }>;
+          // Decrypt if values appear encrypted; fallback to as-is
+          try {
+            envVars = decryptEnvVars(maybeEncrypted).map(({ name, value }) => ({
+              name,
+              value,
+            }));
+          } catch {
+            envVars = parsed as EnvironmentVariable[];
+          }
+        }
+      } catch {
+        // keep default
+      }
     } else if (Array.isArray(swarm.environmentVariables)) {
-      envVars = swarm.environmentVariables as unknown as EnvironmentVariable[];
+      const arr = swarm.environmentVariables as Array<{
+        name: string;
+        value: unknown;
+      }>;
+      try {
+        envVars = decryptEnvVars(arr).map(({ name, value }) => ({
+          name,
+          value,
+        }));
+      } catch {
+        envVars = arr as unknown as EnvironmentVariable[];
+      }
     }
 
     const pool = await poolManager.createPool({

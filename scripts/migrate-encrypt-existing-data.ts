@@ -1,5 +1,9 @@
 import { PrismaClient } from "@prisma/client";
-import { EncryptableField, EncryptionService } from "@/lib/encryption";
+import {
+  EncryptableField,
+  EncryptionService,
+  encryptEnvVars,
+} from "@/lib/encryption";
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });
 
@@ -88,16 +92,45 @@ async function migrateSwarms(): Promise<void> {
       let updated = false;
       const updateData: Record<string, string> = {};
 
-      if (
-        swarm.environmentVariables &&
-        typeof swarm.environmentVariables === "string" &&
-        !(await isAlreadyEncrypted(swarm.environmentVariables))
-      ) {
-        updateData.environmentVariables = await encryptValue(
-          "environmentVariables",
-          swarm.environmentVariables,
-        );
-        updated = true;
+      // environmentVariables migration to per-item encryption
+      if (swarm.environmentVariables) {
+        if (typeof swarm.environmentVariables === "string") {
+          try {
+            const parsed = JSON.parse(swarm.environmentVariables);
+            if (Array.isArray(parsed)) {
+              const encArr = encryptEnvVars(
+                parsed as Array<{ name: string; value: string }>,
+              );
+              (
+                updateData as unknown as { environmentVariables: unknown }
+              ).environmentVariables = encArr;
+              updated = true;
+            } else if (
+              !(await isAlreadyEncrypted(swarm.environmentVariables))
+            ) {
+              // legacy single-string case; leave as-is for compatibility
+            }
+          } catch {
+            // not JSON, skip
+          }
+        } else if (Array.isArray(swarm.environmentVariables)) {
+          const arr = swarm.environmentVariables as Array<{
+            name: string;
+            value: unknown;
+          }>;
+          const needsEncrypt = arr.some((ev) => typeof ev.value === "string");
+          if (needsEncrypt) {
+            const plain = arr.map((ev) => ({
+              name: ev.name as string,
+              value: String(ev.value ?? ""),
+            }));
+            const encArr = encryptEnvVars(plain);
+            (
+              updateData as unknown as { environmentVariables: unknown }
+            ).environmentVariables = encArr;
+            updated = true;
+          }
+        }
       }
 
       if (swarm.swarmApiKey && !(await isAlreadyEncrypted(swarm.swarmApiKey))) {

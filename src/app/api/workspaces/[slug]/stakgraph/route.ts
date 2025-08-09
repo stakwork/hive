@@ -1,6 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
@@ -138,8 +138,37 @@ export async function GET(
         poolName: swarm.id || "",
         environmentVariables:
           typeof environmentVariables === "string"
-            ? JSON.parse(environmentVariables)
-            : environmentVariables,
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(environmentVariables);
+                  if (Array.isArray(parsed)) {
+                    try {
+                      return decryptEnvVars(
+                        parsed as Array<{ name: string; value: unknown }>,
+                      );
+                    } catch {
+                      return parsed;
+                    }
+                  }
+                  return parsed;
+                } catch {
+                  return environmentVariables;
+                }
+              })()
+            : Array.isArray(environmentVariables)
+              ? (() => {
+                  try {
+                    return decryptEnvVars(
+                      environmentVariables as Array<{
+                        name: string;
+                        value: unknown;
+                      }>,
+                    );
+                  } catch {
+                    return environmentVariables;
+                  }
+                })()
+              : environmentVariables,
         services:
           typeof swarm.services === "string"
             ? JSON.parse(swarm.services)
