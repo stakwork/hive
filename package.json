@@ -24,7 +24,9 @@
     "mock-server": "node mock-server.js",
     "format": "prettier --write .",
     "migrate:encrypt": "tsx scripts/migrate-encrypt-existing-data.ts",
-    "rotate-keys": "tsx scripts/rotate-encryption-key.ts"
+    "rotate-keys": "tsx scripts/rotate-encryption-key.ts",
+    "seed:db": "tsx scripts/helpers/seed-database.ts",
+    "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
