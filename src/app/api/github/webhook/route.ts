@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     const delivery = request.headers.get("x-github-delivery");
 
     if (!signature || !event) {
+      console.error(`Missing signature or event: ${signature} ${event}`);
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
       payload = JSON.parse(rawBody);
     } catch (error) {
       console.error(`Error parsing payload: ${error}`);
+      console.error(rawBody);
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -40,6 +42,7 @@ export async function POST(request: NextRequest) {
     const candidateUrl =
       repoHtmlUrl || (fullName ? `https://github.com/${fullName}` : undefined);
     if (!candidateUrl) {
+      console.error("Missing candidate url in payload");
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -62,6 +65,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!repository || !repository.githubWebhookSecret) {
+      console.error("Missing repository or githubWebhookSecret");
       return NextResponse.json({ success: false }, { status: 404 });
     }
 
@@ -76,6 +80,7 @@ export async function POST(request: NextRequest) {
       crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
 
     if (!timingSafeEqual(expected, signature)) {
+      console.error("Signature mismatch");
       return NextResponse.json({ success: false }, { status: 401 });
     }
 
@@ -90,13 +95,16 @@ export async function POST(request: NextRequest) {
     if (event === "push") {
       const ref: string | undefined = payload?.ref;
       if (!ref) {
+        console.error("Missing ref");
         return NextResponse.json({ success: false }, { status: 400 });
       }
       const pushedBranch = ref.split("/").pop();
       if (!pushedBranch) {
+        console.error("Missing pushed branch");
         return NextResponse.json({ success: false }, { status: 400 });
       }
       if (!allowedBranches.has(pushedBranch)) {
+        console.error("Pushed branch not allowed");
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else if (event === "pull_request") {
@@ -111,16 +119,25 @@ export async function POST(request: NextRequest) {
           allowedBranches.has(baseRef)
         )
       ) {
+        console.error("Pull request not allowed");
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else {
+      console.error("Event not allowed", event);
       return NextResponse.json({ success: true }, { status: 202 });
     }
 
+    // const mockSwarm = {
+    //   name: "alpha-swarm",
+    //   swarmApiKey: "sk_test_mock_123",
+    //   workspaceId: "123",
+    // };
+    // const swarm = mockSwarm;
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: repository.workspaceId },
     });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
+      console.error("Missing swarm or swarmApiKey");
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -153,6 +170,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error(`Error processing webhook: ${error}`);
+    console.error(error);
     return NextResponse.json({ success: false }, { status: 500 });
   }
 }
