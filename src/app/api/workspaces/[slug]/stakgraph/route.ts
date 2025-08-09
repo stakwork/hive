@@ -100,7 +100,6 @@ export async function GET(
       );
     }
 
-    // Get workspace and verify access
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json(
@@ -113,7 +112,6 @@ export async function GET(
       );
     }
 
-    // Get the swarm associated with this workspace
     const swarm = (await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
       select: swarmSelect,
@@ -307,7 +305,9 @@ export async function PUT(
       decryptedPoolApiKey = swarmPoolApiKey;
     }
 
-    // Upsert repository and detect default branch, then ensure webhook
+    // Upsert repository and detect default branch, then ensure webhook`
+    //const poolApiKey = user?.poolApiKey;
+
     try {
       const repo = await db.repository.upsert({
         where: {
@@ -361,7 +361,6 @@ export async function PUT(
         }
       }
 
-      //TODO: Update Callback URL
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService(getServiceConfig("github"));
       await webhookService.ensureRepoWebhook({
