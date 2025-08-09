@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { EncryptableField, EncryptionService } from "@/lib/encryption";
+import { config as dotenvConfig } from "dotenv";
+dotenvConfig({ path: ".env.local" });
 
 const prisma = new PrismaClient();
 const encryptionService = EncryptionService.getInstance();

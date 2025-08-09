@@ -27,5 +27,7 @@ export async function getPoolManagerApiKey(): Promise<string> {
   if (!data.success) {
     throw new Error("Authentication failed");
   }
-  return encryptionService.encryptField("poolApiKey", data.token).data;
+  return JSON.stringify(
+    encryptionService.encryptField("poolApiKey", data.token),
+  );
 }
