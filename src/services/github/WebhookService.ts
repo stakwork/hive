@@ -125,6 +125,8 @@ export class WebhookService extends BaseServiceClass {
     if (!account?.access_token) {
       throw new Error("GitHub access token not found for user");
     }
-    return account.access_token;
+    const { EncryptionService } = await import("@/lib/encryption");
+    const enc = EncryptionService.getInstance();
+    return enc.decryptField("access_token", account.access_token);
   }
 }
