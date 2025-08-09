@@ -386,7 +386,9 @@ export async function PUT(
       console.error("Failed to ensure webhook/default branch:", err);
     }
 
-    // Upsert repository and detect default branch, then ensure webhook
+    // Upsert repository and detect default branch, then ensure webhook`
+    //const poolApiKey = user?.poolApiKey;
+
     try {
       const repo = await db.repository.upsert({
         where: {
@@ -440,7 +442,6 @@ export async function PUT(
         }
       }
 
-      //TODO: Update Callback URL
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService({
         baseURL: "",
