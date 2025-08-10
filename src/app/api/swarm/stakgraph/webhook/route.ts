@@ -42,8 +42,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const sigHeader = signature.startsWith("sha256=")
+      ? signature.slice(7)
+      : signature;
     const expected = computeHmacSha256Hex(secret, rawBody);
-    if (!timingSafeEqual(expected, signature)) {
+    if (!timingSafeEqual(expected, sigHeader)) {
       console.error("Webhook signature mismatch");
       return NextResponse.json(
         { success: false, message: "Unauthorized" },

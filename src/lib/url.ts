@@ -29,3 +29,9 @@ export function getGithubWebhookCallbackUrl(req?: NextRequest): string {
   const path = "/api/github/webhook";
   return `${base}${path}`;
 }
+
+export function getStakgraphWebhookCallbackUrl(req?: NextRequest): string {
+  const base = getPublicBaseUrl(req);
+  const path = "/api/swarm/stakgraph/webhook";
+  return `${base}${path}`;
+}

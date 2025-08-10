@@ -4,7 +4,10 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
-import { getGithubWebhookCallbackUrl } from "@/lib/url";
+import {
+  getGithubWebhookCallbackUrl,
+  getStakgraphWebhookCallbackUrl,
+} from "@/lib/url";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
       repo_url: final_repo_url,
       username: creds?.username,
       pat: creds?.pat,
+      callback_url: getStakgraphWebhookCallbackUrl(request),
     };
 
     const stakgraphUrl = `https://${swarm.name}:7799`;
