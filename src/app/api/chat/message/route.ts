@@ -39,6 +39,13 @@ interface StakworkWorkflowPayload {
   };
 }
 
+interface WorkflowData {
+  project_id?: number;
+  title?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
 function getBaseUrl(request?: NextRequest): string {
   // Use the request host or fallback to localhost
   const host = request?.headers.get("host") || "localhost:3000";
@@ -359,7 +366,11 @@ export async function POST(request: NextRequest) {
       ? swarm.swarmUrl.replace("/api", ":3355")
       : "";
 
-    let stakworkData = null;
+    let stakworkData: {
+      success: boolean;
+      data?: WorkflowData;
+      error?: string;
+    } | null = null;
 
     if (useStakwork) {
       stakworkData = await callStakwork(
@@ -406,6 +417,39 @@ export async function POST(request: NextRequest) {
       }
     } else {
       stakworkData = await callMock(taskId, message, userId, request);
+      console.log("Mock response with title and description:", stakworkData);
+    }
+
+    // If workflow returned simulated title/description (from mock or real), call update endpoints
+    if (stakworkData && stakworkData.data) {
+      const wfTitle = stakworkData.data.title as string | undefined;
+      const wfDescription = stakworkData.data.description as string | undefined;
+
+      if (wfTitle || wfDescription) {
+        const baseUrl = getBaseUrl(request);
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+
+        try {
+          if (wfTitle) {
+            await fetch(`${baseUrl}/api/tasks/${taskId}/title`, {
+              method: "PUT",
+              headers,
+              body: JSON.stringify({ title: wfTitle }),
+            });
+          }
+          if (wfDescription) {
+            await fetch(`${baseUrl}/api/tasks/${taskId}/description`, {
+              method: "PUT",
+              headers,
+              body: JSON.stringify({ description: wfDescription }),
+            });
+          }
+        } catch (err) {
+          console.error("Error updating task metadata from workflow:", err);
+        }
+      }
     }
 
     return NextResponse.json(

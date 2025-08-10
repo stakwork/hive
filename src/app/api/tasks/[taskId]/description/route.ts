@@ -22,11 +22,11 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { title } = body;
+    const { description } = body as { description?: unknown };
 
-    if (!title || typeof title !== "string") {
+    if (!description || typeof description !== "string") {
       return NextResponse.json(
-        { error: "Title is required and must be a string" },
+        { error: "Description is required and must be a string" },
         { status: 400 },
       );
     }
@@ -37,11 +37,11 @@ export async function PUT(
         deleted: false,
       },
       data: {
-        title: title.trim(),
+        description: description.trim(),
       },
       select: {
         id: true,
-        title: true,
+        description: true,
         workspaceId: true,
       },
     });
@@ -54,19 +54,19 @@ export async function PUT(
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error updating task title:", error);
+    console.error("Error updating task description:", error);
 
     if (
       error &&
       typeof error === "object" &&
       "code" in error &&
-      error.code === "P2025"
+      (error as { code?: string }).code === "P2025"
     ) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     return NextResponse.json(
-      { error: "Failed to update task title" },
+      { error: "Failed to update task description" },
       { status: 500 },
     );
   }
