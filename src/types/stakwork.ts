@@ -29,3 +29,12 @@ export interface StakworkProject {
     project_id: number;
   };
 }
+
+export interface StakworkStatusPayload {
+  project_output?: Record<string, unknown>;
+  workflow_id: number;
+  workflow_version_id: number;
+  workflow_version: number;
+  project_status: string;
+  task_id?: string;
+}

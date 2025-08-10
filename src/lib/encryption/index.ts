@@ -2,6 +2,7 @@ import { FieldEncryptionService } from "./field-encryption";
 import { generateKey, bufferToHex, hexToBuffer } from "./crypto";
 import * as cryptoModule from "./crypto";
 import { EncryptableField, EncryptedData } from "@/types";
+import crypto from "node:crypto";
 
 export class EncryptionService {
   private fieldEncryption: FieldEncryptionService | null = null;
@@ -140,4 +141,15 @@ export function decryptEnvVars(
       v.value as EncryptedData | string,
     ),
   }));
+}
+
+export function timingSafeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+export function computeHmacSha256Hex(secret: string, body: string): string {
+  return crypto.createHmac("sha256", secret).update(body).digest("hex");
 }
