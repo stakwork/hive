@@ -140,5 +140,4 @@ export function getSwarmVanityAddress(name: string) {
 // Preview targets for bug identification feature
 export const PREVIEW_TARGETS = {
   DEV_DEFAULT: 'https://hive-vercel.sphinx.chat',
-  LOCAL_PROXY: '/api/proxy-preview'
 } as const;
