@@ -52,7 +52,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
         <Textarea
           ref={textareaRef}
-          placeholder="Describe a task"
+          placeholder="Ask anything"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
