@@ -12,6 +12,11 @@ import {
   type ChatMessage,
 } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
+import { EncryptionService } from "@/lib/encryption";
+
+export const runtime = "nodejs";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -49,11 +54,6 @@ async function callMock(
   request?: NextRequest,
 ) {
   const baseUrl = getBaseUrl(request);
-  console.log("Sending message to mock server", {
-    taskId,
-    message,
-    baseUrl,
-  });
 
   try {
     const response = await fetch(`${baseUrl}/api/mock`, {
@@ -76,7 +76,6 @@ async function callMock(
     }
 
     const result = await response.json();
-    console.log("mock result", result);
     return { success: true, data: result };
   } catch (error) {
     console.error("Error calling mock server:", error);
@@ -114,7 +113,7 @@ async function callStakwork(
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
     }
-    
+
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
     // stakwork workflow vars
@@ -134,9 +133,6 @@ async function callStakwork(
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
-    console.log("config.STAKWORK_WORKFLOW_ID", config.STAKWORK_WORKFLOW_ID);
-    console.log("mode", mode);
-
     const workflowId =
       mode === "live" ? stakworkWorkflowIds[0] : stakworkWorkflowIds[1];
     const stakworkPayload: StakworkWorkflowPayload = {
@@ -153,11 +149,6 @@ async function callStakwork(
     };
 
     const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
-
-    console.log("Sending message to Stakwork", {
-      url: stakworkURL,
-      payload: stakworkPayload,
-    });
 
     const response = await fetch(stakworkURL, {
       method: "POST",
@@ -176,7 +167,6 @@ async function callStakwork(
     }
 
     const result = await response.json();
-    console.log("Stakwork result", result);
     return { success: result.success, data: result.data };
   } catch (error) {
     console.error("Error calling Stakwork:", error);
@@ -330,20 +320,34 @@ export async function POST(request: NextRequest) {
       })) as Artifact[],
     };
 
+    console.log("clientMessage", clientMessage);
+
     const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
 
-    // Check if Stakwork environment variables are defined
     const useStakwork =
       config.STAKWORK_API_KEY &&
       config.STAKWORK_BASE_URL &&
       config.STAKWORK_WORKFLOW_ID;
 
-    // Extract data for Stakwork payload
     const userName = githubAuth?.githubUsername || null;
-    const accessToken =
-      user.accounts.find((account) => account.access_token)?.access_token ||
-      null;
-
+    let accessToken: string | null = null;
+    try {
+      const accountWithToken = user.accounts.find(
+        (account) => account.access_token,
+      );
+      if (accountWithToken?.access_token) {
+        accessToken = encryptionService.decryptField(
+          "access_token",
+          accountWithToken.access_token,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to decrypt access_token:", error);
+      const accountWithToken = user.accounts.find(
+        (account) => account.access_token,
+      );
+      accessToken = accountWithToken?.access_token || null;
+    }
     const swarm = task.workspace.swarm;
     const swarmUrl = swarm?.swarmUrl
       ? swarm.swarmUrl.replace("/api", ":8444/api")
@@ -356,7 +360,7 @@ export async function POST(request: NextRequest) {
       : "";
 
     let stakworkData = null;
-    // Call appropriate service based on environment configuration
+
     if (useStakwork) {
       stakworkData = await callStakwork(
         taskId,
@@ -372,8 +376,7 @@ export async function POST(request: NextRequest) {
         webhook,
         mode,
       );
-      
-      // Update workflow status based on Stakwork call result
+
       if (stakworkData.success) {
         const updateData: {
           workflowStatus: WorkflowStatus;
@@ -383,12 +386,12 @@ export async function POST(request: NextRequest) {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
         };
-        
+
         // Store the Stakwork project ID if available
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
         }
-        
+
         await db.task.update({
           where: { id: taskId },
           data: updateData,

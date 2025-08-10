@@ -1,5 +1,8 @@
 import { db } from "@/lib/db";
 import { StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
+import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Add ServiceConfig interface for the services array
 export interface ServiceConfig {
@@ -76,7 +79,12 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.instanceType !== undefined)
     data.instanceType = params.instanceType;
   if (params.environmentVariables !== undefined)
-    data.environmentVariables = params.environmentVariables;
+    data.environmentVariables = encryptEnvVars(
+      params.environmentVariables as unknown as Array<{
+        name: string;
+        value: string;
+      }>,
+    );
   if (params.status !== undefined) data.status = params.status;
   if (params.swarmUrl !== undefined) data.swarmUrl = params.swarmUrl;
   if (params.repositoryName !== undefined)
@@ -85,7 +93,10 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     data.repositoryDescription = params.repositoryDescription;
   if (params.repositoryUrl !== undefined)
     data.repositoryUrl = params.repositoryUrl;
-  if (params.swarmApiKey !== undefined) data.swarmApiKey = params.swarmApiKey;
+  if (params.swarmApiKey !== undefined)
+    data.swarmApiKey = JSON.stringify(
+      encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
+    );
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.defaultBranch !== undefined)
@@ -95,8 +106,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
   if (params.stepStatus !== undefined) data.stepStatus = params.stepStatus;
   if (params.wizardData !== undefined) {
-    console.log("params.wizardData", params.wizardData);
-    console.log("data.wizardData", data.wizardData);
     const previousWizardData = swarm?.wizardData || {};
 
     const newWizardData = {
@@ -116,7 +125,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   data.updatedAt = new Date();
 
   if (swarm) {
-    console.log("[saveOrUpdateSwarm] Update data:", data);
     swarm = await db.swarm.update({
       where: { workspaceId: params.workspaceId },
       data,
@@ -128,14 +136,24 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       name: params.name || "",
       instanceType: params.instanceType || "",
       environmentVariables: params.environmentVariables
-        ? JSON.stringify(params.environmentVariables)
-        : "[]",
+        ? (encryptEnvVars(
+            params.environmentVariables as unknown as Array<{
+              name: string;
+              value: string;
+            }>,
+          ) as unknown)
+        : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,
       repositoryName: params.repositoryName || "",
       repositoryDescription: params.repositoryDescription || "",
       repositoryUrl: params.repositoryUrl || "",
-      swarmApiKey: params.swarmApiKey || "",
+      swarmApiKey:
+        params.swarmApiKey !== undefined
+          ? JSON.stringify(
+              encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
+            )
+          : undefined,
       poolName: params.poolName || "",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",

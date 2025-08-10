@@ -34,7 +34,10 @@ export async function GET(request: NextRequest) {
     // Validate pagination parameters
     if (page < 1 || limit < 1 || limit > 50) {
       return NextResponse.json(
-        { error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-50" },
+        {
+          error:
+            "Invalid pagination parameters. Page must be >= 1, limit must be 1-50",
+        },
         { status: 400 },
       );
     }
@@ -76,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     // Get tasks for the workspace with pagination
     const skip = (page - 1) * limit;
-    
+
     const [tasks, totalCount] = await Promise.all([
       db.task.findMany({
         where: {

@@ -10,7 +10,6 @@ import {
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
-// Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
 
 interface ArtifactRequest {
@@ -31,7 +30,6 @@ export async function POST(request: NextRequest) {
       artifacts = [] as ArtifactRequest[],
     } = body;
 
-    // Validate task exists (if taskId provided)
     if (taskId) {
       const task = await db.task.findFirst({
         where: {
@@ -45,7 +43,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create the chat message
     const chatMessage = await db.chatMessage.create({
       data: {
         taskId,
@@ -74,7 +71,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Convert to client-side type
     const clientMessage: ChatMessage = {
       ...chatMessage,
       contextTags: JSON.parse(
@@ -86,32 +82,17 @@ export async function POST(request: NextRequest) {
       })) as Artifact[],
     };
 
-    // Broadcast the new message via Pusher to all connected clients for this task
     if (taskId) {
       try {
         const channelName = getTaskChannelName(taskId);
-        console.log(
-          `🚀 Broadcasting message to Pusher channel: ${channelName}`,
-        );
-        console.log(`📨 Message content:`, {
-          id: clientMessage.id,
-          message: clientMessage.message,
-          role: clientMessage.role,
-          timestamp: clientMessage.timestamp,
-        });
 
         await pusherServer.trigger(
           channelName,
           PUSHER_EVENTS.NEW_MESSAGE,
           clientMessage,
         );
-
-        console.log(
-          `✅ Successfully broadcast message to Pusher channel: ${channelName}`,
-        );
       } catch (error) {
         console.error("❌ Error broadcasting to Pusher:", error);
-        // Don't fail the request if Pusher fails
       }
     }
 

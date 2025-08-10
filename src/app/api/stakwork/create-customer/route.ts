@@ -4,6 +4,11 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
+
+export const runtime = "nodejs";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,10 +39,14 @@ export async function POST(request: NextRequest) {
       });
 
       if (workspace) {
+        const encryptedStakworkApiKey = encryptionService.encryptField(
+          "stakworkApiKey",
+          token || "",
+        );
         await db.workspace.update({
           where: { id: workspace.id },
           data: {
-            stakworkApiKey: token, // ✅ camelCase field name from Prisma schema
+            stakworkApiKey: JSON.stringify(encryptedStakworkApiKey),
           },
         });
       }
@@ -52,11 +61,15 @@ export async function POST(request: NextRequest) {
         /{{(.*?)}}/g,
         "$1",
       );
+      const decryptedStakworkApiKey = encryptionService.decryptField(
+        "stakworkApiKey",
+        swarm?.swarmApiKey || "",
+      );
 
       if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
         await stakworkService().createSecret(
           sanitizedSecretAlias,
-          swarm.swarmApiKey,
+          decryptedStakworkApiKey,
           token,
         );
       }

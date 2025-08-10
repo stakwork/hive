@@ -5,10 +5,13 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { EncryptionService } from "@/lib/encryption";
 
+export const runtime = "nodejs";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
-
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -61,13 +64,10 @@ export async function POST(request: NextRequest) {
 
     const repoWorkspaceId = workspaceId || swarm.workspaceId;
 
-
     let final_repo_url;
     let branch = "";
 
-    if (
-      swarm.repositoryUrl && swarm.defaultBranch
-    ) {
+    if (swarm.repositoryUrl && swarm.defaultBranch) {
       final_repo_url = swarm.repositoryUrl;
       branch = swarm.defaultBranch || "";
     }
@@ -86,8 +86,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("repositoryupsertstart");
-    // Upsert Repository record with status PENDING
     const repository = await db.repository.upsert({
       where: {
         repositoryUrl_workspaceId: {
@@ -113,13 +111,12 @@ export async function POST(request: NextRequest) {
 
     const stakgraphUrl = `https://${swarm.name}:7799`;
 
-
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: "/ingest_async",
       method: "POST",
-      apiKey: swarm.swarmApiKey,
+      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
       data: dataApi,
     });
 
@@ -157,7 +154,7 @@ export async function POST(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch (error) {
-    console.log("Error ingesting code:", error);
+    console.error("Error ingesting code:", error);
     return NextResponse.json(
       { success: false, message: "Failed to ingest code" },
       { status: 500 },
@@ -166,8 +163,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  console.log("..............GET INGEST STATUS API BEING CALLED............");
-
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   const swarmId = searchParams.get("swarmId");
@@ -200,7 +195,7 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
-    const { username, pat } = githubCreds;
+    // const { username, pat } = githubCreds;
 
     // Resolve Swarm
     const where: Record<string, string> = {};
@@ -232,10 +227,8 @@ export async function GET(request: NextRequest) {
       swarmUrl: stakgraphUrl,
       endpoint: `/status/${id}`,
       method: "GET",
-      apiKey: swarm.swarmApiKey,
+      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
-
-    console.log("apiResult", apiResult);
 
     return NextResponse.json(
       {
