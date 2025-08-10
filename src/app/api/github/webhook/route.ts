@@ -3,14 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import crypto from "node:crypto";
-
-function timingSafeEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return crypto.timingSafeEqual(aBuf, bBuf);
-}
+import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,9 +63,7 @@ export async function POST(request: NextRequest) {
       repository.githubWebhookSecret,
     );
 
-    const expected =
-      "sha256=" +
-      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    const expected = computeHmacSha256Hex(secret, rawBody);
 
     if (!timingSafeEqual(expected, signature)) {
       console.error("Signature mismatch");

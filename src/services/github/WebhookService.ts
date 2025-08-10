@@ -1,7 +1,7 @@
 import { BaseServiceClass } from "@/lib/base-service";
 import { db } from "@/lib/db";
 import type { ServiceConfig } from "@/types";
-import type { EnsureWebhookParams, DeleteWebhookParams } from "@/types/github";
+import type { EnsureWebhookParams, DeleteWebhookParams } from "@/types";
 import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
