@@ -12,6 +12,7 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Hive",
   description: "A fresh start",
+  icon: "http://website.sphinx.chat/wp-content/uploads/2021/10/Favicon_167x167.jpg",
 };
 
 export default function RootLayout({
