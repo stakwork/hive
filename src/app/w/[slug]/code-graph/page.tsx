@@ -41,6 +41,8 @@ export default function CodeGraphPage() {
   const setHasKey = useWizardStore((s) => s.setHasKey);
   const resetWizard = useWizardStore((s) => s.resetWizard);
 
+  const stepIsSettled = STEPS_ARRAY.includes(currentStep);
+
   useEffect(() => {
     if (workspace?.slug && workspace?.id) {
       resetWizard();
@@ -141,7 +143,7 @@ export default function CodeGraphPage() {
   ]);
 
   // Loading state
-  if (loading) {
+  if (loading || !stepIsSettled) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="w-96">

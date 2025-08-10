@@ -34,7 +34,6 @@ export function GithubAuthStep() {
 
   useEffect(() => {
     if (session?.user) {
-
       const user = session.user as { defaultWorkspaceSlug?: string };
 
       if (user.defaultWorkspaceSlug) {
@@ -65,7 +64,7 @@ export function GithubAuthStep() {
       setIsSigningIn(true);
       const result = await signIn("github", {
         redirect: false, // Handle redirect manually for better UX
-        callbackUrl: "/?from=wizard", // Always go through onboarding to avoid direct workspace access
+        callbackUrl: "/", // Always go through onboarding to avoid direct workspace access
       });
 
       if (result?.error) {
@@ -81,61 +80,57 @@ export function GithubAuthStep() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="border-0 shadow-xl bg-card text-card-foreground">
-          <CardHeader className="text-center pb-6">
-            <CardTitle className="text-2xl font-bold">
-              Welcome to Hive
-            </CardTitle>
-            <CardDescription className="text-base">
-              Sign in to start managing your products with clarity and
-              confidence
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {providers?.github && (
-              <Button
-                data-testid="github-signin-button"
-                onClick={handleGitHubSignIn}
-                disabled={isSigningIn}
-                className="w-full h-12 text-base font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                {isSigningIn ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    <Github className="w-5 h-5 mr-3" />
-                    Continue with GitHub
-                  </>
-                )}
-              </Button>
+    <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
+      <CardHeader className="text-center pb-6">
+        <CardTitle className="text-2xl font-bold">
+          Welcome to Hive
+        </CardTitle>
+        <CardDescription className="text-base">
+          Sign in to start managing your products with clarity and
+          confidence
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {providers?.github && (
+          <Button
+            data-testid="github-signin-button"
+            onClick={handleGitHubSignIn}
+            disabled={isSigningIn}
+            className="w-full h-12 text-base font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {isSigningIn ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              <>
+                <Github className="w-5 h-5 mr-3" />
+                Continue with GitHub
+              </>
             )}
+          </Button>
+        )}
 
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                By continuing, you agree to our{" "}
-                <a
-                  href="#"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Terms of Service
-                </a>{" "}
-                and{" "}
-                <a
-                  href="#"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Privacy Policy
-                </a>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground">
+            By continuing, you agree to our{" "}
+            <a
+              href="#"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a
+              href="#"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Privacy Policy
+            </a>
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

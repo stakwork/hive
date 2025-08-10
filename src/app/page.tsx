@@ -3,10 +3,11 @@ import { handleWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 
-export default async function HomePage({ searchParams }: { searchParams: { from: string } }) {
+export default async function HomePage() {
   const session = await getServerSession(authOptions);
 
-  if (session?.user && searchParams.from !== "wizard") {
+
+  if (session?.user) {
     await handleWorkspaceRedirect(session);
     return null;
   } else {

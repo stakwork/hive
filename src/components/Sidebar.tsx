@@ -40,11 +40,6 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
 
-  const handleWorkspaceChange = () => {
-    // Optionally implement logic if needed
-  };
-
-
   const handleNavigate = (href: string) => {
     if (workspaceSlug) {
       const fullPath =
@@ -61,7 +56,7 @@ export function Sidebar({ user }: SidebarProps) {
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
       <WorkspaceSwitcher
-        onWorkspaceChange={handleWorkspaceChange}
+        onWorkspaceChange={() => null}
       />
       {/* Navigation */}
       <nav className="flex-1 p-4">

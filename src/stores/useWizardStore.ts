@@ -120,10 +120,7 @@ export const useWizardStore = create<WizardStore>()(
           `/api/code-graph/wizard-state?workspace=${encodeURIComponent(workspaceSlug)}`,
         );
         const json = await res.json();
-        console.log(json);
         const { data } = json;
-
-        console.log(data)
 
         if (!data) {
           set({
