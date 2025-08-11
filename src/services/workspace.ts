@@ -14,6 +14,18 @@ import {
   WORKSPACE_PERMISSION_LEVELS,
 } from "@/lib/constants";
 import { EncryptionService } from "@/lib/encryption";
+import { mapWorkspaceMembers, mapWorkspaceMember } from "@/lib/mappers/workspace-member";
+import {
+  findUserByGitHubUsername,
+  findActiveMember,
+  findPreviousMember,
+  isWorkspaceOwner,
+  createWorkspaceMember,
+  reactivateWorkspaceMember,
+  getActiveWorkspaceMembers,
+  updateMemberRole,
+  softDeleteMember,
+} from "@/lib/helpers/workspace-member-queries";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -394,50 +406,8 @@ export function validateWorkspaceSlug(slug: string): {
  * Gets all members of a workspace (excluding the owner)
  */
 export async function getWorkspaceMembers(workspaceId: string) {
-  const members = await db.workspaceMember.findMany({
-    where: {
-      workspaceId,
-      leftAt: null,
-    },
-    include: {
-      user: {
-        include: {
-          githubAuth: {
-            select: {
-              githubUsername: true,
-              name: true,
-              bio: true,
-              publicRepos: true,
-              followers: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: { joinedAt: "asc" },
-  });
-
-  return members.map((member) => ({
-    id: member.id,
-    userId: member.user.id,
-    role: member.role,
-    joinedAt: member.joinedAt.toISOString(),
-    user: {
-      id: member.user.id,
-      name: member.user.name,
-      email: member.user.email,
-      image: member.user.image,
-      github: member.user.githubAuth
-        ? {
-            username: member.user.githubAuth.githubUsername,
-            name: member.user.githubAuth.name,
-            bio: member.user.githubAuth.bio,
-            publicRepos: member.user.githubAuth.publicRepos,
-            followers: member.user.githubAuth.followers,
-          }
-        : null,
-    },
-  }));
+  const members = await getActiveWorkspaceMembers(workspaceId);
+  return mapWorkspaceMembers(members);
 }
 
 /**
@@ -447,14 +417,9 @@ export async function addWorkspaceMember(
   workspaceId: string,
   githubUsername: string,
   role: WorkspaceRole,
-  _invitedBy: string,
 ) {
   // Find user by GitHub username
-  const githubAuth = await db.gitHubAuth.findFirst({
-    where: { githubUsername },
-    include: { user: true },
-  });
-
+  const githubAuth = await findUserByGitHubUsername(githubUsername);
   if (!githubAuth) {
     throw new Error("User with this GitHub username not found");
   }
@@ -462,108 +427,26 @@ export async function addWorkspaceMember(
   const userId = githubAuth.userId;
 
   // Check if user is already an active member
-  const activeMember = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId,
-      leftAt: null,
-    },
-  });
-
+  const activeMember = await findActiveMember(workspaceId, userId);
   if (activeMember) {
     throw new Error("User is already a member of this workspace");
   }
 
-  // Check if user was previously a member (soft deleted)
-  const previousMember = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId,
-      leftAt: { not: null },
-    },
-    orderBy: { leftAt: "desc" }, // Get the most recent membership
-  });
-
-  // Check if user is the owner
-  const workspace = await db.workspace.findUnique({
-    where: { id: workspaceId },
-  });
-
-  if (workspace?.ownerId === userId) {
+  // Check if user is the workspace owner
+  const isOwner = await isWorkspaceOwner(workspaceId, userId);
+  if (isOwner) {
     throw new Error("Cannot add workspace owner as a member");
   }
 
+  // Check if user was previously a member (soft deleted)
+  const previousMember = await findPreviousMember(workspaceId, userId);
+
   // Add the member (either create new or reactivate previous)
   const member = previousMember
-    ? // Reactivate previous member with new role
-      await db.workspaceMember.update({
-        where: { id: previousMember.id },
-        data: {
-          role,
-          leftAt: null, // Reactivate by clearing leftAt
-          joinedAt: new Date(), // Update join date to current time
-        },
-        include: {
-          user: {
-            include: {
-              githubAuth: {
-                select: {
-                  githubUsername: true,
-                  name: true,
-                  bio: true,
-                  publicRepos: true,
-                  followers: true,
-                },
-              },
-            },
-          },
-        },
-      })
-    : // Create new member
-      await db.workspaceMember.create({
-        data: {
-          workspaceId,
-          userId,
-          role,
-        },
-        include: {
-          user: {
-            include: {
-              githubAuth: {
-                select: {
-                  githubUsername: true,
-                  name: true,
-                  bio: true,
-                  publicRepos: true,
-                  followers: true,
-                },
-              },
-            },
-          },
-        },
-      });
+    ? await reactivateWorkspaceMember(previousMember.id, role)
+    : await createWorkspaceMember(workspaceId, userId, role);
 
-  return {
-    id: member.id,
-    userId: member.user.id,
-    role: member.role,
-    joinedAt: member.joinedAt.toISOString(),
-    user: {
-      id: member.user.id,
-      name: member.user.name,
-      email: member.user.email,
-      image: member.user.image,
-      github: member.user.githubAuth
-        ? {
-            username: member.user.githubAuth.githubUsername,
-            name: member.user.githubAuth.name,
-            bio: member.user.githubAuth.bio,
-            publicRepos: member.user.githubAuth.publicRepos,
-            followers: member.user.githubAuth.followers,
-          }
-        : null,
-    },
-  };
+  return mapWorkspaceMember(member);
 }
 
 /**
@@ -574,59 +457,13 @@ export async function updateWorkspaceMemberRole(
   userId: string,
   newRole: WorkspaceRole,
 ) {
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId,
-      leftAt: null,
-    },
-  });
-
+  const member = await findActiveMember(workspaceId, userId);
   if (!member) {
     throw new Error("Member not found");
   }
 
-  const updatedMember = await db.workspaceMember.update({
-    where: { id: member.id },
-    data: { role: newRole },
-    include: {
-      user: {
-        include: {
-          githubAuth: {
-            select: {
-              githubUsername: true,
-              name: true,
-              bio: true,
-              publicRepos: true,
-              followers: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  return {
-    id: updatedMember.id,
-    userId: updatedMember.user.id,
-    role: updatedMember.role,
-    joinedAt: updatedMember.joinedAt.toISOString(),
-    user: {
-      id: updatedMember.user.id,
-      name: updatedMember.user.name,
-      email: updatedMember.user.email,
-      image: updatedMember.user.image,
-      github: updatedMember.user.githubAuth
-        ? {
-            username: updatedMember.user.githubAuth.githubUsername,
-            name: updatedMember.user.githubAuth.name,
-            bio: updatedMember.user.githubAuth.bio,
-            publicRepos: updatedMember.user.githubAuth.publicRepos,
-            followers: updatedMember.user.githubAuth.followers,
-          }
-        : null,
-    },
-  };
+  const updatedMember = await updateMemberRole(member.id, newRole);
+  return mapWorkspaceMember(updatedMember);
 }
 
 /**
@@ -636,21 +473,10 @@ export async function removeWorkspaceMember(
   workspaceId: string,
   userId: string,
 ) {
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId,
-      leftAt: null,
-    },
-  });
-
+  const member = await findActiveMember(workspaceId, userId);
   if (!member) {
     throw new Error("Member not found");
   }
 
-  // Soft delete by setting leftAt timestamp
-  await db.workspaceMember.update({
-    where: { id: member.id },
-    data: { leftAt: new Date() },
-  });
+  await softDeleteMember(member.id);
 }

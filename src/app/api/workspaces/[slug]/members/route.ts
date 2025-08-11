@@ -83,7 +83,7 @@ export async function POST(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const member = await addWorkspaceMember(access.workspace.id, githubUsername, role, userId);
+    const member = await addWorkspaceMember(access.workspace.id, githubUsername, role);
     return NextResponse.json({ member }, { status: 201 });
   } catch (error: unknown) {
     console.error("Error adding workspace member:", error);
