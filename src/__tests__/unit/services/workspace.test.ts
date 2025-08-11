@@ -758,7 +758,7 @@ describe("Workspace Service - Unit Tests", () => {
 
         await expect(
           addWorkspaceMember("workspace1", "nonexistent", "DEVELOPER")
-        ).rejects.toThrow("User with this GitHub username not found");
+        ).rejects.toThrow("User not found. They must sign up to Hive first.");
       });
 
       test("should throw error if user is already a member", async () => {

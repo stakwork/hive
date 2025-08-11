@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "@/lib/utils/time";
 import { RefreshCw, AlertCircle } from "lucide-react";
 
 
@@ -99,7 +99,7 @@ export default function ActivityPage() {
                     {activity.summary}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
+                    {formatDistanceToNow(activity.timestamp)}
                   </TableCell>
                 </TableRow>
               ))
