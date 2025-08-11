@@ -136,10 +136,17 @@ export function generateLongformResponse() {
   ]);
 }
 
+// Toggle this flag to simulate failure or success
+const MOCK_FAIL = true; // Set to true to simulate failure, false for normal behavior
+
 export function generateResponseBasedOnMessage(
   message: string,
   baseUrl: string,
 ) {
+  if (MOCK_FAIL) {
+    return null;
+  }
+
   const messageText = message.toLowerCase();
 
   if (messageText.includes("browser")) {

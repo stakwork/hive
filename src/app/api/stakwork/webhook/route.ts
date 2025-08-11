@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { emitWorkflowStatus } from "@/lib/emitWorkflowStatus";
 
 export const fetchCache = "force-no-store";
 
@@ -113,24 +113,12 @@ export async function POST(request: NextRequest) {
       data: updateData,
     });
 
-    try {
-      const channelName = getTaskChannelName(finalTaskId);
-      const eventPayload = {
-        taskId: finalTaskId,
-        workflowStatus,
-        workflowStartedAt: updatedTask.workflowStartedAt,
-        workflowCompletedAt: updatedTask.workflowCompletedAt,
-        timestamp: new Date(),
-      };
-
-      await pusherServer.trigger(
-        channelName,
-        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        eventPayload,
-      );
-    } catch (error) {
-      console.error("Error broadcasting to Pusher:", error);
-    }
+    await emitWorkflowStatus({
+      taskId: finalTaskId,
+      workflowStatus,
+      workflowStartedAt: updatedTask.workflowStartedAt,
+      workflowCompletedAt: updatedTask.workflowCompletedAt,
+    });
 
     return NextResponse.json(
       {

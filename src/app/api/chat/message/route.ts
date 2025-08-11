@@ -12,6 +12,7 @@ import {
   type ChatMessage,
 } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
+import { emitWorkflowStatus } from "@/lib/emitWorkflowStatus";
 import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
@@ -381,40 +382,81 @@ export async function POST(request: NextRequest) {
         const updateData: {
           workflowStatus: WorkflowStatus;
           workflowStartedAt: Date;
+          workflowCompletedAt: null;
           stakworkProjectId?: number;
         } = {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
+          workflowCompletedAt: null,
         };
 
-        // Store the Stakwork project ID if available
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
         }
 
-        await db.task.update({
+        const updated = await db.task.update({
           where: { id: taskId },
           data: updateData,
         });
+        await emitWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: updated.workflowStartedAt,
+        });
       } else {
-        await db.task.update({
+        const updated = await db.task.update({
           where: { id: taskId },
           data: {
             workflowStatus: WorkflowStatus.FAILED,
           },
         });
+        await emitWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.FAILED,
+          workflowCompletedAt: updated.workflowCompletedAt,
+        });
       }
     } else {
       stakworkData = await callMock(taskId, message, userId, request);
+      if (stakworkData.success) {
+        const updated = await db.task.update({
+          where: { id: taskId },
+          data: {
+            workflowStatus: WorkflowStatus.IN_PROGRESS,
+            workflowStartedAt: new Date(),
+            workflowCompletedAt: null,
+          },
+        });
+        await emitWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: updated.workflowStartedAt,
+        });
+      } else {
+        const updated = await db.task.update({
+          where: { id: taskId },
+          data: {
+            workflowStatus: WorkflowStatus.FAILED,
+          },
+        });
+        await emitWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.FAILED,
+          workflowCompletedAt: updated.workflowCompletedAt,
+        });
+      }
     }
 
     return NextResponse.json(
       {
-        success: true,
+        success:
+          stakworkData && stakworkData.success !== undefined
+            ? stakworkData.success
+            : true,
         message: clientMessage,
-        workflow: stakworkData.data,
+        workflow: stakworkData ? stakworkData.data : null,
       },
-      { status: 201 },
+      { status: stakworkData && stakworkData.success === false ? 500 : 201 },
     );
   } catch (error) {
     console.error("Error creating chat message:", error);

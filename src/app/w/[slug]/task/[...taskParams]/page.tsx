@@ -13,7 +13,10 @@ import {
   Option,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
-import { usePusherConnection, WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
+import {
+  usePusherConnection,
+  WorkflowStatusUpdate,
+} from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
@@ -45,7 +48,9 @@ export default function TaskChatPage() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
+    WorkflowStatus.PENDING,
+  );
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -68,8 +73,10 @@ export default function TaskChatPage() {
 
       // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
       // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
-      const hasActionArtifact = message.artifacts?.some(artifact => artifact.type === 'FORM');
-      
+      const hasActionArtifact = message.artifacts?.some(
+        (artifact) => artifact.type === "FORM",
+      );
+
       if (hasActionArtifact) {
         setIsChainVisible(false);
       }
@@ -121,15 +128,18 @@ export default function TaskChatPage() {
       if (result.success && result.data.messages) {
         setMessages(result.data.messages);
         console.log(`Loaded ${result.data.count} existing messages for task`);
-        
+
         // Set initial workflow status from task data
         if (result.data.task?.workflowStatus) {
           setWorkflowStatus(result.data.task.workflowStatus);
         }
-        
+
         // Set project ID for log subscription if available
         if (result.data.task?.stakworkProjectId) {
-          console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
+          console.log(
+            "Setting project ID from task data:",
+            result.data.task.stakworkProjectId,
+          );
           setProjectId(result.data.task.stakworkProjectId.toString());
         }
       }
@@ -316,6 +326,15 @@ export default function TaskChatPage() {
   //   !isConnected ||
   //   (started && messages.length > 0 && !hasActiveChatForm);
 
+  const handleRetry = async () => {
+    const lastUserMsg = [...messages]
+      .reverse()
+      .find((m) => m.role === "USER" && m.message);
+    if (!lastUserMsg) return;
+    setWorkflowStatus(WorkflowStatus.PENDING); // Optimistic update
+    await sendMessage(lastUserMsg.message);
+  };
+
   return (
     <AnimatePresence mode="wait">
       {!started ? (
@@ -347,6 +366,7 @@ export default function TaskChatPage() {
             isChainVisible={isChainVisible}
             lastLogLine={lastLogLine}
             workflowStatus={workflowStatus}
+            onRetry={handleRetry}
           />
 
           <AnimatePresence>

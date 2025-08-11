@@ -2,7 +2,11 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
+import {
+  ChatMessage as ChatMessageType,
+  Option,
+  WorkflowStatus,
+} from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
@@ -21,6 +25,7 @@ interface ChatAreaProps {
   isChainVisible?: boolean;
   lastLogLine?: string;
   workflowStatus?: WorkflowStatus | null;
+  onRetry?: () => void;
 }
 
 export function ChatArea({
@@ -33,6 +38,7 @@ export function ChatArea({
   isChainVisible = false,
   lastLogLine = "",
   workflowStatus,
+  onRetry,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -55,16 +61,18 @@ export function ChatArea({
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
         {messages
           .filter((msg) => !msg.replyId) // Hide messages that are replies
-          .map((msg) => {
-            // Find if this message has been replied to
+          .map((msg, idx, arr) => {
             const replyMessage = messages.find((m) => m.replyId === msg.id);
-
+            const isLast = idx === arr.length - 1;
             return (
               <ChatMessage
                 key={msg.id}
                 message={msg}
                 replyMessage={replyMessage}
                 onArtifactAction={onArtifactAction}
+                isLast={isLast}
+                workflowStatus={workflowStatus}
+                onRetry={onRetry}
               />
             );
           })}
@@ -113,6 +121,7 @@ export function ChatArea({
         disabled={inputDisabled}
         isLoading={isLoading}
         workflowStatus={workflowStatus}
+        onRetry={onRetry}
       />
     </motion.div>
   );
