@@ -1,7 +1,27 @@
 import { WorkspaceRole } from '@prisma/client';
 
 export function canAccessFeature(feature: string, userRole?: WorkspaceRole): boolean {
-  const isEnabled = process.env[`FEATURE_${feature.toUpperCase()}`] === 'true';
+  let isEnabled = false;
+  
+  // Map feature names to their environment variables
+  // This is needed because Next.js requires explicit env var references
+  switch (feature) {
+    case 'CODEBASE_RECOMMENDATION':
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION === 'true';
+      break;
+    case 'CHAT':
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_CHAT === 'true';
+      break;
+    case 'BULK_OPERATIONS':
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_BULK_OPERATIONS === 'true';
+      break;
+    case 'ADVANCED_ANALYTICS':
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS === 'true';
+      break;
+    default:
+      isEnabled = false;
+  }
+  
   if (!isEnabled) return false;
 
   const roleRequirements: Record<string, WorkspaceRole[]> = {
