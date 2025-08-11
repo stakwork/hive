@@ -322,22 +322,6 @@ export async function POST(request: NextRequest) {
       })) as Artifact[],
     };
 
-    // Broadcast the user message via Pusher to all connected clients for this task
-    if (taskId) {
-      try {
-        const channelName = getTaskChannelName(taskId);
-
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.NEW_MESSAGE,
-          clientMessage
-        );
-
-      } catch (error) {
-        console.error("❌ Error broadcasting user message to Pusher:", error);
-        // Don't fail the request if Pusher fails
-      }
-    }
 
     const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
 

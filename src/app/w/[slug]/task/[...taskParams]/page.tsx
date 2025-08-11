@@ -6,15 +6,23 @@ import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   ChatMessage,
+  ChatRole,
+  ChatStatus,
   WorkflowStatus,
   Option,
   Artifact,
+  createChatMessage,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import { usePusherConnection, WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
+
+// Generate unique IDs to prevent collisions
+function generateUniqueId() {
+  return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
 
 export default function TaskChatPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -204,7 +212,16 @@ export default function TaskChatPage() {
   ) => {
     if (isLoading) return;
 
-    // Don't add optimistic messages - let them come from Pusher only
+    const newMessage: ChatMessage = createChatMessage({
+      id: generateUniqueId(),
+      message: messageText,
+      role: ChatRole.USER,
+      status: ChatStatus.SENDING,
+      replyId: options?.replyId,
+      artifacts: artifact ? [artifact] : [],
+    });
+
+    setMessages((msgs) => [...msgs, newMessage]);
     setIsLoading(true);
 
     // console.log("Sending message:", messageText, options);
@@ -243,9 +260,22 @@ export default function TaskChatPage() {
         clearLogs();
       }
 
-      // Message will be added via Pusher broadcast
+      // Update the temporary message status instead of replacing entirely
+      // This prevents re-animation since React sees it as the same message
+      setMessages((msgs) =>
+        msgs.map((msg) =>
+          msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg,
+        ),
+      );
     } catch (error) {
       console.error("Error sending message:", error);
+
+      // Update message status to ERROR
+      setMessages((msgs) =>
+        msgs.map((msg) =>
+          msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg,
+        ),
+      );
 
       toast({
         title: "Error",
