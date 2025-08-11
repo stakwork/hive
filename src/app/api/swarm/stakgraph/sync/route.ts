@@ -8,6 +8,7 @@ import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    console.log("SESSION", session);
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
