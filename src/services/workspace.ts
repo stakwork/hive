@@ -461,8 +461,8 @@ export async function addWorkspaceMember(
 
   const userId = githubAuth.userId;
 
-  // Check if user is already a member
-  const existingMember = await db.workspaceMember.findFirst({
+  // Check if user is already an active member
+  const activeMember = await db.workspaceMember.findFirst({
     where: {
       workspaceId,
       userId,
@@ -470,9 +470,19 @@ export async function addWorkspaceMember(
     },
   });
 
-  if (existingMember) {
+  if (activeMember) {
     throw new Error("User is already a member of this workspace");
   }
+
+  // Check if user was previously a member (soft deleted)
+  const previousMember = await db.workspaceMember.findFirst({
+    where: {
+      workspaceId,
+      userId,
+      leftAt: { not: null },
+    },
+    orderBy: { leftAt: "desc" }, // Get the most recent membership
+  });
 
   // Check if user is the owner
   const workspace = await db.workspace.findUnique({
@@ -483,29 +493,55 @@ export async function addWorkspaceMember(
     throw new Error("Cannot add workspace owner as a member");
   }
 
-  // Add the member
-  const member = await db.workspaceMember.create({
-    data: {
-      workspaceId,
-      userId,
-      role,
-    },
-    include: {
-      user: {
+  // Add the member (either create new or reactivate previous)
+  const member = previousMember
+    ? // Reactivate previous member with new role
+      await db.workspaceMember.update({
+        where: { id: previousMember.id },
+        data: {
+          role,
+          leftAt: null, // Reactivate by clearing leftAt
+          joinedAt: new Date(), // Update join date to current time
+        },
         include: {
-          githubAuth: {
-            select: {
-              githubUsername: true,
-              name: true,
-              bio: true,
-              publicRepos: true,
-              followers: true,
+          user: {
+            include: {
+              githubAuth: {
+                select: {
+                  githubUsername: true,
+                  name: true,
+                  bio: true,
+                  publicRepos: true,
+                  followers: true,
+                },
+              },
             },
           },
         },
-      },
-    },
-  });
+      })
+    : // Create new member
+      await db.workspaceMember.create({
+        data: {
+          workspaceId,
+          userId,
+          role,
+        },
+        include: {
+          user: {
+            include: {
+              githubAuth: {
+                select: {
+                  githubUsername: true,
+                  name: true,
+                  bio: true,
+                  publicRepos: true,
+                  followers: true,
+                },
+              },
+            },
+          },
+        },
+      });
 
   return {
     id: member.id,
