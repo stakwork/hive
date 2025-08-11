@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Plus, Users, Calendar, Settings } from "lucide-react";
 import Link from "next/link";
+import { WorkspaceSettingsLink } from "@/components/WorkspaceSettingsLink";
 
 export default async function WorkspacesPage() {
   const session = await getServerSession(authOptions);
@@ -88,15 +89,7 @@ export default async function WorkspacesPage() {
               </Link>
 
               {workspace.userRole === "OWNER" && (
-                <div className="absolute top-4 right-4">
-                  <Link
-                    href={`/workspaces/${workspace.slug}/settings`}
-                    className="p-1 rounded-md hover:bg-muted"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Settings className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                  </Link>
-                </div>
+                <WorkspaceSettingsLink workspaceSlug={workspace.slug} />
               )}
             </Card>
           ))}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,6 +38,7 @@ export function DeleteWorkspace({
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const { refreshWorkspaces } = useWorkspace();
 
   const handleDelete = async () => {
     if (confirmationText !== workspaceName) {
@@ -61,14 +63,18 @@ export function DeleteWorkspace({
         throw new Error(error.error || "Failed to delete workspace");
       }
 
+      console.log("Workspace deleted:", workspaceName);
+
+      // Refresh the workspaces list to update context
+      await refreshWorkspaces();
+
       toast({
         title: "Workspace deleted",
         description: "Your workspace has been permanently deleted.",
         variant: "default",
       });
 
-      // Redirect to workspaces page after successful deletion
-      router.push("/workspaces");
+      router.push("/");
       router.refresh();
     } catch (error) {
       console.error("Error deleting workspace:", error);
