@@ -63,9 +63,6 @@ export function DeleteWorkspace({
         throw new Error(error.error || "Failed to delete workspace");
       }
 
-      console.log("Workspace deleted:", workspaceName);
-
-      // Refresh the workspaces list to update context
       await refreshWorkspaces();
 
       toast({
