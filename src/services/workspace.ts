@@ -411,7 +411,7 @@ export async function getWorkspaceMembers(workspaceId: string) {
 }
 
 /**
- * Adds an existing user to a workspace by GitHub username
+ * Adds an existing Hive user to a workspace by GitHub username
  * Note: User must already be registered in the system
  */
 export async function addWorkspaceMember(
