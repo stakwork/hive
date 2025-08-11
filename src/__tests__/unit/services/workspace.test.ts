@@ -727,7 +727,9 @@ describe("Workspace Service - Unit Tests", () => {
 
       test("should add workspace member successfully", async () => {
         (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(null); // Not already a member
+        (db.workspaceMember.findFirst as Mock)
+          .mockResolvedValueOnce(null) // No active member
+          .mockResolvedValueOnce(null); // No previous member
         (db.workspace.findUnique as Mock).mockResolvedValue({ ownerId: "different-owner" });
         (db.workspaceMember.create as Mock).mockResolvedValue(mockCreatedMember);
 
@@ -782,7 +784,7 @@ describe("Workspace Service - Unit Tests", () => {
 
       test("should throw error if user is already a member", async () => {
         (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue({ id: "existing-member" });
+        (db.workspaceMember.findFirst as Mock).mockResolvedValue({ id: "existing-member" }); // Active member found
 
         await expect(
           addWorkspaceMember("workspace1", "johndoe", "DEVELOPER", "inviter1")
@@ -791,12 +793,60 @@ describe("Workspace Service - Unit Tests", () => {
 
       test("should throw error if user is the workspace owner", async () => {
         (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+        (db.workspaceMember.findFirst as Mock)
+          .mockResolvedValueOnce(null) // No active member
+          .mockResolvedValueOnce(null); // No previous member
         (db.workspace.findUnique as Mock).mockResolvedValue({ ownerId: "user1" }); // Same as member userId
 
         await expect(
           addWorkspaceMember("workspace1", "johndoe", "DEVELOPER", "inviter1")
         ).rejects.toThrow("Cannot add workspace owner as a member");
+      });
+
+      test("should reactivate previously removed member", async () => {
+        const previousMember = {
+          id: "previous-member-1",
+          workspaceId: "workspace1",
+          userId: "user1",
+          role: "VIEWER",
+          leftAt: new Date("2024-01-01"),
+        };
+
+        (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
+        (db.workspaceMember.findFirst as Mock)
+          .mockResolvedValueOnce(null) // No active member
+          .mockResolvedValueOnce(previousMember); // Found previous member
+        (db.workspace.findUnique as Mock).mockResolvedValue({ ownerId: "different-owner" });
+        (db.workspaceMember.update as Mock).mockResolvedValue(mockCreatedMember);
+
+        const result = await addWorkspaceMember("workspace1", "johndoe", "DEVELOPER", "inviter1");
+
+        expect(db.workspaceMember.update).toHaveBeenCalledWith({
+          where: { id: "previous-member-1" },
+          data: {
+            role: "DEVELOPER",
+            leftAt: null,
+            joinedAt: expect.any(Date),
+          },
+          include: {
+            user: {
+              include: {
+                githubAuth: {
+                  select: {
+                    githubUsername: true,
+                    name: true,
+                    bio: true,
+                    publicRepos: true,
+                    followers: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        expect(db.workspaceMember.create).not.toHaveBeenCalled();
+        expect(result.user.github?.username).toBe("johndoe");
       });
     });
 
