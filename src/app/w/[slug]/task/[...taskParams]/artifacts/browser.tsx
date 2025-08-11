@@ -30,6 +30,11 @@ import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "./prism-dark-plus.css";
 
+// Import debug scanner to make debugScan.quick() available in console
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_DEBUG_SCANNER_ENABLED === "true") {
+  import("@/lib/debug-data-scanner");
+}
+
 interface PlaywrightTestModalProps {
   isOpen: boolean;
   onClose: () => void;

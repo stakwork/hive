@@ -301,7 +301,7 @@ var userBehaviour = (() => {
     }
   }
   function extractReactDebugSource(element) {
-    var _a, _b;
+    var _a, _b, _c;
     try {
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
@@ -311,7 +311,7 @@ var userBehaviour = (() => {
       }
       let fiber = element[fiberKey];
       let level = 0;
-      const maxTraversalDepth = Number(process.env.NEXT_PUBLIC_REACT_FIBER_TRAVERSAL_DEPTH) || 10;
+      const maxTraversalDepth = Number((_a = window.STAKTRAK_CONFIG) == null ? void 0 : _a.maxTraversalDepth) || 10;
       const extractSource = (source) => {
         if (!source)
           return null;
@@ -322,7 +322,7 @@ var userBehaviour = (() => {
         };
       };
       while (fiber && level < maxTraversalDepth) {
-        const source = fiber._debugSource || ((_a = fiber.memoizedProps) == null ? void 0 : _a.__source) || ((_b = fiber.pendingProps) == null ? void 0 : _b.__source);
+        const source = fiber._debugSource || ((_b = fiber.memoizedProps) == null ? void 0 : _b.__source) || ((_c = fiber.pendingProps) == null ? void 0 : _c.__source);
         if (source) {
           return extractSource(source);
         }
