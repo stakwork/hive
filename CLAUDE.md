@@ -156,3 +156,17 @@ Required environment variables:
 - Tailwind CSS for styling
 - TypeScript strict mode enabled
 - Prettier for code formatting
+
+### Feature Flags
+The application uses environment-based feature flags with role-based access control. See `/docs/feature-flags.md` for complete documentation.
+
+**Quick Reference:**
+```typescript
+// Check feature access in components
+const canAccess = useFeatureFlag('CODEBASE_RECOMMENDATION');
+
+// Add to .env.local for client-side features
+NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION=true
+```
+
+**Important:** Next.js client-side feature flags require `NEXT_PUBLIC_` prefix and explicit environment variable references due to build-time optimization. When adding new features, update the switch statement in `/src/lib/feature-flags.ts`.

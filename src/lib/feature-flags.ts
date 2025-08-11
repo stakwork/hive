@@ -9,15 +9,6 @@ export function canAccessFeature(feature: string, userRole?: WorkspaceRole): boo
     case 'CODEBASE_RECOMMENDATION':
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION === 'true';
       break;
-    case 'CHAT':
-      isEnabled = process.env.NEXT_PUBLIC_FEATURE_CHAT === 'true';
-      break;
-    case 'BULK_OPERATIONS':
-      isEnabled = process.env.NEXT_PUBLIC_FEATURE_BULK_OPERATIONS === 'true';
-      break;
-    case 'ADVANCED_ANALYTICS':
-      isEnabled = process.env.NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS === 'true';
-      break;
     default:
       isEnabled = false;
   }
@@ -25,9 +16,6 @@ export function canAccessFeature(feature: string, userRole?: WorkspaceRole): boo
   if (!isEnabled) return false;
 
   const roleRequirements: Record<string, WorkspaceRole[]> = {
-    'CHAT': ['ADMIN', 'OWNER'],
-    'BULK_OPERATIONS': ['ADMIN', 'OWNER', 'PM'],
-    'ADVANCED_ANALYTICS': ['OWNER'],
     'CODEBASE_RECOMMENDATION': [], // No role restriction - available to all when enabled
   };
 
