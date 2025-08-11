@@ -411,17 +411,18 @@ export async function getWorkspaceMembers(workspaceId: string) {
 }
 
 /**
- * Adds a member to a workspace by GitHub username
+ * Adds an existing user to a workspace by GitHub username
+ * Note: User must already be registered in the system
  */
 export async function addWorkspaceMember(
   workspaceId: string,
   githubUsername: string,
   role: WorkspaceRole,
 ) {
-  // Find user by GitHub username
+  // Find existing user by GitHub username
   const githubAuth = await findUserByGitHubUsername(githubUsername);
   if (!githubAuth) {
-    throw new Error("User with this GitHub username not found");
+    throw new Error("User not found. They must sign up to Hive first.");
   }
 
   const userId = githubAuth.userId;
