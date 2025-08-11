@@ -16,3 +16,9 @@ export * from "./swarm";
 
 // Encryption types
 export * from "./encryption";
+
+// Stakgraph types
+export * from "./stakgraph";
+
+// Github types
+export * from "./github";

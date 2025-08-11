@@ -155,14 +155,25 @@ export const authOptions: NextAuthOptions = {
                   provider: account.provider,
                   providerAccountId: account.providerAccountId,
                   access_token: JSON.stringify(encryptedAccessToken),
-                  refresh_token: account.refresh_token as
-                    | string
-                    | undefined
-                    | null,
+                  refresh_token: account.refresh_token
+                    ? JSON.stringify(
+                        encryptionService.encryptField(
+                          "refresh_token",
+                          account.refresh_token,
+                        ),
+                      )
+                    : (null as unknown as string | undefined | null),
                   expires_at: account.expires_at as number | undefined | null,
                   token_type: account.token_type as string | undefined | null,
                   scope: account.scope,
-                  id_token: account.id_token as string | undefined | null,
+                  id_token: account.id_token
+                    ? JSON.stringify(
+                        encryptionService.encryptField(
+                          "id_token",
+                          account.id_token,
+                        ),
+                      )
+                    : (null as unknown as string | undefined | null),
                   session_state: account.session_state as
                     | string
                     | undefined
@@ -184,6 +195,22 @@ export const authOptions: NextAuthOptions = {
                   data: {
                     access_token: JSON.stringify(encryptedAccessToken),
                     scope: account.scope,
+                    refresh_token: account.refresh_token
+                      ? JSON.stringify(
+                          encryptionService.encryptField(
+                            "refresh_token",
+                            account.refresh_token,
+                          ),
+                        )
+                      : existingAccount.refresh_token,
+                    id_token: account.id_token
+                      ? JSON.stringify(
+                          encryptionService.encryptField(
+                            "id_token",
+                            account.id_token,
+                          ),
+                        )
+                      : existingAccount.id_token,
                   },
                 });
               }
@@ -428,11 +455,9 @@ export async function getGithubUsernameAndPAT(
   if (githubAuth?.githubUsername && githubAccount?.access_token) {
     return {
       username: githubAuth.githubUsername,
-      pat: JSON.stringify(
-        encryptionService.decryptField(
-          "access_token",
-          githubAccount.access_token,
-        ),
+      pat: encryptionService.decryptField(
+        "access_token",
+        githubAccount.access_token,
       ),
     };
   }
