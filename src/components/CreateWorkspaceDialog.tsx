@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "next-auth/react";
 import type { WorkspaceResponse } from "@/types/workspace";
+import { ErrorDisplay } from "@/components/ui/error-display";
 
 interface CreateWorkspaceDialogProps {
   open: boolean;
@@ -68,8 +69,8 @@ export function CreateWorkspaceDialog({
       setFormData({ name: "", description: "", slug: "" });
       setErrors({});
       onOpenChange(false);
-    } catch (err: any) {
-      setApiError(err.message || "Unknown error");
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -145,7 +146,7 @@ export function CreateWorkspaceDialog({
               disabled={loading}
             />
           </div>
-          {apiError && <p className="text-sm text-destructive">{apiError}</p>}
+          <ErrorDisplay error={apiError} />
           <DialogFooter>
             <Button
               type="button"

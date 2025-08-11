@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { useWorkspaceForm } from "@/hooks/useWorkspaceForm";
 import { FormField } from "./FormField";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { ErrorDisplay } from "@/components/ui/error-display";
 
 export function WorkspaceForm() {
   const {
@@ -63,11 +64,7 @@ export function WorkspaceForm() {
             rows={3}
           />
 
-          {apiError && (
-            <div className="p-3 border border-destructive bg-destructive/10 rounded-md">
-              <p className="text-sm text-destructive">{apiError}</p>
-            </div>
-          )}
+          <ErrorDisplay error={apiError} />
 
           <Button
             type="submit"

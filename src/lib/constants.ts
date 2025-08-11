@@ -116,6 +116,11 @@ export const WORKSPACE_PERMISSION_LEVELS: Record<WorkspaceRole, number> = {
   [WorkspaceRole.OWNER]: 5,
 } as const;
 
+// Workspace limits
+export const WORKSPACE_LIMITS = {
+  MAX_WORKSPACES_PER_USER: parseInt(process.env.MAX_WORKSPACES_PER_USER || "2", 10),
+} as const;
+
 // Error messages
 export const WORKSPACE_ERRORS = {
   NOT_FOUND: "Workspace not found",
@@ -127,6 +132,8 @@ export const WORKSPACE_ERRORS = {
   SLUG_INVALID_LENGTH: "Workspace name must be between 2 and 50 characters.",
   SLUG_ALREADY_EXISTS:
     "A workspace with this name already exists. Please choose a different name.",
+  WORKSPACE_LIMIT_EXCEEDED:
+    `You can only create up to ${WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER} workspaces. Please delete an existing workspace first.`,
 } as const;
 
 // Swarm creation defaults

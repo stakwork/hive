@@ -16,7 +16,8 @@ import {
 } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { 
-  WORKSPACE_ERRORS
+  WORKSPACE_ERRORS,
+  WORKSPACE_LIMITS
 } from "@/lib/constants";
 import {
   findUserByGitHubUsername,
@@ -41,6 +42,7 @@ vi.mock("@/lib/db", () => ({
       findFirst: vi.fn(),
       delete: vi.fn(),
       update: vi.fn(),
+      count: vi.fn(),
     },
     workspaceMember: {
       findFirst: vi.fn(),
@@ -170,11 +172,15 @@ describe("Workspace Service - Unit Tests", () => {
         updatedAt: new Date("2024-01-01"),
       };
 
+      (db.workspace.count as Mock).mockResolvedValue(1); // User has 1 existing workspace
       (db.workspace.findUnique as Mock).mockResolvedValue(null);
       (db.workspace.create as Mock).mockResolvedValue(mockCreatedWorkspace);
 
       const result = await createWorkspace(mockWorkspaceData);
 
+      expect(db.workspace.count).toHaveBeenCalledWith({
+        where: { ownerId: "user1", deleted: false },
+      });
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
         where: { slug: "test-workspace", deleted: false },
       });
@@ -188,6 +194,20 @@ describe("Workspace Service - Unit Tests", () => {
       });
     });
 
+    test("should throw error when workspace limit exceeded", async () => {
+      (db.workspace.count as Mock).mockResolvedValue(WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER);
+
+      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
+        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
+      );
+
+      expect(db.workspace.count).toHaveBeenCalledWith({
+        where: { ownerId: "user1", deleted: false },
+      });
+      expect(db.workspace.findUnique).not.toHaveBeenCalled();
+      expect(db.workspace.create).not.toHaveBeenCalled();
+    });
+
     test("should throw error for invalid slug", async () => {
       const invalidData = { ...mockWorkspaceData, slug: "invalid_slug" };
 
@@ -198,6 +218,7 @@ describe("Workspace Service - Unit Tests", () => {
 
     test("should throw error if slug already exists", async () => {
       const existingWorkspace = { id: "existing", slug: "test-workspace" };
+      (db.workspace.count as Mock).mockResolvedValue(1); // Under limit
       (db.workspace.findUnique as Mock).mockResolvedValue(existingWorkspace);
 
       await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
@@ -206,6 +227,7 @@ describe("Workspace Service - Unit Tests", () => {
     });
 
     test("should handle Prisma unique constraint error", async () => {
+      (db.workspace.count as Mock).mockResolvedValue(1); // Under limit
       (db.workspace.findUnique as Mock).mockResolvedValue(null);
       (db.workspace.create as Mock).mockRejectedValue({
         code: "P2002",
@@ -219,6 +241,7 @@ describe("Workspace Service - Unit Tests", () => {
 
     test("should re-throw non-constraint errors", async () => {
       const error = new Error("Database connection failed");
+      (db.workspace.count as Mock).mockResolvedValue(1); // Under limit
       (db.workspace.findUnique as Mock).mockResolvedValue(null);
       (db.workspace.create as Mock).mockRejectedValue(error);
 

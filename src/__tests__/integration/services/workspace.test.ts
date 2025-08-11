@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, beforeAll } from "vitest";
+import { describe, test, expect, beforeEach } from "vitest";
 import { 
   createWorkspace,
   getWorkspacesByUserId,
@@ -10,7 +10,8 @@ import {
 } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { 
-  WORKSPACE_ERRORS
+  WORKSPACE_ERRORS,
+  WORKSPACE_LIMITS
 } from "@/lib/constants";
 import type { User, Workspace, Swarm } from "@prisma/client";
 
@@ -125,6 +126,75 @@ describe("Workspace Service - Integration Tests", () => {
 
       expect(result.description).toBeNull();
       expect(result.name).toBe("Minimal Workspace");
+    });
+
+    test("should enforce workspace limit per user", async () => {
+      // Create max workspaces for user1
+      for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
+        await createWorkspace({
+          name: `Workspace ${i + 1}`,
+          slug: `workspace-${i + 1}-${generateRandomString()}`,
+          ownerId: testUser1.id,
+        });
+      }
+
+      // Try to create one more - should fail
+      const extraWorkspaceData = {
+        name: "Extra Workspace",
+        slug: `extra-workspace-${generateRandomString()}`,
+        ownerId: testUser1.id,
+      };
+
+      await expect(createWorkspace(extraWorkspaceData)).rejects.toThrow(
+        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
+      );
+
+      // Verify user2 can still create workspaces
+      const user2WorkspaceData = {
+        name: "User2 Workspace",
+        slug: `user2-workspace-${generateRandomString()}`,
+        ownerId: testUser2.id,
+      };
+
+      const result = await createWorkspace(user2WorkspaceData);
+      expect(result.ownerId).toBe(testUser2.id);
+    });
+
+    test("should allow workspace creation after deletion", async () => {
+      // Create max workspaces
+      const workspaces = [];
+      for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
+        const workspace = await createWorkspace({
+          name: `Workspace ${i + 1}`,
+          slug: `workspace-${i + 1}-${generateRandomString()}`,
+          ownerId: testUser1.id,
+        });
+        workspaces.push(workspace);
+      }
+
+      // Try to create another - should fail
+      await expect(createWorkspace({
+        name: "Extra Workspace",
+        slug: `extra-workspace-${generateRandomString()}`,
+        ownerId: testUser1.id,
+      })).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
+
+      // Delete one workspace
+      await db.workspace.update({
+        where: { id: workspaces[0].id },
+        data: { deleted: true, deletedAt: new Date() }
+      });
+
+      // Now should be able to create new workspace
+      const newWorkspaceData = {
+        name: "New Workspace",
+        slug: `new-workspace-${generateRandomString()}`,
+        ownerId: testUser1.id,
+      };
+
+      const result = await createWorkspace(newWorkspaceData);
+      expect(result.ownerId).toBe(testUser1.id);
+      expect(result.name).toBe("New Workspace");
     });
   });
 

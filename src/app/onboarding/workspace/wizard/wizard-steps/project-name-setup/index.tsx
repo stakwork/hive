@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { AnimatePresence, motion } from "framer-motion";
+import { ErrorDisplay } from "@/components/ui/error-display";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -203,6 +204,7 @@ export function ProjectNameSetupStep() {
   ) : (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
+        <ErrorDisplay error={error} className="mb-4" />
         <div className="flex items-center justify-center mx-auto mb-4">
           <svg
             width="64"
