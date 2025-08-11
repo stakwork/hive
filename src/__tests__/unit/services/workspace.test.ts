@@ -77,9 +77,22 @@ vi.mock("@/lib/mappers/workspace-member", () => ({
   WORKSPACE_MEMBER_INCLUDE: {},
 }));
 
+const mockedFindUserByGitHubUsername = vi.mocked(findUserByGitHubUsername);
+const mockedFindActiveMember = vi.mocked(findActiveMember);
+const mockedFindPreviousMember = vi.mocked(findPreviousMember);
+const mockedIsWorkspaceOwner = vi.mocked(isWorkspaceOwner);
+const mockedCreateWorkspaceMember = vi.mocked(createWorkspaceMember);
+const mockedReactivateWorkspaceMember = vi.mocked(reactivateWorkspaceMember);
+const mockedGetActiveWorkspaceMembers = vi.mocked(getActiveWorkspaceMembers);
+const mockedUpdateMemberRole = vi.mocked(updateMemberRole);
+const mockedSoftDeleteMember = vi.mocked(softDeleteMember);
+const mockedMapWorkspaceMember = vi.mocked(mapWorkspaceMember);
+const mockedMapWorkspaceMembers = vi.mocked(mapWorkspaceMembers);
+
 describe("Workspace Service - Unit Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe("validateWorkspaceSlug", () => {
@@ -634,13 +647,13 @@ describe("Workspace Service - Unit Tests", () => {
           },
         ];
 
-        (getActiveWorkspaceMembers as Mock).mockResolvedValue(mockMembers);
-        (mapWorkspaceMembers as Mock).mockReturnValue(mockMembers);
+        mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
+        mockedMapWorkspaceMembers.mockReturnValue(mockMembers);
 
         const result = await getWorkspaceMembers("workspace1");
 
-        expect(getActiveWorkspaceMembers).toHaveBeenCalledWith("workspace1");
-        expect(mapWorkspaceMembers).toHaveBeenCalledWith(mockMembers);
+        expect(mockedGetActiveWorkspaceMembers).toHaveBeenCalledWith("workspace1");
+        expect(mockedMapWorkspaceMembers).toHaveBeenCalledWith(mockMembers);
         expect(result).toEqual(mockMembers);
       });
 
@@ -661,8 +674,8 @@ describe("Workspace Service - Unit Tests", () => {
           },
         ];
 
-        (getActiveWorkspaceMembers as Mock).mockResolvedValue(mockMembers);
-        (mapWorkspaceMembers as Mock).mockReturnValue(mockMembers);
+        mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
+        mockedMapWorkspaceMembers.mockReturnValue(mockMembers);
 
         const result = await getWorkspaceMembers("workspace1");
 
@@ -703,56 +716,45 @@ describe("Workspace Service - Unit Tests", () => {
       };
 
       test("should add workspace member successfully", async () => {
-        (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock)
-          .mockResolvedValueOnce(null) // No active member
-          .mockResolvedValueOnce(null); // No previous member
-        (db.workspace.findUnique as Mock).mockResolvedValue({ ownerId: "different-owner" });
-        (db.workspaceMember.create as Mock).mockResolvedValue(mockCreatedMember);
-
-        const result = await addWorkspaceMember("workspace1", "johndoe", "DEVELOPER");
-
-        expect(db.gitHubAuth.findFirst).toHaveBeenCalledWith({
-          where: { githubUsername: "johndoe" },
-          include: { user: true },
-        });
-
-        expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
-          where: {
-            workspaceId: "workspace1",
-            userId: "user1",
-            leftAt: null,
-          },
-        });
-
-        expect(db.workspaceMember.create).toHaveBeenCalledWith({
-          data: {
-            workspaceId: "workspace1",
-            userId: "user1",
-            role: "DEVELOPER",
-          },
-          include: {
-            user: {
-              include: {
-                githubAuth: {
-                  select: {
-                    githubUsername: true,
-                    name: true,
-                    bio: true,
-                    publicRepos: true,
-                    followers: true,
-                  },
-                },
-              },
+        mockedFindUserByGitHubUsername.mockResolvedValue(mockGitHubAuth);
+        mockedFindActiveMember.mockResolvedValue(null);
+        mockedFindPreviousMember.mockResolvedValue(null);
+        mockedIsWorkspaceOwner.mockResolvedValue(false);
+        mockedCreateWorkspaceMember.mockResolvedValue(mockCreatedMember);
+        mockedMapWorkspaceMember.mockReturnValue({
+          id: "member1",
+          userId: "user1",
+          role: "DEVELOPER",
+          joinedAt: "2024-01-01T00:00:00.000Z",
+          user: {
+            id: "user1",
+            name: "John Doe",
+            email: "john@example.com",
+            image: "https://github.com/john.png",
+            github: {
+              username: "johndoe",
+              name: "John Doe",
+              bio: "Software Developer",
+              publicRepos: 25,
+              followers: 100,
             },
           },
         });
+
+        const result = await addWorkspaceMember("workspace1", "johndoe", "DEVELOPER");
+
+        expect(mockedFindUserByGitHubUsername).toHaveBeenCalledWith("johndoe");
+        expect(mockedFindActiveMember).toHaveBeenCalledWith("workspace1", "user1");
+        expect(mockedIsWorkspaceOwner).toHaveBeenCalledWith("workspace1", "user1");
+        expect(mockedFindPreviousMember).toHaveBeenCalledWith("workspace1", "user1");
+        expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user1", "DEVELOPER");
+        expect(mockedMapWorkspaceMember).toHaveBeenCalledWith(mockCreatedMember);
 
         expect(result.user.github?.username).toBe("johndoe");
       });
 
       test("should throw error if GitHub username not found", async () => {
-        (db.gitHubAuth.findFirst as Mock).mockResolvedValue(null);
+        mockedFindUserByGitHubUsername.mockResolvedValue(null);
 
         await expect(
           addWorkspaceMember("workspace1", "nonexistent", "DEVELOPER")
@@ -760,8 +762,8 @@ describe("Workspace Service - Unit Tests", () => {
       });
 
       test("should throw error if user is already a member", async () => {
-        (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue({ id: "existing-member" }); // Active member found
+        mockedFindUserByGitHubUsername.mockResolvedValue(mockGitHubAuth);
+        mockedFindActiveMember.mockResolvedValue({ id: "existing-member" });
 
         await expect(
           addWorkspaceMember("workspace1", "johndoe", "DEVELOPER")
@@ -769,11 +771,9 @@ describe("Workspace Service - Unit Tests", () => {
       });
 
       test("should throw error if user is the workspace owner", async () => {
-        (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock)
-          .mockResolvedValueOnce(null) // No active member
-          .mockResolvedValueOnce(null); // No previous member
-        (db.workspace.findUnique as Mock).mockResolvedValue({ ownerId: "user1" }); // Same as member userId
+        mockedFindUserByGitHubUsername.mockResolvedValue(mockGitHubAuth);
+        mockedFindActiveMember.mockResolvedValue(null);
+        mockedIsWorkspaceOwner.mockResolvedValue(true);
 
         await expect(
           addWorkspaceMember("workspace1", "johndoe", "DEVELOPER")
@@ -789,40 +789,35 @@ describe("Workspace Service - Unit Tests", () => {
           leftAt: new Date("2024-01-01"),
         };
 
-        (db.gitHubAuth.findFirst as Mock).mockResolvedValue(mockGitHubAuth);
-        (db.workspaceMember.findFirst as Mock)
-          .mockResolvedValueOnce(null) // No active member
-          .mockResolvedValueOnce(previousMember); // Found previous member
-        (db.workspace.findUnique as Mock).mockResolvedValue({ ownerId: "different-owner" });
-        (db.workspaceMember.update as Mock).mockResolvedValue(mockCreatedMember);
-
-        const result = await addWorkspaceMember("workspace1", "johndoe", "DEVELOPER");
-
-        expect(db.workspaceMember.update).toHaveBeenCalledWith({
-          where: { id: "previous-member-1" },
-          data: {
-            role: "DEVELOPER",
-            leftAt: null,
-            joinedAt: expect.any(Date),
-          },
-          include: {
-            user: {
-              include: {
-                githubAuth: {
-                  select: {
-                    githubUsername: true,
-                    name: true,
-                    bio: true,
-                    publicRepos: true,
-                    followers: true,
-                  },
-                },
-              },
+        mockedFindUserByGitHubUsername.mockResolvedValue(mockGitHubAuth);
+        mockedFindActiveMember.mockResolvedValue(null);
+        mockedFindPreviousMember.mockResolvedValue(previousMember);
+        mockedIsWorkspaceOwner.mockResolvedValue(false);
+        mockedReactivateWorkspaceMember.mockResolvedValue(mockCreatedMember);
+        mockedMapWorkspaceMember.mockReturnValue({
+          id: "member1",
+          userId: "user1",
+          role: "DEVELOPER",
+          joinedAt: "2024-01-01T00:00:00.000Z",
+          user: {
+            id: "user1",
+            name: "John Doe",
+            email: "john@example.com",
+            image: "https://github.com/john.png",
+            github: {
+              username: "johndoe",
+              name: "John Doe",
+              bio: "Software Developer",
+              publicRepos: 25,
+              followers: 100,
             },
           },
         });
 
-        expect(db.workspaceMember.create).not.toHaveBeenCalled();
+        const result = await addWorkspaceMember("workspace1", "johndoe", "DEVELOPER");
+
+        expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-1", "DEVELOPER");
+        expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
         expect(result.user.github?.username).toBe("johndoe");
       });
     });
@@ -856,44 +851,39 @@ describe("Workspace Service - Unit Tests", () => {
       };
 
       test("should update member role successfully", async () => {
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockMember);
-        (db.workspaceMember.update as Mock).mockResolvedValue(mockUpdatedMember);
-
-        const result = await updateWorkspaceMemberRole("workspace1", "user1", "DEVELOPER");
-
-        expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
-          where: {
-            workspaceId: "workspace1",
-            userId: "user1",
-            leftAt: null,
-          },
-        });
-
-        expect(db.workspaceMember.update).toHaveBeenCalledWith({
-          where: { id: "member1" },
-          data: { role: "DEVELOPER" },
-          include: {
-            user: {
-              include: {
-                githubAuth: {
-                  select: {
-                    githubUsername: true,
-                    name: true,
-                    bio: true,
-                    publicRepos: true,
-                    followers: true,
-                  },
-                },
-              },
+        mockedFindActiveMember.mockResolvedValue(mockMember);
+        mockedUpdateMemberRole.mockResolvedValue(mockUpdatedMember);
+        mockedMapWorkspaceMember.mockReturnValue({
+          id: "member1",
+          userId: "user1",
+          role: "DEVELOPER",
+          joinedAt: "2024-01-01T00:00:00.000Z",
+          user: {
+            id: "user1",
+            name: "John Doe",
+            email: "john@example.com",
+            image: "https://github.com/john.png",
+            github: {
+              username: "johndoe",
+              name: "John Doe",
+              bio: "Software Developer",
+              publicRepos: 25,
+              followers: 100,
             },
           },
         });
+
+        const result = await updateWorkspaceMemberRole("workspace1", "user1", "DEVELOPER");
+
+        expect(mockedFindActiveMember).toHaveBeenCalledWith("workspace1", "user1");
+        expect(mockedUpdateMemberRole).toHaveBeenCalledWith("member1", "DEVELOPER");
+        expect(mockedMapWorkspaceMember).toHaveBeenCalledWith(mockUpdatedMember);
 
         expect(result.role).toBe("DEVELOPER");
       });
 
       test("should throw error if member not found", async () => {
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+        mockedFindActiveMember.mockResolvedValue(null);
 
         await expect(
           updateWorkspaceMemberRole("workspace1", "user1", "DEVELOPER")
@@ -910,27 +900,17 @@ describe("Workspace Service - Unit Tests", () => {
       };
 
       test("should remove member successfully", async () => {
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockMember);
-        (db.workspaceMember.update as Mock).mockResolvedValue({});
+        mockedFindActiveMember.mockResolvedValue(mockMember);
+        mockedSoftDeleteMember.mockResolvedValue(undefined);
 
         await removeWorkspaceMember("workspace1", "user1");
 
-        expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
-          where: {
-            workspaceId: "workspace1",
-            userId: "user1",
-            leftAt: null,
-          },
-        });
-
-        expect(db.workspaceMember.update).toHaveBeenCalledWith({
-          where: { id: "member1" },
-          data: { leftAt: expect.any(Date) },
-        });
+        expect(mockedFindActiveMember).toHaveBeenCalledWith("workspace1", "user1");
+        expect(mockedSoftDeleteMember).toHaveBeenCalledWith("member1");
       });
 
       test("should throw error if member not found", async () => {
-        (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+        mockedFindActiveMember.mockResolvedValue(null);
 
         await expect(removeWorkspaceMember("workspace1", "user1")).rejects.toThrow("Member not found");
       });
