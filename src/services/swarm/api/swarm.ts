@@ -153,3 +153,53 @@ export async function swarmApiRequestAuth({
     return { ok: false, status: 500 };
   }
 }
+
+export async function swarmGraphQuery({
+  swarmUrl,
+  apiKey,
+  nodeType,
+  topNodeCount,
+  depth = 0,
+  sortBy = "date_added_to_graph",
+  filters,
+  ...otherParams
+}: {
+  swarmUrl: string;
+  apiKey: string;
+  nodeType?: string[];
+  topNodeCount?: number;
+  depth?: number;
+  sortBy?: string;
+  filters?: Record<string, unknown>;
+  [key: string]: unknown;
+}): Promise<{ ok: boolean; data?: unknown; status: number }> {
+  // Transform swarmUrl to use port 8444 for graph API
+  // Convert https://name.sphinx.chat/api to https://name.sphinx.chat:8444
+  const graphApiUrl = swarmUrl.replace(/\/api$/, ':8444');
+  
+  const queryParams = new URLSearchParams();
+  
+  if (nodeType) queryParams.append('node_type', JSON.stringify(nodeType));
+  if (topNodeCount) queryParams.append('top_node_count', topNodeCount.toString());
+  if (depth !== undefined) queryParams.append('depth', depth.toString());
+  if (sortBy) queryParams.append('sort_by', sortBy);
+  if (filters) {
+    Object.entries(filters).forEach(([key, value]) => {
+      queryParams.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+    });
+  }
+  
+  // Add any other dynamic params
+  Object.entries(otherParams).forEach(([key, value]) => {
+    if (value !== undefined && !['swarmUrl', 'apiKey', 'nodeType', 'topNodeCount', 'depth', 'sortBy', 'filters'].includes(key)) {
+      queryParams.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
+  });
+
+  return swarmApiRequestAuth({
+    swarmUrl: graphApiUrl,
+    apiKey,
+    endpoint: `/graph/search?${queryParams.toString()}`,
+    method: "GET"
+  });
+}

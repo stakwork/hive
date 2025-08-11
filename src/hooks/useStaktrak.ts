@@ -159,6 +159,13 @@ export const useStaktrak = (initialUrl?: string) => {
     setGeneratedPlaywrightTest("");
   };
 
+  const updateUrl = (newUrl: string) => {
+    setCurrentUrl(newUrl);
+    if (iframeRef.current) {
+      iframeRef.current.src = newUrl;
+    }
+  };
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // console.log("****** message received:", event.data);
@@ -222,5 +229,6 @@ export const useStaktrak = (initialUrl?: string) => {
     showPlaywrightModal,
     generatedPlaywrightTest,
     closePlaywrightModal,
+    updateUrl,
   };
 };
