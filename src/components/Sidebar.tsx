@@ -2,12 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CheckSquare, Menu, Network, Settings } from "lucide-react";
+import { CheckSquare, Menu, Network, Settings, BarChart3 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -24,7 +25,7 @@ interface SidebarProps {
   };
 }
 
-const navigationItems = [
+const baseNavigationItems = [
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: Network, label: "Stakgraph", href: "/stakgraph" },
@@ -36,6 +37,16 @@ export function Sidebar({ user }: SidebarProps) {
   const {
     slug: workspaceSlug,
   } = useWorkspace();
+  const canAccessInsights = useFeatureFlag('CODEBASE_RECOMMENDATION');
+
+  // Add Insights navigation item conditionally based on feature flag
+  const navigationItems = canAccessInsights 
+    ? [
+        ...baseNavigationItems.slice(0, -1), // All items except Settings
+        { icon: BarChart3, label: "Insights", href: "/insights" },
+        baseNavigationItems[baseNavigationItems.length - 1], // Settings at the end
+      ]
+    : baseNavigationItems;
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
