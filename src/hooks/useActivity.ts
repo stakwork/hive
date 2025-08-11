@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export interface ActivityItem {
   id: string;
@@ -22,7 +22,7 @@ export function useActivity(workspaceSlug: string, limit: number = 5): UseActivi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchActivity = async () => {
+  const fetchActivity = useCallback(async () => {
     if (!workspaceSlug) return;
     
     setLoading(true);
@@ -37,7 +37,7 @@ export function useActivity(workspaceSlug: string, limit: number = 5): UseActivi
       }
 
       // Convert timestamp strings back to Date objects
-      const activitiesWithDates = result.data.map((item: any) => ({
+      const activitiesWithDates = result.data.map((item: ActivityItem & { timestamp: string }) => ({
         ...item,
         timestamp: new Date(item.timestamp)
       }));
@@ -49,11 +49,11 @@ export function useActivity(workspaceSlug: string, limit: number = 5): UseActivi
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceSlug, limit]);
 
   useEffect(() => {
     fetchActivity();
-  }, [workspaceSlug, limit]);
+  }, [fetchActivity]);
 
   const refetch = () => {
     fetchActivity();
