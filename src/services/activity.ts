@@ -98,6 +98,22 @@ export async function getWorkspaceActivity(
   }
 }
 
+interface SwarmNode {
+  ref_id: string;
+  node_type: string;
+  date_added_to_graph: number;
+  properties: {
+    episode_title?: string;
+    [key: string]: unknown;
+  };
+}
+
+interface SwarmResponse {
+  nodes: SwarmNode[];
+  status: string;
+  [key: string]: unknown;
+}
+
 function transformSwarmDataToActivity(swarmData: unknown): ActivityItem[] {
   // Transform the swarm API response to our ActivityItem format
   // The response structure is: { edges: [], nodes: [...], status: "Success" }
@@ -105,14 +121,14 @@ function transformSwarmDataToActivity(swarmData: unknown): ActivityItem[] {
     return [];
   }
 
-  const responseData = swarmData as any;
+  const responseData = swarmData as SwarmResponse;
   const nodes = responseData.nodes || [];
 
   if (!Array.isArray(nodes)) {
     return [];
   }
 
-  return nodes.map((node: any, index: number) => {
+  return nodes.map((node: SwarmNode, index: number) => {
     const properties = node.properties || {};
     const episodeTitle = properties.episode_title || "Unknown Episode";
     
@@ -130,10 +146,6 @@ function transformSwarmDataToActivity(swarmData: unknown): ActivityItem[] {
       status: "active",
       metadata: {
         nodeType: node.node_type,
-        score: node.score,
-        edgeCount: node.edge_count,
-        mediaUrl: properties.media_url,
-        sourceLink: properties.source_link,
         originalData: node
       }
     };
