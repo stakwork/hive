@@ -130,7 +130,7 @@ npx shadcn@latest add [component-name]
 - Workspace context is provided by `WorkspaceProvider`
 
 ### Database Migrations
-- **CRITICAL**: When adding new columns/tables to `prisma/schema.prisma`, ALWAYS create a migration with `npx prisma migrate dev --name <description>`
+- **CRITICAL**: When adding new columns/tables to `prisma/schema.prisma`, ALWAYS create a migration with `npx prisma migrate dev --name <description>` and timestamp
 - Never modify the schema without creating a migration - this causes production database sync issues
 - Always run `npx prisma migrate dev` for schema changes
 - Use `npx prisma generate` after schema modifications

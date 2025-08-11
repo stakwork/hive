@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
 import {
   Monitor,
@@ -10,6 +11,7 @@ import {
   Square,
   Target,
   Copy,
+  ArrowRight,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
@@ -102,6 +104,7 @@ export function BrowserArtifactPanel({
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [urlInput, setUrlInput] = useState("");
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -121,13 +124,34 @@ export function BrowserArtifactPanel({
     showPlaywrightModal,
     generatedPlaywrightTest,
     closePlaywrightModal,
+    updateUrl,
   } = useStaktrak(activeContent?.url);
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
 
+  // Update URL input when display URL changes
+  useEffect(() => {
+    if (displayUrl && urlInput === "") {
+      setUrlInput(displayUrl);
+    }
+  }, [displayUrl, urlInput]);
+
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
+  };
+
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (urlInput.trim() && urlInput !== displayUrl) {
+      updateUrl(urlInput.trim());
+    }
+  };
+
+  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleUrlSubmit(e);
+    }
   };
 
   const handleTabOut = (url: string) => {
