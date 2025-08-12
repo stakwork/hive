@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { WorkspaceMember } from "@/types/workspace";
 import type { WorkspaceRole } from "@/lib/auth/roles";
+import { useSession } from "next-auth/react";
 
 interface WorkspaceMembersProps {
   canAdmin: boolean;
@@ -33,13 +34,14 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [owner, setOwner] = useState<WorkspaceMember | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<{
     open: boolean;
     userId: string;
     userName: string;
   }>({ open: false, userId: "", userName: "" });
   const { slug } = useWorkspace();
+  const { data: session } = useSession();
 
   // Fetch workspace members
   const fetchMembers = async () => {
@@ -246,15 +248,21 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "ADMIN")}>
-                            Make Admin
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "DEVELOPER")}>
-                            Make Developer
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "VIEWER")}>
-                            Make Viewer
-                          </DropdownMenuItem>
+                          {member.role !== "ADMIN" && (
+                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "ADMIN")}>
+                              Make Admin
+                            </DropdownMenuItem>
+                          )}
+                          {member.role !== "DEVELOPER" && (
+                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "DEVELOPER")}>
+                              Make Developer
+                            </DropdownMenuItem>
+                          )}
+                          {member.role !== "VIEWER" && (
+                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "VIEWER")}>
+                              Make Viewer
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem 
                             onClick={() => handleRemoveMember(
                               member.userId, 

@@ -514,6 +514,11 @@ export async function updateWorkspaceMemberRole(
   if (!member) {
     throw new Error("Member not found");
   }
+  
+  // Check if the new role is the same as current role
+  if (member.role === newRole) {
+    throw new Error("Member already has this role");
+  }
 
   const updatedMember = await updateMemberRole(member.id, newRole);
   return mapWorkspaceMember(updatedMember);

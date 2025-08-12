@@ -957,6 +957,18 @@ describe("Workspace Service - Unit Tests", () => {
           updateWorkspaceMemberRole("workspace1", "user1", "DEVELOPER")
         ).rejects.toThrow("Member not found");
       });
+
+      test("should throw error if trying to set same role", async () => {
+        const memberWithAdminRole = {
+          ...mockMember,
+          role: "ADMIN",
+        };
+        mockedFindActiveMember.mockResolvedValue(memberWithAdminRole);
+
+        await expect(
+          updateWorkspaceMemberRole("workspace1", "user1", "ADMIN")
+        ).rejects.toThrow("Member already has this role");
+      });
     });
 
     describe("removeWorkspaceMember", () => {
