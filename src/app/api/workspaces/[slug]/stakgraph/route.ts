@@ -57,6 +57,7 @@ const stakgraphSettingsSchema = z.object({
         dev: z.boolean().optional(),
         env: z.record(z.string()).optional(),
         language: z.string().optional(),
+        interpreter: z.string().optional(),
       }),
     )
     .optional()
