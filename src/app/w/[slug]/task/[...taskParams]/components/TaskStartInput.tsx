@@ -98,7 +98,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
                 onChange={() => onModeChange("test")}
                 className="accent-primary"
               />
-              <span className="text-sm text-foreground">Test</span>
+              <span className="text-sm text-foreground">Artifact Test</span>
             </label>
           </fieldset>
         </div>
