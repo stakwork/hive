@@ -14,14 +14,14 @@ interface TaskStartInputProps {
 export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [isLive, setIsLive] = useState(false);
+  const [mode, setMode] = useState<"live" | "test" | "unit">("test");
 
   useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    if (mode === "live") {
-      setIsLive(true);
+    const savedMode = localStorage.getItem("task_mode") as "live" | "test" | "unit";
+    if (savedMode && ["live", "test", "unit"].includes(savedMode)) {
+      setMode(savedMode);
     } else {
-      setIsLive(false);
+      setMode("test");
     }
   }, []);
 
@@ -83,14 +83,13 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               style={{
                 accentColor: "var(--color-green-500)",
               }}
-              checked={isLive}
+              checked={mode === "live"}
               onChange={() => {
-                setIsLive(true);
+                setMode("live");
                 if (typeof window !== "undefined") {
                   localStorage.setItem("task_mode", "live");
                   onModeChange("live");
                 }
-                // Optionally trigger a callback or state update here
               }}
               className="accent-primary"
             />
@@ -104,18 +103,37 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               style={{
                 accentColor: "var(--color-green-500)",
               }}
-              checked={!isLive}
+              checked={mode === "test"}
               onChange={() => {
-                setIsLive(false);
+                setMode("test");
                 if (typeof window !== "undefined") {
                   localStorage.setItem("task_mode", "test");
                   onModeChange("test");
                 }
-                // Optionally trigger a callback or state update here
               }}
               className="accent-primary"
             />
             <span className="text-sm text-foreground">Test</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="mode"
+              value="unit"
+              style={{
+                accentColor: "var(--color-green-500)",
+              }}
+              checked={mode === "unit"}
+              onChange={() => {
+                setMode("unit");
+                if (typeof window !== "undefined") {
+                  localStorage.setItem("task_mode", "unit");
+                  onModeChange("unit");
+                }
+              }}
+              className="accent-primary"
+            />
+            <span className="text-sm text-foreground">Unit Tests</span>
           </label>
         </fieldset>
       </div>
