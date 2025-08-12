@@ -14,7 +14,7 @@ export interface TestFile {
 }
 
 export function useTestFiles(baseUrl: string, apiKey?: string) {
-  const [testFiles, setTestFiles] = useState([]);
+  const [testFiles, setTestFiles] = useState<TestFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestResult>>(
     {},
@@ -22,9 +22,10 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
   const [expandedTests, setExpandedTests] = useState<Record<string, boolean>>(
     {},
   );
-  const [loadingTests, setLoadingTests] = useState({});
+  const [loadingTests, setLoadingTests] = useState<Record<string, boolean>>({});
 
   const fetchTestFiles = useCallback(async () => {
+    if (!baseUrl) return;
     setIsLoading(true);
     try {
       const headers: Record<string, string> = {};
@@ -32,7 +33,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         headers["x-api-token"] = apiKey;
       }
 
-      const response = await fetch(`${baseUrl}/test/list`, {
+      const response = await fetch(`${baseUrl}/tests/list`, {
         headers,
       });
       const data = await response.json();
@@ -48,9 +49,9 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     }
   }, [baseUrl, apiKey]);
 
-  const normalizeTestFile = (file: TestFile) => {
+  const normalizeTestFile = (file: TestFile): TestFile => {
     return {
-      filename: file.name || "unknown.spec.js",
+      name: file.name || "unknown.spec.js",
       created: file.created || new Date().toISOString(),
       modified: file.modified || new Date().toISOString(),
       size: file.size || 0,
@@ -64,13 +65,14 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     }));
 
     try {
+      if (!baseUrl) return { success: false, error: "Base URL not set" };
       const headers: Record<string, string> = {};
       if (apiKey) {
         headers["x-api-token"] = apiKey;
       }
 
       const getResponse = await fetch(
-        `${baseUrl}/test/get?name=${encodeURIComponent(testName)}`,
+        `${baseUrl}/tests/get?name=${encodeURIComponent(testName)}`,
         {
           headers,
         },
@@ -82,7 +84,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
       }
 
       const runResponse = await fetch(
-        `${baseUrl}/test?test=${encodeURIComponent(testName)}`,
+        `${baseUrl}/tests?test=${encodeURIComponent(testName)}`,
         {
           headers,
         },
@@ -121,13 +123,14 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     if (!confirm(`Are you sure you want to delete ${testName}?`)) return false;
 
     try {
+      if (!baseUrl) return false;
       const headers: Record<string, string> = {};
       if (apiKey) {
         headers["x-api-token"] = apiKey;
       }
 
       const response = await fetch(
-        `${baseUrl}/test/delete?name=${encodeURIComponent(testName)}`,
+        `${baseUrl}/tests/delete?name=${encodeURIComponent(testName)}`,
         {
           headers,
         },
@@ -159,6 +162,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     }
 
     try {
+      if (!baseUrl) return { success: false, error: "Base URL not set" };
       let formattedFilename = filename;
       if (!formattedFilename.endsWith(".spec.js")) {
         formattedFilename = formattedFilename.endsWith(".js")
@@ -173,7 +177,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         headers["x-api-token"] = apiKey;
       }
 
-      const response = await fetch(`${baseUrl}/test/save`, {
+      const response = await fetch(`${baseUrl}/tests/save`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -195,6 +199,38 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     }
   };
 
+  const renameTest = async (fromName: string, toName: string) => {
+    if (!fromName || !toName || fromName === toName) {
+      return { success: false, error: "Invalid names" };
+    }
+
+    try {
+      if (!baseUrl) return { success: false, error: "Base URL not set" };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (apiKey) {
+        headers["x-api-token"] = apiKey;
+      }
+
+      const response = await fetch(`${baseUrl}/tests/rename`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ from: fromName, to: toName }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        await fetchTestFiles();
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error renaming test:", error);
+      return { success: false, error };
+    }
+  };
+
   const toggleTestExpansion = (testName: string) => {
     setExpandedTests((prev) => ({
       ...prev,
@@ -203,8 +239,8 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
   };
 
   useEffect(() => {
-    fetchTestFiles();
-  }, [fetchTestFiles]);
+    if (baseUrl) fetchTestFiles();
+  }, [fetchTestFiles, baseUrl]);
 
   return {
     testFiles,
@@ -216,6 +252,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     runTest,
     deleteTest,
     saveTest,
+    renameTest,
     toggleTestExpansion,
   };
 }

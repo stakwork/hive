@@ -10,6 +10,7 @@ import {
   Square,
   Target,
   Copy,
+  FlaskConical,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
@@ -22,6 +23,7 @@ import {
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "./prism-dark-plus.css";
+import { TestManagerModal } from "./TestManagerModal";
 
 interface PlaywrightTestModalProps {
   isOpen: boolean;
@@ -122,6 +124,7 @@ export function BrowserArtifactPanel({
     generatedPlaywrightTest,
     closePlaywrightModal,
   } = useStaktrak(activeContent?.url);
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
@@ -238,6 +241,15 @@ export function BrowserArtifactPanel({
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => setIsTestModalOpen(true)}
+                      className="h-8 w-8 p-0"
+                      title="Tests"
+                    >
+                      <FlaskConical className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleTabOut(tabUrl)}
                       className="h-8 w-8 p-0"
                       title="Open in new tab"
@@ -274,6 +286,15 @@ export function BrowserArtifactPanel({
         isOpen={showPlaywrightModal}
         onClose={closePlaywrightModal}
         playwrightTest={generatedPlaywrightTest}
+      />
+
+      <TestManagerModal
+        isOpen={isTestModalOpen || showPlaywrightModal}
+        onClose={() => {
+          setIsTestModalOpen(false);
+          if (showPlaywrightModal) closePlaywrightModal();
+        }}
+        generatedCode={generatedPlaywrightTest}
       />
     </div>
   );
