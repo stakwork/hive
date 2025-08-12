@@ -120,8 +120,6 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
   };
 
   const deleteTest = async (testName: string) => {
-    if (!confirm(`Are you sure you want to delete ${testName}?`)) return false;
-
     try {
       if (!baseUrl) return false;
       const headers: Record<string, string> = {};
