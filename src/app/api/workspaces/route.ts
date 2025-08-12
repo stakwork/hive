@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { createWorkspace, getWorkspacesByUserId, softDeleteWorkspace } from "@/services/workspace";
+import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
 
 // Prevent caching of user-specific data
@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const userId = (session.user as { id: string }).id;
-  const workspaces = await getWorkspacesByUserId(userId);
+  const workspaces = await getUserWorkspaces(userId);
   return NextResponse.json({ workspaces }, { status: 200 });
 }
 
