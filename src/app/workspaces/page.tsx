@@ -5,8 +5,9 @@ import { getUserWorkspaces } from "@/services/workspace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Plus, Users, Calendar, Settings } from "lucide-react";
+import { ArrowRight, Plus, Users, Calendar, Settings, Lock } from "lucide-react";
 import Link from "next/link";
+import { WORKSPACE_LIMITS } from "@/lib/constants";
 
 export default async function WorkspacesPage() {
   const session = await getServerSession(authOptions);
@@ -21,6 +22,9 @@ export default async function WorkspacesPage() {
   if (userWorkspaces.length === 0) {
     redirect("/onboarding/workspace");
   }
+
+  // Check if user is at workspace limit
+  const isAtLimit = userWorkspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
 
   return (
     <div className="min-h-screen bg-background">
@@ -102,20 +106,41 @@ export default async function WorkspacesPage() {
           ))}
 
           {/* Create New Workspace Card */}
-          <Card className="group hover:shadow-lg transition-all duration-200 cursor-pointer border-dashed border-2 border-muted-foreground/25 hover:border-blue-500/50">
-            <Link href="/workspaces/new" className="block h-full">
+          <Card className={`group transition-all duration-200 border-dashed border-2 ${
+            isAtLimit 
+              ? 'border-muted-foreground/10 cursor-not-allowed opacity-60' 
+              : 'border-muted-foreground/25 hover:border-blue-500/50 hover:shadow-lg cursor-pointer'
+          }`}>
+            {isAtLimit ? (
               <CardContent className="flex flex-col items-center justify-center h-full py-12 text-center">
-                <div className="w-12 h-12 rounded-full bg-muted group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 flex items-center justify-center mb-4 transition-colors">
-                  <Plus className="w-6 h-6 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Lock className="w-6 h-6 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium mb-2 group-hover:text-blue-600 transition-colors">
-                  Create New Workspace
+                <h3 className="font-medium mb-2 text-muted-foreground">
+                  Workspace Limit Reached
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  Start a new project or organization
+                <p className="text-sm text-muted-foreground mb-1">
+                  You've used all {WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER} available workspaces
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Delete a workspace to create a new one
                 </p>
               </CardContent>
-            </Link>
+            ) : (
+              <Link href="/workspaces/new" className="block h-full">
+                <CardContent className="flex flex-col items-center justify-center h-full py-12 text-center">
+                  <div className="w-12 h-12 rounded-full bg-muted group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 flex items-center justify-center mb-4 transition-colors">
+                    <Plus className="w-6 h-6 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+                  </div>
+                  <h3 className="font-medium mb-2 group-hover:text-blue-600 transition-colors">
+                    Create New Workspace
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Start a new project or organization
+                  </p>
+                </CardContent>
+              </Link>
+            )}
           </Card>
         </div>
 
