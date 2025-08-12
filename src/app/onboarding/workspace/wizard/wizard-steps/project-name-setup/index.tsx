@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { Repository } from "@/types";
-import { extractDomainSafeRepoName, toDomainSafeName } from "@/utils/repositoryParser";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
@@ -47,13 +46,9 @@ export function ProjectNameSetupStep() {
 
   useEffect(() => {
     if (selectedRepo) {
-      const domainSafeName = toDomainSafeName(selectedRepo.name);
-      setProjectName(domainSafeName);
-    } else if (repositoryUrlDraft && !projectName) {
-      const domainSafeName = extractDomainSafeRepoName(repositoryUrlDraft);
-      setProjectName(domainSafeName);
+      setProjectName(selectedRepo.name);
     }
-  }, [selectedRepo, repositoryUrlDraft, projectName, setProjectName]);
+  }, [selectedRepo, setProjectName]);
 
   const handleCreate = async () => {
     try {
@@ -305,8 +300,8 @@ export function ProjectNameSetupStep() {
           </p>}
           <Input
             id="graphDomain"
-            placeholder={isLookingForAvailableName ? "Looking for available name..." : "your-project-name.sphinx.chat"}
-            value={isLookingForAvailableName ? "" : `${projectName}.sphinx.chat`}
+            placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
+            value={isLookingForAvailableName ? "" : projectName}
             readOnly
             tabIndex={-1}
             className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"

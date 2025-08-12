@@ -36,33 +36,3 @@ export function sanitizeWorkspaceName(workspaceName: string): string {
     .replace(/-+/g, "-") // collapse multiple dashes
     .replace(/^-+|-+$/g, ""); // trim leading/trailing dashes
 }
-
-/**
- * Extracts repository name from a GitHub URL
- * @param repoUrl - The repository URL or name
- * @returns The extracted repository name
- */
-export function extractRepoNameFromUrl(repoUrl: string): string {
-  const urlMatch = repoUrl.match(/github\.com\/[^/]+\/([^/?#]+)/i);
-  return urlMatch ? urlMatch[1] : repoUrl;
-}
-
-/**
- * Converts a repository name to a domain-safe format
- * GitHub allows underscores and dots, but domains don't support _ and . creates subdomains
- * @param repoName - The repository name to convert
- * @returns A domain-safe name (converts _ and . to -, then lowercase)
- */
-export function toDomainSafeName(repoName: string): string {
-  return repoName.replace(/[_.]/g, '-').toLowerCase();
-}
-
-/**
- * Extracts and converts a repository name from a GitHub URL to domain-safe format
- * @param repoUrl - The repository URL or name
- * @returns A domain-safe repository name
- */
-export function extractDomainSafeRepoName(repoUrl: string): string {
-  const repoName = extractRepoNameFromUrl(repoUrl);
-  return toDomainSafeName(repoName);
-}
