@@ -21,7 +21,8 @@ import { Users, Plus, MoreHorizontal, Trash2 } from "lucide-react";
 import { AddMemberModal } from "./AddMemberModal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import type { WorkspaceMember, WorkspaceRole } from "@/types/workspace";
+import type { WorkspaceMember } from "@/types/workspace";
+import type { WorkspaceRole } from "@/lib/auth/roles";
 
 interface WorkspaceMembersProps {
   canAdmin: boolean;

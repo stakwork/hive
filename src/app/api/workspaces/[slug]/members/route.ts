@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
 import {
   getWorkspaceMembers,
   addWorkspaceMember,
   validateWorkspaceAccess,
   getWorkspaceBySlug,
 } from "@/services/workspace";
-import { WorkspaceRole } from "@/types/workspace";
+import { isAssignableMemberRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
@@ -68,8 +67,7 @@ export async function POST(
     }
 
     // Validate role
-    const validRoles: WorkspaceRole[] = ["VIEWER", "DEVELOPER", "PM", "ADMIN"];
-    if (!validRoles.includes(role)) {
+    if (!isAssignableMemberRole(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 

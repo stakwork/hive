@@ -1,11 +1,11 @@
 import { db } from "@/lib/db";
+import { WorkspaceRole } from "@prisma/client";
 import {
   CreateWorkspaceRequest,
   WorkspaceResponse,
   WorkspaceWithRole,
   WorkspaceWithAccess,
   WorkspaceAccessValidation,
-  WorkspaceRole,
 } from "@/types/workspace";
 import {
   RESERVED_WORKSPACE_SLUGS,
@@ -265,7 +265,7 @@ export async function validateWorkspaceAccess(
     };
   }
 
-  const roleLevel = WORKSPACE_PERMISSION_LEVELS[workspace.userRole];
+  const roleLevel = WORKSPACE_PERMISSION_LEVELS[workspace.userRole as WorkspaceRole];
 
   return {
     hasAccess: true,
@@ -279,9 +279,9 @@ export async function validateWorkspaceAccess(
       createdAt: workspace.createdAt,
       updatedAt: workspace.updatedAt,
     },
-    canRead: roleLevel >= WORKSPACE_PERMISSION_LEVELS.VIEWER,
-    canWrite: roleLevel >= WORKSPACE_PERMISSION_LEVELS.DEVELOPER,
-    canAdmin: roleLevel >= WORKSPACE_PERMISSION_LEVELS.ADMIN,
+    canRead: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.VIEWER],
+    canWrite: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
+    canAdmin: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
   };
 }
 

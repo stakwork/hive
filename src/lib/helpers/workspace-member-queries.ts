@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { WorkspaceRole } from "@/types/workspace";
+import type { WorkspaceRole } from "@/lib/auth/roles";
 import { WORKSPACE_MEMBER_INCLUDE, type PrismaWorkspaceMemberWithUser } from "@/lib/mappers/workspace-member";
 
 /**

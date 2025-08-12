@@ -6,7 +6,7 @@ import {
   removeWorkspaceMember,
   validateWorkspaceAccess,
 } from "@/services/workspace";
-import { WorkspaceRole } from "@/types/workspace";
+import { isAssignableMemberRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
@@ -32,8 +32,7 @@ export async function PATCH(
     }
 
     // Validate role
-    const validRoles: WorkspaceRole[] = ["VIEWER", "DEVELOPER", "PM", "ADMIN"];
-    if (!validRoles.includes(role)) {
+    if (!isAssignableMemberRole(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 

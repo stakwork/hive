@@ -1,3 +1,5 @@
+import type { WorkspaceRole } from "@prisma/client";
+
 export interface CreateWorkspaceRequest {
   name: string;
   description?: string;
@@ -15,14 +17,8 @@ export interface WorkspaceResponse {
   updatedAt: string;
 }
 
-// New types for enhanced workspace functions
-export type WorkspaceRole =
-  | "OWNER"
-  | "ADMIN"
-  | "PM"
-  | "DEVELOPER"
-  | "STAKEHOLDER"
-  | "VIEWER";
+// Re-export WorkspaceRole for convenience
+export type { WorkspaceRole };
 
 export interface WorkspaceWithRole extends WorkspaceResponse {
   userRole: WorkspaceRole;
