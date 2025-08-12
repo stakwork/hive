@@ -57,6 +57,7 @@ model User {
   deleted       Boolean      @default(false)
   deletedAt     DateTime?    @map("deleted_at")
   lastLoginAt   DateTime?    @map("last_login_at")
+  poolApiKey    String?      @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
   
   // Authentication relationships
   accounts      Account[]
