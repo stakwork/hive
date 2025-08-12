@@ -63,8 +63,6 @@ model User {
   sessions      Session[]
   githubAuth    GitHubAuth?
 
-  // Pool api key
-  poolApiKey            String? @map("pool_api_key") // NEW: Pool API Key for Pool Manager
   
   // Workspace relationships
   ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
@@ -198,6 +196,7 @@ model Swarm {
 
   // Stakgraph configuration fields
   poolName              String? @map("pool_name")
+  poolApiKey            String? @map("pool_api_key") // Pool API Key for Pool Manager
   repositoryName        String? @map("repository_name")
   defaultBranch         String? @map("default_branch")
   repositoryDescription String? @map("repository_description")

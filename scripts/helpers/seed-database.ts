@@ -83,10 +83,6 @@ async function seedWorkspacesAndSwarms(
     });
 
     const poolApiKey = `pool_key_${item.workspace.slug}`;
-    await prisma.user.update({
-      where: { id: item.owner.id },
-      data: { poolApiKey },
-    });
 
     const swarmApiKey = `swarm_key_${item.swarm.name}`;
 
@@ -97,6 +93,7 @@ async function seedWorkspacesAndSwarms(
         status: SwarmStatus.ACTIVE,
         repositoryUrl: item.swarm.repoUrl,
         swarmApiKey,
+        poolApiKey,
         environmentVariables: [
           { name: "NODE_ENV", value: "development" },
           { name: "FEATURE_FLAG", value: "true" },
@@ -108,6 +105,7 @@ async function seedWorkspacesAndSwarms(
         repositoryUrl: item.swarm.repoUrl,
         workspaceId: ws.id,
         swarmApiKey,
+        poolApiKey,
         environmentVariables: [
           { name: "NODE_ENV", value: "development" },
           { name: "FEATURE_FLAG", value: "true" },

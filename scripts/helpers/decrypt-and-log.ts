@@ -34,18 +34,30 @@ async function logAccounts() {
 
 async function logUsers() {
   const users = await prisma.user.findMany({
-    select: { id: true, email: true, poolApiKey: true },
+    select: { id: true, email: true },
   });
 
-  console.log("\n=== USERS (poolApiKey) ===");
+  console.log("\n=== USERS ===");
   for (const u of users) {
+    console.log(`[USER] id=${u.id} email=${u.email}`);
+    }
+  }
+}
+
+async function logSwarms() {
+  const swarms = await prisma.swarm.findMany({
+    select: { id: true, name: true, poolApiKey: true },
+  });
+
+  console.log("\n=== SWARMS (poolApiKey) ===");
+  for (const s of swarms) {
     try {
-      const key = u.poolApiKey ?? null;
+      const key = s.poolApiKey ?? null;
       const decrypted = key ? encryption.decryptField("poolApiKey", key) : null;
-      console.log(`[USER] id=${u.id} email=${u.email}`);
+      console.log(`[SWARM] id=${s.id} name=${s.name}`);
       console.log(`  poolApiKey (decrypted): ${decrypted}`);
     } catch (err) {
-      console.log(`[USER] id=${u.id} email=${u.email}`);
+      console.log(`[SWARM] id=${s.id} name=${s.name}`);
       console.log(`  error: ${String(err)}`);
     }
   }
@@ -141,8 +153,8 @@ async function main() {
   await prisma.$connect();
   await logAccounts();
   await logUsers();
-  await logWorkspaces();
   await logSwarms();
+  await logWorkspaces();
 }
 
 if (require.main === module) {

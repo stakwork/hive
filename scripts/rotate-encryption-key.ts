@@ -232,8 +232,8 @@ async function rotateWorkspaces(
   }
 }
 
-async function rotateUsers(service: EncryptionService, stats: RotationStats) {
-  const rows = await prisma.user.findMany({
+async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
+  const rows = await prisma.swarm.findMany({
     where: { poolApiKey: { not: null } },
     select: { id: true, poolApiKey: true },
   });
@@ -261,14 +261,14 @@ async function rotateUsers(service: EncryptionService, stats: RotationStats) {
         plaintext,
         activeKeyId || "default",
       );
-      await prisma.user.update({
+      await prisma.swarm.update({
         where: { id: row.id },
         data: { poolApiKey: JSON.stringify(reenc) },
       });
       stats.reencrypted++;
     } catch (e) {
       stats.errors++;
-      console.error(`User ${row.id} rotation error:`, e);
+      console.error(`Swarm ${row.id} rotation error:`, e);
     }
   }
 }
@@ -289,7 +289,6 @@ async function main() {
   await rotateAccounts(encryption, stats);
   await rotateSwarms(encryption, stats);
   await rotateWorkspaces(encryption, stats);
-  await rotateUsers(encryption, stats);
 
   console.log("\nRotation complete:");
   console.log(stats);

@@ -18,15 +18,9 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
-    const user = await db.user.findUnique({
-      where: {
-        email: session?.user.email || "",
-      },
-    });
 
-    let poolApiKey = JSON.stringify(
-      encryptionService.encryptField("poolApiKey", user?.poolApiKey || ""),
-    );
+    // Will get poolApiKey from swarm later
+    let poolApiKey = "";
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -66,6 +60,9 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Get poolApiKey from swarm
+    poolApiKey = swarm?.poolApiKey || "";
 
     const github_pat = await getGithubUsernameAndPAT(session?.user.id);
 
@@ -107,13 +104,14 @@ export async function POST(request: NextRequest) {
           username: `${sanitizedName}-${swarmId}`.toLowerCase(),
         });
 
-        await db.user.update({
+        // Update swarm with the new poolApiKey instead of user
+        await db.swarm.update({
           where: {
-            email: session?.user.email || "",
+            id: swarm.id,
           },
           data: {
             poolApiKey: JSON.stringify(
-              encryptionService.encryptField("poolApiKey", poolApiKey),
+              encryptionService.encryptField("poolApiKey", loginData.token),
             ),
           },
         });
@@ -131,6 +129,16 @@ export async function POST(request: NextRequest) {
             poolUser.authentication_token,
           ),
         );
+
+        // Also update swarm with the new authentication token
+        await db.swarm.update({
+          where: {
+            id: swarm.id,
+          },
+          data: {
+            poolApiKey,
+          },
+        });
       } catch (error) {
         console.error("Error creating pool user:", error);
         return NextResponse.json(

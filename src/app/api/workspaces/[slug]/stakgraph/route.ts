@@ -266,23 +266,18 @@ export async function PUT(
       containerFiles: settings.containerFiles,
     });
 
-    const user = await db.user.findUnique({
-      where: {
-        email: session?.user?.email || "",
-      },
-    });
-
-    const userPoolApiKey = user?.poolApiKey || "";
+    // Get pool API key from swarm instead of user
+    const swarmPoolApiKey = swarm?.poolApiKey || "";
     let decryptedPoolApiKey: string;
 
     try {
-      decryptedPoolApiKey = encryptionService.decryptField(
+      decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField(
         "poolApiKey",
-        userPoolApiKey,
-      );
+        swarmPoolApiKey,
+      ) : "";
     } catch (error) {
       console.error("Failed to decrypt poolApiKey:", error);
-      decryptedPoolApiKey = userPoolApiKey;
+      decryptedPoolApiKey = swarmPoolApiKey;
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
@@ -295,11 +290,6 @@ export async function PUT(
         const poolManager = new PoolManagerService(
           config as unknown as ServiceConfig,
         );
-
-        const swarm = (await db.swarm.findUnique({
-          where: { workspaceId: workspace.id },
-          select: swarmSelect,
-        })) as SwarmSelectResult | null;
 
         if (swarm) {
           const currentEnvVars = await poolManager.getPoolEnvVars(

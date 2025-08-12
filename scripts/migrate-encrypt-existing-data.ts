@@ -190,8 +190,8 @@ async function migrateWorkspaces(): Promise<void> {
   }
 }
 
-async function migrateUsers(): Promise<void> {
-  const users = await prisma.user.findMany({
+async function migrateSwarms(): Promise<void> {
+  const swarms = await prisma.swarm.findMany({
     where: {
       poolApiKey: {
         not: null,
@@ -203,20 +203,20 @@ async function migrateUsers(): Promise<void> {
     },
   });
 
-  for (const user of users) {
+  for (const swarm of swarms) {
     try {
-      if (!user.poolApiKey || (await isAlreadyEncrypted(user.poolApiKey))) {
+      if (!swarm.poolApiKey || (await isAlreadyEncrypted(swarm.poolApiKey))) {
         continue;
       }
 
-      const encryptedKey = await encryptValue("poolApiKey", user.poolApiKey);
+      const encryptedKey = await encryptValue("poolApiKey", swarm.poolApiKey);
 
-      await prisma.user.update({
-        where: { id: user.id },
+      await prisma.swarm.update({
+        where: { id: swarm.id },
         data: { poolApiKey: encryptedKey },
       });
     } catch (error) {
-      console.error(`Failed to encrypt user ${user.id}:`, error);
+      console.error(`Failed to encrypt swarm ${swarm.id}:`, error);
     }
   }
 }
@@ -233,7 +233,6 @@ async function main() {
     await migrateAccounts();
     await migrateSwarms();
     await migrateWorkspaces();
-    await migrateUsers();
   } catch (error) {
     console.error("Migration failed:", error);
     process.exit(1);
