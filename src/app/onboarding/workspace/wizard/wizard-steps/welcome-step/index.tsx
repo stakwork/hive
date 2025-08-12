@@ -48,7 +48,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
   }, [repositoryUrlDraft]);
 
   const handleNext = () => {
-    const trimmedUrl = repositoryUrl.trim();
+    const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
 
     if (!trimmedUrl) {
       setError("Please enter a GitHub repository URL");
