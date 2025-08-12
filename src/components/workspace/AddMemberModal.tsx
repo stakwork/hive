@@ -166,14 +166,6 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
           </DialogDescription>
         </DialogHeader>
 
-        <Alert>
-          <InfoIcon className="h-4 w-4" />
-          <AlertDescription>
-            Only users who have already signed up to Hive can be added as members.
-            If they haven't signed up yet, ask them to create an account first.
-          </AlertDescription>
-        </Alert>
-
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
