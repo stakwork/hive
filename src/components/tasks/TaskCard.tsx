@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { formatRelativeTime } from "@/lib/utils";
 
 interface TaskCardProps {
   task: TaskData;
@@ -55,7 +56,7 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
         )}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{new Date(task.createdAt).toLocaleDateString()}</span>
+          <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
       </div>
     </div>
