@@ -115,7 +115,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               }}
               className="accent-primary"
             />
-            <span className="text-sm text-foreground">Test</span>
+            <span className="text-sm text-foreground">Artifact Test</span>
           </label>
         </fieldset>
       </div>
