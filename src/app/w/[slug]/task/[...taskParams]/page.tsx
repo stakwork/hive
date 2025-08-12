@@ -16,6 +16,7 @@ import { useParams } from "next/navigation";
 import { usePusherConnection, WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
+import { useTaskMode } from "@/hooks/useTaskMode";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
 
 // Generate unique IDs to prevent collisions
@@ -29,7 +30,7 @@ export default function TaskChatPage() {
   const { toast } = useToast();
   const params = useParams();
 
-  const [taskMode, setTaskMode] = useState("live");
+  const { taskMode, setTaskMode, isLoaded } = useTaskMode();
 
   const slug = params.slug as string;
   const taskParams = params.taskParams as string[];
@@ -49,11 +50,6 @@ export default function TaskChatPage() {
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
-
-  useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    setTaskMode(mode || "live");
-  }, []);
 
   const { lastLogLine, clearLogs } = useProjectLogWebSocket(
     projectId,
@@ -326,7 +322,7 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput onStart={handleStart} onModeChange={setTaskMode} />
+          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} />
         </motion.div>
       ) : (
         <motion.div
