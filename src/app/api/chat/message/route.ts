@@ -112,7 +112,7 @@ async function callStakwork(
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
     }
-    
+
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
     // stakwork workflow vars
@@ -322,7 +322,6 @@ export async function POST(request: NextRequest) {
       })) as Artifact[],
     };
 
-
     const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
 
     // Check if Stakwork environment variables are defined
@@ -366,7 +365,7 @@ export async function POST(request: NextRequest) {
         webhook,
         mode,
       );
-      
+
       // Update workflow status based on Stakwork call result
       if (stakworkData.success) {
         await db.task.update({
