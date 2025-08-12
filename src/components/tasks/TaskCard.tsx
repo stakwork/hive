@@ -1,9 +1,10 @@
 "use client";
 
-import { Users, Calendar } from "lucide-react";
+import { Users, Calendar, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 interface TaskCardProps {
   task: TaskData;
@@ -35,6 +36,17 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
       </div>
       
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Avatar className="size-5">
+            <AvatarImage src={task.createdBy.image || undefined} />
+            <AvatarFallback className="text-xs">
+              <User className="w-3 h-3" />
+            </AvatarFallback>
+          </Avatar>
+          <span>
+            {task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}
+          </span>
+        </div>
         {task.assignee && (
           <div className="flex items-center gap-1">
             <Users className="w-3 h-3" />
