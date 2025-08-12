@@ -428,11 +428,9 @@ export async function getGithubUsernameAndPAT(
   if (githubAuth?.githubUsername && githubAccount?.access_token) {
     return {
       username: githubAuth.githubUsername,
-      pat: JSON.stringify(
-        encryptionService.decryptField(
-          "access_token",
-          githubAccount.access_token,
-        ),
+      pat: encryptionService.decryptField(
+        "access_token",
+        githubAccount.access_token,
       ),
     };
   }
