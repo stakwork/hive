@@ -95,6 +95,6 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
       cancelled = true;
     };
   }, [slug]);
-
+  console.log("state", state);
   return state;
 }
