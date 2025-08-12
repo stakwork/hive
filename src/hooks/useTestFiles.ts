@@ -33,7 +33,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         headers["x-api-token"] = apiKey;
       }
 
-      const response = await fetch(`${baseUrl}/tests/list`, {
+      const response = await fetch(`${baseUrl}/test/list`, {
         headers,
       });
       const data = await response.json();
@@ -72,7 +72,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
       }
 
       const getResponse = await fetch(
-        `${baseUrl}/tests/get?name=${encodeURIComponent(testName)}`,
+        `${baseUrl}/test/get?name=${encodeURIComponent(testName)}`,
         {
           headers,
         },
@@ -84,7 +84,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
       }
 
       const runResponse = await fetch(
-        `${baseUrl}/tests?test=${encodeURIComponent(testName)}`,
+        `${baseUrl}/test?test=${encodeURIComponent(testName)}`,
         {
           headers,
         },
@@ -128,7 +128,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
       }
 
       const response = await fetch(
-        `${baseUrl}/tests/delete?name=${encodeURIComponent(testName)}`,
+        `${baseUrl}/test/delete?name=${encodeURIComponent(testName)}`,
         {
           headers,
         },
@@ -175,7 +175,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         headers["x-api-token"] = apiKey;
       }
 
-      const response = await fetch(`${baseUrl}/tests/save`, {
+      const response = await fetch(`${baseUrl}/test/save`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -211,7 +211,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         headers["x-api-token"] = apiKey;
       }
 
-      const response = await fetch(`${baseUrl}/tests/rename`, {
+      const response = await fetch(`${baseUrl}/test/rename`, {
         method: "POST",
         headers,
         body: JSON.stringify({ from: fromName, to: toName }),
