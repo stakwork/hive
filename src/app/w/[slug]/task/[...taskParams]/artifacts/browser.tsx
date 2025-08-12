@@ -24,6 +24,12 @@ import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "./prism-dark-plus.css";
 import { TestManagerModal } from "./TestManagerModal";
+import {
+  TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface PlaywrightTestModalProps {
   isOpen: boolean;
@@ -199,72 +205,104 @@ export function BrowserArtifactPanel({
                   </div>
                   <div className="flex items-center gap-1">
                     {isSetup && isRecording && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleAssertionToggle}
-                        className={`h-8 w-8 p-0 ${
-                          isAssertionMode
-                            ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
-                            : "hover:bg-accent hover:text-accent-foreground"
-                        }`}
-                        title={
-                          isAssertionMode
-                            ? "Disable assertion mode"
-                            : "Enable assertion mode"
-                        }
-                      >
-                        <Target className="w-4 h-4" />
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleAssertionToggle}
+                              className={`h-8 w-8 p-0 ${
+                                isAssertionMode
+                                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              <Target className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {isAssertionMode
+                              ? "Disable assertion mode"
+                              : "Enable assertion mode"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                     {isSetup && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRecordToggle}
-                        className={`h-8 w-8 p-0 ${
-                          isRecording
-                            ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
-                            : "hover:bg-accent hover:text-accent-foreground"
-                        }`}
-                        title={
-                          isRecording ? "Stop recording" : "Start recording"
-                        }
-                      >
-                        {isRecording ? (
-                          <Square className="w-4 h-4" />
-                        ) : (
-                          <Circle className="w-4 h-4" />
-                        )}
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleRecordToggle}
+                              className={`h-8 w-8 p-0 ${
+                                isRecording
+                                  ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              {isRecording ? (
+                                <Square className="w-4 h-4" />
+                              ) : (
+                                <Circle className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {isRecording ? "Stop recording" : "Start recording"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsTestModalOpen(true)}
-                      className="h-8 w-8 p-0"
-                      title="Tests"
-                    >
-                      <FlaskConical className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleTabOut(tabUrl)}
-                      className="h-8 w-8 p-0"
-                      title="Open in new tab"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRefresh}
-                      className="h-8 w-8 p-0"
-                      title="Refresh"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </Button>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsTestModalOpen(true)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <FlaskConical className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Tests</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleTabOut(tabUrl)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Open in new tab
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleRefresh}
+                            className="h-8 w-8 p-0"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Refresh</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </div>
               )}
