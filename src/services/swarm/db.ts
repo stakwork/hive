@@ -55,6 +55,7 @@ export const select = {
   repositoryDescription: true,
   repositoryUrl: true,
   swarmApiKey: true,
+  poolApiKey: true,
   poolName: true,
   services: true,
   swarmSecretAlias: true,

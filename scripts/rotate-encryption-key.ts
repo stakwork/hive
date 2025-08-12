@@ -106,7 +106,7 @@ async function rotateAccounts(
 
 async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
   const rows = await prisma.swarm.findMany({
-    select: { id: true, environmentVariables: true, swarmApiKey: true },
+    select: { id: true, environmentVariables: true, swarmApiKey: true, poolApiKey: true },
   });
 
   for (const row of rows) {
@@ -174,6 +174,35 @@ async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
       stats.skipped++;
     }
 
+    // poolApiKey
+    if (isEncryptedLike(row.poolApiKey as string | null)) {
+      try {
+        const parsed = JSON.parse(row.poolApiKey as string);
+        const activeKeyId = service.getActiveKeyId();
+        const hasKeyId =
+          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const keyId = hasKeyId ? parsed.keyId : undefined;
+        if (!hasKeyId || keyId !== activeKeyId) {
+          const plaintext = service.decryptField("poolApiKey", parsed);
+          const reenc = service.encryptFieldWithKeyId(
+            "poolApiKey",
+            plaintext,
+            activeKeyId || "default",
+          );
+          data.poolApiKey = JSON.stringify(reenc);
+          updated = true;
+          stats.reencrypted++;
+        } else {
+          stats.skipped++;
+        }
+      } catch (e) {
+        stats.errors++;
+        console.error(`Swarm ${row.id} poolApiKey rotation error:`, e);
+      }
+    } else if (row.poolApiKey) {
+      stats.skipped++;
+    }
+
     if (updated) {
       try {
         await prisma.swarm.update({ where: { id: row.id }, data });
@@ -232,46 +261,6 @@ async function rotateWorkspaces(
   }
 }
 
-async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
-  const rows = await prisma.swarm.findMany({
-    where: { poolApiKey: { not: null } },
-    select: { id: true, poolApiKey: true },
-  });
-
-  for (const row of rows) {
-    stats.processed++;
-    const current = row.poolApiKey as string | null;
-    if (!isEncryptedLike(current)) {
-      stats.skipped++;
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(current!);
-      const activeKeyId = service.getActiveKeyId();
-      const hasKeyId =
-        typeof parsed.keyId === "string" && parsed.keyId.length > 0;
-      const keyId = hasKeyId ? parsed.keyId : undefined;
-      if (hasKeyId && keyId === activeKeyId) {
-        stats.skipped++;
-        continue;
-      }
-      const plaintext = service.decryptField("poolApiKey", parsed);
-      const reenc = service.encryptFieldWithKeyId(
-        "poolApiKey",
-        plaintext,
-        activeKeyId || "default",
-      );
-      await prisma.swarm.update({
-        where: { id: row.id },
-        data: { poolApiKey: JSON.stringify(reenc) },
-      });
-      stats.reencrypted++;
-    } catch (e) {
-      stats.errors++;
-      console.error(`Swarm ${row.id} rotation error:`, e);
-    }
-  }
-}
 
 async function main() {
   const encryption = EncryptionService.getInstance();

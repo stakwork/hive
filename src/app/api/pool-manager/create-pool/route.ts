@@ -105,16 +105,18 @@ export async function POST(request: NextRequest) {
         });
 
         // Update swarm with the new poolApiKey instead of user
-        await db.swarm.update({
-          where: {
-            id: swarm.id,
-          },
-          data: {
-            poolApiKey: JSON.stringify(
-              encryptionService.encryptField("poolApiKey", loginData.token),
-            ),
-          },
-        });
+        if (swarm) {
+          await db.swarm.update({
+            where: {
+              id: swarm.id,
+            },
+            data: {
+              poolApiKey: JSON.stringify(
+                encryptionService.encryptField("poolApiKey", loginData.token),
+              ),
+            },
+          });
+        }
 
         if (!poolUser) {
           return NextResponse.json(
@@ -131,14 +133,16 @@ export async function POST(request: NextRequest) {
         );
 
         // Also update swarm with the new authentication token
-        await db.swarm.update({
-          where: {
-            id: swarm.id,
-          },
-          data: {
-            poolApiKey,
-          },
-        });
+        if (swarm) {
+          await db.swarm.update({
+            where: {
+              id: swarm.id,
+            },
+            data: {
+              poolApiKey,
+            },
+          });
+        }
       } catch (error) {
         console.error("Error creating pool user:", error);
         return NextResponse.json(

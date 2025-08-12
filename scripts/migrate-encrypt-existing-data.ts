@@ -84,6 +84,7 @@ async function migrateSwarms(): Promise<void> {
       id: true,
       environmentVariables: true,
       swarmApiKey: true,
+      poolApiKey: true,
     },
   });
 
@@ -141,6 +142,14 @@ async function migrateSwarms(): Promise<void> {
         updated = true;
       }
 
+      if (swarm.poolApiKey && !(await isAlreadyEncrypted(swarm.poolApiKey))) {
+        updateData.poolApiKey = await encryptValue(
+          "poolApiKey",
+          swarm.poolApiKey,
+        );
+        updated = true;
+      }
+
       if (updated) {
         await prisma.swarm.update({
           where: { id: swarm.id },
@@ -186,37 +195,6 @@ async function migrateWorkspaces(): Promise<void> {
       });
     } catch (error) {
       console.error(`Failed to encrypt workspace ${workspace.id}:`, error);
-    }
-  }
-}
-
-async function migrateSwarms(): Promise<void> {
-  const swarms = await prisma.swarm.findMany({
-    where: {
-      poolApiKey: {
-        not: null,
-      },
-    },
-    select: {
-      id: true,
-      poolApiKey: true,
-    },
-  });
-
-  for (const swarm of swarms) {
-    try {
-      if (!swarm.poolApiKey || (await isAlreadyEncrypted(swarm.poolApiKey))) {
-        continue;
-      }
-
-      const encryptedKey = await encryptValue("poolApiKey", swarm.poolApiKey);
-
-      await prisma.swarm.update({
-        where: { id: swarm.id },
-        data: { poolApiKey: encryptedKey },
-      });
-    } catch (error) {
-      console.error(`Failed to encrypt swarm ${swarm.id}:`, error);
     }
   }
 }

@@ -40,28 +40,9 @@ async function logUsers() {
   console.log("\n=== USERS ===");
   for (const u of users) {
     console.log(`[USER] id=${u.id} email=${u.email}`);
-    }
   }
 }
 
-async function logSwarms() {
-  const swarms = await prisma.swarm.findMany({
-    select: { id: true, name: true, poolApiKey: true },
-  });
-
-  console.log("\n=== SWARMS (poolApiKey) ===");
-  for (const s of swarms) {
-    try {
-      const key = s.poolApiKey ?? null;
-      const decrypted = key ? encryption.decryptField("poolApiKey", key) : null;
-      console.log(`[SWARM] id=${s.id} name=${s.name}`);
-      console.log(`  poolApiKey (decrypted): ${decrypted}`);
-    } catch (err) {
-      console.log(`[SWARM] id=${s.id} name=${s.name}`);
-      console.log(`  error: ${String(err)}`);
-    }
-  }
-}
 
 async function logWorkspaces() {
   const workspaces = await prisma.workspace.findMany({
@@ -91,16 +72,22 @@ async function logSwarms() {
       name: true,
       workspaceId: true,
       swarmApiKey: true,
+      poolApiKey: true,
       environmentVariables: true,
     },
   });
 
-  console.log("\n=== SWARMS (swarmApiKey, environmentVariables) ===");
+  console.log("\n=== SWARMS (swarmApiKey, poolApiKey, environmentVariables) ===");
   for (const s of swarms) {
     try {
       const swarmKey = s.swarmApiKey ?? null;
       const decryptedKey = swarmKey
         ? encryption.decryptField("swarmApiKey", swarmKey)
+        : null;
+
+      const poolKey = s.poolApiKey ?? null;
+      const decryptedPoolKey = poolKey
+        ? encryption.decryptField("poolApiKey", poolKey)
         : null;
 
       let envVarsOut: Array<{ name: string; value: string }> | unknown =
@@ -134,6 +121,7 @@ async function logSwarms() {
         `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId}`,
       );
       console.log(`  swarmApiKey (decrypted): ${decryptedKey}`);
+      console.log(`  poolApiKey (decrypted): ${decryptedPoolKey}`);
       if (Array.isArray(envVarsOut)) {
         console.log("  environmentVariables (decrypted):");
         for (const ev of envVarsOut as Array<{ name: string; value: string }>) {
