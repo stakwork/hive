@@ -8,29 +8,49 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog as ConfirmDialog,
+  DialogContent as ConfirmContent,
+  DialogHeader as ConfirmHeader,
+  DialogTitle as ConfirmTitle,
+  DialogFooter as ConfirmFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
-import { Trash2, Play, Save, PencilLine, Copy } from "lucide-react";
+import {
+  Trash2,
+  Play,
+  Save,
+  Pencil,
+  Copy,
+  Check,
+  X,
+  Loader2,
+  RotateCw,
+} from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-jsx";
 import "prismjs/themes/prism-tomorrow.css";
 import { TestFile, useTestFiles } from "@/hooks/useTestFiles";
+import { formatTimestamp } from "@/utils/time";
 import { useSwarmTestsConfig } from "@/hooks/useSwarmTestsConfig";
 
 interface TestManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   generatedCode?: string;
+  initialTab?: "generated" | "saved";
 }
 
 export function TestManagerModal({
   isOpen,
   onClose,
   generatedCode = "",
+  initialTab,
 }: TestManagerModalProps) {
   const {
     baseUrl,
@@ -39,15 +59,17 @@ export function TestManagerModal({
     error: cfgError,
   } = useSwarmTestsConfig();
   const [activeTab, setActiveTab] = useState<string>(
-    generatedCode ? "generated" : "saved",
+    initialTab ?? (generatedCode ? "generated" : "saved"),
   );
   const [filename, setFilename] = useState<string>("");
-  const [renameFrom, setRenameFrom] = useState<string>("");
-  const [renameTo, setRenameTo] = useState<string>("");
+  const [editingTest, setEditingTest] = useState<string | null>(null);
+  const [newName, setNewName] = useState<string>("");
   const [copying, setCopying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [runningAll, setRunningAll] = useState(false);
   const { toast } = useToast();
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const {
     testFiles,
@@ -62,6 +84,12 @@ export function TestManagerModal({
   } = useTestFiles(baseUrl || "", apiKey || undefined);
 
   useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab ?? (generatedCode ? "generated" : "saved"));
+    }
+  }, [isOpen, initialTab, generatedCode]);
+
+  useEffect(() => {
     if (isOpen && activeTab === "saved") {
       fetchTestFiles();
     }
@@ -69,7 +97,6 @@ export function TestManagerModal({
 
   useEffect(() => {
     if (isOpen && generatedCode) {
-      // default filename suggestion
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       setFilename(`test-recording-${ts}.spec.js`);
     }
@@ -77,7 +104,6 @@ export function TestManagerModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    // small syntax highlight refresh for generated code
     setTimeout(() => {
       try {
         Prism.highlightAll();
@@ -88,8 +114,6 @@ export function TestManagerModal({
   const handleSave = async () => {
     if (!baseUrl) return;
     setSaving(true);
-    console.log("Saving test", filename.trim(), generatedCode);
-    console.log("Base URL", baseUrl);
     const result = await saveTest(filename.trim(), generatedCode);
     setSaving(false);
     if (result?.success) {
@@ -113,15 +137,24 @@ export function TestManagerModal({
     } catch {}
   };
 
-  const handleRename = async () => {
-    if (!renameFrom || !renameTo) return;
+  const handleRenameConfirm = async (oldName: string) => {
+    const targetName = newName.trim();
+    if (!targetName || targetName === oldName) {
+      setEditingTest(null);
+      return;
+    }
+    const finalName = targetName.endsWith(".spec.js")
+      ? targetName
+      : targetName.endsWith(".js")
+        ? targetName.replace(/\.js$/, ".spec.js")
+        : `${targetName}.spec.js`;
     setRenaming(true);
-    const res = await renameTest(renameFrom, renameTo);
+    const res = await renameTest(oldName, finalName);
     setRenaming(false);
     if (res?.success) {
-      toast({ title: "Renamed", description: `${renameFrom} → ${renameTo}` });
-      setRenameFrom("");
-      setRenameTo("");
+      toast({ title: "Renamed", description: `${oldName} → ${finalName}` });
+      setEditingTest(null);
+      setNewName("");
     } else {
       toast({
         title: "Rename failed",
@@ -181,9 +214,9 @@ export function TestManagerModal({
                 <Copy className="w-4 h-4 mr-1" /> {copying ? "Copied!" : "Copy"}
               </Button>
             </div>
-            <div className="flex-1 min-h-0 border rounded">
+            <div className="flex-1 min-h-0 border rounded overflow-hidden">
               <ScrollArea className="h-full">
-                <pre className="text-sm bg-background/50 p-4 overflow-auto">
+                <pre className="text-sm bg-background/50 p-4 overflow-auto whitespace-pre max-h-[60vh]">
                   <code className="language-javascript">{generatedCode}</code>
                 </pre>
               </ScrollArea>
@@ -199,27 +232,39 @@ export function TestManagerModal({
             {cfgError && (
               <div className="mb-2 text-xs text-red-600">{cfgError}</div>
             )}
-            <div className="flex items-center gap-2 mb-3">
-              <Input
-                placeholder="rename: from"
-                className="max-w-xs"
-                value={renameFrom}
-                onChange={(e) => setRenameFrom(e.target.value)}
-              />
-              <Input
-                placeholder="to"
-                className="max-w-xs"
-                value={renameTo}
-                onChange={(e) => setRenameTo(e.target.value)}
-              />
-              <Button
-                variant="secondary"
-                onClick={handleRename}
-                disabled={!renameFrom || !renameTo || renaming}
-              >
-                <PencilLine className="w-4 h-4 mr-1" />{" "}
-                {renaming ? "Renaming…" : "Rename"}
-              </Button>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-muted-foreground">Saved tests</div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="default"
+                  title="Run all tests"
+                  onClick={async () => {
+                    setRunningAll(true);
+                    let passed = 0;
+                    let failed = 0;
+                    for (const t of testFiles) {
+                      const res = await runTest(t.name);
+                      if (res && (res as { success: boolean }).success)
+                        passed++;
+                      else failed++;
+                    }
+                    setRunningAll(false);
+                    toast({
+                      title: "Run all completed",
+                      description: `${passed} passed, ${failed} failed`,
+                    });
+                  }}
+                  disabled={runningAll || isLoading || testFiles.length === 0}
+                >
+                  {runningAll ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-1" />
+                  )}
+                  {runningAll ? "Running…" : "Run all"}
+                </Button>
+              </div>
             </div>
             <div className="flex-1 min-h-0 border rounded">
               <ScrollArea className="h-full">
@@ -241,13 +286,79 @@ export function TestManagerModal({
                     return (
                       <div key={name} className="p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {t.modified || t.created}
+                          <div className="min-w-0 flex items-center gap-2">
+                            {editingTest === name ? (
+                              <>
+                                <Input
+                                  className="h-8 max-w-md"
+                                  value={newName}
+                                  onChange={(e) => setNewName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      handleRenameConfirm(name);
+                                    if (e.key === "Escape") {
+                                      setEditingTest(null);
+                                      setNewName("");
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Confirm rename"
+                                  onClick={() => handleRenameConfirm(name)}
+                                  disabled={renaming}
+                                >
+                                  <Check className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Cancel"
+                                  onClick={() => {
+                                    setEditingTest(null);
+                                    setNewName("");
+                                  }}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <div className="font-medium truncate">
+                                  {name}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Rename"
+                                  onClick={() => {
+                                    setEditingTest(name);
+                                    setNewName(name);
+                                  }}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                              </>
+                            )}
+                            <div
+                              className="text-xs text-muted-foreground"
+                              title={t.modified || t.created}
+                            >
+                              {formatTimestamp(t.modified || t.created)}
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Rerun"
+                              onClick={() => runTest(name)}
+                              disabled={isBusy}
+                            >
+                              <RotateCw className="w-4 h-4" />
+                            </Button>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -284,14 +395,7 @@ export function TestManagerModal({
                               size="sm"
                               variant="ghost"
                               title="Delete"
-                              onClick={async () => {
-                                const ok = await deleteTest(name);
-                                toast({
-                                  title: ok ? "Deleted" : "Delete failed",
-                                  description: name,
-                                  variant: ok ? "default" : "destructive",
-                                });
-                              }}
+                              onClick={() => setPendingDelete(name)}
                               disabled={isBusy}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -326,6 +430,37 @@ export function TestManagerModal({
           </TabsContent>
         </Tabs>
       </DialogContent>
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <ConfirmContent className="sm:max-w-md">
+          <ConfirmHeader>
+            <ConfirmTitle>Delete test?</ConfirmTitle>
+          </ConfirmHeader>
+          <div className="text-sm text-muted-foreground">{pendingDelete}</div>
+          <ConfirmFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!pendingDelete) return;
+                const ok = await deleteTest(pendingDelete);
+                setPendingDelete(null);
+                toast({
+                  title: ok ? "Deleted" : "Delete failed",
+                  description: pendingDelete,
+                  variant: ok ? "default" : "destructive",
+                });
+              }}
+            >
+              Delete
+            </Button>
+          </ConfirmFooter>
+        </ConfirmContent>
+      </ConfirmDialog>
     </Dialog>
   );
 }

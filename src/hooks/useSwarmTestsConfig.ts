@@ -11,10 +11,13 @@ interface SwarmTestsConfig {
 }
 
 function getUseMocks(): boolean {
-  // const flag = process.env.USE_MOCK_TESTS || "";
-  // console.log("USE_MOCK_TESTS", flag);
-  // return flag === "1" || flag.toLowerCase() === "true";
-  return true;
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function useSwarmTestsConfig(): SwarmTestsConfig {

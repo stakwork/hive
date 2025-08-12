@@ -295,6 +295,7 @@ export function BrowserArtifactPanel({
           if (showPlaywrightModal) closePlaywrightModal();
         }}
         generatedCode={generatedPlaywrightTest}
+        initialTab={showPlaywrightModal ? "generated" : "saved"}
       />
     </div>
   );
