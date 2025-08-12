@@ -86,6 +86,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    // Prevent removing workspace owner
+    if (access.workspace.ownerId === targetUserId) {
+      return NextResponse.json(
+        { error: "Cannot remove workspace owner" },
+        { status: 400 }
+      );
+    }
+
     await removeWorkspaceMember(access.workspace.id, targetUserId);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

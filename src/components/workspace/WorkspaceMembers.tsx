@@ -31,6 +31,7 @@ interface WorkspaceMembersProps {
 export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [owner, setOwner] = useState<WorkspaceMember | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<{
@@ -53,6 +54,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
       }
       const data = await response.json();
       setMembers(data.members || []);
+      setOwner(data.owner || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch members");
     } finally {
@@ -65,6 +67,11 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
   }, [slug]);
 
   const handleRemoveMember = (userId: string, userName: string) => {
+    // Skip if trying to remove owner
+    if (owner && userId === owner.userId) {
+      return;
+    }
+    
     setConfirmRemove({
       open: true,
       userId,
@@ -155,12 +162,50 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                 </div>
               ))}
             </div>
-          ) : members.length === 0 ? (
+          ) : (members.length === 0 && !owner) ? (
             <div className="text-center py-6 text-muted-foreground">
               No members found
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Render owner first if present */}
+              {owner && (
+                <div key={`owner-${owner.id}`} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage 
+                        src={owner.user.image || undefined}
+                        alt={owner.user.name || "Owner"}
+                      />
+                      <AvatarFallback>
+                        {owner.user.name?.charAt(0) || owner.user.github?.username?.charAt(0) || "O"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate">
+                          {owner.user.name || owner.user.github?.username || "Unknown"}
+                        </p>
+                        {owner.user.github?.username && (
+                          <span className="text-sm text-muted-foreground">
+                            @{owner.user.github.username}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {owner.user.email}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-primary">
+                      {owner.role}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+              
+              {/* Render regular members */}
               {members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between p-3 rounded-lg border">
                   <div className="flex items-center space-x-3">
@@ -193,7 +238,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                     <Badge variant={getRoleBadgeVariant(member.role)}>
                       {member.role}
                     </Badge>
-                    {canAdmin && member.role !== "OWNER" && (
+                    {canAdmin && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm">

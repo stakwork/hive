@@ -86,7 +86,28 @@ describe("Workspace Members API Integration Tests", () => {
         ownerId: "user1",
         userRole: "OWNER",
       } as any);
-      mockGetWorkspaceMembers.mockResolvedValue(mockMembers as any);
+      mockGetWorkspaceMembers.mockResolvedValue({
+        members: mockMembers,
+        owner: {
+          id: "owner1",
+          userId: "owner1", 
+          role: "OWNER",
+          joinedAt: new Date("2024-01-01").toISOString(),
+          user: {
+            id: "owner1",
+            name: "Owner User",
+            email: "owner@example.com",
+            image: null,
+            github: {
+              username: "owneruser",
+              name: "Owner User", 
+              bio: null,
+              publicRepos: 0,
+              followers: 0,
+            },
+          },
+        },
+      } as any);
 
       const request = new NextRequest("http://localhost:3000/api/workspaces/test-workspace/members");
       const params = Promise.resolve({ slug: "test-workspace" });
@@ -97,6 +118,8 @@ describe("Workspace Members API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(data.members).toHaveLength(1);
       expect(data.members[0].user.github.username).toBe("johndoe");
+      expect(data.owner).toBeDefined();
+      expect(data.owner.role).toBe("OWNER");
     });
 
     test("should return 404 for non-existent workspace", async () => {

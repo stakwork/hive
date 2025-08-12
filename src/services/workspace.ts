@@ -403,11 +403,63 @@ export function validateWorkspaceSlug(slug: string): {
 // =============================================
 
 /**
- * Gets all members of a workspace (excluding the owner)
+ * Gets all members and owner information for a workspace
  */
 export async function getWorkspaceMembers(workspaceId: string) {
+  // Get regular members from workspace_members table
   const members = await getActiveWorkspaceMembers(workspaceId);
-  return mapWorkspaceMembers(members);
+  
+  // Get workspace owner information
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    include: {
+      owner: {
+        include: {
+          githubAuth: {
+            select: {
+              githubUsername: true,
+              name: true,
+              bio: true,
+              publicRepos: true,
+              followers: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!workspace) {
+    throw new Error("Workspace not found");
+  }
+
+  // Map owner to WorkspaceMember format for consistent UI
+  const owner = {
+    id: workspace.owner.id, // Use real user ID
+    userId: workspace.owner.id,
+    role: "OWNER" as const,
+    joinedAt: workspace.createdAt.toISOString(),
+    user: {
+      id: workspace.owner.id,
+      name: workspace.owner.name,
+      email: workspace.owner.email,
+      image: workspace.owner.image,
+      github: workspace.owner.githubAuth
+        ? {
+            username: workspace.owner.githubAuth.githubUsername,
+            name: workspace.owner.githubAuth.name,
+            bio: workspace.owner.githubAuth.bio,
+            publicRepos: workspace.owner.githubAuth.publicRepos,
+            followers: workspace.owner.githubAuth.followers,
+          }
+        : null,
+    },
+  };
+
+  return {
+    members: mapWorkspaceMembers(members),
+    owner,
+  };
 }
 
 /**

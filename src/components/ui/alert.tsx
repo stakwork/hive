@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 const alertVariants = {
   default: "bg-muted text-foreground border border-border",
   destructive:
-    "bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-200 border border-red-200 dark:border-red-800",
+    "bg-red-100/50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-800",
 };
 
 export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {

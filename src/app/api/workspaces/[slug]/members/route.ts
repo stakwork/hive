@@ -31,8 +31,8 @@ export async function GET(
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
-    const members = await getWorkspaceMembers(workspace.id);
-    return NextResponse.json({ members });
+    const result = await getWorkspaceMembers(workspace.id);
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching workspace members:", error);
     return NextResponse.json(
