@@ -55,6 +55,7 @@ export interface SwarmSelectResult {
 export interface ServicesConfig {
   name: string;
   port: number;
+  interpreter?: string;
   scripts: {
     start: string;
     install?: string;
