@@ -42,9 +42,7 @@ export const generatePM2Apps = (
       watch: false,
       max_memory_restart: "1G",
       env: {} as Record<string, string>,
-      ...(service.scripts?.interpreter && {
-        interpreter: service.scripts.interpreter.toString(),
-      }),
+      interpreter: service.scripts?.interpreter?.toString(),
     };
 
     if (service.port) {
