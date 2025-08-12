@@ -8,6 +8,7 @@ export {
   getUserWorkspaces,
   getDefaultWorkspaceForUser,
   deleteWorkspaceBySlug,
+  softDeleteWorkspace,
 } from "./workspace-crud";
 
 export {

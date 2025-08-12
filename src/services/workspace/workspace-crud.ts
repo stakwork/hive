@@ -211,8 +211,15 @@ export async function deleteWorkspaceBySlug(
   }
 
   // Soft delete the workspace
+  await softDeleteWorkspace(workspace.id);
+}
+
+/**
+ * Soft deletes a workspace by ID
+ */
+export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
   await db.workspace.update({
-    where: { id: workspace.id },
+    where: { id: workspaceId },
     data: { 
       deleted: true,
       deletedAt: new Date()
