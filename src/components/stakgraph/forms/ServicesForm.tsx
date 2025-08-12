@@ -12,6 +12,7 @@ import {
   FastForward,
   Rewind,
   RefreshCw,
+  BookType,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -85,6 +86,13 @@ export default function ServicesForm({
       icon: <Hammer className="w-4 h-4 text-muted-foreground" />,
       placeholder: "npm run build",
       description: "build for production",
+    },
+    interpreter: {
+      key: "interpreter",
+      label: "Interpreter",
+      icon: <BookType className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "bash",
+      description: "Interpreter to use, by default: bash",
     },
   };
 

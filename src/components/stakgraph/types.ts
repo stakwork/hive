@@ -12,6 +12,7 @@ export interface ServiceDataConfig {
     preStart?: string;
     postStart?: string;
     rebuild?: string;
+    interpreter?: string;
   };
 }
 
