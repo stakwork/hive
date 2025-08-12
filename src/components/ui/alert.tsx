@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 const alertVariants = {
   default: "bg-muted text-foreground border border-border",
   destructive:
-    "bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-200 border border-red-200 dark:border-red-800",
+    "bg-destructive/10 text-destructive border border-destructive/20",
 };
 
 export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -35,7 +35,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm leading-relaxed", className)}
+    className={cn("text-sm leading-relaxed text-inherit", className)}
     {...props}
   />
 ));

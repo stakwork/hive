@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import type { User, Workspace, WorkspaceMember } from "@prisma/client";
-import type { WorkspaceRole } from "@/types/workspace";
+import type { WorkspaceRole } from "@/lib/auth/roles";
 
 // Test data factories for creating consistent test data
 

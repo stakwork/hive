@@ -647,14 +647,54 @@ describe("Workspace Service - Unit Tests", () => {
           },
         ];
 
+        const mockWorkspace = {
+          id: "workspace1",
+          createdAt: new Date("2024-01-01"),
+          owner: {
+            id: "owner1",
+            name: "Workspace Owner",
+            email: "owner@example.com",
+            image: "https://github.com/owner.png",
+            githubAuth: {
+              githubUsername: "workspaceowner",
+              name: "Workspace Owner",
+              bio: "Team Lead",
+              publicRepos: 30,
+              followers: 200,
+            },
+          },
+        };
+
         mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
         mockedMapWorkspaceMembers.mockReturnValue(mockMembers);
+        (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
         const result = await getWorkspaceMembers("workspace1");
 
         expect(mockedGetActiveWorkspaceMembers).toHaveBeenCalledWith("workspace1");
         expect(mockedMapWorkspaceMembers).toHaveBeenCalledWith(mockMembers);
-        expect(result).toEqual(mockMembers);
+        expect(result).toEqual({
+          members: mockMembers,
+          owner: {
+            id: "owner1",
+            userId: "owner1",
+            role: "OWNER",
+            joinedAt: "2024-01-01T00:00:00.000Z",
+            user: {
+              id: "owner1",
+              name: "Workspace Owner",
+              email: "owner@example.com",
+              image: "https://github.com/owner.png",
+              github: {
+                username: "workspaceowner",
+                name: "Workspace Owner",
+                bio: "Team Lead",
+                publicRepos: 30,
+                followers: 200,
+              },
+            },
+          },
+        });
       });
 
       test("should handle members without GitHub auth", async () => {
@@ -674,12 +714,40 @@ describe("Workspace Service - Unit Tests", () => {
           },
         ];
 
+        const mockWorkspace = {
+          id: "workspace1",
+          createdAt: new Date("2024-01-01"),
+          owner: {
+            id: "owner1",
+            name: "Workspace Owner",
+            email: "owner@example.com",
+            image: null,
+            githubAuth: null,
+          },
+        };
+
         mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
         mockedMapWorkspaceMembers.mockReturnValue(mockMembers);
+        (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
 
         const result = await getWorkspaceMembers("workspace1");
 
-        expect(result).toEqual(mockMembers);
+        expect(result).toEqual({
+          members: mockMembers,
+          owner: {
+            id: "owner1",
+            userId: "owner1",
+            role: "OWNER",
+            joinedAt: "2024-01-01T00:00:00.000Z",
+            user: {
+              id: "owner1",
+              name: "Workspace Owner",
+              email: "owner@example.com",
+              image: null,
+              github: null,
+            },
+          },
+        });
       });
     });
 

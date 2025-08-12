@@ -6,7 +6,7 @@ import {
   removeWorkspaceMember,
   validateWorkspaceAccess,
 } from "@/services/workspace";
-import { WorkspaceRole } from "@/types/workspace";
+import { isAssignableMemberRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
@@ -32,8 +32,7 @@ export async function PATCH(
     }
 
     // Validate role
-    const validRoles: WorkspaceRole[] = ["VIEWER", "DEVELOPER", "PM", "ADMIN"];
-    if (!validRoles.includes(role)) {
+    if (!isAssignableMemberRole(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
@@ -85,6 +84,14 @@ export async function DELETE(
 
     if (!access.workspace) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
+    // Prevent removing workspace owner
+    if (access.workspace.ownerId === targetUserId) {
+      return NextResponse.json(
+        { error: "Cannot remove workspace owner" },
+        { status: 400 }
+      );
     }
 
     await removeWorkspaceMember(access.workspace.id, targetUserId);

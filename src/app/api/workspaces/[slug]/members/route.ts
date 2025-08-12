@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
 import {
   getWorkspaceMembers,
   addWorkspaceMember,
   validateWorkspaceAccess,
   getWorkspaceBySlug,
 } from "@/services/workspace";
-import { WorkspaceRole } from "@/types/workspace";
+import { isAssignableMemberRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
@@ -32,8 +31,8 @@ export async function GET(
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
-    const members = await getWorkspaceMembers(workspace.id);
-    return NextResponse.json({ members });
+    const result = await getWorkspaceMembers(workspace.id);
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching workspace members:", error);
     return NextResponse.json(
@@ -68,8 +67,7 @@ export async function POST(
     }
 
     // Validate role
-    const validRoles: WorkspaceRole[] = ["VIEWER", "DEVELOPER", "PM", "ADMIN"];
-    if (!validRoles.includes(role)) {
+    if (!isAssignableMemberRole(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 

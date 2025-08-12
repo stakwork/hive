@@ -34,11 +34,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { InfoIcon, Search, UserCheck } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
-import type { WorkspaceRole } from "@/types/workspace";
+import { AssignableMemberRoleSchema, WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
 
 const addMemberSchema = z.object({
   githubUsername: z.string().min(1, "GitHub username is required"),
-  role: z.enum(["VIEWER", "DEVELOPER", "PM", "ADMIN"]),
+  role: AssignableMemberRoleSchema,
 });
 
 type AddMemberForm = z.infer<typeof addMemberSchema>;
@@ -74,7 +74,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
     resolver: zodResolver(addMemberSchema),
     defaultValues: {
       githubUsername: "",
-      role: "DEVELOPER",
+      role: WorkspaceRole.DEVELOPER,
     },
   });
 
@@ -165,14 +165,6 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
             Add an existing Hive user to this workspace by their GitHub username.
           </DialogDescription>
         </DialogHeader>
-
-        <Alert>
-          <InfoIcon className="h-4 w-4" />
-          <AlertDescription>
-            Only users who have already signed up to Hive can be added as members.
-            If they haven't signed up yet, ask them to create an account first.
-          </AlertDescription>
-        </Alert>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -287,10 +279,10 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="VIEWER">Viewer</SelectItem>
-                      <SelectItem value="DEVELOPER">Developer</SelectItem>
-                      <SelectItem value="PM">Product Manager</SelectItem>
-                      <SelectItem value="ADMIN">Admin</SelectItem>
+                      <SelectItem value={WorkspaceRole.VIEWER}>{RoleLabels[WorkspaceRole.VIEWER]}</SelectItem>
+                      <SelectItem value={WorkspaceRole.DEVELOPER}>{RoleLabels[WorkspaceRole.DEVELOPER]}</SelectItem>
+                      <SelectItem value={WorkspaceRole.PM}>{RoleLabels[WorkspaceRole.PM]}</SelectItem>
+                      <SelectItem value={WorkspaceRole.ADMIN}>{RoleLabels[WorkspaceRole.ADMIN]}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>
