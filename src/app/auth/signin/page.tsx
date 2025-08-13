@@ -1,27 +1,26 @@
 "use client";
 
-import { signIn, useSession, getProviders } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import type { ClientSafeProvider } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
+import type { ClientSafeProvider } from "next-auth/react";
+import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function SignInPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
   const [mockUsername, setMockUsername] = useState("");
   const [providers, setProviders] = useState<Record<
@@ -43,7 +42,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (session?.user) {
-      setRedirecting(true);
+
       const user = session.user as { defaultWorkspaceSlug?: string };
 
       if (user.defaultWorkspaceSlug) {
@@ -51,18 +50,18 @@ export default function SignInPage() {
         router.push(`/w/${user.defaultWorkspaceSlug}`);
       } else {
         // User has no workspaces, redirect to onboarding
-        router.push("/onboarding/workspace");
+        router.push("/");
       }
     }
   }, [session, router]);
 
-  if (status === "loading" || redirecting) {
+  if (status === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" />
           <p className="text-muted-foreground">
-            {redirecting ? "Redirecting to your workspace..." : "Loading..."}
+            {/* {redirecting ? "Redirecting to your workspace..." : "Loading..."} */}
           </p>
         </div>
       </div>
@@ -74,7 +73,7 @@ export default function SignInPage() {
       setIsSigningIn(true);
       const result = await signIn("github", {
         redirect: false, // Handle redirect manually for better UX
-        callbackUrl: "/onboarding/workspace", // Always go through onboarding to avoid direct workspace access
+        callbackUrl: "/", // Always go through onboarding to avoid direct workspace access
       });
 
       if (result?.error) {
@@ -95,7 +94,7 @@ export default function SignInPage() {
       const result = await signIn("mock", {
         username: mockUsername || "dev-user",
         redirect: false,
-        callbackUrl: "/onboarding/workspace",
+        callbackUrl: "/",
       });
 
       if (result?.error) {

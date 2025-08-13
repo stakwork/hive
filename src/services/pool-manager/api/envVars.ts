@@ -1,5 +1,8 @@
 import { config } from "@/lib/env";
 import { DevContainerFile } from "@/utils/devContainerUtils";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function fetchPoolEnvVars(
   poolName: string,
@@ -7,12 +10,12 @@ export async function fetchPoolEnvVars(
 ): Promise<Array<{ key: string; value: string }>> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}`;
   const headers = {
-    Authorization: `Bearer ${poolApiKey}`,
+    Authorization: `Bearer ${encryptionService.decryptField(
+      "poolApiKey",
+      poolApiKey,
+    )}`,
     "Content-Type": "application/json",
   };
-
-  console.log("url", url);
-  console.log("headers", headers);
 
   const response = await fetch(url, {
     method: "GET",
@@ -71,7 +74,7 @@ export async function updatePoolDataApi(
   const response = await fetch(url, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${poolApiKey}`,
+      Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
       "Content-Type": "application/json",
     },
     body,

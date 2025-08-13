@@ -1,6 +1,7 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { Repository } from "@/types";
 import { EnvironmentVariable } from "@/types/wizard";
+import { parseRepositoryName } from "@/utils/repositoryParser";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
@@ -29,6 +30,7 @@ const initialState = {
   ingestRefId: "",
   poolName: "",
   swarmId: "",
+  repositoryUrlDraft: "",
 };
 
 export const STEPS_ARRAY = [
@@ -46,36 +48,11 @@ export const STEPS_ARRAY = [
 
 export type TWizardStep = (typeof STEPS_ARRAY)[number];
 
-export const steps = {
-  WELCOME: 1,
-  REPOSITORY_SELECT: 2,
-  PROJECT_NAME: 3,
-  GRAPH_INFRASTRUCTURE: 4,
-  INGEST_CODE: 5,
-  ADD_SERVICES: 6,
-  ENVIRONMENT_SETUP: 7,
-  REVIEW_POOL_ENVIRONMENT: 8,
-  STAKWORK_SETUP: 9,
-  COMPLETION: 10,
-};
-
-export const reverseSteps = {
-  1: "WELCOME",
-  2: "REPOSITORY_SELECT",
-  3: "PROJECT_NAME",
-  4: "GRAPH_INFRASTRUCTURE",
-  5: "INGEST_CODE",
-  6: "ADD_SERVICES",
-  7: "ENVIRONMENT_SETUP",
-  8: "REVIEW_POOL_ENVIRONMENT",
-  9: "STAKWORK_SETUP",
-  10: "COMPLETION",
-};
-
 type WizardStore = {
   // Backend state
   loading: boolean;
   error: string | null;
+  repositoryUrlDraft: string;
 
   // Local UI state
   currentStep: (typeof STEPS_ARRAY)[number];
@@ -125,6 +102,7 @@ type WizardStore = {
   setWorkspaceId: (id: string) => void;
   setHasKey: (hasKey: boolean) => void;
   resetWizard: () => void;
+  setRepositoryUrlDraft: (url: string) => void;
 };
 
 export const useWizardStore = create<WizardStore>()(
@@ -142,8 +120,15 @@ export const useWizardStore = create<WizardStore>()(
           `/api/code-graph/wizard-state?workspace=${encodeURIComponent(workspaceSlug)}`,
         );
         const json = await res.json();
-        console.log(json);
         const { data } = json;
+
+        if (!data) {
+          set({
+            currentStep: "GRAPH_INFRASTRUCTURE",
+            currentStepStatus: "PENDING",
+          });
+          return;
+        }
 
         if (res.ok && json.success) {
           const {
@@ -255,7 +240,14 @@ export const useWizardStore = create<WizardStore>()(
     setError: (error) => set({ error }),
     setCurrentStep: (step) => set({ currentStep: step }),
     setCurrentStepStatus: (status) => set({ currentStepStatus: status }),
-    setSelectedRepo: (repo) => set({ selectedRepo: repo }),
+    setSelectedRepo: (repo) => {
+      if (repo?.html_url) {
+        const extractedRepoName = parseRepositoryName(repo.html_url);
+        set({ selectedRepo: repo, repoName: extractedRepoName });
+      } else {
+        set({ selectedRepo: repo });
+      }
+    },
     setSearchTerm: (term) => set({ searchTerm: term }),
     setProjectName: (name) => set({ projectName: name }),
     setRepoName: (name) => set({ repoName: name }),
@@ -265,6 +257,7 @@ export const useWizardStore = create<WizardStore>()(
     setHasKey: (hasKey) => set({ hasKey }),
     setSwarmIsLoading: (isLoading) => set({ swarmIsLoading: isLoading }),
     setIngestRefId: (id) => set({ ingestRefId: id }),
+    setRepositoryUrlDraft: (url) => set({ repositoryUrlDraft: url }),
     resetWizard: () => set(initialState),
   })),
 );

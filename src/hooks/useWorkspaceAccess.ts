@@ -2,7 +2,7 @@
 
 import { useContext } from "react";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
-import type { WorkspaceRole } from "@/types/workspace";
+import { WorkspaceRole, hasRoleLevel } from "@/lib/auth/roles";
 
 /**
  * Hook for access control validation
@@ -19,29 +19,11 @@ export function useWorkspaceAccess() {
 
   const { role, hasAccess } = context;
 
-  // Permission levels based on workspace roles
-  const PERMISSION_LEVELS = {
-    READ: [
-      "VIEWER",
-      "STAKEHOLDER",
-      "DEVELOPER",
-      "PM",
-      "ADMIN",
-      "OWNER",
-    ] as WorkspaceRole[],
-    WRITE: ["DEVELOPER", "PM", "ADMIN", "OWNER"] as WorkspaceRole[],
-    ADMIN: ["ADMIN", "OWNER"] as WorkspaceRole[],
-    OWNER: ["OWNER"] as WorkspaceRole[],
-  };
-
-  // Basic permission checks
-  const canRead =
-    hasAccess && role ? PERMISSION_LEVELS.READ.includes(role) : false;
-  const canWrite =
-    hasAccess && role ? PERMISSION_LEVELS.WRITE.includes(role) : false;
-  const canAdmin =
-    hasAccess && role ? PERMISSION_LEVELS.ADMIN.includes(role) : false;
-  const isOwner = hasAccess && role === "OWNER";
+  // Basic permission checks using centralized role hierarchy
+  const canRead = hasAccess && role ? hasRoleLevel(role, WorkspaceRole.VIEWER) : false;
+  const canWrite = hasAccess && role ? hasRoleLevel(role, WorkspaceRole.DEVELOPER) : false;
+  const canAdmin = hasAccess && role ? hasRoleLevel(role, WorkspaceRole.ADMIN) : false;
+  const isOwner = hasAccess && role === WorkspaceRole.OWNER;
 
   // Granular permission checks for specific features
   const permissions = {
@@ -78,20 +60,10 @@ export function useWorkspaceAccess() {
     canManageSettings: canAdmin,
   };
 
-  // Permission checking utilities
+  // Permission checking utilities using centralized helpers
   const checkPermission = (requiredRole: WorkspaceRole) => {
     if (!hasAccess || !role) return false;
-
-    const roleHierarchy: Record<WorkspaceRole, number> = {
-      VIEWER: 1,
-      STAKEHOLDER: 2,
-      DEVELOPER: 3,
-      PM: 4,
-      ADMIN: 5,
-      OWNER: 6,
-    };
-
-    return roleHierarchy[role] >= roleHierarchy[requiredRole];
+    return hasRoleLevel(role, requiredRole);
   };
 
   const requiresRole = (requiredRole: WorkspaceRole) => {

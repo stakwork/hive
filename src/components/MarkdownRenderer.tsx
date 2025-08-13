@@ -11,19 +11,12 @@ import rehypeSanitize from "rehype-sanitize";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/hooks/use-theme";
 
 interface MarkdownRendererProps {
   children: string;
   className?: string;
   variant?: "user" | "assistant";
-}
-
-interface CodeProps {
-  node?: any;
-  inline?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-  [key: string]: any;
 }
 
 const createStyles = (isUser: boolean) => ({
@@ -49,7 +42,7 @@ const baseStyles = {
   listDisc: "list-disc",
   listDecimal: "list-decimal",
   listItem: "leading-7",
-  codeInline: "relative rounded text-sm font-mono border",
+  codeInline: "relative rounded-xs px-0.75 py-0.5 text-sm font-mono",
   codeBlock: "relative rounded-lg border overflow-x-auto",
   table: "w-full border-collapse",
   tableWrapper: "my-6 w-full overflow-y-auto rounded-lg border",
@@ -65,6 +58,7 @@ const baseStyles = {
 
 const createComponents = (
   styles: ReturnType<typeof createStyles>,
+  codeInlineClass: string,
 ): Components => ({
   h1: ({ children, ...props }) => (
     <h1
@@ -216,6 +210,7 @@ const createComponents = (
     </a>
   ),
   img: ({ src, alt, ...props }) => (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       className={cn(`${(baseStyles.image, styles.border)} rounded-md`)}
       src={src ?? ""}
@@ -227,36 +222,26 @@ const createComponents = (
   hr: ({ ...props }) => (
     <hr className={cn(baseStyles.hr, styles.border)} {...props} />
   ),
-  code: ({ inline, className, children, ...props }: CodeProps) => {
+  code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
 
-    if (inline) {
+    if (!match) {
       return (
-        <code
-          className={cn(
-            baseStyles.codeInline,
-            styles.bg,
-            styles.text,
-            styles.border,
-          )}
-          {...props}
-        >
+        <code className={cn(baseStyles.codeInline, codeInlineClass, className)}>
           {children}
         </code>
       );
     }
 
     return (
-      <div>
-        <SyntaxHighlighter
-          language={match ? match[1] : "text"}
-          style={tomorrow}
-          wrapLongLines={true}
-          PreTag="div"
-        >
-          {String(children).replace(/\n$/, "")}
-        </SyntaxHighlighter>
-      </div>
+      <SyntaxHighlighter
+        PreTag="pre"
+        wrapLines={true}
+        language={match[1]}
+        style={tomorrow}
+      >
+        {String(children).replace(/\n$/, "")}
+      </SyntaxHighlighter>
     );
   },
 });
@@ -268,22 +253,34 @@ export function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
   const styles = createStyles(isUser);
-  const components = createComponents(styles);
+  const { theme } = useTheme();
+  const isDarkTheme = theme === "dark";
+  const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
+  const components = createComponents(styles, codeInlineClass);
+
+  const processedContent =
+    typeof children === "string"
+      ? children
+          .replace(/\\n/g, "\n")
+          .replace(/\\t/g, "\t")
+          .replace(/\\"/g, '"')
+          .replace(/\\'/g, "'")
+      : children;
 
   return (
     <div className={cn("prose dark:prose-invert max-w-full", className)}>
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
-          remarkBreaks,
           remarkFrontmatter,
           remarkDirective,
           remarkMath,
+          remarkBreaks,
         ]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeFormat]}
         components={components}
       >
-        {children}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

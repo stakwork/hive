@@ -1,6 +1,12 @@
-import { CreateSwarmRequest, CreateSwarmResponse } from "@/types";
-import { HttpClient } from "@/lib/http-client";
 import { env } from "@/lib/env";
+import { HttpClient } from "@/lib/http-client";
+import {
+  CreateSwarmRequest,
+  CreateSwarmResponse,
+  ValidateUriResponse,
+} from "@/types";
+import { EncryptionService } from "@/lib/encryption";
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function createSwarmApi(
   client: HttpClient,
@@ -15,6 +21,16 @@ export async function createSwarmApi(
   );
 }
 
+export async function validateUriApi(
+  client: HttpClient,
+  domain: string,
+): Promise<ValidateUriResponse> {
+  return client.get<ValidateUriResponse>(
+    `/api/super/check-domain?domain=${domain}`,
+    { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
+  );
+}
+
 export async function fetchSwarmDetails(
   swarmId: string,
 ): Promise<{ ok: boolean; data?: unknown; status: number }> {
@@ -26,8 +42,6 @@ export async function fetchSwarmDetails(
     try {
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
-      console.log("fetch searm details url", url);
-
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -35,8 +49,6 @@ export async function fetchSwarmDetails(
         },
       });
       const data = await response.json();
-
-      console.log("fetch swarm details data", data);
 
       if (response.ok) {
         return { ok: true, data, status: response.status };
@@ -46,7 +58,7 @@ export async function fetchSwarmDetails(
     } catch {
       lastError = { ok: false, status: 500 };
     }
-    // Exponential backoff
+
     await new Promise((resolve) => setTimeout(resolve, delay));
     delay *= 2;
   }
@@ -76,7 +88,7 @@ export async function swarmApiRequest({
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey)}`,
       "Content-Type": "application/json",
     };
 
@@ -120,7 +132,7 @@ export async function swarmApiRequestAuth({
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
     const headers: Record<string, string> = {
-      "x-api-token": `${apiKey}`,
+      "x-api-token": `${encryptionService.decryptField("swarmApiKey", apiKey)}`,
       "Content-Type": "application/json",
     };
 

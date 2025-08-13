@@ -57,14 +57,13 @@ model User {
   deleted       Boolean      @default(false)
   deletedAt     DateTime?    @map("deleted_at")
   lastLoginAt   DateTime?    @map("last_login_at")
+  poolApiKey    String?      @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
   
   // Authentication relationships
   accounts      Account[]
   sessions      Session[]
   githubAuth    GitHubAuth?
 
-  // Pool api key
-  poolApiKey            String? @map("pool_api_key") // NEW: Pool API Key for Pool Manager
   
   // Workspace relationships
   ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
@@ -198,6 +197,7 @@ model Swarm {
 
   // Stakgraph configuration fields
   poolName              String? @map("pool_name")
+  poolApiKey            String? @map("pool_api_key") // Pool API Key for Pool Manager
   repositoryName        String? @map("repository_name")
   defaultBranch         String? @map("default_branch")
   repositoryDescription String? @map("repository_description")
@@ -399,6 +399,9 @@ model Task {
   workflowStartedAt  DateTime?       @map("workflow_started_at")
   workflowCompletedAt DateTime?      @map("workflow_completed_at")
   
+  // Stakwork project ID for log subscription
+  stakworkProjectId Int?            @map("stakwork_project_id")
+  
   // Audit fields
   createdById   String      @map("created_by_id")
   createdBy     User        @relation("TaskCreator", fields: [createdById], references: [id])
@@ -429,6 +432,7 @@ model ChatMessage {
   taskId              String?     @map("task_id")
   task                Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
   message             String
+  workflowUrl         String?     @map("workflow_url")
   role                ChatRole
   timestamp           DateTime    @default(now())
   contextTags         Json        @default("[]") @map("context_tags") // stores ContextTag[]
@@ -452,6 +456,7 @@ model Artifact {
   message       ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
   type          ArtifactType
   content       Json?         // stores FormContent | CodeContent | BrowserContent
+  icon          String?       // Icon for this artifact
   
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")

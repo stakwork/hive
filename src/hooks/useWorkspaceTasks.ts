@@ -27,6 +27,10 @@ export interface TaskData {
     id: string;
     name: string | null;
     email: string | null;
+    image: string | null;
+    githubAuth: {
+      githubUsername: string;
+    } | null;
   };
 }
 

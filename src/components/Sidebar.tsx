@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Home, Settings, Menu, CheckSquare, Network } from "lucide-react";
+import { CheckSquare, Menu, Network, Settings } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import { NavUser } from "./NavUser";
-import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { NavUser } from "./NavUser";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 interface SidebarProps {
   user: {
@@ -36,34 +35,10 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
   const {
     slug: workspaceSlug,
-    switchWorkspace,
-    refreshWorkspaces,
-    getWorkspaceBySlug,
   } = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
-
-  const handleWorkspaceChange = () => {
-    // Optionally implement logic if needed
-  };
-
-  const handleCreateWorkspace = () => {
-    setCreateDialogOpen(true);
-  };
-
-  const handleWorkspaceCreated = async (createdWorkspace: { slug: string }) => {
-    setCreateDialogOpen(false);
-    await refreshWorkspaces();
-    const newWorkspace = getWorkspaceBySlug(createdWorkspace.slug);
-    if (newWorkspace) {
-      switchWorkspace(newWorkspace); // This will handle navigation
-    } else {
-      // Fallback: route directly if not found (shouldn't happen)
-      router.push(`/w/${createdWorkspace.slug}`);
-    }
-  };
 
   const handleNavigate = (href: string) => {
     if (workspaceSlug) {
@@ -81,13 +56,7 @@ export function Sidebar({ user }: SidebarProps) {
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
       <WorkspaceSwitcher
-        onWorkspaceChange={handleWorkspaceChange}
-        onCreateWorkspace={handleCreateWorkspace}
-      />
-      <CreateWorkspaceDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onCreated={handleWorkspaceCreated}
+        onWorkspaceChange={() => null}
       />
       {/* Navigation */}
       <nav className="flex-1 p-4">

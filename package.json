@@ -22,13 +22,18 @@
     "test:db:reset": "npm run test:db:cleanup && npm run test:db:setup",
     "test:integration:full": "npm run test:db:start && sleep 5 && npm run test:db:setup && npm run test:integration && npm run test:db:stop",
     "mock-server": "node mock-server.js",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "migrate:encrypt": "tsx scripts/migrate-encrypt-existing-data.ts",
+    "rotate-keys": "tsx scripts/rotate-encryption-key.ts",
+    "seed:db": "tsx scripts/helpers/seed-database.ts",
+    "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
-    "@hookform/resolvers": "^5.1.1",
+    "@hookform/resolvers": "^5.2.1",
     "@prisma/client": "^6.11.0",
     "@radix-ui/react-accordion": "^1.2.11",
+    "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-checkbox": "^1.3.2",
     "@radix-ui/react-dialog": "^1.1.14",
@@ -71,7 +76,7 @@
     "pusher-js": "^8.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-hook-form": "^7.59.0",
+    "react-hook-form": "^7.62.0",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^3.0.3",
     "react-syntax-highlighter": "^15.6.1",
@@ -86,7 +91,7 @@
     "tailwind-merge": "^3.3.1",
     "task-master-ai": "^0.19.0",
     "tiny-secp256k1": "^2.2.4",
-    "zod": "^3.25.69",
+    "zod": "^3.25.76",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
@@ -99,10 +104,13 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "dotenv-cli": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
+    "jsdom": "^26.1.0",
     "prettier": "^3.6.2",
     "tailwindcss": "^4.1.11",
+    "tsx": "^4.20.3",
     "tw-animate-css": "^1.3.4",
     "typescript": "^5",
     "vitest": "^3.2.4"

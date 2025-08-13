@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
@@ -11,6 +12,10 @@ import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+
+export const runtime = "nodejs";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Validation schema for stakgraph settings
 const stakgraphSettingsSchema = z.object({
@@ -49,10 +54,10 @@ const stakgraphSettingsSchema = z.object({
           preStart: z.string().optional(),
           postStart: z.string().optional(),
         }),
-        // Add optional fields that might be in your payload
         dev: z.boolean().optional(),
         env: z.record(z.string()).optional(),
         language: z.string().optional(),
+        interpreter: z.string().optional(),
       }),
     )
     .optional()
@@ -120,10 +125,7 @@ export async function GET(
       );
     }
 
-    // Fetch environment variables from Pool Manager using poolName and poolApiKey
     const environmentVariables = swarm?.environmentVariables;
-
-    console.log(">>>>>>>>>swarm.services", swarm);
 
     return NextResponse.json({
       success: true,
@@ -137,8 +139,37 @@ export async function GET(
         poolName: swarm.id || "",
         environmentVariables:
           typeof environmentVariables === "string"
-            ? JSON.parse(environmentVariables)
-            : environmentVariables,
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(environmentVariables);
+                  if (Array.isArray(parsed)) {
+                    try {
+                      return decryptEnvVars(
+                        parsed as Array<{ name: string; value: unknown }>,
+                      );
+                    } catch {
+                      return parsed;
+                    }
+                  }
+                  return parsed;
+                } catch {
+                  return environmentVariables;
+                }
+              })()
+            : Array.isArray(environmentVariables)
+              ? (() => {
+                  try {
+                    return decryptEnvVars(
+                      environmentVariables as Array<{
+                        name: string;
+                        value: unknown;
+                      }>,
+                    );
+                  } catch {
+                    return environmentVariables;
+                  }
+                })()
+              : environmentVariables,
         services:
           typeof swarm.services === "string"
             ? JSON.parse(swarm.services)
@@ -192,7 +223,6 @@ export async function PUT(
       );
     }
 
-    // Get workspace and verify access
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json(
@@ -205,7 +235,6 @@ export async function PUT(
       );
     }
 
-    // Parse and validate request body
     const body = await request.json();
     const validationResult = stakgraphSettingsSchema.safeParse(body);
 
@@ -223,7 +252,6 @@ export async function PUT(
 
     const settings = validationResult.data;
 
-    // Save or update Swarm using shared service
     const swarm = await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       name: settings.name,
@@ -239,20 +267,24 @@ export async function PUT(
       containerFiles: settings.containerFiles,
     });
 
-    const user = await db.user.findUnique({
-      where: {
-        email: session?.user?.email || "",
-      },
-    });
+    // Get pool API key from swarm instead of user
+    const swarmPoolApiKey = swarm?.poolApiKey || "";
+    let decryptedPoolApiKey: string;
 
-    const poolApiKey = user?.poolApiKey;
-
-    console.log(">>>>>>>>>settings.services", settings.services);
+    try {
+      decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField(
+        "poolApiKey",
+        swarmPoolApiKey,
+      ) : "";
+    } catch (error) {
+      console.error("Failed to decrypt poolApiKey:", error);
+      decryptedPoolApiKey = swarmPoolApiKey;
+    }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
     if (
       settings.poolName &&
-      poolApiKey &&
+      decryptedPoolApiKey &&
       Array.isArray(settings.environmentVariables)
     ) {
       try {
@@ -260,24 +292,18 @@ export async function PUT(
           config as unknown as ServiceConfig,
         );
 
-        const swarm = (await db.swarm.findUnique({
-          where: { workspaceId: workspace.id },
-          select: swarmSelect,
-        })) as SwarmSelectResult | null;
-
         if (swarm) {
           const currentEnvVars = await poolManager.getPoolEnvVars(
             swarm.id,
-            poolApiKey,
+            decryptedPoolApiKey,
           );
 
           // TODO: This is a solution to preserve data structure.
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
-          // Always send all vars, with correct masked/changed status
           await poolManager.updatePoolData(
             swarm.id,
-            poolApiKey,
+            decryptedPoolApiKey,
             settings.environmentVariables as unknown as Array<{
               name: string;
               value: string;
@@ -292,7 +318,6 @@ export async function PUT(
         }
       } catch (err) {
         console.error("Failed to update env vars in Pool Manager:", err);
-        // Optionally, return error or continue
       }
     }
 
@@ -307,7 +332,7 @@ export async function PUT(
         repositoryUrl: typedSwarm.repositoryUrl,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
-        poolApiKey: typedSwarm.poolApiKey || "",
+        poolApiKey: decryptedPoolApiKey,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services:
           typeof typedSwarm.services === "string"

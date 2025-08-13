@@ -23,6 +23,15 @@ export interface CreateSwarmResponse {
   };
 }
 
+export interface ValidateUriResponse {
+  success: boolean;
+  message: string;
+  data: {
+    domain_exists: boolean;
+    swarm_name_exist: boolean;
+  } | null;
+}
+
 export interface SwarmSelectResult {
   id: string;
   name: string;
@@ -46,6 +55,7 @@ export interface SwarmSelectResult {
 export interface ServicesConfig {
   name: string;
   port: number;
+  interpreter?: string;
   scripts: {
     start: string;
     install?: string;

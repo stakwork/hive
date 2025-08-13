@@ -3,6 +3,11 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import axios from "axios";
+import { EncryptionService } from "@/lib/encryption";
+
+export const runtime = "nodejs";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET() {
   try {
@@ -30,7 +35,7 @@ export async function GET() {
     // Fetch repositories from GitHub API
     const response = await axios.get("https://api.github.com/user/repos", {
       headers: {
-        Authorization: `token ${account.access_token}`,
+        Authorization: `token ${encryptionService.decryptField("access_token", account.access_token)}`,
         Accept: "application/vnd.github.v3+json",
       },
       params: {

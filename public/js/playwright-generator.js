@@ -412,9 +412,3 @@ if (typeof window !== "undefined") {
     isTextAmbiguous
   };
 }
-export {
-  cleanTextForGetByText,
-  escapeTextForAssertion,
-  generatePlaywrightTest,
-  isTextAmbiguous
-};

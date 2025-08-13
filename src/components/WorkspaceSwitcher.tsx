@@ -1,7 +1,6 @@
 "use client";
 
-import * as React from "react";
-import { ChevronsUpDown, Plus, Building2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,23 +10,21 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useRouter } from "next/navigation";
 import type { WorkspaceWithRole } from "@/types/workspace";
+import { Building2, ChevronsUpDown, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface WorkspaceSwitcherProps {
   // Legacy props for backward compatibility
   workspaces?: never; // Mark as deprecated
   activeWorkspace?: never; // Mark as deprecated
   onWorkspaceChange?: (workspace: WorkspaceWithRole) => void; // Optional callback
-  onCreateWorkspace?: () => void;
   refreshTrigger?: number; // Still useful for external refresh triggers
 }
 
 export function WorkspaceSwitcher({
   onWorkspaceChange,
-  onCreateWorkspace,
 }: WorkspaceSwitcherProps) {
   const {
     workspace: activeWorkspace,
@@ -52,12 +49,11 @@ export function WorkspaceSwitcher({
   };
 
   const handleCreateWorkspace = () => {
-    if (onCreateWorkspace) {
-      onCreateWorkspace();
-    } else {
-      // Default behavior: navigate to workspace creation
-      router.push("/workspaces?create=true");
-    }
+
+    localStorage.removeItem("repoUrl");
+    // Default behavior: navigate to workspace creation
+    router.push("/onboarding/workspace");
+
   };
 
   // Loading state
@@ -89,30 +85,6 @@ export function WorkspaceSwitcher({
           <div className="text-left flex-1">
             <div className="font-medium text-sm text-destructive">Error</div>
             <div className="text-xs text-muted-foreground">{error}</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // No workspaces state
-  if (!workspaces.length) {
-    return (
-      <div className="p-4 border-b">
-        <div className="flex items-center gap-3 p-3 border rounded-lg border-muted">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
-            <Building2 className="w-4 h-4 text-muted-foreground" />
-          </div>
-          <div className="text-left flex-1">
-            <div className="font-medium text-sm text-muted-foreground">
-              No workspaces
-            </div>
-            <button
-              className="text-xs text-primary hover:underline"
-              onClick={handleCreateWorkspace}
-            >
-              Create one
-            </button>
           </div>
         </div>
       </div>
@@ -175,29 +147,29 @@ export function WorkspaceSwitcher({
           {/* Other Workspaces */}
           {workspaces.filter((ws) => ws.id !== activeWorkspace.id).length >
             0 && (
-            <>
-              <DropdownMenuSeparator />
-              {workspaces
-                .filter((ws) => ws.id !== activeWorkspace.id)
-                .map((workspace, index) => (
-                  <DropdownMenuItem
-                    key={workspace.id}
-                    onClick={() => handleWorkspaceSelect(workspace)}
-                    className="flex items-center gap-2 p-2"
-                  >
-                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
-                      <Building2 className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">
-                        {workspace.name}
+              <>
+                <DropdownMenuSeparator />
+                {workspaces
+                  .filter((ws) => ws.id !== activeWorkspace.id)
+                  .map((workspace, index) => (
+                    <DropdownMenuItem
+                      key={workspace.id}
+                      onClick={() => handleWorkspaceSelect(workspace)}
+                      className="flex items-center gap-2 p-2"
+                    >
+                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
+                        <Building2 className="w-3.5 h-3.5" />
                       </div>
-                    </div>
-                    <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                ))}
-            </>
-          )}
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">
+                          {workspace.name}
+                        </div>
+                      </div>
+                      <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                  ))}
+              </>
+            )}
 
           {/* Create New Workspace */}
           <DropdownMenuSeparator />
@@ -208,6 +180,7 @@ export function WorkspaceSwitcher({
             <div className="flex items-center justify-center w-6 h-6 rounded-md border border-dashed">
               <Plus className="w-4 h-4" />
             </div>
+
             <div className="font-medium text-sm text-muted-foreground">
               Create new workspace
             </div>

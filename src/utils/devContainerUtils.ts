@@ -42,6 +42,7 @@ export const generatePM2Apps = (
       watch: false,
       max_memory_restart: "1G",
       env: {} as Record<string, string>,
+      interpreter: service.interpreter?.toString(),
     };
 
     if (service.port) {
@@ -85,6 +86,7 @@ export const formatPM2Apps = (
     instances: number;
     autorestart: boolean;
     watch: boolean;
+    interpreter?: string;
     max_memory_restart: string;
     env: Record<string, string>;
   }>,
@@ -94,6 +96,10 @@ export const formatPM2Apps = (
       .map(([key, value]) => `        ${key}: "${value}"`)
       .join(",\n");
 
+    const interpreterLine = app.interpreter
+      ? `      interpreter: "${app.interpreter}",\n`
+      : "";
+
     return `    {
       name: "${app.name}",
       script: "${app.script}",
@@ -101,7 +107,7 @@ export const formatPM2Apps = (
       instances: ${app.instances},
       autorestart: ${app.autorestart},
       watch: ${app.watch},
-      max_memory_restart: "${app.max_memory_restart}",
+${interpreterLine}      max_memory_restart: "${app.max_memory_restart}",
       env: {
 ${envEntries}
       }

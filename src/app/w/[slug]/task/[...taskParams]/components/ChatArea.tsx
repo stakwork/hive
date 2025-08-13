@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
+import { getAgentIcon } from "@/lib/icons";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -76,7 +77,8 @@ export function ChatArea({
             className="flex justify-start"
           >
             <div className="max-w-[85%] bg-muted rounded-2xl px-4 py-3 shadow-sm">
-              <div className="font-medium text-sm text-muted-foreground mb-1">
+              <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                {getAgentIcon()}
                 Hive
               </div>
               <div className="text-sm">

@@ -8,7 +8,6 @@ import { WizardProgressRequest, WizardProgressResponse } from "@/types/wizard";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { enumFromString } from "@/utils/enum";
 
-// Valid wizard step order for validation
 const WIZARD_STEP_ORDER: SwarmWizardStep[] = [
   SwarmWizardStep.WELCOME,
   SwarmWizardStep.REPOSITORY_SELECT,
@@ -22,12 +21,11 @@ const WIZARD_STEP_ORDER: SwarmWizardStep[] = [
   SwarmWizardStep.COMPLETION,
 ];
 
-// Valid step status transitions
 const VALID_STATUS_TRANSITIONS: Record<StepStatus, StepStatus[]> = {
   PENDING: ["STARTED", "PROCESSING"],
   STARTED: ["PROCESSING", "COMPLETED", "FAILED"],
   PROCESSING: ["COMPLETED", "FAILED"],
-  COMPLETED: ["STARTED", "PENDING"], // Can go back to restart a step
+  COMPLETED: ["STARTED", "PENDING"],
   FAILED: ["STARTED", "PROCESSING"],
 };
 
@@ -38,8 +36,6 @@ function validateStepTransition(
   const currentIndex = WIZARD_STEP_ORDER.indexOf(currentStep);
   const newIndex = WIZARD_STEP_ORDER.indexOf(newStep);
 
-  // Allow staying on the same step or moving to next step
-  // Also allow moving backward (for editing previous steps)
   return newIndex >= 0 && currentIndex >= 0;
 }
 
@@ -142,12 +138,6 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    console.log("currentSwarm", currentSwarm);
-    console.log("wizardStep:", prismaWizardStep);
-    console.log("stepStatus:", prismaStepStatus);
-    console.log("wizardData", wizardData);
-
-    // Use saveOrUpdateSwarm to create or update the swarm
     const swarm = await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       wizardStep: prismaWizardStep,
@@ -155,7 +145,6 @@ export async function PUT(request: NextRequest) {
       wizardData: (wizardData ?? {}) as Prisma.InputJsonValue,
     });
 
-    // Validate step transition if wizardStep is provided
     if (
       prismaWizardStep &&
       currentSwarm &&
@@ -170,7 +159,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Validate status transition if stepStatus is provided
     if (
       prismaStepStatus &&
       currentSwarm &&
@@ -184,7 +172,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Parse wizard data if it's a string
     let parsedWizardData: Record<string, unknown> = {};
     if (typeof swarm.wizardData === "string") {
       try {

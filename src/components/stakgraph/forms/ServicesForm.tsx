@@ -118,6 +118,8 @@ export default function ServicesForm({
         typeof value === "number" ? value : Number(value);
     } else if (field === "name") {
       updatedServices[idx].name = value as string;
+    } else if (field === "interpreter") {
+      updatedServices[idx].interpreter = value as string;
     }
     onChange(updatedServices);
   };
@@ -208,7 +210,7 @@ export default function ServicesForm({
                     />
                   </div>
 
-                  <div className="w-1/4">
+                  <div className="w-1/6">
                     <Label htmlFor={`service-port-${idx}`} className="mb-1">
                       Port
                     </Label>
@@ -229,6 +231,25 @@ export default function ServicesForm({
                       }}
                       disabled={loading}
                       required
+                    />
+                  </div>
+
+                  <div className="w-1/4">
+                    <Label
+                      htmlFor={`service-interpreter-${idx}`}
+                      className="mb-1"
+                    >
+                      Interpreter
+                    </Label>
+                    <Input
+                      id={`service-interpreter-${idx}`}
+                      placeholder="e.g. node"
+                      type="text"
+                      value={svc.interpreter}
+                      onChange={(e) => {
+                        handleServiceChange(idx, "interpreter", e.target.value);
+                      }}
+                      disabled={loading}
                     />
                   </div>
 

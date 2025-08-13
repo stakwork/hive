@@ -1,5 +1,8 @@
 import { config } from "@/lib/env";
 import { AuthBody, PoolManagerAuthResponse } from "@/types/pool-manager";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function getPoolManagerApiKey(): Promise<string> {
   const url = `${config.POOL_MANAGER_BASE_URL}/auth/login`;
@@ -24,5 +27,7 @@ export async function getPoolManagerApiKey(): Promise<string> {
   if (!data.success) {
     throw new Error("Authentication failed");
   }
-  return data.token;
+  return JSON.stringify(
+    encryptionService.encryptField("poolApiKey", data.token),
+  );
 }

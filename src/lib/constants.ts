@@ -104,14 +104,16 @@ export const WORKSPACE_SLUG_PATTERNS = {
   MAX_LENGTH: 50,
 } as const;
 
+import { WorkspaceRole } from "@prisma/client";
+
 // Workspace access levels for permission checking
-export const WORKSPACE_PERMISSION_LEVELS = {
-  VIEWER: 0,
-  STAKEHOLDER: 1,
-  DEVELOPER: 2,
-  PM: 3,
-  ADMIN: 4,
-  OWNER: 5,
+export const WORKSPACE_PERMISSION_LEVELS: Record<WorkspaceRole, number> = {
+  [WorkspaceRole.VIEWER]: 0,
+  [WorkspaceRole.STAKEHOLDER]: 1,
+  [WorkspaceRole.DEVELOPER]: 2,
+  [WorkspaceRole.PM]: 3,
+  [WorkspaceRole.ADMIN]: 4,
+  [WorkspaceRole.OWNER]: 5,
 } as const;
 
 // Error messages

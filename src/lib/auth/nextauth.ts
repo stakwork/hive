@@ -4,6 +4,9 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import axios from "axios";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Extend the Profile type for GitHub
 interface GitHubProfile {
@@ -140,16 +143,18 @@ export const authOptions: NextAuthOptions = {
 
             if (!existingAccount) {
               // Create a new account record linking GitHub to the existing user
+              const encryptedAccessToken = encryptionService.encryptField(
+                "access_token",
+                account.access_token ?? "",
+              );
+
               await db.account.create({
                 data: {
                   userId: existingUser.id,
                   type: account.type,
                   provider: account.provider,
                   providerAccountId: account.providerAccountId,
-                  access_token: account.access_token as
-                    | string
-                    | undefined
-                    | null,
+                  access_token: JSON.stringify(encryptedAccessToken),
                   refresh_token: account.refresh_token as
                     | string
                     | undefined
@@ -169,10 +174,15 @@ export const authOptions: NextAuthOptions = {
               user.id = existingUser.id;
             } else {
               if (account.access_token) {
+                const encryptedAccessToken = encryptionService.encryptField(
+                  "access_token",
+                  account.access_token ?? "",
+                );
+
                 await db.account.update({
                   where: { id: existingAccount.id },
                   data: {
-                    access_token: account.access_token,
+                    access_token: JSON.stringify(encryptedAccessToken),
                     scope: account.scope,
                   },
                 });
@@ -255,7 +265,10 @@ export const authOptions: NextAuthOptions = {
                 "https://api.github.com/user",
                 {
                   headers: {
-                    Authorization: `token ${account.access_token}`,
+                    Authorization: `token ${encryptionService.decryptField(
+                      "access_token",
+                      account.access_token,
+                    )}`,
                   },
                 },
               );
@@ -357,6 +370,30 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
   },
+  events: {
+    async linkAccount({ user, account }) {
+      try {
+        if (account?.provider === "github" && account.access_token) {
+          const encryptedToken = JSON.stringify(
+            encryptionService.encryptField(
+              "access_token",
+              account.access_token,
+            ),
+          );
+          await db.account.updateMany({
+            where: {
+              userId: user.id,
+              provider: "github",
+              providerAccountId: account.providerAccountId,
+            },
+            data: { access_token: encryptedToken },
+          });
+        }
+      } catch (error) {
+        console.error("Error in linkAccount encryption:", error);
+      }
+    },
+  },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/error",
@@ -391,7 +428,10 @@ export async function getGithubUsernameAndPAT(
   if (githubAuth?.githubUsername && githubAccount?.access_token) {
     return {
       username: githubAuth.githubUsername,
-      pat: githubAccount.access_token,
+      pat: encryptionService.decryptField(
+        "access_token",
+        githubAccount.access_token,
+      ),
     };
   }
   return null;

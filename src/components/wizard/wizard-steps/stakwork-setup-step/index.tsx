@@ -5,40 +5,48 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle } from "lucide-react";
 import { useWizardStore } from "@/stores/useWizardStore";
+import { useEffect } from "react";
 
 interface StakworkSetupStepProps {
   onNext: () => void;
-  onBack: () => void;
 }
 
 export const StakworkSetupStep = ({
-  onNext,
-  onBack,
+  onNext
 }: StakworkSetupStepProps) => {
-  const workspaceName = useWizardStore((s) => s.workspaceName);
   const workspaceId = useWizardStore((s) => s.workspaceId);
   const hasKey = useWizardStore((s) => s.hasKey);
 
-  const createCustomer = async () => {
-    try {
-      const data = await fetch("/api/stakwork/create-customer", {
-        method: "POST",
-        body: JSON.stringify({
-          workspaceId,
-        }),
-      });
-      onNext();
-      const res = await data.json();
-      console.log(res);
-    } catch (error) {
-      console.error(error);
+
+
+  useEffect(() => {
+    const createCustomer = async () => {
+      try {
+        const data = await fetch("/api/stakwork/create-customer", {
+          method: "POST",
+          body: JSON.stringify({
+            workspaceId,
+          }),
+        });
+        onNext();
+        const res = await data.json();
+        console.log(res);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    if (workspaceId) {
+      createCustomer();
     }
-  };
+  }, [workspaceId, onNext]);
+
+  useEffect(() => {
+    if (hasKey) {
+      onNext();
+    }
+  }, [hasKey, onNext]);
 
   return (
     <Card className="max-w-2xl mx-auto">
@@ -151,30 +159,6 @@ export const StakworkSetupStep = ({
           >
             Stakwork Customer
           </Label>
-        </div>
-        <div className="flex justify-between pt-4">
-          <Button variant="outline" type="button" onClick={onBack}>
-            Back
-          </Button>
-          {hasKey ? (
-            <Button
-              className="px-8 bg-green-600 hover:bg-green-700"
-              type="button"
-              onClick={onNext}
-            >
-              Finish
-              <CheckCircle className="w-4 h-4 ml-2" />
-            </Button>
-          ) : (
-            <Button
-              className="px-8 bg-green-600 hover:bg-green-700"
-              type="button"
-              onClick={createCustomer}
-            >
-              Create customer
-              <CheckCircle className="w-4 h-4 ml-2" />
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>

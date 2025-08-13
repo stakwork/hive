@@ -1,6 +1,9 @@
 import { BaseServiceClass } from "@/lib/base-service";
 import { ServiceConfig } from "@/types";
-import { config, env } from "@/lib/env";
+import { config } from "@/lib/env";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export class StakworkService extends BaseServiceClass {
   public readonly serviceName = "stakwork";
@@ -22,7 +25,10 @@ export class StakworkService extends BaseServiceClass {
     // Compose headers as required by Stakwork
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Token token=${this.config.apiKey}`,
+      Authorization: `Token token=${encryptionService.decryptField(
+        "stakworkApiKey",
+        this.config.apiKey,
+      )}`,
     };
 
     // Use the correct HTTP method
@@ -83,7 +89,7 @@ export class StakworkService extends BaseServiceClass {
     const requestFn = () => {
       return client.post<T>(
         endpoint,
-        { secret: { name: name, value: value } },
+        { source: "hive", secret: { name: name, value: value } },
         headers,
         this.serviceName,
       );
@@ -110,7 +116,10 @@ export class StakworkService extends BaseServiceClass {
     // Compose headers as required by Stakwork
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Token token=${this.config.apiKey}`,
+      Authorization: `Token token=${encryptionService.decryptField(
+        "stakworkApiKey",
+        this.config.apiKey,
+      )}`,
     };
 
     // Use the correct HTTP method

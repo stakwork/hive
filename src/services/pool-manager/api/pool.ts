@@ -5,7 +5,6 @@ import {
   DeletePoolRequest,
   UpdatePoolRequest,
   Pool,
-  PoolUser,
   PoolUserResponse,
 } from "@/types";
 import { HttpClient } from "@/lib/http-client";
