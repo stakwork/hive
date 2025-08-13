@@ -49,7 +49,6 @@ export function WorkspaceSettings() {
 
   const onSubmit = async (data: UpdateWorkspaceInput) => {
     if (!workspace) return;
-
     setIsSubmitting(true);
     try {
       const response = await fetch(`/api/workspaces/${workspace.slug}`, {
@@ -70,7 +69,7 @@ export function WorkspaceSettings() {
         title: "Success",
         description: "Workspace updated successfully",
       });
-      
+
       // If slug changed, redirect to new URL
       if (result.slugChanged) {
         const currentPath = window.location.pathname.replace(`/w/${workspace.slug}`, "");
