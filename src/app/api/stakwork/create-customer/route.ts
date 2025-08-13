@@ -61,15 +61,15 @@ export async function POST(request: NextRequest) {
         /{{(.*?)}}/g,
         "$1",
       );
-      const decryptedStakworkApiKey = encryptionService.decryptField(
-        "stakworkApiKey",
+      const decryptedSwarmApiKey = encryptionService.decryptField(
+        "swarmApiKey",
         swarm?.swarmApiKey || "",
       );
 
       if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
         await stakworkService().createSecret(
           sanitizedSecretAlias,
-          decryptedStakworkApiKey,
+          decryptedSwarmApiKey,
           token,
         );
       }
