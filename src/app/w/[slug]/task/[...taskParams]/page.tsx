@@ -30,7 +30,7 @@ export default function TaskChatPage() {
   const { toast } = useToast();
   const params = useParams();
 
-  const { taskMode, setTaskMode, isLoaded } = useTaskMode();
+  const { taskMode, setTaskMode } = useTaskMode();
 
   const slug = params.slug as string;
   const taskParams = params.taskParams as string[];

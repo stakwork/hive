@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 
 export function useTaskMode() {
   const [taskMode, setTaskModeState] = useState<string>("live");
-  const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -12,7 +11,6 @@ export function useTaskMode() {
     if (savedMode) {
       setTaskModeState(savedMode);
     }
-    setIsLoaded(true);
   }, []);
 
   // Set mode and persist to localStorage
@@ -21,5 +19,5 @@ export function useTaskMode() {
     localStorage.setItem("task_mode", mode);
   };
 
-  return { taskMode, setTaskMode, isLoaded };
+  return { taskMode, setTaskMode };
 }
