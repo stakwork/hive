@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LanguageSupport } from "@/components/onboarding/LanguageSupport";
 import { useWizardStore } from "@/stores/useWizardStore";
 import {
   AlertCircle,
@@ -121,6 +122,9 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
+
+        {/* Language Support - at bottom */}
+        <LanguageSupport />
       </CardContent>
       {!session?.user && <Button className="self-center" variant="outline" onClick={redirectToLogin}>
         I have an account
