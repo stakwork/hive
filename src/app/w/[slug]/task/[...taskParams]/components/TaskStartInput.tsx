@@ -52,9 +52,6 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
-      <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
-        What do you want to do?
-      </h1>
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
         {mode === "unit" ? (
           <div className="px-8 pt-8 pb-16 min-h-[180px] flex flex-col items-center justify-center text-center">
