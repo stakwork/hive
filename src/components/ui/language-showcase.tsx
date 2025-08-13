@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DEFAULT_LANGUAGE_ORDER,
   getLanguagesByIds
@@ -85,14 +86,12 @@ export const LanguageShowcase: React.FC<LanguageShowcaseProps> = ({
       )}>
         {displayLanguages.map((language) => {
           const IconComponent = language.icon;
-          return (
+          const content = (
             <div
-              key={language.id}
               className={cn(
                 'opacity-60 hover:opacity-100 transition-opacity',
                 showLabels && 'flex flex-col items-center space-y-1'
               )}
-              title={showLabels ? undefined : language.name}
             >
               <IconComponent 
                 className={cn(sizeClasses[size], language.color)} 
@@ -103,6 +102,25 @@ export const LanguageShowcase: React.FC<LanguageShowcaseProps> = ({
                 </span>
               )}
             </div>
+          );
+
+          if (showLabels) {
+            return (
+              <div key={language.id}>
+                {content}
+              </div>
+            );
+          }
+
+          return (
+            <Tooltip key={language.id}>
+              <TooltipTrigger asChild>
+                {content}
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{language.name}</p>
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
