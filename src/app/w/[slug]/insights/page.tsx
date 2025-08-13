@@ -30,7 +30,8 @@ import {
   Target,
   BookOpen,
   Zap,
-  Search
+  Search,
+  Bot
 } from "lucide-react";
 import { redirect } from "next/navigation";
 
@@ -212,7 +213,7 @@ export default function InsightsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Wrench className="h-5 w-5 text-purple-500" />
+            <Bot className="h-5 w-5 text-blue-500" />
             <span>Janitors</span>
           </CardTitle>
           <CardDescription>
