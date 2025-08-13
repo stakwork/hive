@@ -64,8 +64,8 @@ export function Sidebar({ user }: SidebarProps) {
           {navigationItems.map((item) => (
             <li key={item.href}>
               <Button
-                variant="ghost"
-                className="w-full justify-start"
+                variant={pathname.includes(item.href) ? "secondary" : "ghost"}
+                className={`w-full justify-start ${pathname.includes(item.href) ? "bg-primary/10 dark:bg-primary/20" : ""}`}
                 onClick={() => handleNavigate(item.href)}
               >
                 <item.icon className="w-4 h-4 mr-2" />
