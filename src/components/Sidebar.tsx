@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -37,7 +38,7 @@ export function Sidebar({ user }: SidebarProps) {
   const {
     slug: workspaceSlug,
   } = useWorkspace();
-  const canAccessInsights = useFeatureFlag('CODEBASE_RECOMMENDATION');
+  const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
 
   // Add Insights navigation item conditionally based on feature flag
   const navigationItems = canAccessInsights 
