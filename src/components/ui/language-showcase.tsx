@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DEFAULT_LANGUAGE_ORDER,
   getLanguagesByIds
@@ -78,52 +78,51 @@ export const LanguageShowcase: React.FC<LanguageShowcaseProps> = ({
         <p className="text-sm text-muted-foreground mb-4">{description}</p>
       )}
       
-      <div className={cn(
-        'flex justify-center items-center',
-        layout === 'horizontal' 
-          ? spacingClasses[spacing]
-          : `grid grid-cols-${gridCols} ${spacingClasses[spacing]}`
-      )}>
-        {displayLanguages.map((language) => {
-          const IconComponent = language.icon;
-          const content = (
-            <div
-              className={cn(
-                'opacity-60 hover:opacity-100 transition-opacity',
-                showLabels && 'flex flex-col items-center space-y-1'
-              )}
-            >
-              <IconComponent 
-                className={cn(sizeClasses[size], language.color)} 
-              />
-              {showLabels && (
-                <span className="text-xs text-muted-foreground text-center">
-                  {language.name}
-                </span>
-              )}
-            </div>
-          );
-
-          if (showLabels) {
-            return (
-              <div key={language.id}>
-                {content}
+      <TooltipProvider delayDuration={0}>
+        <div className={cn(
+          'flex justify-center items-center',
+          layout === 'horizontal' 
+            ? spacingClasses[spacing]
+            : `grid grid-cols-${gridCols} ${spacingClasses[spacing]}`
+        )}>
+          {displayLanguages.map((language) => {
+            const IconComponent = language.icon;
+            
+            const LanguageIcon = (
+              <div
+                className={cn(
+                  'opacity-60 hover:opacity-100 transition-opacity',
+                  showLabels && 'flex flex-col items-center space-y-1'
+                )}
+              >
+                <IconComponent 
+                  className={cn(sizeClasses[size], language.color)} 
+                />
+                {showLabels && (
+                  <span className="text-xs text-muted-foreground text-center">
+                    {language.name}
+                  </span>
+                )}
               </div>
             );
-          }
 
-          return (
-            <Tooltip key={language.id}>
-              <TooltipTrigger asChild>
-                {content}
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{language.name}</p>
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
-      </div>
+            if (showLabels) {
+              return <div key={language.id}>{LanguageIcon}</div>;
+            }
+
+            return (
+              <Tooltip key={language.id}>
+                <TooltipTrigger asChild>
+                  {LanguageIcon}
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{language.name}</p>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+      </TooltipProvider>
     </div>
   );
 };
