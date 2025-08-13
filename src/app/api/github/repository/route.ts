@@ -1,8 +1,11 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -49,8 +52,8 @@ export async function GET(request: Request) {
 
     const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        Authorization: `Bearer ${account.access_token}`, // or `token ${token}`
-        Accept: "application/vnd.github+json",
+        Authorization: `token ${encryptionService.decryptField("access_token", account.access_token)}`,
+        Accept: "application/vnd.github.v3+json",
       },
     });
 
