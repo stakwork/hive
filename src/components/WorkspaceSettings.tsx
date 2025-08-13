@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Settings, Loader2 } from "lucide-react";
+import { Edit3, Loader2 } from "lucide-react";
 
 import {
   Card,
@@ -99,8 +99,8 @@ export function WorkspaceSettings() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Settings className="w-5 h-5" />
-          General
+          <Edit3 className="w-5 h-5" />
+          Workspace Details
         </CardTitle>
         <CardDescription>
           Update your workspace name, URL, and description
