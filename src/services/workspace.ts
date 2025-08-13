@@ -364,3 +364,57 @@ export function validateWorkspaceSlug(slug: string): {
 
   return { isValid: true };
 }
+
+export interface UpdateWorkspaceRequest {
+  name?: string;
+  description?: string | null;
+  slug?: string;
+}
+
+export async function updateWorkspaceBySlug(
+  currentSlug: string,
+  userId: string,
+  data: UpdateWorkspaceRequest,
+): Promise<WorkspaceResponse> {
+  const existing = await getWorkspaceBySlug(currentSlug, userId);
+  if (!existing) throw new Error("Workspace not found or access denied");
+  if (existing.userRole !== "OWNER")
+    throw new Error("Only workspace owners can update workspaces");
+
+  const updateData: Record<string, unknown> = {};
+
+  if (typeof data.name !== "undefined") {
+    const name = String(data.name).trim();
+    if (!name) throw new Error("Workspace name is required");
+    updateData.name = name;
+  }
+
+  if (typeof data.description !== "undefined") {
+    updateData.description =
+      data.description === null ? null : String(data.description);
+  }
+
+  if (typeof data.slug !== "undefined" && data.slug && data.slug !== existing.slug) {
+    const newSlug = String(data.slug).trim().toLowerCase();
+    const validation = validateWorkspaceSlug(newSlug);
+    if (!validation.isValid) {
+      throw new Error(validation.error || "Invalid slug");
+    }
+
+    const duplicate = await db.workspace.findUnique({ where: { slug: newSlug } });
+    if (duplicate) throw new Error(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+
+    updateData.slug = newSlug;
+  }
+
+  const updated = await db.workspace.update({
+    where: { id: existing.id },
+    data: updateData,
+  });
+
+  return {
+    ...updated,
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+  };
+}

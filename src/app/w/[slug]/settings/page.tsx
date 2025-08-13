@@ -13,6 +13,7 @@ import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { notFound } from "next/navigation";
 import { Github } from "lucide-react";
+import WorkspaceSettingsForm from "@/components/WorkspaceSettingsForm";
 
 export default async function SettingsPage({
   params,
@@ -62,6 +63,21 @@ export default async function SettingsPage({
       </div>
 
       <div className="max-w-2xl space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Workspace</CardTitle>
+            <CardDescription>Update name, URL, and description</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WorkspaceSettingsForm
+              currentSlug={workspace.slug}
+              initialName={workspace.name}
+              initialSlug={workspace.slug}
+              initialDescription={workspace.description ?? ""}
+            />
+          </CardContent>
+        </Card>
+
         <ThemeSettings />
 
         <Card>

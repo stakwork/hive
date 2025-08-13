@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { createWorkspace, getWorkspacesByUserId } from "@/services/workspace";
+import { createWorkspace, getWorkspacesByUserId, updateWorkspaceBySlug } from "@/services/workspace";
 import { db } from "@/lib/db";
 
 // Prevent caching of user-specific data
@@ -68,4 +68,40 @@ export async function DELETE() {
   }
   await db.workspace.delete({ where: { id: workspace.id } });
   return NextResponse.json({ success: true }, { status: 200 });
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string })?.id;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { slug } = await params;
+    const body = await request.json().catch(() => ({}));
+    const { name, description, slug: newSlug } = body ?? {};
+
+    const updated = await updateWorkspaceBySlug(slug, userId, {
+      name,
+      description,
+      slug: newSlug,
+    });
+
+    return NextResponse.json({ workspace: updated }, { status: 200 });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update workspace";
+
+    let status = 400;
+    if (/Unauthorized|access denied/i.test(message)) status = 403;
+    if (/not found/i.test(message)) status = 404;
+    if (/already exists/i.test(message)) status = 409;
+
+    return NextResponse.json({ error: message }, { status });
+  }
 }
