@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DEFAULT_LANGUAGE_ORDER, getLanguagesByIds } from "@/lib/constants/languages";
+import { SupportedLanguages } from "@/lib/constants";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWizardStore } from "@/stores/useWizardStore";
@@ -131,12 +131,11 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           <p className="text-xs text-muted-foreground mb-3">Language support</p>
           <TooltipProvider delayDuration={0}>
             <div className="flex justify-center items-center space-x-4">
-              {getLanguagesByIds([...DEFAULT_LANGUAGE_ORDER]).map((language, index) => {
-                const languageId = DEFAULT_LANGUAGE_ORDER[index];
+              {SupportedLanguages.map((language, index) => {
                 const IconComponent = language.icon;
                 
                 return (
-                  <Tooltip key={languageId}>
+                  <Tooltip key={index}>
                     <TooltipTrigger asChild>
                       <div className="opacity-60 hover:opacity-100 transition-opacity">
                         <IconComponent className={`w-5 h-5 ${language.color}`} />
