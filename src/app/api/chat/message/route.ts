@@ -133,8 +133,14 @@ async function callStakwork(
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
-    const workflowId =
-      mode === "live" ? stakworkWorkflowIds[0] : stakworkWorkflowIds[1];
+    let workflowId: string;
+    if (mode === "live") {
+      workflowId = stakworkWorkflowIds[0];
+    } else if (mode === "unit") {
+      workflowId = stakworkWorkflowIds[2];
+    } else {
+      workflowId = stakworkWorkflowIds[1]; // default to test mode
+    }
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
       workflow_id: parseInt(workflowId),
