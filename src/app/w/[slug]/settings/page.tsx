@@ -11,6 +11,7 @@ import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
+import { WorkspaceSettings } from "@/components/WorkspaceSettings";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { notFound } from "next/navigation";
 import { Github } from "lucide-react";
@@ -63,6 +64,8 @@ export default async function SettingsPage({
       </div>
 
       <div className="max-w-2xl space-y-6">
+        <WorkspaceSettings />
+
         <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
 
         <ThemeSettings />
