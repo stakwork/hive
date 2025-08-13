@@ -208,12 +208,12 @@ export default function InsightsPage() {
         </CardContent>
       </Card>
 
-      {/* Code Janitors */}
+      {/* Janitors */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Wrench className="h-5 w-5 text-purple-500" />
-            <span>Code Janitors</span>
+            <span>Janitors</span>
           </CardTitle>
           <CardDescription>
             Tireless workers keeping your codebase clean, tested, and secure
