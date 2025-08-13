@@ -27,11 +27,13 @@ import {
 } from "@/components/ui/form";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
 import { useToast } from "@/components/ui/use-toast";
 
 export function WorkspaceSettings() {
   const { workspace, refreshCurrentWorkspace } = useWorkspace();
+  const { canAdmin } = useWorkspaceAccess();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -65,7 +67,6 @@ export function WorkspaceSettings() {
       }
 
       toast({
-        variant: "success",
         title: "Success",
         description: "Workspace updated successfully",
       });
@@ -90,12 +91,7 @@ export function WorkspaceSettings() {
     }
   };
 
-  if (!workspace) {
-    return null;
-  }
-
-  // Only show if user has permission to edit
-  if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
+  if (!workspace || !canAdmin) {
     return null;
   }
 
@@ -104,7 +100,7 @@ export function WorkspaceSettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Settings className="w-5 h-5" />
-          Workspace Settings
+          General
         </CardTitle>
         <CardDescription>
           Update your workspace name, URL, and description
