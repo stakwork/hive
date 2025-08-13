@@ -2,6 +2,10 @@
 module.exports = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}", "./src/app/globals.css"],
   darkMode: "class",
+  safelist: [
+    // Dynamic grid classes used in LanguageShowcase component
+    { pattern: /grid-cols-[1-6]/ }
+  ],
   theme: {
     extend: {
       colors: {

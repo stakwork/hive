@@ -3,8 +3,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import {
   DEFAULT_LANGUAGE_ORDER,
-  getLanguagesByIds,
-  type LanguageId
+  getLanguagesByIds
 } from '@/lib/constants/languages';
 
 export interface LanguageShowcaseProps {
