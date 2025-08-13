@@ -13,90 +13,66 @@ import {
 } from 'react-icons/si';
 
 export interface SupportedLanguage {
-  id: string;
   name: string;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
-  category: 'frontend' | 'backend' | 'mobile' | 'systems';
 }
 
 export const SUPPORTED_LANGUAGES: Record<string, SupportedLanguage> = {
   golang: {
-    id: 'golang',
     name: 'Golang',
     icon: SiGo,
-    color: 'text-cyan-500',
-    category: 'backend'
+    color: 'text-cyan-500'
   },
   react: {
-    id: 'react',
     name: 'React',
     icon: SiReact,
-    color: 'text-blue-500',
-    category: 'frontend'
+    color: 'text-blue-500'
   },
   rails: {
-    id: 'rails',
     name: 'Ruby on Rails',
     icon: SiRubyonrails,
-    color: 'text-red-600',
-    category: 'backend'
+    color: 'text-red-600'
   },
   typescript: {
-    id: 'typescript',
     name: 'TypeScript',
     icon: SiTypescript,
-    color: 'text-blue-600',
-    category: 'frontend'
+    color: 'text-blue-600'
   },
   python: {
-    id: 'python',
     name: 'Python',
     icon: SiPython,
-    color: 'text-yellow-500',
-    category: 'backend'
+    color: 'text-yellow-500'
   },
   swift: {
-    id: 'swift',
     name: 'Swift',
     icon: SiSwift,
-    color: 'text-orange-500',
-    category: 'mobile'
+    color: 'text-orange-500'
   },
   kotlin: {
-    id: 'kotlin',
     name: 'Kotlin',
     icon: SiKotlin,
-    color: 'text-purple-500',
-    category: 'mobile'
+    color: 'text-purple-500'
   },
   rust: {
-    id: 'rust',
     name: 'Rust',
     icon: SiRust,
-    color: 'text-orange-600',
-    category: 'systems'
+    color: 'text-orange-600'
   },
   java: {
-    id: 'java',
     name: 'Java',
     icon: SiOpenjdk,
-    color: 'text-red-500',
-    category: 'backend'
+    color: 'text-red-500'
   },
   angular: {
-    id: 'angular',
     name: 'Angular',
     icon: SiAngular,
-    color: 'text-red-600',
-    category: 'frontend'
+    color: 'text-red-600'
   },
   svelte: {
-    id: 'svelte',
     name: 'Svelte',
     icon: SiSvelte,
-    color: 'text-orange-500',
-    category: 'frontend'
+    color: 'text-orange-500'
   }
 } as const;
 
@@ -117,17 +93,8 @@ export const DEFAULT_LANGUAGE_ORDER = [
 
 // Type helpers
 export type LanguageId = keyof typeof SUPPORTED_LANGUAGES;
-export type LanguageCategory = SupportedLanguage['category'];
 
 // Helper functions
-export const getLanguageById = (id: string): SupportedLanguage | undefined => {
-  return SUPPORTED_LANGUAGES[id];
-};
-
-export const getLanguagesByCategory = (category: LanguageCategory): SupportedLanguage[] => {
-  return Object.values(SUPPORTED_LANGUAGES).filter(lang => lang.category === category);
-};
-
 export const getLanguagesByIds = (ids: string[]): SupportedLanguage[] => {
   return ids
     .map(id => SUPPORTED_LANGUAGES[id])

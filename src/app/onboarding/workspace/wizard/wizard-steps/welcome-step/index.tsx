@@ -8,7 +8,9 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LanguageSupport } from "@/components/onboarding/LanguageSupport";
+import { DEFAULT_LANGUAGE_ORDER, getLanguagesByIds } from "@/lib/constants/languages";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWizardStore } from "@/stores/useWizardStore";
 import {
   AlertCircle,
@@ -124,7 +126,31 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
         </div>
 
         {/* Language Support - at bottom */}
-        <LanguageSupport />
+        <div className="text-center mb-4">
+          <Separator className="w-16 mx-auto mb-4" />
+          <p className="text-xs text-muted-foreground mb-3">Language support</p>
+          <TooltipProvider delayDuration={0}>
+            <div className="flex justify-center items-center space-x-4">
+              {getLanguagesByIds([...DEFAULT_LANGUAGE_ORDER]).map((language, index) => {
+                const languageId = DEFAULT_LANGUAGE_ORDER[index];
+                const IconComponent = language.icon;
+                
+                return (
+                  <Tooltip key={languageId}>
+                    <TooltipTrigger asChild>
+                      <div className="opacity-60 hover:opacity-100 transition-opacity">
+                        <IconComponent className={`w-5 h-5 ${language.color}`} />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{language.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
+        </div>
       </CardContent>
       {!session?.user && <Button className="self-center" variant="outline" onClick={redirectToLogin}>
         I have an account
