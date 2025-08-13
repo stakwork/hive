@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSwarmFakeModeEnabled } from "@/lib/runtime";
 
-export const isFakeMode = process.env.SWARM_FAKE_MODE === "true";
+export const isFakeMode = isSwarmFakeModeEnabled();
 
 // In-memory fake swarms: { [name: string]: { id, swarm_id, status, pollCount } }
 const fakeSwarms: Record<
