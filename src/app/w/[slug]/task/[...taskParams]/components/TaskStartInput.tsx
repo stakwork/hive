@@ -8,22 +8,13 @@ import { ArrowUp } from "lucide-react";
 
 interface TaskStartInputProps {
   onStart: (task: string) => void;
+  taskMode: string;
   onModeChange: (mode: string) => void;
 }
 
-export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
+export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [mode, setMode] = useState<"live" | "test" | "unit">("test");
-
-  useEffect(() => {
-    const savedMode = localStorage.getItem("task_mode") as "live" | "test" | "unit";
-    if (savedMode && ["live", "test", "unit"].includes(savedMode)) {
-      setMode(savedMode);
-    } else {
-      setMode("test");
-    }
-  }, []);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -32,7 +23,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (mode === "unit") {
+      if (taskMode === "unit") {
         onStart("Find functions that need unit tests and suggest test implementations");
       } else if (value.trim()) {
         onStart(value.trim());
@@ -43,7 +34,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
   const hasText = value.trim().length > 0;
 
   const handleClick = () => {
-    if (mode === "unit") {
+    if (taskMode === "unit") {
       onStart("Find functions that need unit tests and suggest test implementations");
     } else if (hasText) {
       onStart(value.trim());
@@ -56,7 +47,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
         What do you want to do?
       </h1>
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
-        {mode === "unit" ? (
+        {taskMode === "unit" ? (
           <div className="px-8 pt-8 pb-16 min-h-[180px] flex flex-col items-center justify-center text-center">
             <h3 className="text-lg font-medium text-foreground mb-2">
               Find Functions to Test
@@ -112,14 +103,8 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               style={{
                 accentColor: "var(--color-green-500)",
               }}
-              checked={mode === "live"}
-              onChange={() => {
-                setMode("live");
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("task_mode", "live");
-                  onModeChange("live");
-                }
-              }}
+              checked={taskMode === "live"}
+              onChange={() => onModeChange("live")}
               className="accent-primary"
             />
             <span className="text-sm text-foreground">Live</span>
@@ -132,14 +117,8 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               style={{
                 accentColor: "var(--color-green-500)",
               }}
-              checked={mode === "test"}
-              onChange={() => {
-                setMode("test");
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("task_mode", "test");
-                  onModeChange("test");
-                }
-              }}
+              checked={taskMode === "test"}
+              onChange={() => onModeChange("test")}
               className="accent-primary"
             />
             <span className="text-sm text-foreground">Test</span>
@@ -152,14 +131,8 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               style={{
                 accentColor: "var(--color-green-500)",
               }}
-              checked={mode === "unit"}
-              onChange={() => {
-                setMode("unit");
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("task_mode", "unit");
-                  onModeChange("unit");
-                }
-              }}
+              checked={taskMode === "unit"}
+              onChange={() => onModeChange("unit")}
               className="accent-primary"
             />
             <span className="text-sm text-foreground">Unit Tests</span>
