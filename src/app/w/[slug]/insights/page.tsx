@@ -78,8 +78,8 @@ const agents = [
 
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
-  const [agentStates, setAgentStates] = useState(
-    agents.reduce((acc, agent) => ({ ...acc, [agent.id]: agent.status !== 'idle' }), {})
+  const [agentStates, setAgentStates] = useState<Record<number, boolean>>(
+    agents.reduce((acc, agent) => ({ ...acc, [agent.id]: agent.status !== 'idle' }), {} as Record<number, boolean>)
   );
   const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
   const [showAll, setShowAll] = useState(false);
