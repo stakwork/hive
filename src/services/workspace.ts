@@ -538,3 +538,74 @@ export async function removeWorkspaceMember(
 
   await softDeleteMember(member.id);
 }
+
+/**
+ * Updates a workspace's name, slug, and description
+ */
+export async function updateWorkspace(
+  currentSlug: string,
+  userId: string,
+  data: UpdateWorkspaceRequest,
+): Promise<WorkspaceResponse> {
+  // First check if user has access and is authorized to update
+  const workspace = await getWorkspaceBySlug(currentSlug, userId);
+
+  if (!workspace) {
+    throw new Error("Workspace not found or access denied");
+  }
+
+  // Only OWNER and ADMIN can update workspace settings
+  if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
+    throw new Error("Only workspace owners and admins can update workspace settings");
+  }
+
+  // If slug is changing, validate it's available
+  if (data.slug !== currentSlug) {
+    const slugValidation = validateWorkspaceSlug(data.slug);
+    if (!slugValidation.isValid) {
+      throw new Error(slugValidation.error!);
+    }
+
+    // Check if the new slug already exists
+    const existingWorkspace = await db.workspace.findUnique({
+      where: { slug: data.slug, deleted: false },
+    });
+    if (existingWorkspace && existingWorkspace.id !== workspace.id) {
+      throw new Error(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+    }
+  }
+
+  try {
+    const updatedWorkspace = await db.workspace.update({
+      where: { id: workspace.id },
+      data: {
+        name: data.name,
+        slug: data.slug,
+        description: data.description,
+        updatedAt: new Date(),
+      },
+    });
+
+    return {
+      ...updatedWorkspace,
+      createdAt: updatedWorkspace.createdAt.toISOString(),
+      updatedAt: updatedWorkspace.updatedAt.toISOString(),
+    };
+  } catch (error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002" &&
+      "meta" in error &&
+      error.meta &&
+      typeof error.meta === "object" &&
+      "target" in error.meta &&
+      Array.isArray(error.meta.target) &&
+      error.meta.target.includes("slug")
+    ) {
+      throw new Error(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+    }
+    throw error;
+  }
+}
