@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
-import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
@@ -86,17 +85,20 @@ export function ProjectNameSetupStep() {
     const fetchRepositories = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch("/api/github/repositories");
+        const response = await fetch(`/api/github/repository?repoUrl=${repositoryUrlDraft}`);
+        console.log('response', response)
+        const { data, error } = await response.json();
         if (response.ok) {
-          const data = await response.json();
-          const repo = data.repositories.find((repo: Repository) => repo.html_url === repositoryUrlDraft);
-          if (repo) {
-            setSelectedRepo(repo);
+          if (data) {
+            setSelectedRepo(data);
           }
+        } else {
+          const message = error;
+          const err = new Error(message) as Error
+          throw err;
         }
       } catch (error) {
-        console.error("Failed to fetch repositories:", error);
-        // Fallback to mock data for testing
+        setError(error instanceof Error ? error.message : "Unknown error");
       } finally {
         setIsLoading(false);
       }
@@ -112,7 +114,6 @@ export function ProjectNameSetupStep() {
       const data = await res.json();
       if (data.success) {
         if (data.data.domain_exists || data.data.swarm_name_exist) {
-          console.log("found", data.data);
           setInfoMessage("Looking for available project name...");
           const nameEnding = projectName.split("-").pop() || '';
           const nameHasNumber = /^-?\d+$/.test(nameEnding);
@@ -175,7 +176,6 @@ export function ProjectNameSetupStep() {
   ) : (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
-        {error && <div className="text-red-500">{error}</div>}
         <div className="flex items-center justify-center mx-auto mb-4">
           <svg
             width="64"
@@ -287,57 +287,68 @@ export function ProjectNameSetupStep() {
       </CardHeader>
 
       <CardContent className="space-y-6">
-        <div>
-          <Label
-            htmlFor="graphDomain"
-            className="text-sm font-medium text-foreground"
-          >
-            Graph Domain
-          </Label>
-          {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
-            {infoMessage}
-            <Loader2 className="w-4 h-4 animate-spin" />
-          </p>}
-          <Input
-            id="graphDomain"
-            placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
-            value={isLookingForAvailableName ? "" : projectName}
-            readOnly
-            tabIndex={-1}
-            className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
-            style={{ pointerEvents: "none" }}
-          />
-        </div>
-
-        <div className="flex justify-between pt-4">
-          {!swarmId ? (
-            <>
-
-              <Button variant="outline" type="button" onClick={resetProgress}>
-                Reset
-              </Button>
-              <Button
-                disabled={swarmIsLoading}
-                className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                type="button"
-                onClick={handleCreate}
+        {error ? (
+          <>
+            <div className="flex justify-center items-center text-red-500">{error}</div>
+            <Button className="mt-2 m-auto px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
+              Reset
+            </Button>
+          </>
+        ) : (
+          <>
+            <div>
+              <Label
+                htmlFor="graphDomain"
+                className="text-sm font-medium text-foreground"
               >
-                Create
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </>
-          ) : (
-            <div className="flex flex-col items-end gap-2 w-full">
-              <Button
-                className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
-                type="button"
-                disabled
-              >
-                Generating Swarm...
-              </Button>
+                Graph Domain
+              </Label>
+              {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
+                {infoMessage}
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </p>}
+              <Input
+                id="graphDomain"
+                placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
+                value={isLookingForAvailableName ? "" : projectName}
+                readOnly
+                tabIndex={-1}
+                className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
+                style={{ pointerEvents: "none" }}
+              />
             </div>
-          )}
-        </div>
+
+            <div className="flex justify-between pt-4">
+              {!swarmId ? (
+                <>
+
+                  <Button variant="outline" type="button" onClick={resetProgress}>
+                    Reset
+                  </Button>
+                  <Button
+                    disabled={swarmIsLoading}
+                    className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                    type="button"
+                    onClick={handleCreate}
+                  >
+                    Create
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </>
+              ) : (
+                <div className="flex flex-col items-end gap-2 w-full">
+                  <Button
+                    className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
+                    type="button"
+                    disabled
+                  >
+                    Generating Swarm...
+                  </Button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
