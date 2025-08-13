@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { WorkspaceRole } from "@prisma/client";
 import {
   CreateWorkspaceRequest,
+  UpdateWorkspaceRequest,
   WorkspaceResponse,
   WorkspaceWithRole,
   WorkspaceWithAccess,

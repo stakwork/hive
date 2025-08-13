@@ -14,15 +14,15 @@ export const updateWorkspaceSchema = z.object({
   
   slug: z
     .string()
+    .trim()
     .min(WORKSPACE_SLUG_PATTERNS.MIN_LENGTH, WORKSPACE_ERRORS.SLUG_INVALID_LENGTH)
     .max(WORKSPACE_SLUG_PATTERNS.MAX_LENGTH, WORKSPACE_ERRORS.SLUG_INVALID_LENGTH)
     .regex(WORKSPACE_SLUG_PATTERNS.VALID, WORKSPACE_ERRORS.SLUG_INVALID_FORMAT)
     .refine(
-      (val) => !RESERVED_WORKSPACE_SLUGS.includes(val as any),
+      (val) => !RESERVED_WORKSPACE_SLUGS.includes(val as typeof RESERVED_WORKSPACE_SLUGS[number]),
       WORKSPACE_ERRORS.SLUG_RESERVED
     )
-    .transform((val) => val.toLowerCase())
-    .trim(),
+    .transform((val) => val.toLowerCase()),
   
   description: z
     .string()

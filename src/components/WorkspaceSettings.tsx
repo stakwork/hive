@@ -16,7 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import {
   Form,
   FormControl,
@@ -29,12 +28,13 @@ import {
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
-import { toast } from "sonner";
+import { useToast } from "@/components/ui/use-toast";
 
 export function WorkspaceSettings() {
   const { workspace, refreshCurrentWorkspace } = useWorkspace();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
 
   const form = useForm<UpdateWorkspaceInput>({
     resolver: zodResolver(updateWorkspaceSchema),
@@ -64,7 +64,11 @@ export function WorkspaceSettings() {
         throw new Error(result.error || "Failed to update workspace");
       }
 
-      toast.success("Workspace updated successfully");
+      toast({
+        variant: "success",
+        title: "Success",
+        description: "Workspace updated successfully",
+      });
       
       // If slug changed, redirect to new URL
       if (result.slugChanged) {
@@ -76,7 +80,11 @@ export function WorkspaceSettings() {
       }
     } catch (error) {
       console.error("Error updating workspace:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to update workspace");
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update workspace",
+      });
     } finally {
       setIsSubmitting(false);
     }
