@@ -69,4 +69,12 @@ export class S3Service {
   }
 }
 
-export const s3Service = new S3Service()
+// S3 service with lazy initialization to avoid build-time errors
+let _s3Service: S3Service | null = null;
+
+export const getS3Service = (): S3Service => {
+  if (!_s3Service) {
+    _s3Service = new S3Service();
+  }
+  return _s3Service;
+};

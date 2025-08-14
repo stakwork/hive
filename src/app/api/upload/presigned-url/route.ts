@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/nextauth'
-import { s3Service } from '@/services/s3'
+import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const swarmId = task.workspace.swarm?.id || 'default'
 
     // Validate file type
-    if (!s3Service.validateFileType(contentType)) {
+    if (!getS3Service().validateFileType(contentType)) {
       return NextResponse.json(
         { error: 'Invalid file type. Only images (JPEG, PNG, GIF, WebP) are allowed.' },
         { status: 400 }
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file size
-    if (!s3Service.validateFileSize(size)) {
+    if (!getS3Service().validateFileSize(size)) {
       return NextResponse.json(
         { error: 'File size exceeds maximum limit of 10MB.' },
         { status: 400 }
@@ -75,10 +75,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate S3 path
-    const s3Path = s3Service.generateS3Path(workspaceId, swarmId, taskId, filename)
+    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, taskId, filename)
 
     // Generate presigned upload URL
-    const presignedUrl = await s3Service.generatePresignedUploadUrl(
+    const presignedUrl = await getS3Service().generatePresignedUploadUrl(
       s3Path,
       contentType,
       300 // 5 minutes

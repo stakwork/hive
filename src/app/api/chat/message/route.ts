@@ -13,7 +13,7 @@ import {
 } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
-import { s3Service } from "@/services/s3";
+import { getS3Service } from "@/services/s3";
 
 export const runtime = "nodejs";
 
@@ -128,7 +128,7 @@ async function callStakwork(
     
     // Generate presigned URLs for attachments
     const attachmentUrls = await Promise.all(
-      attachmentPaths.map(path => s3Service.generatePresignedDownloadUrl(path))
+      attachmentPaths.map(path => getS3Service().generatePresignedDownloadUrl(path))
     );
     
     // stakwork workflow vars
