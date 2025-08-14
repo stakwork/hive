@@ -138,12 +138,16 @@ export function generateLongformResponse() {
 
 export function generateResponseBasedOnMessage(
   message: string,
-  baseUrl: string,
+  mockBrowserUrl: string,
 ) {
   const messageText = message.toLowerCase();
 
+  if (process.env.MOCK_BROWSER_URL) {
+    mockBrowserUrl = process.env.MOCK_BROWSER_URL;
+  }
+
   if (messageText.includes("browser")) {
-    return generateBrowserResponse(baseUrl);
+    return generateBrowserResponse(mockBrowserUrl);
   } else if (messageText.includes("code")) {
     return generateCodeResponse();
   } else if (messageText.includes("chat")) {

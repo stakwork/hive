@@ -172,17 +172,8 @@ networks:
     driver: bridge
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ../..:/workspaces:cached
+    image: alpine:latest
     command: sleep infinity
-    networks:
-      - app_network
-    extra_hosts:
-      - "localhost:172.17.0.1"
-      - "host.docker.internal:host-gateway"
 `;
 }
 
