@@ -10,16 +10,6 @@ interface SwarmTestsConfig {
   error?: string | null;
 }
 
-function getUseMocks(): boolean {
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function useSwarmTestsConfig(): SwarmTestsConfig {
   const params = useParams<{ slug?: string }>();
   const slug = useMemo(
@@ -38,13 +28,16 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
 
     async function load() {
       try {
-        if (getUseMocks()) {
-          if (!cancelled)
+        // Development: use local runner by default
+        if (process.env.DEVELOPMENT === "true") {
+          if (!cancelled) {
             setState({
-              baseUrl: "/api/mock",
+              baseUrl: "http://localhost:4000",
               apiKey: null,
               loading: false,
+              error: null,
             });
+          }
           return;
         }
 
@@ -78,6 +71,7 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
             baseUrl: swarmUrl,
             apiKey: swarmApiKey ?? null,
             loading: false,
+            error: null,
           });
       } catch (e) {
         if (!cancelled)
@@ -95,6 +89,5 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
       cancelled = true;
     };
   }, [slug]);
-  console.log("state", state);
   return state;
 }
