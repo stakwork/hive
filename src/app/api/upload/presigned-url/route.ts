@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/lib/auth/nextauth'
 import { s3Service } from '@/services/s3'
 import { z } from 'zod'
 

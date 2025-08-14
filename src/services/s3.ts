@@ -10,10 +10,11 @@ export class S3Service {
       region: process.env.AWS_REGION || 'us-east-1',
     })
     
-    this.bucketName = process.env.S3_BUCKET_NAME
-    if (!this.bucketName) {
+    const bucketName = process.env.S3_BUCKET_NAME
+    if (!bucketName) {
       throw new Error('S3_BUCKET_NAME environment variable is required')
     }
+    this.bucketName = bucketName
   }
 
   async generatePresignedUploadUrl(
