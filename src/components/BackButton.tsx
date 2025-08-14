@@ -2,10 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function BackButton() {
+  const router = useRouter();
+  
   const handleBack = () => {
-    window.history.back();
+    router.back();
   };
 
   return (
