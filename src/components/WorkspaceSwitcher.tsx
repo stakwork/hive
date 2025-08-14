@@ -43,6 +43,19 @@ export function WorkspaceSwitcher({
 
       // Call optional callback for backward compatibility
       onWorkspaceChange?.(targetWorkspace);
+
+      // Get the current path
+      const currentPath = window.location.pathname;
+
+      // Check if the current path includes "/task/"
+      if (currentPath.includes("/task/")) {
+        // Navigate to the main task page (without task ID)
+        router.push(`/w/${targetWorkspace.slug}/tasks`);
+      } else {
+        // Preserve the current path, replacing the workspace slug
+        const newPath = currentPath.replace(/\/w\/[^/]+/, `/w/${targetWorkspace.slug}`);
+        router.push(newPath);
+      }
     } catch (error) {
       console.error("Failed to switch workspace:", error);
     }
