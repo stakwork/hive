@@ -26,6 +26,7 @@
     "migrate:encrypt": "tsx scripts/migrate-encrypt-existing-data.ts",
     "rotate-keys": "tsx scripts/rotate-encryption-key.ts",
     "seed:db": "tsx scripts/helpers/seed-database.ts",
+    "seed:auto-seed": "tsx scripts/seed-from-github-account.ts",
     "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts"
   },
   "dependencies": {
