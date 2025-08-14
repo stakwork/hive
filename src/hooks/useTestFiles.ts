@@ -71,18 +71,6 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         headers["x-api-token"] = apiKey;
       }
 
-      const getResponse = await fetch(
-        `${baseUrl}/test/get?name=${encodeURIComponent(testName)}`,
-        {
-          headers,
-        },
-      );
-      const testData = await getResponse.json();
-
-      if (!testData || !testData.success) {
-        throw new Error(testData.error || "Failed to retrieve test content");
-      }
-
       const runResponse = await fetch(
         `${baseUrl}/test?test=${encodeURIComponent(testName)}`,
         {
@@ -116,6 +104,24 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
         ...prev,
         [testName]: false,
       }));
+    }
+  };
+
+  const runAllTests = async () => {
+    try {
+      if (!baseUrl) return { success: false, error: "Base URL not set" };
+      const headers: Record<string, string> = {};
+      if (apiKey) headers["x-api-token"] = apiKey;
+      const res = await fetch(`${baseUrl}/test?test=all`, { headers });
+      const data = await res.json();
+      return {
+        success: !!data.success,
+        output: data.output || "",
+        errors: data.errors || data.error || "",
+      } as TestResult & { errors?: string };
+    } catch (error) {
+      console.error("Error running all tests:", error);
+      return { success: false, error } as unknown as TestResult;
     }
   };
 
@@ -248,6 +254,7 @@ export function useTestFiles(baseUrl: string, apiKey?: string) {
     loadingTests,
     fetchTestFiles,
     runTest,
+    runAllTests,
     deleteTest,
     saveTest,
     renameTest,

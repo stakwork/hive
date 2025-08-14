@@ -78,6 +78,7 @@ export function TestManagerModal({
     loadingTests,
     fetchTestFiles,
     runTest,
+    runAllTests,
     deleteTest,
     saveTest,
     renameTest,
@@ -241,19 +242,26 @@ export function TestManagerModal({
                   title="Run all tests"
                   onClick={async () => {
                     setRunningAll(true);
-                    let passed = 0;
-                    let failed = 0;
-                    for (const t of testFiles) {
-                      const res = await runTest(t.name);
-                      if (res && (res as { success: boolean }).success)
-                        passed++;
-                      else failed++;
-                    }
+                    const res = await runAllTests();
                     setRunningAll(false);
-                    toast({
-                      title: "Run all completed",
-                      description: `${passed} passed, ${failed} failed`,
-                    });
+                    if (res && (res as { success: boolean }).success) {
+                      toast({
+                        title: "Run all completed",
+                        description: "All tests executed",
+                      });
+                    } else {
+                      const r = (res || {}) as {
+                        errors?: unknown;
+                        error?: unknown;
+                      };
+                      toast({
+                        title: "Run all failed",
+                        description: String(
+                          r.errors || r.error || "Unknown error",
+                        ),
+                        variant: "destructive",
+                      });
+                    }
                   }}
                   disabled={runningAll || isLoading || testFiles.length === 0}
                 >
