@@ -441,6 +441,7 @@ model ChatMessage {
   replyId             String?     @map("reply_id")
   
   artifacts           Artifact[]
+  attachments         Attachment[]
   
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
@@ -464,6 +465,22 @@ model Artifact {
   @@index([messageId])
   @@index([type])
   @@map("artifacts")
+}
+
+model Attachment {
+  id            String        @id @default(cuid())
+  messageId     String        @map("message_id")
+  message       ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  path          String        // S3 path (bucket-relative path)
+  filename      String        // Original filename
+  mimeType      String        @map("mime_type") // File MIME type
+  size          Int           // File size in bytes
+  
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  
+  @@index([messageId])
+  @@map("attachments")
 }
 
 // Add these enums to your existing enums section:
