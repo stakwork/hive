@@ -142,7 +142,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
               }}
               className="accent-primary"
             />
-            <span className="text-sm text-foreground">Test</span>
+            <span className="text-sm text-foreground">Artifact Test</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
