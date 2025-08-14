@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/nextauth'
 import { s3Service } from '@/services/s3'
+import { db } from '@/lib/db'
 import { z } from 'zod'
 
 const uploadRequestSchema = z.object({
   filename: z.string().min(1, 'Filename is required'),
   contentType: z.string().min(1, 'Content type is required'),
   size: z.number().min(1, 'File size must be greater than 0'),
-  workspaceSlug: z.string().min(1, 'Workspace slug is required'),
   taskId: z.string().min(1, 'Task ID is required'),
 })
 
@@ -25,7 +25,38 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const validatedData = uploadRequestSchema.parse(body)
-    const { filename, contentType, size, workspaceSlug, taskId } = validatedData
+    const { filename, contentType, size, taskId } = validatedData
+    
+    // Get task with workspace and swarm information
+    const task = await db.task.findFirst({
+      where: {
+        id: taskId,
+        deleted: false,
+      },
+      select: {
+        workspaceId: true,
+        workspace: {
+          select: {
+            id: true,
+            swarm: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    })
+    
+    if (!task) {
+      return NextResponse.json(
+        { error: 'Task not found' },
+        { status: 404 }
+      )
+    }
+    
+    const workspaceId = task.workspace.id
+    const swarmId = task.workspace.swarm?.id || 'default'
 
     // Validate file type
     if (!s3Service.validateFileType(contentType)) {
@@ -44,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate S3 path
-    const s3Path = s3Service.generateS3Path(workspaceSlug, taskId, filename)
+    const s3Path = s3Service.generateS3Path(workspaceId, swarmId, taskId, filename)
 
     // Generate presigned upload URL
     const presignedUrl = await s3Service.generatePresignedUploadUrl(

@@ -126,8 +126,10 @@ async function callStakwork(
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
     
-    // Generate public URLs for attachments
-    const attachmentUrls = attachmentPaths.map(path => s3Service.getPublicUrl(path));
+    // Generate presigned URLs for attachments
+    const attachmentUrls = await Promise.all(
+      attachmentPaths.map(path => s3Service.generatePresignedDownloadUrl(path))
+    );
     
     // stakwork workflow vars
     const vars = {

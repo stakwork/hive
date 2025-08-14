@@ -46,7 +46,6 @@ export class S3Service {
   generateS3Path(workspaceId: string, swarmId: string, taskId: string, filename: string): string {
     const timestamp = Date.now()
     const randomId = Math.random().toString(36).substring(2, 15)
-    const extension = filename.split('.').pop()
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
     
     return `uploads/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_${sanitizedFilename}`
