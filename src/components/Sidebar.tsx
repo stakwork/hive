@@ -33,9 +33,7 @@ const navigationItems = [
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const {
-    slug: workspaceSlug,
-  } = useWorkspace();
+  const { slug: workspaceSlug } = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
@@ -55,9 +53,7 @@ export function Sidebar({ user }: SidebarProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
-      <WorkspaceSwitcher
-        onWorkspaceChange={() => null}
-      />
+      <WorkspaceSwitcher onWorkspaceChange={() => null} />
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
@@ -65,7 +61,11 @@ export function Sidebar({ user }: SidebarProps) {
             <li key={item.href}>
               <Button
                 variant={pathname.includes(item.href) ? "secondary" : "ghost"}
-                className={`w-full justify-start ${pathname.includes(item.href) ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/10 dark:hover:bg-primary/20" : ""}`}
+                className={`w-full justify-start ${
+                  pathname.includes(item.href)
+                    ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
+                    : "hover:bg-primary/5 dark:hover:bg-primary/10"
+                }`}
                 onClick={() => handleNavigate(item.href)}
               >
                 <item.icon className="w-4 h-4 mr-2" />
@@ -98,7 +98,9 @@ export function Sidebar({ user }: SidebarProps) {
             variant="outline"
             size="icon"
             className={
-              isTaskPage ? "flex items-center justify-center absolute left-3 top-2 z-50" : "md:hidden"
+              isTaskPage
+                ? "flex items-center justify-center absolute left-3 top-2 z-50"
+                : "md:hidden"
             }
           >
             <Menu className="h-4 w-4" />
