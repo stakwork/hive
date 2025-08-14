@@ -30,6 +30,7 @@ const baseNavigationItems = [
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: Network, label: "Stakgraph", href: "/stakgraph" },
+  { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
@@ -40,14 +41,12 @@ export function Sidebar({ user }: SidebarProps) {
   } = useWorkspace();
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
 
-  // Add Insights navigation item conditionally based on feature flag
-  const navigationItems = canAccessInsights 
-    ? [
-        ...baseNavigationItems.slice(0, -1), // All items except Settings
-        { icon: BarChart3, label: "Insights", href: "/insights" },
-        baseNavigationItems[baseNavigationItems.length - 1], // Settings at the end
-      ]
-    : baseNavigationItems;
+  const excludeLabels: string[] = [];
+  if (!canAccessInsights) excludeLabels.push("Insights");
+
+  const navigationItems = baseNavigationItems.filter(
+    (item) => !excludeLabels.includes(item.label)
+  );
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");

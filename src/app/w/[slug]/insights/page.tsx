@@ -7,37 +7,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Progress } from "@/components/ui/progress";
 import { 
   BarChart3, 
-  AlertTriangle, 
   CheckCircle2, 
   Clock,
-  FileText,
   TestTube,
   Shield,
   Wrench,
-  Eye,
   GitPullRequest,
   Package,
-  Database,
   Type,
   Loader2,
-  PlayCircle,
-  PauseCircle,
   FlaskConical,
   Globe,
-  Target,
   BookOpen,
   Zap,
-  Search,
   Bot
 } from "lucide-react";
 import { redirect } from "next/navigation";
 
 const topSuggestions = [
   {
-    id: 1,
+    id: "1",
     priority: "high",
     title: "Add test coverage for payment logic",
     description: "We found calculatePayment() in src/billing/core.ts could benefit from unit tests to ensure reliability",
@@ -46,7 +37,7 @@ const topSuggestions = [
     color: "blue"
   },
   {
-    id: 2,
+    id: "2",
     priority: "medium", 
     title: "Split UserDashboard into smaller components",
     description: "This 450-line component could be more maintainable as 3 focused components",
@@ -55,7 +46,7 @@ const topSuggestions = [
     color: "orange"
   },
   {
-    id: 3,
+    id: "3",
     priority: "low",
     title: "Upgrade TypeScript to v5.3",
     description: "Newer version available with performance improvements and better type inference",
@@ -66,21 +57,21 @@ const topSuggestions = [
 ];
 
 const agents = [
-  { id: 1, name: "Documentation", icon: BookOpen, status: "running", progress: 73, description: "Generate missing documentation." },
-  { id: 2, name: "Unit Tests", icon: FlaskConical, status: "idle", progress: 0, description: "Identify missing unit tests." },
-  { id: 3, name: "Integration Tests", icon: Zap, status: "running", progress: 28, description: "Identify missing integration tests." },
-  { id: 4, name: "E2E Tests", icon: Globe, status: "idle", progress: 0, description: "Identify missing end-to-end tests." },
-  { id: 5, name: "Refactoring", icon: Wrench, status: "completed", progress: 100, description: "Identify refactoring opportunities." },
-  { id: 6, name: "PR Reviews", icon: GitPullRequest, status: "idle", progress: 0, description: "Enable automatic PR reviews." },
-  { id: 7, name: "Security", icon: Shield, status: "completed", progress: 100, description: "Scan for vulnerabilities." },
-  { id: 8, name: "Supply Chain", icon: Package, status: "running", progress: 60, description: "Check dependencies risk." },
-  { id: 9, name: "Semantic Renaming", icon: Type, status: "running", progress: 35, description: "Suggest better variable names." },
+  { id: "1", name: "Documentation", icon: BookOpen, status: "running", description: "Generate missing documentation." },
+  { id: "2", name: "Unit Tests", icon: FlaskConical, status: "idle", description: "Identify missing unit tests." },
+  { id: "3", name: "Integration Tests", icon: Zap, status: "running", description: "Identify missing integration tests." },
+  { id: "4", name: "E2E Tests", icon: Globe, status: "idle", description: "Identify missing end-to-end tests." },
+  { id: "5", name: "Refactoring", icon: Wrench, status: "completed", description: "Identify refactoring opportunities." },
+  { id: "6", name: "PR Reviews", icon: GitPullRequest, status: "idle", description: "Enable automatic PR reviews." },
+  { id: "7", name: "Security", icon: Shield, status: "completed", description: "Scan for vulnerabilities." },
+  { id: "8", name: "Supply Chain", icon: Package, status: "running", description: "Check dependencies risk." },
+  { id: "9", name: "Semantic Renaming", icon: Type, status: "running", description: "Suggest better variable names." },
 ];
 
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
-  const [agentStates, setAgentStates] = useState<Record<number, boolean>>(
-    agents.reduce((acc, agent) => ({ ...acc, [agent.id]: agent.status !== 'idle' }), {} as Record<number, boolean>)
+  const [agentStates, setAgentStates] = useState<Record<string, boolean>>(
+    agents.reduce((acc, agent) => ({ ...acc, [agent.id]: agent.status !== 'idle' }), {} as Record<string, boolean>)
   );
   const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
   const [showAll, setShowAll] = useState(false);
@@ -89,18 +80,18 @@ export default function InsightsPage() {
     redirect("/");
   }
 
-  const handleAccept = (suggestionId: number) => {
+  const handleAccept = (suggestionId: string) => {
     setDismissedSuggestions(prev => new Set([...prev, suggestionId]));
   };
 
-  const handleDismiss = (suggestionId: number) => {
+  const handleDismiss = (suggestionId: string) => {
     setDismissedSuggestions(prev => new Set([...prev, suggestionId]));
   };
 
   const visibleSuggestions = topSuggestions.filter(s => !dismissedSuggestions.has(s.id));
   const displayedSuggestions = showAll ? visibleSuggestions : visibleSuggestions.slice(0, 3);
 
-  const toggleAgent = (agentId: number) => {
+  const toggleAgent = (agentId: string) => {
     setAgentStates(prev => ({ ...prev, [agentId]: !prev[agentId] }));
   };
 
@@ -142,7 +133,7 @@ export default function InsightsPage() {
             <span>Recommendations</span>
           </CardTitle>
           <CardDescription>
-            Our janitors have been hard at work. They've analyzed your codebase and prepared these recommendations for your review.
+            Our janitors have been hard at work. They&apos;ve analyzed your codebase and prepared these recommendations for your review.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
