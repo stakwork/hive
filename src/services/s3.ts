@@ -43,18 +43,15 @@ export class S3Service {
     return await getSignedUrl(this.client, command, { expiresIn })
   }
 
-  generateS3Path(workspaceSlug: string, taskId: string, filename: string): string {
+  generateS3Path(workspaceId: string, swarmId: string, taskId: string, filename: string): string {
     const timestamp = Date.now()
     const randomId = Math.random().toString(36).substring(2, 15)
     const extension = filename.split('.').pop()
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
     
-    return `uploads/${workspaceSlug}/${taskId}/${timestamp}_${randomId}_${sanitizedFilename}`
+    return `uploads/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_${sanitizedFilename}`
   }
 
-  getPublicUrl(key: string): string {
-    return `https://${this.bucketName}.s3.amazonaws.com/${key}`
-  }
 
   validateFileType(mimeType: string): boolean {
     const allowedTypes = [
