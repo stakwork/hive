@@ -13,6 +13,7 @@ import {
 } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
+import { s3Service } from "@/services/s3";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,13 @@ export const fetchCache = "force-no-store";
 interface ArtifactRequest {
   type: ArtifactType;
   content?: Record<string, unknown>;
+}
+
+interface AttachmentRequest {
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 interface StakworkWorkflowPayload {
@@ -94,6 +102,7 @@ async function callStakwork(
   poolName: string | null,
   request: NextRequest,
   repo2GraphUrl: string,
+  attachmentPaths: string[] = [],
   webhook?: string,
   mode?: string,
 ) {
@@ -116,6 +125,10 @@ async function callStakwork(
 
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
+    
+    // Generate public URLs for attachments
+    const attachmentUrls = attachmentPaths.map(path => s3Service.getPublicUrl(path));
+    
     // stakwork workflow vars
     const vars = {
       taskId,
@@ -129,6 +142,7 @@ async function callStakwork(
       swarmSecretAlias,
       poolName,
       repo2graph_url: repo2GraphUrl,
+      attachments: attachmentUrls,
     };
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -202,6 +216,7 @@ export async function POST(request: NextRequest) {
       contextTags = [] as ContextTag[],
       sourceWebsocketID,
       artifacts = [] as ArtifactRequest[],
+      attachments = [] as AttachmentRequest[],
       webhook,
       replyId,
       mode,
@@ -302,9 +317,18 @@ export async function POST(request: NextRequest) {
             content: artifact.content,
           })),
         },
+        attachments: {
+          create: attachments.map((attachment: AttachmentRequest) => ({
+            path: attachment.path,
+            filename: attachment.filename,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+          })),
+        },
       },
       include: {
         artifacts: true,
+        attachments: true,
         task: {
           select: {
             id: true,
@@ -324,6 +348,7 @@ export async function POST(request: NextRequest) {
         ...artifact,
         content: artifact.content as unknown,
       })) as Artifact[],
+      attachments: chatMessage.attachments || [],
     };
 
     console.log("clientMessage", clientMessage);
@@ -368,6 +393,9 @@ export async function POST(request: NextRequest) {
     let stakworkData = null;
 
     if (useStakwork) {
+      // Extract attachment paths for Stakwork
+      const attachmentPaths = chatMessage.attachments?.map(att => att.path) || [];
+      
       stakworkData = await callStakwork(
         taskId,
         message,
@@ -379,6 +407,7 @@ export async function POST(request: NextRequest) {
         poolName,
         request,
         repo2GraphUrl,
+        attachmentPaths,
         webhook,
         mode,
       );
