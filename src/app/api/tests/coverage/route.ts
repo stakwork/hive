@@ -50,7 +50,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const stakgraphUrl = `https://${swarm.name}:7799`;
+    const swarmUrlObj = new URL(swarm.swarmUrl);
+    const stakgraphUrl = `https://${swarmUrlObj.hostname}:7799`;
 
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
