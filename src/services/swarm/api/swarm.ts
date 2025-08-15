@@ -88,7 +88,7 @@ export async function swarmApiRequest({
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey)}`,
+      Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey).toString()}`,
       "Content-Type": "application/json",
     };
 

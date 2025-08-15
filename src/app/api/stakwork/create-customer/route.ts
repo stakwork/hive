@@ -61,10 +61,26 @@ export async function POST(request: NextRequest) {
         /{{(.*?)}}/g,
         "$1",
       );
-      const decryptedSwarmApiKey = encryptionService.decryptField(
+      let decryptedSwarmApiKey = encryptionService.decryptField(
         "swarmApiKey",
         swarm?.swarmApiKey || "",
       );
+      try {
+        const maybeEncryptedAgain = JSON.parse(decryptedSwarmApiKey);
+        if (
+          maybeEncryptedAgain &&
+          typeof maybeEncryptedAgain === "object" &&
+          "data" in maybeEncryptedAgain &&
+          "iv" in maybeEncryptedAgain &&
+          "tag" in maybeEncryptedAgain
+        ) {
+          decryptedSwarmApiKey = encryptionService.decryptField(
+            "swarmApiKey",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            maybeEncryptedAgain as any,
+          );
+        }
+      } catch {}
 
       if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
         await stakworkService().createSecret(
