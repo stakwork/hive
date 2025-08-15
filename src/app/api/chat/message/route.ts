@@ -145,6 +145,7 @@ async function callStakwork(
       poolName,
       repo2graph_url: repo2GraphUrl,
       attachments: attachmentUrls,
+      taskMode: mode,
     };
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -153,6 +154,8 @@ async function callStakwork(
     if (mode === "live") {
       workflowId = stakworkWorkflowIds[0];
     } else if (mode === "unit") {
+      workflowId = stakworkWorkflowIds[2];
+    } else if (mode === "integration") {
       workflowId = stakworkWorkflowIds[2];
     } else {
       workflowId = stakworkWorkflowIds[1]; // default to test mode
