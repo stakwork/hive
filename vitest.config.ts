@@ -7,6 +7,13 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // Run integration tests sequentially to avoid database conflicts
+    pool: testSuite === "integration" ? "forks" : "threads",
+    poolOptions: testSuite === "integration" ? {
+      forks: {
+        singleFork: true,
+      },
+    } : undefined,
     include:
       testSuite === "integration"
         ? ["src/__tests__/integration/**/*.test.ts"]

@@ -21,29 +21,32 @@ describe("GitHub Users Search API Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
 
   async function createTestUserWithGitHubAccount() {
-    // Create test user with real database operations
-    const testUser = await db.user.create({
-      data: {
-        id: `test-user-${Date.now()}-${Math.random()}`,
-        email: `test-${Date.now()}@example.com`,
-        name: "Test User",
-      },
-    });
+    // Use a transaction to ensure atomicity
+    return await db.$transaction(async (tx) => {
+      // Create test user with real database operations
+      const testUser = await tx.user.create({
+        data: {
+          id: `test-user-${Date.now()}-${Math.random()}`,
+          email: `test-${Date.now()}@example.com`,
+          name: "Test User",
+        },
+      });
 
-    // Create GitHub account with encrypted access token
-    const encryptedToken = encryptionService.encryptField("access_token", "github_pat_test_token");
-    const testAccount = await db.account.create({
-      data: {
-        id: `test-account-${Date.now()}-${Math.random()}`,
-        userId: testUser.id,
-        type: "oauth",
-        provider: "github",
-        providerAccountId: `${Date.now()}`,
-        access_token: JSON.stringify(encryptedToken),
-      },
-    });
+      // Create GitHub account with encrypted access token
+      const encryptedToken = encryptionService.encryptField("access_token", "github_pat_test_token");
+      const testAccount = await tx.account.create({
+        data: {
+          id: `test-account-${Date.now()}-${Math.random()}`,
+          userId: testUser.id,
+          type: "oauth",
+          provider: "github",
+          providerAccountId: `${Date.now()}`,
+          access_token: JSON.stringify(encryptedToken),
+        },
+      });
 
-    return { testUser, testAccount };
+      return { testUser, testAccount };
+    });
   }
 
   beforeEach(async () => {

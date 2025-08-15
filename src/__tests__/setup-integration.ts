@@ -88,15 +88,82 @@ afterAll(async () => {
 async function cleanDatabase() {
   try {
     // Delete in reverse dependency order to avoid foreign key constraints
+    // Most dependent entities first, least dependent last
+    
+    // Level 5: Most dependent entities (no other entities depend on them)
+    await db.attachment.deleteMany();
+    await db.artifact.deleteMany();
+    await db.comment.deleteMany();
+    await db.roadmapItem.deleteMany();
+    
+    // Level 4: Entities that depend on Level 5+ entities
+    await db.chatMessage.deleteMany();
+    await db.roadmap.deleteMany();
+    await db.requirement.deleteMany();
+    
+    // Level 3: Entities that depend on Level 4+ entities  
+    await db.userStory.deleteMany();
+    await db.task.deleteMany();
+    
+    // Level 2: Entities that depend on Level 3+ entities
+    await db.feature.deleteMany();
+    await db.repository.deleteMany();
     await db.product.deleteMany();
     await db.swarm.deleteMany();
+    
+    // Level 1: Workspace-related entities
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
+    
+    // Level 0: Authentication and user entities (most fundamental)
+    await db.session.deleteMany();
+    await db.account.deleteMany();
+    await db.verificationToken.deleteMany();
     await db.gitHubAuth.deleteMany();
     await db.user.deleteMany();
+    
+    console.log("✅ Database cleaned successfully");
   } catch (error) {
-    console.error("Failed to clean database:", error);
-    throw error;
+    console.error("❌ Failed to clean database:", error);
+    console.error("Error details:", error.message);
+    
+    // If standard cleanup fails, try a more aggressive approach
+    try {
+      console.log("🔄 Attempting aggressive cleanup...");
+      await aggressiveCleanup();
+    } catch (aggressiveError) {
+      console.error("❌ Aggressive cleanup also failed:", aggressiveError);
+      throw aggressiveError;
+    }
+  }
+}
+
+async function aggressiveCleanup() {
+  // Disable foreign key checks temporarily and truncate all tables
+  await db.$executeRaw`SET session_replication_role = replica;`;
+  
+  try {
+    const tableNames = [
+      'attachments', 'artifacts', 'comments', 'roadmap_items',
+      'chat_messages', 'roadmaps', 'requirements', 'user_stories', 
+      'tasks', 'features', 'repositories', 'products', 'swarms',
+      'workspace_members', 'workspaces', 'sessions', 'accounts', 
+      'verification_tokens', 'github_auth', 'users'
+    ];
+    
+    for (const tableName of tableNames) {
+      try {
+        await db.$executeRawUnsafe(`TRUNCATE TABLE "${tableName}" CASCADE;`);
+      } catch (error) {
+        // Table might not exist, continue with others
+        console.warn(`⚠️ Could not truncate ${tableName}:`, error.message);
+      }
+    }
+    
+    console.log("✅ Aggressive cleanup completed");
+  } finally {
+    // Re-enable foreign key checks
+    await db.$executeRaw`SET session_replication_role = DEFAULT;`;
   }
 }
 

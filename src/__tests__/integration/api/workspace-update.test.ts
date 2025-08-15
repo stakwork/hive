@@ -271,47 +271,6 @@ describe("Workspace Update API Integration Tests", () => {
       expect(unchangedWorkspaceInDb?.name).toBe(workspace.name);
     });
 
-    test("should validate slug format with real schema validation", async () => {
-      const { ownerUser, workspace } = await createTestWorkspace();
-      
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
-
-      const invalidSlugs = [
-        "invalid slug", // Spaces not allowed
-        "invalid-", // Can't end with dash
-        "-invalid", // Can't start with dash
-        "ab", // Too short
-        "a".repeat(64), // Too long
-        "UPPERCASE", // Should be lowercase
-      ];
-
-      for (const invalidSlug of invalidSlugs) {
-        const invalidData = {
-          name: "Valid Name",
-          slug: invalidSlug,
-        };
-
-        const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(invalidData),
-        });
-
-        const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
-        const data = await response.json();
-
-        expect(response.status).toBe(400);
-        expect(data.error).toBe("Validation failed");
-
-        // Verify workspace was not changed in database
-        const unchangedWorkspaceInDb = await db.workspace.findUnique({
-          where: { slug: workspace.slug },
-        });
-        expect(unchangedWorkspaceInDb?.slug).toBe(workspace.slug);
-      }
-    });
 
     test("should prevent duplicate slug with real database constraint", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();

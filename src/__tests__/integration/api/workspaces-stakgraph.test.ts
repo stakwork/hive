@@ -12,44 +12,65 @@ vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 
 describe("/api/workspaces/[slug]/stakgraph", () => {
   const PLAINTEXT_ENV = [{ name: "SECRET", value: "my_value" }];
+  let testData: { user: any; workspace: any; swarm: any };
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const workspace = await db.workspace.create({
-      data: {
-        name: "w2",
-        slug: "w2",
-        owner: "user2@example.com",
-      },
+    
+    // Don't manually clean - let the global cleanup handle it
+    // Use transaction to atomically create test data
+    testData = await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "User 2",
+        },
+      });
+      
+      const workspace = await tx.workspace.create({
+        data: {
+          name: "w2",
+          slug: `w2-${Date.now()}-${Math.random()}`,
+          ownerId: user.id,
+        },
+      });
+      
+      const swarm = await tx.swarm.create({
+        data: {
+          workspaceId: workspace.id,
+          name: `s2-${Date.now()}`,
+          status: "ACTIVE",
+          environmentVariables: encryptEnvVars(PLAINTEXT_ENV as any) as any,
+          services: [],
+        },
+      });
+      
+      return { user, workspace, swarm };
     });
-    await db.swarm.create({
-      data: {
-        workspaceId: workspace.id,
-        name: "s2",
-        status: "ACTIVE",
-        environmentVariables: encryptEnvVars(PLAINTEXT_ENV as any) as any,
-        services: [],
-      },
-    });
-    (getServerSession as any).mockResolvedValue({ user: { id: "user2" } });
+    
+    (getServerSession as any).mockResolvedValue({ user: { id: testData.user.id } });
   });
 
   it("GET returns decrypted env vars but DB remains encrypted", async () => {
     const req = new NextRequest(
-      "http://localhost:3000/api/workspaces/w2/stakgraph",
+      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
     );
     const res = await GET_STAK(req, {
-      params: Promise.resolve({ slug: "w2" }),
+      params: Promise.resolve({ slug: testData.workspace.slug }),
     });
+    const response = await res.json();
+    console.log("Response status:", res.status);
+    console.log("Response body:", JSON.stringify(response, null, 2));
+    
     expect(res.status).toBe(200);
-    const data = await res.json();
-    const envVars = data.settings.environmentVariables as Array<{
+    const envVars = response.data.environmentVariables as Array<{
       name: string;
       value: string;
     }>;
     expect(envVars).toEqual(PLAINTEXT_ENV);
 
-    const swarm = await db.swarm.findFirst({ where: { name: "s2" } });
+    const swarm = await db.swarm.findFirst({ where: { name: testData.swarm.name } });
     const stored = swarm?.environmentVariables as unknown as string;
     expect(JSON.stringify(stored)).not.toContain("my_value");
   });

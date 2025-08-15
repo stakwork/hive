@@ -29,69 +29,72 @@ const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getSer
 
 describe("Workspace Members API Integration Tests", () => {
   async function createTestWorkspaceWithUsers() {
-    // Create workspace owner with real database operations
-    const ownerUser = await db.user.create({
-      data: {
-        id: `owner-${Date.now()}-${Math.random()}`,
-        email: `owner-${Date.now()}@example.com`,
-        name: "Owner User",
-      },
-    });
+    // Use transaction to create all test data atomically
+    return await db.$transaction(async (tx) => {
+      // Create workspace owner with real database operations
+      const ownerUser = await tx.user.create({
+        data: {
+          id: `owner-${Date.now()}-${Math.random()}`,
+          email: `owner-${Date.now()}@example.com`,
+          name: "Owner User",
+        },
+      });
 
-    // Create workspace owned by owner
-    const workspace = await db.workspace.create({
-      data: {
-        name: `Test Workspace ${Date.now()}`,
-        slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        ownerId: ownerUser.id,
-      },
-    });
+      // Create workspace owned by owner
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `Test Workspace ${Date.now()}`,
+          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          ownerId: ownerUser.id,
+        },
+      });
 
-    // Create a regular member user
-    const memberUser = await db.user.create({
-      data: {
-        id: `member-${Date.now()}-${Math.random()}`,
-        email: `member-${Date.now()}@example.com`,
-        name: "Member User",
-      },
-    });
+      // Create a regular member user
+      const memberUser = await tx.user.create({
+        data: {
+          id: `member-${Date.now()}-${Math.random()}`,
+          email: `member-${Date.now()}@example.com`,
+          name: "Member User",
+        },
+      });
 
-    // Create GitHub auth for member user (needed for member operations)
-    await db.gitHubAuth.create({
-      data: {
-        userId: memberUser.id,
-        username: "testuser",
-        name: "Test User",
-        email: "test@example.com",
-        bio: "Test bio",
-        publicRepos: 10,
-        followers: 5,
-      },
-    });
+      // Create GitHub auth for member user (needed for member operations)
+      await tx.gitHubAuth.create({
+        data: {
+          userId: memberUser.id,
+          githubUserId: `github-${Date.now()}`,
+          githubUsername: "testuser",
+          name: "Test User",
+          bio: "Test bio",
+          publicRepos: 10,
+          followers: 5,
+        },
+      });
 
-    // Create target user for operations
-    const targetUser = await db.user.create({
-      data: {
-        id: `target-${Date.now()}-${Math.random()}`,
-        email: `target-${Date.now()}@example.com`,
-        name: "Target User",
-      },
-    });
+      // Create target user for operations
+      const targetUser = await tx.user.create({
+        data: {
+          id: `target-${Date.now()}-${Math.random()}`,
+          email: `target-${Date.now()}@example.com`,
+          name: "Target User",
+        },
+      });
 
-    // Create GitHub auth for target user
-    await db.gitHubAuth.create({
-      data: {
-        userId: targetUser.id,
-        username: "targetuser",
-        name: "Target User",
-        email: "target@example.com",
-        bio: "Target bio",
-        publicRepos: 5,
-        followers: 3,
-      },
-    });
+      // Create GitHub auth for target user
+      await tx.gitHubAuth.create({
+        data: {
+          userId: targetUser.id,
+          githubUserId: `github-target-${Date.now()}`,
+          githubUsername: "targetuser",
+          name: "Target User",
+          bio: "Target bio",
+          publicRepos: 5,
+          followers: 3,
+        },
+      });
 
-    return { ownerUser, workspace, memberUser, targetUser };
+      return { ownerUser, workspace, memberUser, targetUser };
+    });
   }
 
   beforeEach(async () => {

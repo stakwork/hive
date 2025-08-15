@@ -30,47 +30,50 @@ const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getSer
 
 describe("Workspace Member Role API Integration Tests", () => {
   async function createTestWorkspaceWithAdminUser() {
-    // Create admin user with real database operations
-    const adminUser = await db.user.create({
-      data: {
-        id: `admin-${Date.now()}-${Math.random()}`,
-        email: `admin-${Date.now()}@example.com`,
-        name: "Admin User",
-      },
-    });
+    // Use a transaction to ensure atomicity
+    return await db.$transaction(async (tx) => {
+      // Create admin user with real database operations
+      const adminUser = await tx.user.create({
+        data: {
+          id: `admin-${Date.now()}-${Math.random()}`,
+          email: `admin-${Date.now()}@example.com`,
+          name: "Admin User",
+        },
+      });
 
-    // Create workspace owned by admin
-    const workspace = await db.workspace.create({
-      data: {
-        name: `Test Workspace ${Date.now()}`,
-        slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        ownerId: adminUser.id,
-      },
-    });
+      // Create workspace owned by admin
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `Test Workspace ${Date.now()}`,
+          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          ownerId: adminUser.id,
+        },
+      });
 
-    // Create target user for member operations
-    const targetUser = await db.user.create({
-      data: {
-        id: `user-${Date.now()}-${Math.random()}`,
-        email: `user-${Date.now()}@example.com`,
-        name: "Target User",
-      },
-    });
+      // Create target user for member operations
+      const targetUser = await tx.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "Target User",
+        },
+      });
 
-    // Create GitHub auth for target user (needed for addWorkspaceMember)
-    await db.gitHubAuth.create({
-      data: {
-        userId: targetUser.id,
-        username: "testuser",
-        name: "Test User",
-        email: "test@example.com",
-        bio: "Test bio",
-        publicRepos: 10,
-        followers: 5,
-      },
-    });
+      // Create GitHub auth for target user (needed for addWorkspaceMember)
+      await tx.gitHubAuth.create({
+        data: {
+          userId: targetUser.id,
+          githubUserId: "12345",
+          githubUsername: "testuser",
+          name: "Test User",
+          bio: "Test bio",
+          publicRepos: 10,
+          followers: 5,
+        },
+      });
 
-    return { adminUser, workspace, targetUser };
+      return { adminUser, workspace, targetUser };
+    });
   }
 
   beforeEach(async () => {
