@@ -1,6 +1,14 @@
 # Feature Flags
 
-Simple .env-based feature flags with role-based access control.
+Environment-based feature flags with role-based access control for Next.js applications.
+
+## Next.js Specific Considerations
+
+**IMPORTANT:** Next.js has specific requirements for environment variables in client-side code:
+
+1. **Client-side variables** must be prefixed with `NEXT_PUBLIC_`
+2. **Dynamic env var access** (`process.env[dynamicKey]`) doesn't work in client-side code
+3. **Explicit references** to environment variables are required for build-time optimization
 
 ## Quick Setup
 
@@ -11,17 +19,27 @@ Simple .env-based feature flags with role-based access control.
 import { WorkspaceRole } from '@prisma/client';
 
 export function canAccessFeature(feature: string, userRole?: WorkspaceRole): boolean {
-  const isEnabled = process.env[`FEATURE_${feature.toUpperCase()}`] === 'true';
+  let isEnabled = false;
+  
+  // Map feature names to their environment variables
+  // This is needed because Next.js requires explicit env var references
+  switch (feature) {
+    case 'CODEBASE_RECOMMENDATION':
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION === 'true';
+      break;
+    default:
+      isEnabled = false;
+  }
+  
   if (!isEnabled) return false;
 
   const roleRequirements: Record<string, WorkspaceRole[]> = {
-    'CHAT': ['ADMIN', 'OWNER'],
-    'BULK_OPERATIONS': ['ADMIN', 'OWNER', 'PM'],
-    'ADVANCED_ANALYTICS': ['OWNER'],
+    'CODEBASE_RECOMMENDATION': [], // No role restriction - available to all when enabled
   };
 
   const allowedRoles = roleRequirements[feature];
   if (!allowedRoles) return true; // No role restriction
+  if (allowedRoles.length === 0) return true; // Explicitly no role restriction
   return userRole ? allowedRoles.includes(userRole) : false;
 }
 ```
@@ -35,50 +53,68 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 
 export function useFeatureFlag(feature: string): boolean {
   const { role } = useWorkspace();
-  return canAccessFeature(feature, role);
+  return canAccessFeature(feature, role ?? undefined);
 }
 ```
 
 ### 3. Add environment variables
 
 ```bash
-# .env.local
-FEATURE_CHAT=true
-FEATURE_BULK_OPERATIONS=false
+# .env.local - Client-side feature flags (for components)
+NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION=true
+
+# Server-side only feature flags (for API routes)
+FEATURE_ADMIN_PANEL=true
 ```
 
 ## Usage
 
-### Components
+### Client-side Components
 
 ```typescript
-export function ChatFeature() {
-  const canAccessChat = useFeatureFlag('CHAT');
-  if (!canAccessChat) return null;
-  return <ChatInterface />;
+export function InsightsFeature() {
+  const canAccessInsights = useFeatureFlag('CODEBASE_RECOMMENDATION');
+  if (!canAccessInsights) return null;
+  return <InsightsInterface />;
 }
 
-// Navigation
+// Navigation example from Sidebar.tsx
 export function Nav() {
-  const canAccessChat = useFeatureFlag('CHAT');
-  return (
-    <nav>
-      <NavItem href="/dashboard">Dashboard</NavItem>
-      {canAccessChat && <NavItem href="/chat">Chat</NavItem>}
-    </nav>
-  );
+  const canAccessInsights = useFeatureFlag('CODEBASE_RECOMMENDATION');
+  
+  const navigationItems = canAccessInsights 
+    ? [
+        { icon: CheckSquare, label: "Tasks", href: "/tasks" },
+        { icon: BarChart3, label: "Insights", href: "/insights" },
+        { icon: Settings, label: "Settings", href: "/settings" },
+      ]
+    : [
+        { icon: CheckSquare, label: "Tasks", href: "/tasks" },
+        { icon: Settings, label: "Settings", href: "/settings" },
+      ];
+      
+  return <NavItems items={navigationItems} />;
 }
 ```
 
-### API Routes
+### Server-side API Routes
 
 ```typescript
-// Check feature access in API routes
-const userRole = workspace.members.find(m => m.userId === session?.user?.id)?.role;
-if (!canAccessFeature('CHAT', userRole)) {
-  return NextResponse.json({ error: 'Feature not available' }, { status: 404 });
+// For server-side feature flags (no NEXT_PUBLIC_ prefix needed)
+import { canAccessFeature } from '@/lib/feature-flags';
+
+export async function GET() {
+  const userRole = workspace.members.find(m => m.userId === session?.user?.id)?.role;
+  if (!canAccessFeature('CODEBASE_RECOMMENDATION', userRole)) {
+    return NextResponse.json({ error: 'Feature not available' }, { status: 404 });
+  }
+  
+  // Feature is enabled and user has access
+  return NextResponse.json({ data: 'insights data' });
 }
 ```
+
+**Note:** Server-side feature flags can use the standard `FEATURE_NAME=true` format without `NEXT_PUBLIC_` prefix.
 
 ### Pages
 
