@@ -5,6 +5,7 @@ export interface CreateSwarmRequest {
   name: string;
   instance_type: string;
   env?: Record<string, string>;
+  password?: string;
 }
 
 export interface Swarm {
