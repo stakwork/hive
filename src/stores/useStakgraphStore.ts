@@ -31,7 +31,36 @@ const initialState = {
   initialLoading: true,
   saved: false,
   envVars: [] as Array<{ name: string; value: string; show?: boolean }>,
+  currentWorkspaceSlug: null as string | null,
 };
+
+class RequestManager {
+  private controller: AbortController | null = null;
+
+  abort() {
+    if (this.controller) {
+      this.controller.abort();
+      this.controller = null;
+    }
+  }
+
+  getSignal() {
+    this.abort();
+    this.controller = new AbortController();
+    return this.controller.signal;
+  }
+
+  isAborted() {
+    return this.controller?.signal.aborted ?? false;
+  }
+
+  reset() {
+    this.abort();
+    this.controller = null;
+  }
+}
+
+const requestManager = new RequestManager();
 
 type StakgraphStore = {
   // State
@@ -41,6 +70,7 @@ type StakgraphStore = {
   initialLoading: boolean;
   saved: boolean;
   envVars: Array<{ name: string; value: string; show?: boolean }>;
+  currentWorkspaceSlug: string | null;
 
   // Actions
   loadSettings: (slug: string) => Promise<void>;
@@ -85,10 +115,23 @@ export const useStakgraphStore = create<StakgraphStore>()(
     // Load existing settings
     loadSettings: async (slug: string) => {
       if (!slug) return;
+      const state = get();
+
+      if (state.currentWorkspaceSlug !== slug) {
+        set({
+          ...initialState,
+          currentWorkspaceSlug: slug,
+          initialLoading: true,
+        });
+      }
 
       try {
-        set({ initialLoading: true });
-        const response = await fetch(`/api/workspaces/${slug}/stakgraph`);
+        const signal = requestManager.getSignal();
+        const response = await fetch(`/api/workspaces/${slug}/stakgraph`, {
+          signal,
+        });
+
+        if (get().currentWorkspaceSlug !== slug) return;
 
         if (response.ok) {
           const result = await response.json();
@@ -145,8 +188,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
           console.error("Failed to load stakgraph settings");
         }
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
         console.error("Error loading stakgraph settings:", error);
       } finally {
+        if (requestManager.isAborted() || get().currentWorkspaceSlug !== slug)
+          return;
+
         set({ initialLoading: false });
       }
     },
@@ -412,6 +460,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
     setLoading: (loading) => set({ loading }),
     setInitialLoading: (loading) => set({ initialLoading: loading }),
     setSaved: (saved) => set({ saved }),
-    resetForm: () => set(initialState),
+    resetForm: () => {
+      requestManager.reset();
+      set({
+        ...initialState,
+        formData: JSON.parse(JSON.stringify(initialFormData)),
+        envVars: [],
+      });
+    },
   })),
 );
