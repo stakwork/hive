@@ -26,7 +26,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const isTaskPage = pathname.includes("/task/");
 
   // Show loading state while workspace is being resolved
-  if (loading) {
+  if (loading && !workspace) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="text-center">
@@ -38,7 +38,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   }
 
   // Show error state if workspace loading failed
-  if (error) {
+  if (error && !workspace) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
         <Card className="max-w-md border-destructive">
@@ -52,7 +52,8 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   }
 
   // Show access denied if user doesn't have workspace access
-  if (!hasAccess || !workspace) {
+  // Only show this if we're not loading and definitely don't have access
+  if (!loading && (!hasAccess || !workspace)) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
         <Card className="max-w-md border-destructive">

@@ -144,7 +144,11 @@ export function WorkspaceProvider({
       // Only fetch if we haven't already loaded this workspace
       if (currentSlug !== currentLoadedSlug) {
         const fetchCurrentWorkspace = async () => {
-          setLoading(true);
+          // Only show loading state if we don't have a workspace loaded yet
+          // This prevents the access denied flash when navigating within the same workspace
+          if (!workspace) {
+            setLoading(true);
+          }
           setError(null);
 
           try {
@@ -182,7 +186,7 @@ export function WorkspaceProvider({
       setWorkspace(null);
       setCurrentLoadedSlug("");
     }
-  }, [pathname, status, initialSlug, currentLoadedSlug]); // Include currentLoadedSlug in dependencies
+  }, [pathname, status, initialSlug, currentLoadedSlug, workspace]); // Include workspace in dependencies
   // Include all dependencies
 
   // Computed values
