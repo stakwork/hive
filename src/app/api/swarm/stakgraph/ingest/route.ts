@@ -2,6 +2,9 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { WebhookService } from "@/services/github/WebhookService";
+import { getServiceConfig } from "@/config/services";
+import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -10,7 +13,6 @@ import { EncryptionService } from "@/lib/encryption";
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
-
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -31,20 +33,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's GitHub username and PAT using the reusable utility
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id);
-    if (!githubCreds) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "No GitHub credentials found for user",
-        },
-        { status: 400 },
-      );
-    }
-    const { username, pat } = githubCreds;
-
-    // Resolve Swarm
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
@@ -103,15 +91,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const creds = await getGithubUsernameAndPAT(session.user.id);
     const dataApi = {
       repo_url: final_repo_url,
-      username,
-      pat,
+      username: creds?.username,
+      pat: creds?.pat,
     };
 
     const stakgraphUrl = `https://${swarm.name}:7799`;
 
-    // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: "/ingest_async",
@@ -120,7 +108,19 @@ export async function POST(request: NextRequest) {
       data: dataApi,
     });
 
-    // If success, update repository status to SYNCED
+    try {
+      const callbackUrl = getGithubWebhookCallbackUrl(request);
+      const webhookService = new WebhookService(getServiceConfig("github"));
+      await webhookService.ensureRepoWebhook({
+        userId: session.user.id,
+        workspaceId: repoWorkspaceId,
+        repositoryUrl: final_repo_url,
+        callbackUrl,
+      });
+    } catch (error) {
+      console.error(`Error ensuring repo webhook: ${error}`);
+    }
+
     let finalStatus = repository.status;
     if (
       apiResult.ok &&
@@ -136,7 +136,6 @@ export async function POST(request: NextRequest) {
       finalStatus = RepositoryStatus.SYNCED;
     }
 
-    // ts-expect-error
     if (apiResult?.data?.request_id) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
@@ -184,7 +183,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user's GitHub username and PAT using the reusable utility
     const githubCreds = await getGithubUsernameAndPAT(session.user.id);
     if (!githubCreds) {
       return NextResponse.json(
@@ -197,7 +195,6 @@ export async function GET(request: NextRequest) {
     }
     // const { username, pat } = githubCreds;
 
-    // Resolve Swarm
     const where: Record<string, string> = {};
     if (swarmId) {
       where.swarmId = swarmId;
@@ -222,7 +219,6 @@ export async function GET(request: NextRequest) {
 
     const stakgraphUrl = `https://${swarm.name}:7799`;
 
-    // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: `/status/${id}`,
@@ -236,7 +232,8 @@ export async function GET(request: NextRequest) {
       },
       { status: apiResult.status },
     );
-  } catch {
+  } catch (error) {
+    console.error(`Error getting ingest status: ${error}`);
     return NextResponse.json(
       { success: false, message: "Failed to ingest code" },
       { status: 500 },
