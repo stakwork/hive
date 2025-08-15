@@ -215,6 +215,35 @@ src/
 - `npx prisma generate` - Generate Prisma client
 - `npx prisma db push` - Push schema changes to database
 
+### Seeding Mock Data
+
+Seed a workspace, repository, and swarm tied to a GitHub-linked user:
+
+```bash
+npm run seed:auto-seed
+```
+
+> Pro tip: To view critical fields in your db, run:
+
+```bash
+npm run test:decrypt
+```
+
+Optional targeting:
+
+```bash
+# by email
+npm run seed:auto-seed -- --email you@example.com
+
+# by userId
+npm run seed:auto-seed -- --userId <user-id>
+
+# by GitHub username
+npm run seed:auto-seed -- --githubUsername <handle>
+```
+
+Note: Requires at least one user who signed up via GitHub (or pass a target via flags).
+
 ### Test Database
 
 - `npm run test:db:start` - Start test database

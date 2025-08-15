@@ -82,6 +82,12 @@ export interface UpdateMemberRoleRequest {
   role: WorkspaceRole;
 }
 
+export interface UpdateWorkspaceRequest {
+  name: string;
+  slug: string;
+  description?: string;
+}
+
 export interface GitHubUser {
   id: number;
   login: string;

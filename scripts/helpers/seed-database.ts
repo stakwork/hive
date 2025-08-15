@@ -9,6 +9,7 @@ async function seedUsersWithAccounts() {
   const users = [
     { name: "Alice Test", email: "alice@example.com" },
     { name: "Bob Test", email: "bob@example.com" },
+    { name: "Dev Mock", email: "dev-user@mock.dev" },
   ];
 
   const results: Array<{ id: string; email: string }> = [];
@@ -61,6 +62,14 @@ async function seedWorkspacesAndSwarms(
       owner: users[1],
       workspace: { name: "Beta Workspace", slug: "beta-workspace" },
       swarm: { name: "beta-swarm", repoUrl: "https://github.com/example/beta" },
+    },
+    {
+      owner: users[2],
+      workspace: { name: "Dev Mock Workspace", slug: "dev-mock" },
+      swarm: {
+        name: "dev-mock-swarm",
+        repoUrl: "https://github.com/example/dev-mock",
+      },
     },
   ];
 

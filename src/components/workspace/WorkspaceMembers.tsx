@@ -120,7 +120,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
       case "ADMIN":
         return "secondary";
       case "PM":
-        return "destructive";
+        return "outline";
       case "DEVELOPER":
         return "outline";
       case "STAKEHOLDER":

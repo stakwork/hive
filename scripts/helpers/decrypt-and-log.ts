@@ -9,7 +9,14 @@ const encryption = EncryptionService.getInstance();
 
 async function logAccounts() {
   const accounts = await prisma.account.findMany({
-    select: { id: true, userId: true, provider: true, access_token: true },
+    select: {
+      id: true,
+      userId: true,
+      provider: true,
+      providerAccountId: true,
+      scope: true,
+      access_token: true,
+    },
   });
 
   console.log("\n=== ACCOUNTS (access_token) ===");
@@ -20,12 +27,13 @@ async function logAccounts() {
         ? encryption.decryptField("access_token", token)
         : null;
       console.log(
-        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
+        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider} providerAccountId=${a.providerAccountId}`,
       );
+      console.log(`  scope: ${a.scope || "(none)"}`);
       console.log(`  access_token (decrypted): ${decrypted}`);
     } catch (err) {
       console.log(
-        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
+        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider} providerAccountId=${a.providerAccountId}`,
       );
       console.log(`  error: ${String(err)}`);
     }
@@ -34,19 +42,40 @@ async function logAccounts() {
 
 async function logUsers() {
   const users = await prisma.user.findMany({
-    select: { id: true, email: true },
+    select: { id: true, email: true, role: true },
   });
 
   console.log("\n=== USERS ===");
   for (const u of users) {
-    console.log(`[USER] id=${u.id} email=${u.email}`);
+    console.log(`[USER] id=${u.id} email=${u.email} role=${u.role}`);
   }
 }
 
+async function logGitHubAuths() {
+  const auths = await prisma.gitHubAuth.findMany({
+    select: {
+      userId: true,
+      githubUsername: true,
+      scopes: true,
+      organizationsHash: true,
+      updatedAt: true,
+    },
+  });
+  console.log("\n=== GITHUB AUTH ===");
+  for (const a of auths) {
+    console.log(
+      `[GITHUB] userId=${a.userId} username=${a.githubUsername} scopes=${(a.scopes || []).join(",")} organizationsHash=${a.organizationsHash} updatedAt=${a.updatedAt.toISOString()}`,
+    );
+  }
+}
 
 async function logWorkspaces() {
   const workspaces = await prisma.workspace.findMany({
-    select: { id: true, slug: true, stakworkApiKey: true },
+    include: {
+      owner: { select: { id: true, email: true, name: true } },
+      repositories: { select: { id: true } },
+      swarm: { select: { id: true } },
+    },
   });
 
   console.log("\n=== WORKSPACES (stakworkApiKey) ===");
@@ -56,7 +85,9 @@ async function logWorkspaces() {
       const decrypted = key
         ? encryption.decryptField("stakworkApiKey", key)
         : null;
-      console.log(`[WORKSPACE] id=${w.id} slug=${w.slug}`);
+      console.log(
+        `[WORKSPACE] id=${w.id} slug=${w.slug} owner=${w.owner?.email || w.owner?.id} repos=${w.repositories.length} swarm=${w.swarm ? "yes" : "no"}`,
+      );
       console.log(`  stakworkApiKey (decrypted): ${decrypted}`);
     } catch (err) {
       console.log(`[WORKSPACE] id=${w.id} slug=${w.slug}`);
@@ -71,13 +102,24 @@ async function logSwarms() {
       id: true,
       name: true,
       workspaceId: true,
+      status: true,
+      instanceType: true,
+      repositoryName: true,
+      repositoryUrl: true,
+      defaultBranch: true,
+      swarmUrl: true,
+      swarmSecretAlias: true,
+      ingestRefId: true,
+      wizardStep: true,
+      stepStatus: true,
       swarmApiKey: true,
       poolApiKey: true,
       environmentVariables: true,
+      services: true,
     },
   });
 
-  console.log("\n=== SWARMS (swarmApiKey, poolApiKey, environmentVariables) ===");
+  console.log("\n=== SWARMS (keys, env vars, status) ===");
   for (const s of swarms) {
     try {
       const swarmKey = s.swarmApiKey ?? null;
@@ -118,7 +160,13 @@ async function logSwarms() {
       }
 
       console.log(
-        `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId}`,
+        `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId} status=${s.status} instanceType=${s.instanceType}`,
+      );
+      console.log(
+        `  repo: ${s.repositoryName || "(none)"} url=${s.repositoryUrl || "(none)"} branch=${s.defaultBranch || "(none)"}`,
+      );
+      console.log(
+        `  wizard: step=${s.wizardStep} status=${s.stepStatus} swarmUrl=${s.swarmUrl || "(none)"} secretAlias=${s.swarmSecretAlias || "(none)"} ingestRefId=${s.ingestRefId || "(none)"}`,
       );
       console.log(`  swarmApiKey (decrypted): ${decryptedKey}`);
       console.log(`  poolApiKey (decrypted): ${decryptedPoolKey}`);
@@ -130,6 +178,16 @@ async function logSwarms() {
       } else {
         console.log(`  environmentVariables: ${JSON.stringify(envVarsOut)}`);
       }
+
+      if (Array.isArray(s.services)) {
+        console.log(
+          `  services: ${s.services
+            .map((svc: any) => svc?.name || JSON.stringify(svc))
+            .join(", ")}`,
+        );
+      } else {
+        console.log(`  services: ${JSON.stringify(s.services)}`);
+      }
     } catch (err) {
       console.log(`[SWARM] id=${s.id} name=${s.name}`);
       console.log(`  error: ${String(err)}`);
@@ -137,10 +195,31 @@ async function logSwarms() {
   }
 }
 
+async function logRepositories() {
+  const repos = await prisma.repository.findMany({
+    select: {
+      id: true,
+      name: true,
+      repositoryUrl: true,
+      branch: true,
+      status: true,
+      workspaceId: true,
+    },
+  });
+  console.log("\n=== REPOSITORIES ===");
+  for (const r of repos) {
+    console.log(
+      `[REPO] id=${r.id} name=${r.name} url=${r.repositoryUrl} branch=${r.branch} status=${r.status} workspaceId=${r.workspaceId}`,
+    );
+  }
+}
+
 async function main() {
   await prisma.$connect();
   await logAccounts();
   await logUsers();
+  await logGitHubAuths();
+  await logRepositories();
   await logSwarms();
   await logWorkspaces();
 }

@@ -1,12 +1,9 @@
 "use client";
 
 import {
-  BadgeCheck,
-  Bell,
   ChevronsUpDown,
-  CreditCard,
   LogOut,
-  Sparkles,
+  Settings,
   Building2,
 } from "lucide-react";
 
@@ -14,7 +11,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -123,6 +119,12 @@ export function NavUser({
 
             {/* Hidden for now: Upgrade to Pro, Account, Billing, Notifications */}
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href="/settings">
+                <Settings />
+                Settings
+              </a>
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => signOut({ callbackUrl: "/", redirect: true })}
             >

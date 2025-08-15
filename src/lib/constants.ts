@@ -138,3 +138,38 @@ export const SWARM_DEFAULT_ENV_VARS = {
 export function getSwarmVanityAddress(name: string) {
   return `${name}.sphinx.chat`;
 }
+
+// Language support for onboarding
+import {
+  SiReact,
+  SiPython,
+  SiGo,
+  SiRubyonrails,
+  SiTypescript,
+  SiSwift,
+  SiKotlin,
+  SiRust,
+  SiOpenjdk,
+  SiAngular,
+  SiSvelte
+} from 'react-icons/si';
+
+type TSupportedLanguage = {
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+};
+
+export const SupportedLanguages: TSupportedLanguage[] = [
+  { name: 'Golang', icon: SiGo, color: 'text-cyan-500' },
+  { name: 'React', icon: SiReact, color: 'text-blue-500' },
+  { name: 'Ruby on Rails', icon: SiRubyonrails, color: 'text-red-600' },
+  { name: 'TypeScript', icon: SiTypescript, color: 'text-blue-600' },
+  { name: 'Python', icon: SiPython, color: 'text-yellow-500' },
+  { name: 'Swift', icon: SiSwift, color: 'text-orange-500' },
+  { name: 'Kotlin', icon: SiKotlin, color: 'text-purple-500' },
+  { name: 'Rust', icon: SiRust, color: 'text-orange-600' },
+  { name: 'Java', icon: SiOpenjdk, color: 'text-red-500' },
+  { name: 'Angular', icon: SiAngular, color: 'text-red-600' },
+  { name: 'Svelte', icon: SiSvelte, color: 'text-orange-500' }
+];

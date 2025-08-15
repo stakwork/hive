@@ -5,6 +5,7 @@ import {
   SWARM_DEFAULT_INSTANCE_TYPE,
   getSwarmVanityAddress,
 } from "@/lib/constants";
+import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
@@ -73,11 +74,15 @@ export async function POST(request: NextRequest) {
 
     const thirdPartyName = `${name.toLowerCase()}-Swarm`;
 
+    // Generate a secure password for the swarm
+    const swarmPassword = generateSecurePassword(20);
+
     const apiResponse = await swarmService.createSwarm({
       vanity_address,
       name: thirdPartyName,
       instance_type,
       env,
+      password: swarmPassword,
     });
 
     const swarm_id = apiResponse?.data?.swarm_id;
@@ -86,6 +91,7 @@ export async function POST(request: NextRequest) {
       swarmUrl: `https://${vanity_address}/api`,
       status: SwarmStatus.PENDING,
       swarmId: swarm_id,
+      swarmPassword: swarmPassword,
     });
 
     return NextResponse.json({

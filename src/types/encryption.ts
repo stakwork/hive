@@ -19,6 +19,7 @@ export type EncryptableField =
   | "environmentVariables"
   | "poolApiKey"
   | "swarmApiKey"
+  | "swarmPassword"
   | "stakworkApiKey";
 
 export interface EncryptionError extends Error {
