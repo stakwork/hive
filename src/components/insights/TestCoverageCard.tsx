@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TestTube, Target, Loader2 } from "lucide-react";
+import { TestTube, FunctionSquare, Globe, Loader2 } from "lucide-react";
 import { TestCoverageData } from "@/types";
 
 interface TestCoverageCardProps {
@@ -104,12 +104,12 @@ export function TestCoverageCard({ data, isLoading, error }: TestCoverageCardPro
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          {/* Functions Coverage */}
+          {/* Unit Tests Coverage */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <TestTube className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Functions</span>
+                <FunctionSquare className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Unit Tests</span>
               </div>
               <Badge variant="outline" className={getPercentageColor(data.functions.percent)}>
                 {data.functions.percent.toFixed(1)}%
@@ -129,12 +129,12 @@ export function TestCoverageCard({ data, isLoading, error }: TestCoverageCardPro
             </div>
           </div>
 
-          {/* Endpoints Coverage */}
+          {/* Integration Tests Coverage */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Target className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Endpoints</span>
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Integration Tests</span>
               </div>
               <Badge variant="outline" className={getPercentageColor(data.endpoints.percent)}>
                 {data.endpoints.percent.toFixed(1)}%
