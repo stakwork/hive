@@ -16,3 +16,6 @@ export * from "./swarm";
 
 // Encryption types
 export * from "./encryption";
+
+// Test coverage types
+export * from "./test-coverage";
