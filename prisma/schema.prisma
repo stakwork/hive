@@ -478,7 +478,8 @@ model Artifact {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([messageId])
-  @@map("attachments")
+  @@index([type])
+  @@map("artifacts")
 }
 
 model Attachment {
