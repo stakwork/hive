@@ -29,6 +29,7 @@ interface WorkspaceContextType {
   // Loading and error states
   loading: boolean;
   error: string | null;
+  isSessionLoading: boolean;
 
   // Actions
   switchWorkspace: (workspace: WorkspaceWithRole) => void;
@@ -143,9 +144,11 @@ export function WorkspaceProvider({
     if (currentSlug && status === "authenticated") {
       // Only fetch if we haven't already loaded this workspace
       if (currentSlug !== currentLoadedSlug) {
+        // Set loading immediately to prevent flash
+        setLoading(true);
+        setError(null);
+        
         const fetchCurrentWorkspace = async () => {
-          setLoading(true);
-          setError(null);
 
           try {
             const response = await fetch(`/api/workspaces/${currentSlug}`);
@@ -190,6 +193,10 @@ export function WorkspaceProvider({
   const id = workspace?.id || "";
   const role = workspace?.userRole || null;
   const hasAccess = !!workspace;
+  
+  // Determine if we should show loading state
+  const shouldShowLoading = loading || status === "loading" || 
+    (status === "authenticated" && !workspace && !error && pathname.includes('/w/'));
 
   // Note: Permission checks have been moved to useWorkspaceAccess hook
 
@@ -204,8 +211,9 @@ export function WorkspaceProvider({
     workspaces,
 
     // Loading and error states
-    loading,
+    loading: shouldShowLoading,
     error,
+    isSessionLoading: status === "loading",
 
     // Actions
     switchWorkspace,

@@ -22,6 +22,7 @@ export function useWorkspace() {
     workspaces,
     loading,
     error,
+    isSessionLoading,
     switchWorkspace,
     refreshWorkspaces,
     refreshCurrentWorkspace,
@@ -41,6 +42,7 @@ export function useWorkspace() {
     // Loading and error states
     loading,
     error,
+    isSessionLoading,
     hasAccess,
 
     // Operations

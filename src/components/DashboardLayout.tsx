@@ -21,12 +21,12 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
-  const { workspace, loading, error, hasAccess } = useWorkspace();
+  const { workspace, loading, error, hasAccess, isSessionLoading } = useWorkspace();
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
 
-  // Show loading state while workspace is being resolved
-  if (loading) {
+  // Show loading state while session or workspace is being resolved
+  if (loading || isSessionLoading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="text-center">
