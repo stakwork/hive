@@ -217,6 +217,9 @@ model Swarm {
   // Generated container files
   containerFiles Json? @map("container_files")
 
+  // Swarm password (encrypted)
+  swarmPassword String? @map("swarm_password")
+
   // One-to-one relationship with workspace
   workspaceId String @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
