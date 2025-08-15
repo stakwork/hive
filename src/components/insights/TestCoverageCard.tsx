@@ -1,17 +1,51 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TestTube, FunctionSquare, Globe, Loader2 } from "lucide-react";
 import { TestCoverageData } from "@/types";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
-interface TestCoverageCardProps {
-  data?: TestCoverageData;
-  isLoading?: boolean;
-  error?: string;
-}
+export function TestCoverageCard() {
+  const { id: workspaceId } = useWorkspace();
+  const [data, setData] = useState<TestCoverageData | undefined>();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
 
-export function TestCoverageCard({ data, isLoading, error }: TestCoverageCardProps) {
+  const fetchTestCoverage = useCallback(async () => {
+    if (!workspaceId) {
+      setError("No workspace selected");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(undefined);
+
+      const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to fetch test coverage");
+      }
+
+      if (result.success && result.data) {
+        setData(result.data);
+      } else {
+        setError(result.message || "No coverage data available");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch test coverage");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    fetchTestCoverage();
+  }, [workspaceId, fetchTestCoverage]);
   const getPercentageColor = (percent: number) => {
     if (percent >= 80) return "text-green-600 border-green-200 bg-green-50";
     if (percent >= 60) return "text-yellow-600 border-yellow-200 bg-yellow-50";

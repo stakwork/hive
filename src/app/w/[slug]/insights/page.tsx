@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
-import { useTestCoverage } from "@/hooks/useTestCoverage";
 
 const topSuggestions = [
   {
@@ -72,7 +71,6 @@ const agents = [
 
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
-  const testCoverage = useTestCoverage();
   const [agentStates, setAgentStates] = useState<Record<string, boolean>>(
     agents.reduce((acc, agent) => ({ ...acc, [agent.id]: agent.status !== 'idle' }), {} as Record<string, boolean>)
   );
@@ -129,11 +127,7 @@ export default function InsightsPage() {
       </div>
 
       {/* Test Coverage */}
-      <TestCoverageCard 
-        data={testCoverage.data}
-        isLoading={testCoverage.isLoading}
-        error={testCoverage.error}
-      />
+      <TestCoverageCard />
 
       {/* Top 3 Priority Suggestions */}
       <Card>
