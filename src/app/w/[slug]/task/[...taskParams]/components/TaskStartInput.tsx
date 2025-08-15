@@ -25,6 +25,8 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
       e.preventDefault();
       if (taskMode === "unit") {
         onStart("Find functions that need unit tests and suggest test implementations");
+      } else if (taskMode === "integration") {
+        onStart("Find API routes that need integration tests and suggest test implementations");
       } else if (value.trim()) {
         onStart(value.trim());
       }
@@ -36,6 +38,8 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
   const handleClick = () => {
     if (taskMode === "unit") {
       onStart("Find functions that need unit tests and suggest test implementations");
+    } else if (taskMode === "integration") {
+      onStart("Find API routes that need integration tests and suggest test implementations");
     } else if (hasText) {
       onStart(value.trim());
     }
@@ -64,6 +68,25 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
               tabIndex={0}
             >
               Scan for Testable Functions
+            </Button>
+          </div>
+        ) : taskMode === "integration" ? (
+          <div className="px-8 pt-8 pb-16 min-h-[180px] flex flex-col items-center justify-center text-center">
+            <h3 className="text-lg font-medium text-foreground mb-2">
+              Find Integration Test Opportunities
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              I'll scan your API routes to recommend integration test implementations
+            </p>
+            <Button
+              type="button"
+              variant="default"
+              size="default"
+              className="rounded-full px-6"
+              onClick={handleClick}
+              tabIndex={0}
+            >
+              Scan for Integration Tests
             </Button>
           </div>
         ) : (
@@ -136,6 +159,20 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
               className="accent-primary"
             />
             <span className="text-sm text-foreground">Unit Tests</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="mode"
+              value="integration"
+              style={{
+                accentColor: "var(--color-green-500)",
+              }}
+              checked={taskMode === "integration"}
+              onChange={() => onModeChange("integration")}
+              className="accent-primary"
+            />
+            <span className="text-sm text-foreground">Integration Tests</span>
           </label>
         </fieldset>
       </div>
