@@ -122,17 +122,11 @@ async function cleanDatabase() {
     await db.gitHubAuth.deleteMany();
     await db.user.deleteMany();
     
-    console.log("✅ Database cleaned successfully");
   } catch (error) {
-    console.error("❌ Failed to clean database:", error);
-    console.error("Error details:", error.message);
-    
     // If standard cleanup fails, try a more aggressive approach
     try {
-      console.log("🔄 Attempting aggressive cleanup...");
       await aggressiveCleanup();
     } catch (aggressiveError) {
-      console.error("❌ Aggressive cleanup also failed:", aggressiveError);
       throw aggressiveError;
     }
   }
@@ -156,11 +150,8 @@ async function aggressiveCleanup() {
         await db.$executeRawUnsafe(`TRUNCATE TABLE "${tableName}" CASCADE;`);
       } catch (error) {
         // Table might not exist, continue with others
-        console.warn(`⚠️ Could not truncate ${tableName}:`, error.message);
       }
     }
-    
-    console.log("✅ Aggressive cleanup completed");
   } finally {
     // Re-enable foreign key checks
     await db.$executeRaw`SET session_replication_role = DEFAULT;`;
