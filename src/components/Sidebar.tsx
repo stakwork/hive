@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CheckSquare, Menu, Network, Settings, BarChart3 } from "lucide-react";
+import { CheckSquare, Menu, Network, Settings, BarChart3, LayoutDashboard } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -27,6 +27,7 @@ interface SidebarProps {
 }
 
 const baseNavigationItems = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: Network, label: "Stakgraph", href: "/stakgraph" },
