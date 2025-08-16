@@ -5,6 +5,13 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
+import {
+  SwarmStatus,
+  SwarmWizardStep,
+  StepStatus,
+  RepositoryStatus,
+} from "@prisma/client";
+import { getDefaultWorkspaceForUser } from "@/services/workspace";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -113,6 +120,87 @@ export const authOptions: NextAuthOptions = {
           } else {
             user.id = existingUser.id;
           }
+
+          // Seed a minimal, completed workspace + swarm so onboarding is skipped
+          const ownerId = user.id as string;
+          const hasWorkspace = await db.workspace.findFirst({
+            where: { ownerId, deleted: false },
+            select: { id: true },
+          });
+
+          if (!hasWorkspace) {
+            const baseSlug = "mock-stakgraph";
+            let slugCandidate = baseSlug;
+            let suffix = 1;
+            while (
+              await db.workspace.findUnique({ where: { slug: slugCandidate } })
+            ) {
+              slugCandidate = `${baseSlug}-${++suffix}`;
+            }
+
+            const workspace = await db.workspace.create({
+              data: {
+                name: "Mock Stakgraph Workspace",
+                description: "Development workspace (mock)",
+                slug: slugCandidate,
+                ownerId,
+              },
+              select: { id: true },
+            });
+
+            // Optional mock repo to satisfy UIs that expect a repository
+            await db.repository.create({
+              data: {
+                name: "stakgraph",
+                repositoryUrl: "https://github.com/mock/stakgraph",
+                branch: "main",
+                status: RepositoryStatus.SYNCED,
+                workspaceId: workspace.id,
+              },
+            });
+
+            // Completed swarm pointing to local dev services
+            const slugify = (s: string) =>
+              s
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, "")
+                .replace(/-{2,}/g, "-");
+
+            await db.swarm.create({
+              data: {
+                name: slugify(`${slugCandidate}-swarm`),
+                status: SwarmStatus.ACTIVE,
+                instanceType: "XL",
+                repositoryName: "stakgraph",
+                repositoryUrl: "https://github.com/mock/stakgraph",
+                defaultBranch: "main",
+                environmentVariables: [
+                  { name: "NODE_ENV", value: "development" },
+                ],
+                services: [
+                  {
+                    name: "stakgraph",
+                    port: 7799,
+                    scripts: { start: "start" },
+                  },
+                  {
+                    name: "repo2graph",
+                    port: 3355,
+                    scripts: { start: "start" },
+                  },
+                ],
+                wizardStep: SwarmWizardStep.COMPLETION,
+                stepStatus: StepStatus.COMPLETED,
+                wizardData: {
+                  seeded: true,
+                  seededAt: new Date().toISOString(),
+                },
+                workspaceId: workspace.id,
+                swarmUrl: "http://localhost/api",
+              },
+            });
+          }
         } catch (error) {
           console.error("Error handling mock authentication:", error);
           return false;
@@ -197,7 +285,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, user, token }) {
       if (session.user) {
-        // For JWT sessions (mock provider), get data from token
+        // For JWT sessions (mock provider), get data from token and attach default workspace
         if (process.env.POD_URL && token) {
           (session.user as { id: string }).id = token.id as string;
           if (token.github) {
@@ -215,6 +303,15 @@ export const authOptions: NextAuthOptions = {
               followers?: number;
             };
           }
+          try {
+            const uid = (session.user as { id: string }).id;
+            const ws = await getDefaultWorkspaceForUser(uid);
+            if (ws?.slug) {
+              (
+                session.user as { defaultWorkspaceSlug?: string }
+              ).defaultWorkspaceSlug = ws.slug;
+            }
+          } catch {}
           return session;
         }
 
