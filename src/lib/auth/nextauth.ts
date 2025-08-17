@@ -192,6 +192,45 @@ export const authOptions: NextAuthOptions = {
                 });
               }
             }
+          } else {
+            // No existing user in DB: create one so downstream logic has a real userId
+            const created = await db.user.create({
+              data: {
+                name: user.name || "GitHub User",
+                email: user.email!,
+                image: user.image,
+                emailVerified: new Date(),
+              },
+            });
+            user.id = created.id;
+
+            if (account.access_token) {
+              const encryptedAccessToken = encryptionService.encryptField(
+                "access_token",
+                account.access_token,
+              );
+              await db.account.create({
+                data: {
+                  userId: created.id,
+                  type: account.type,
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                  access_token: JSON.stringify(encryptedAccessToken),
+                  refresh_token: account.refresh_token as
+                    | string
+                    | undefined
+                    | null,
+                  expires_at: account.expires_at as number | undefined | null,
+                  token_type: account.token_type as string | undefined | null,
+                  scope: account.scope,
+                  id_token: account.id_token as string | undefined | null,
+                  session_state: account.session_state as
+                    | string
+                    | undefined
+                    | null,
+                },
+              });
+            }
           }
         } catch (error) {
           console.error("Error handling GitHub re-authentication:", error);
@@ -379,6 +418,13 @@ export const authOptions: NextAuthOptions = {
           publicRepos: 5,
           followers: 10,
         };
+      }
+      // For JWT sessions (GitHub with POD_URL), persist DB user id into token
+      if (account?.provider === "github" && user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image as string | undefined;
       }
       return token;
     },
