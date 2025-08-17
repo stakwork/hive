@@ -91,9 +91,22 @@ async function resolveSeedUser(args: SeedArgs) {
     if (chosen) return chosen;
   }
 
-  throw new Error(
-    "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername",
-  );
+  // Fallback 3: any user in the system (most recently updated)
+  const anyUser = await prisma.user.findFirst({
+    orderBy: { updatedAt: "desc" },
+  });
+  if (anyUser) return anyUser;
+
+  // Fallback 4: create a dev seed user automatically
+  const seedEmail = `dev-seed-${Date.now()}@mock.dev`;
+  const created = await prisma.user.create({
+    data: {
+      name: "Dev Seed User",
+      email: seedEmail,
+      emailVerified: new Date(),
+    },
+  });
+  return created;
 }
 
 async function seedForUser(userId: string) {
@@ -153,8 +166,8 @@ async function seedForUser(userId: string) {
   ];
 
   const services = [
-    { name: "web", image: "node:18", replicas: 1 },
-    { name: "worker", image: "node:18", replicas: 1 },
+    { name: "stakgraph", port: 7799, scripts: { start: "start" } },
+    { name: "repo2graph", port: 3355, scripts: { start: "start" } },
   ];
 
   const swarm = await prisma.swarm.create({
@@ -176,6 +189,7 @@ async function seedForUser(userId: string) {
         seededAt: new Date().toISOString(),
       },
       workspaceId: workspace.id,
+      swarmUrl: "http://localhost",
     },
   });
 
