@@ -153,7 +153,7 @@ export function BrowserArtifactPanel({
   if (artifacts.length === 0) return null;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-0 min-w-0 flex flex-col">
       {artifacts.length > 1 && (
         <div className="border-b bg-muted/20">
           <div className="flex overflow-x-auto">
@@ -174,7 +174,7 @@ export function BrowserArtifactPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0 min-w-0">
         {artifacts.map((artifact, index) => {
           const content = artifact.content as BrowserContent;
           const isActive = activeTab === index;
@@ -256,7 +256,7 @@ export function BrowserArtifactPanel({
                   </div>
                 </div>
               )}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0 min-w-0">
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}

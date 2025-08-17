@@ -13,11 +13,19 @@ import {
   Option,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
-import { usePusherConnection, WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
+import {
+  usePusherConnection,
+  WorkflowStatusUpdate,
+} from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -46,7 +54,9 @@ export default function TaskChatPage() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
+    WorkflowStatus.PENDING,
+  );
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -58,23 +68,20 @@ export default function TaskChatPage() {
   );
 
   // Handle incoming SSE messages
-  const handleSSEMessage = useCallback(
-    (message: ChatMessage) => {
-      setMessages((prev) => [...prev, message]);
+  const handleSSEMessage = useCallback((message: ChatMessage) => {
+    setMessages((prev) => [...prev, message]);
 
-      // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
-      // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
-      const hasActionArtifact = message.artifacts?.some(artifact => artifact.type === 'FORM');
-      
-      if (hasActionArtifact) {
-        setIsChainVisible(false);
-      }
-      // For all other artifact types (message, ide, etc.), keep thinking logs visible
-    },
-    [clearLogs],
-  );
+    // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
+    // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
+    const hasActionArtifact = message.artifacts?.some(
+      (artifact) => artifact.type === "FORM",
+    );
 
-  // Handle workflow status updates
+    if (hasActionArtifact) {
+      setIsChainVisible(false);
+    }
+  }, []);
+
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
@@ -117,15 +124,18 @@ export default function TaskChatPage() {
       if (result.success && result.data.messages) {
         setMessages(result.data.messages);
         console.log(`Loaded ${result.data.count} existing messages for task`);
-        
+
         // Set initial workflow status from task data
         if (result.data.task?.workflowStatus) {
           setWorkflowStatus(result.data.task.workflowStatus);
         }
-        
+
         // Set project ID for log subscription if available
         if (result.data.task?.stakworkProjectId) {
-          console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
+          console.log(
+            "Setting project ID from task data:",
+            result.data.task.stakworkProjectId,
+          );
           setProjectId(result.data.task.stakworkProjectId.toString());
         }
       }
@@ -322,7 +332,11 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} />
+          <TaskStartInput
+            onStart={handleStart}
+            taskMode={taskMode}
+            onModeChange={setTaskMode}
+          />
         </motion.div>
       ) : (
         <motion.div
@@ -331,23 +345,50 @@ export default function TaskChatPage() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
-          className="h-[92vh] md:h-[97vh] flex gap-4"
+          className="h-[92vh] md:h-[97vh] flex"
         >
-          <ChatArea
-            messages={messages}
-            onSend={handleSend}
-            onArtifactAction={handleArtifactAction}
-            inputDisabled={inputDisabled}
-            isLoading={isLoading}
-            hasNonFormArtifacts={hasNonFormArtifacts}
-            isChainVisible={isChainVisible}
-            lastLogLine={lastLogLine}
-            workflowStatus={workflowStatus}
-          />
-
-          <AnimatePresence>
-            {hasNonFormArtifacts && <ArtifactsPanel artifacts={allArtifacts} />}
-          </AnimatePresence>
+          {hasNonFormArtifacts ? (
+            <ResizablePanelGroup
+              direction="horizontal"
+              className="flex-1 min-w-0 min-h-0 gap-2"
+            >
+              <ResizablePanel defaultSize={40} minSize={25}>
+                <div className="h-full min-h-0 min-w-0">
+                  <ChatArea
+                    messages={messages}
+                    onSend={handleSend}
+                    onArtifactAction={handleArtifactAction}
+                    inputDisabled={inputDisabled}
+                    isLoading={isLoading}
+                    hasNonFormArtifacts={hasNonFormArtifacts}
+                    isChainVisible={isChainVisible}
+                    lastLogLine={lastLogLine}
+                    workflowStatus={workflowStatus}
+                  />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={60} minSize={25}>
+                <div className="h-full min-h-0 min-w-0">
+                  <ArtifactsPanel artifacts={allArtifacts} />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            <div className="flex-1 min-w-0">
+              <ChatArea
+                messages={messages}
+                onSend={handleSend}
+                onArtifactAction={handleArtifactAction}
+                inputDisabled={inputDisabled}
+                isLoading={isLoading}
+                hasNonFormArtifacts={hasNonFormArtifacts}
+                isChainVisible={isChainVisible}
+                lastLogLine={lastLogLine}
+                workflowStatus={workflowStatus}
+              />
+            </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

@@ -40,14 +40,11 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 100, width: 0 }}
-      animate={{ opacity: 1, x: 0, width: "60%" }}
-      exit={{ opacity: 0, x: 100, width: 0 }}
-      transition={{
-        duration: 0.4,
-        ease: [0.4, 0.0, 0.2, 1],
-      }}
-      className="bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.3, ease: [0.4, 0.0, 0.2, 1] }}
+      className="h-full flex-1 min-w-0 min-h-0 bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
     >
       <Tabs
         value={activeTab as string}
@@ -62,7 +59,7 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4 }}
         >
-          <TabsList className={`grid w-full grid-cols-${availableTabs.length}`}>
+          <TabsList className="w-full flex">
             {codeArtifacts.length > 0 && (
               <TabsTrigger className="cursor-pointer" value="CODE">
                 Code / Files
