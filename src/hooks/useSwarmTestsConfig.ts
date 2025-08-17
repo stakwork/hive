@@ -28,11 +28,11 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
 
     async function load() {
       try {
-        // Development: use local runner by default
-        if (process.env.DEVELOPMENT === "true") {
+        if (process.env.NEXT_PUBLIC_DEVELOPMENT === "true") {
+          console.log("Development: using local runner");
           if (!cancelled) {
             setState({
-              baseUrl: "http://localhost:4000",
+              baseUrl: "http://localhost:3005", // to test locallly with stakgraph/mcp
               apiKey: null,
               loading: false,
               error: null,
