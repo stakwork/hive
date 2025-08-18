@@ -2,7 +2,11 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
+import {
+  ChatMessage as ChatMessageType,
+  Option,
+  WorkflowStatus,
+} from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
@@ -42,14 +46,13 @@ export function ChatArea({
 
   return (
     <motion.div
-      className={`flex flex-col bg-background rounded-xl border shadow-sm overflow-hidden ${hasNonFormArtifacts ? "max-w-2xl" : ""}`}
+      className={
+        "flex h-full min-w-0 flex-col bg-background rounded-xl border shadow-sm overflow-hidden"
+      }
       layout
-      initial={{ width: "100%" }}
-      animate={{ width: hasNonFormArtifacts ? "40%" : "100%" }}
-      transition={{
-        duration: 0.6,
-        ease: [0.4, 0.0, 0.2, 1],
-      }}
+      initial={{ opacity: 1 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
     >
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
