@@ -37,7 +37,7 @@ export async function ensureMockWorkspaceForUser(
 
   const workspace = await db.workspace.create({
     data: {
-      name: "Mock Stakgraph Workspace",
+      name: "Mock Workspace",
       description: "Development workspace (mock)",
       slug: slugCandidate,
       ownerId: userId,

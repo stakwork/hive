@@ -32,7 +32,7 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
           console.log("Development: using local runner");
           if (!cancelled) {
             setState({
-              baseUrl: "http://localhost:3005", // to test locallly with stakgraph/mcp
+              baseUrl: "http://localhost:3355", // to test locallly with stakgraph/mcp
               apiKey: null,
               loading: false,
               error: null,
