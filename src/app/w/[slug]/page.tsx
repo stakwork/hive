@@ -17,9 +17,66 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
+import { CodeGraphVisualization, CodeNode } from "@/components/CodeGraphVisualization";
 
 export default function DashboardPage() {
   const { workspace, slug } = useWorkspace();
+
+  // Example data from your provided structure
+  const sampleNodes: CodeNode[] = [
+    {
+      "node_type": "Function",
+      "ref_id": "2bcc7d09-80b7-4dda-95e3-49a8db52cc0f",
+      "properties": {
+        "token_count": 40,
+        "file": "stakwork/hive/src/components/workspace/AddMemberModal.tsx",
+        "node_key": "function-handleselectuser-stakworkhivesrccomponentsworkspaceaddmembermodaltsx-147",
+        "name": "handleSelectUser",
+        "start": 147,
+        "end": 152,
+        "body": "const handleSelectUser = (user: GitHubUser) => {\n    setSelectedUser(user);\n    setSearchQuery(user.login);\n    form.setValue(\"githubUsername\", user.login);\n    setSearchResults([]);\n  };"
+      }
+    },
+    {
+      "node_type": "Function",
+      "ref_id": "0c099b74-7a13-43af-a4a4-39e8beac5393",
+      "properties": {
+        "token_count": 38,
+        "file": "stakwork/hive/src/app/w/[slug]/task/[...taskParams]/page.tsx",
+        "node_key": "function-handlesend-stakworkhivesrcappwslugtasktaskparamspagetsx-189",
+        "name": "handleSend",
+        "start": 189,
+        "end": 194,
+        "body": "const handleSend = async (message: string) => {\n    await sendMessage(\n      message,\n      chatWebhook ? { webhook: chatWebhook } : undefined,\n    );\n  };"
+      }
+    },
+    {
+      "node_type": "Function",
+      "ref_id": "2a967502-7779-44c8-ad32-600e20cacf6e",
+      "properties": {
+        "token_count": 120,
+        "file": "stakwork/hive/src/components/stakgraph/forms/ServicesForm.tsx",
+        "node_key": "function-handleservicechange-stakworkhivesrccomponentsstakgraphformsservicesformtsx-109",
+        "name": "handleServiceChange",
+        "start": 109,
+        "end": 124,
+        "body": "const handleServiceChange = (\n    idx: number,\n    field: keyof ServiceDataConfig,\n    value: string | number,\n  ) => {\n    const updatedServices = [...data];\n    if (field === \"port\") {\n      updatedServices[idx].port =\n        typeof value === \"number\" ? value : Number(value);\n    } else if (field === \"name\") {\n      updatedServices[idx].name = value as string;\n    } else if (field === \"interpreter\") {\n      updatedServices[idx].interpreter = value as string;\n    }\n    onChange(updatedServices);\n  };"
+      }
+    },
+    {
+      "node_type": "Function",
+      "ref_id": "f9b77d35-8db8-4367-aefe-a6dad3a6ce0f",
+      "properties": {
+        "token_count": 57,
+        "file": "stakwork/hive/src/stores/useStakgraphStore.ts",
+        "node_key": "function-handleserviceschange-stakworkhivesrcstoresusestakgraphstorets-377",
+        "name": "handleServicesChange",
+        "start": 377,
+        "end": 384,
+        "body": "handleServicesChange: (services: ServiceDataConfig[]) => {\n      const state = get();\n      console.log(\"Store receiving services:\", services);\n      set({\n        formData: { ...state.formData, services: services },\n        saved: false,\n      });\n    }"
+      }
+    }
+  ];
 
   return (
     <div className="space-y-6">
@@ -86,6 +143,25 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Code Graph Visualization */}
+      {workspace && workspace.isCodeGraphSetup && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Code Graph</CardTitle>
+            <CardDescription>Interactive visualization of your codebase functions and their relationships</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CodeGraphVisualization 
+              nodes={sampleNodes}
+              edges={[
+                { from: "2bcc7d09-80b7-4dda-95e3-49a8db52cc0f", to: "0c099b74-7a13-43af-a4a4-39e8beac5393", type: "calls" },
+                { from: "2a967502-7779-44c8-ad32-600e20cacf6e", to: "f9b77d35-8db8-4367-aefe-a6dad3a6ce0f", type: "calls" }
+              ]}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent Activity */}
       <div className="grid gap-6 md:grid-cols-2">
