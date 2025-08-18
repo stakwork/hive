@@ -1,27 +1,22 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, useEffect } from "react";
+import { useLayoutEffect, useRef, useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, Search, RotateCcw, GitBranch } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { CodeGraphService, NodeType, CodeGraphNode } from "@/services/CodeGraphService";
 
-export type CodeNode = {
-  node_type: string;
-  ref_id: string;
-  properties: {
-    token_count: number;
-    file: string;
-    node_key: string;
-    name: string;
-    start: number;
-    end: number;
-    body: string;
-  };
-};
+// Re-export types from service for compatibility
+export type CodeNode = CodeGraphNode;
 
 export type CodeEdge = {
   from: string;
   to: string;
-  type: "calls" | "imports" | "references";
+  type: string;
 };
 
 type LayoutNode = CodeNode & {
@@ -32,8 +27,9 @@ type LayoutNode = CodeNode & {
 };
 
 interface CodeGraphVisualizationProps {
-  nodes: CodeNode[];
-  edges?: CodeEdge[];
+  workspaceId: string;
+  initialNodes?: CodeNode[];
+  initialEdges?: CodeEdge[];
   width?: number;
   height?: number;
   className?: string;
@@ -76,8 +72,14 @@ function getNodeColor(nodeType: string, tokenCount: number): string {
       return `hsl(217, ${saturation}%, ${lightness}%)`; // Blue
     case "Class":
       return `hsl(142, ${saturation}%, ${lightness}%)`; // Green
-    case "Variable":
+    case "Datamodel":
       return `hsl(45, ${saturation}%, ${lightness}%)`; // Yellow
+    case "Endpoint":
+      return `hsl(280, ${saturation}%, ${lightness}%)`; // Purple
+    case "Page":
+      return `hsl(25, ${saturation}%, ${lightness}%)`; // Orange
+    case "Test":
+      return `hsl(120, ${saturation}%, ${lightness}%)`; // Light Green
     default:
       return `hsl(0, ${saturation}%, ${lightness}%)`;
   }
@@ -171,18 +173,40 @@ function forceSimulation(
 }
 
 export function CodeGraphVisualization({ 
-  nodes, 
-  edges = [], 
+  workspaceId,
+  initialNodes = [],
+  initialEdges = [],
   className = "" 
 }: CodeGraphVisualizationProps) {
   const { ref: containerRef, size } = useElementSize<HTMLDivElement>();
+  const [service] = useState(() => new CodeGraphService(workspaceId));
+  
+  // Data state
+  const [nodes, setNodes] = useState<CodeNode[]>(initialNodes);
+  const [edges, setEdges] = useState<CodeEdge[]>(initialEdges);
   const [layoutNodes, setLayoutNodes] = useState<LayoutNode[]>([]);
+  
+  // UI state
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedNodeTypes, setSelectedNodeTypes] = useState<NodeType[]>([]);
 
   const width = size.width || BASE_W;
   const height = size.height || BASE_H;
 
+  // Load initial data
+  useEffect(() => {
+    if (initialNodes.length === 0) {
+      loadAllFunctions();
+    }
+  }, []);
+
+  // Update layout when nodes change
   useEffect(() => {
     if (nodes.length === 0) return;
 
@@ -197,6 +221,50 @@ export function CodeGraphVisualization({
     const simulatedNodes = forceSimulation(initialNodes, edges, width, height);
     setLayoutNodes(simulatedNodes);
   }, [nodes, edges, width, height]);
+
+  const loadAllFunctions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const functions = await service.getFunctions();
+      setNodes(functions);
+      setEdges([]); // No edges for basic function view
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load functions');
+    } finally {
+      setLoading(false);
+    }
+  }, [service]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await service.search({
+        query: searchQuery,
+        method: 'fulltext',
+        node_types: selectedNodeTypes.length > 0 ? selectedNodeTypes : undefined,
+        limit: 50
+      });
+      setNodes(results);
+      setEdges([]); // Clear edges for search results
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [service, searchQuery, selectedNodeTypes]);
+
+  const handleNodeTypeToggle = useCallback((nodeType: NodeType) => {
+    setSelectedNodeTypes(prev => 
+      prev.includes(nodeType) 
+        ? prev.filter(t => t !== nodeType)
+        : [...prev, nodeType]
+    );
+  }, []);
+
 
   const getEdgePath = (edge: CodeEdge): string => {
     const source = layoutNodes.find(n => n.ref_id === edge.from);
@@ -223,152 +291,221 @@ export function CodeGraphVisualization({
 
   const computedHeight = width > 0 ? (width * BASE_H) / BASE_W : BASE_H;
 
+  const nodeTypeOptions: NodeType[] = [
+    "Function", "Class", "Datamodel", "Endpoint", "Page", "Test"
+  ];
+
   return (
-    <div className={`flex gap-4 ${className}`}>
-      {/* Graph Visualization */}
-      <div className="flex-1">
-        <div
-          ref={containerRef}
-          className="relative rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden"
-          style={{ height: Math.min(computedHeight, 600) }}
-        >
-          <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${width} ${height}`}>
-            <defs>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="2" result="coloredBlur" />
-                <feMerge>
-                  <feMergeNode in="coloredBlur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            {/* Edges */}
-            {edges.map((edge, i) => (
-              <path
-                key={`edge-${i}`}
-                d={getEdgePath(edge)}
-                stroke={isEdgeHighlighted(edge) ? "#3b82f6" : "#64748b"}
-                strokeWidth={isEdgeHighlighted(edge) ? 2 : 1}
-                strokeOpacity={selectedNode ? (isEdgeHighlighted(edge) ? 1 : 0.3) : 0.6}
-                fill="none"
-                className="transition-all duration-300"
-                filter={isEdgeHighlighted(edge) ? "url(#glow)" : "none"}
+    <TooltipProvider>
+      <div className={className}>
+        {/* Graph Visualization */}
+        <div className="flex gap-4">
+          <div className="flex-1">
+          <div
+            ref={containerRef}
+            className="relative rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden"
+            style={{ height: Math.min(computedHeight, 600) }}
+          >
+            {/* Search Controls Overlay */}
+            <div className="absolute top-4 left-4 z-10 flex gap-2">
+              <Input
+                placeholder="Search codebase..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="w-64 bg-background/80 backdrop-blur-sm"
               />
-            ))}
+              <Button onClick={handleSearch} disabled={loading || !searchQuery.trim()} size="sm">
+                <Search className="w-4 h-4" />
+              </Button>
+            </div>
 
-            {/* Nodes */}
-            {layoutNodes.map((node) => (
-              <g key={node.ref_id}>
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={NODE_RADIUS}
-                  fill={getNodeColor(node.node_type, node.properties.token_count)}
-                  stroke={selectedNode === node.ref_id ? "#3b82f6" : "#ffffff"}
-                  strokeWidth={selectedNode === node.ref_id ? 3 : 1}
-                  opacity={
-                    selectedNode 
-                      ? (selectedNode === node.ref_id || isNodeConnected(node.ref_id) ? 1 : 0.3)
-                      : (hoveredNode === node.ref_id ? 1 : 0.8)
-                  }
-                  className="cursor-pointer transition-all duration-300 hover:r-10"
-                  onClick={() => setSelectedNode(
-                    selectedNode === node.ref_id ? null : node.ref_id
-                  )}
-                  onMouseEnter={() => setHoveredNode(node.ref_id)}
-                  onMouseLeave={() => setHoveredNode(null)}
-                  filter={selectedNode === node.ref_id ? "url(#glow)" : "none"}
+            {/* Node Type Filter Overlay */}
+            <div className="absolute top-4 left-4 mt-12 z-10">
+              <div className="flex gap-1 flex-wrap">
+                {nodeTypeOptions.map(nodeType => (
+                  <Button
+                    key={nodeType}
+                    variant={selectedNodeTypes.includes(nodeType) ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleNodeTypeToggle(nodeType)}
+                    className={`text-xs h-6 px-2 backdrop-blur-sm transition-all ${
+                      selectedNodeTypes.includes(nodeType) 
+                        ? "bg-primary text-primary-foreground border-primary shadow-md" 
+                        : "bg-background/80 hover:bg-background border-border"
+                    }`}
+                  >
+                    {nodeType}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Status Overlay */}
+            <div className="absolute bottom-4 left-4 z-10 flex gap-2 text-xs">
+              <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
+                {nodes.length} nodes
+              </Badge>
+              {loading && (
+                <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  Loading...
+                </Badge>
+              )}
+              {error && (
+                <Badge variant="destructive" className="bg-background/80 backdrop-blur-sm">
+                  Error
+                </Badge>
+              )}
+            </div>
+
+            {/* Reset Button */}
+            <div className="absolute bottom-4 right-4 z-10">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={loadAllFunctions}
+                    disabled={loading}
+                    className="bg-background/80 backdrop-blur-sm hover:bg-background"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${width} ${height}`}>
+              <defs>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                  <feMerge>
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* Edges */}
+              {edges.map((edge, i) => (
+                <path
+                  key={`edge-${i}`}
+                  d={getEdgePath(edge)}
+                  stroke={isEdgeHighlighted(edge) ? "#3b82f6" : "#64748b"}
+                  strokeWidth={isEdgeHighlighted(edge) ? 2 : 1}
+                  strokeOpacity={selectedNode ? (isEdgeHighlighted(edge) ? 1 : 0.3) : 0.6}
+                  fill="none"
+                  className="transition-all duration-300"
+                  filter={isEdgeHighlighted(edge) ? "url(#glow)" : "none"}
                 />
-                
-                {/* Node label */}
-                <text
-                  x={node.x}
-                  y={node.y - NODE_RADIUS - 4}
-                  textAnchor="middle"
-                  className="text-xs fill-current pointer-events-none"
-                  opacity={hoveredNode === node.ref_id || selectedNode === node.ref_id ? 1 : 0}
-                >
-                  {node.properties.name}
-                </text>
-              </g>
-            ))}
-          </svg>
+              ))}
 
-          {/* Legend */}
-          <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg p-3 text-sm">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: getNodeColor("Function", 50) }}
-                ></div>
-                <span>Functions</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: getNodeColor("Class", 50) }}
-                ></div>
-                <span>Classes</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: getNodeColor("Variable", 50) }}
-                ></div>
-                <span>Variables</span>
+              {/* Nodes */}
+              {layoutNodes.map((node) => (
+                <g key={node.ref_id}>
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={NODE_RADIUS}
+                    fill={getNodeColor(node.node_type, node.properties.token_count)}
+                    stroke={selectedNode === node.ref_id ? "#3b82f6" : "#ffffff"}
+                    strokeWidth={selectedNode === node.ref_id ? 3 : 1}
+                    opacity={
+                      selectedNode 
+                        ? (selectedNode === node.ref_id || isNodeConnected(node.ref_id) ? 1 : 0.3)
+                        : (hoveredNode === node.ref_id ? 1 : 0.8)
+                    }
+                    className="cursor-pointer transition-all duration-300 hover:r-10"
+                    onClick={() => setSelectedNode(
+                      selectedNode === node.ref_id ? null : node.ref_id
+                    )}
+                    onMouseEnter={() => setHoveredNode(node.ref_id)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                    filter={selectedNode === node.ref_id ? "url(#glow)" : "none"}
+                  />
+                  
+                  {/* Node label */}
+                  <text
+                    x={node.x}
+                    y={node.y - NODE_RADIUS - 4}
+                    textAnchor="middle"
+                    className="text-xs fill-current pointer-events-none"
+                    opacity={hoveredNode === node.ref_id || selectedNode === node.ref_id ? 1 : 0}
+                  >
+                    {node.properties.name}
+                  </text>
+                </g>
+              ))}
+            </svg>
+
+            {/* Legend */}
+            <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg p-3 text-sm">
+              <div className="space-y-1">
+                {nodeTypeOptions.map(nodeType => (
+                  <div key={nodeType} className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: getNodeColor(nodeType, 50) }}
+                    ></div>
+                    <span>{nodeType}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Node Details Panel */}
-      {selectedNodeData && (
-        <Card className="w-80">
-          <CardContent className="p-4">
-            <div className="space-y-3">
-              <div>
-                <h3 className="font-semibold text-lg">{selectedNodeData.properties.name}</h3>
-                <p className="text-sm text-muted-foreground">{selectedNodeData.node_type}</p>
-              </div>
-              
-              <div className="space-y-2 text-sm">
+        {/* Node Details Panel */}
+        {selectedNodeData && (
+          <Card className="w-80">
+            <CardContent className="p-4">
+              <div className="space-y-3">
                 <div>
-                  <span className="font-medium">File:</span>
-                  <p className="text-muted-foreground break-all">
-                    {selectedNodeData.properties.file}
-                  </p>
+                  <h3 className="font-semibold text-lg">{selectedNodeData.properties.name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedNodeData.node_type}</p>
+                </div>
+                
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-medium">File:</span>
+                    <p className="text-muted-foreground break-all">
+                      {selectedNodeData.properties.file}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <span className="font-medium">Lines:</span>
+                    <span className="ml-2 text-muted-foreground">
+                      {selectedNodeData.properties.start}-{selectedNodeData.properties.end}
+                    </span>
+                  </div>
+                  
+                  <div>
+                    <span className="font-medium">Token Count:</span>
+                    <span className="ml-2 text-muted-foreground">
+                      {selectedNodeData.properties.token_count}
+                    </span>
+                  </div>
                 </div>
                 
                 <div>
-                  <span className="font-medium">Lines:</span>
-                  <span className="ml-2 text-muted-foreground">
-                    {selectedNodeData.properties.start}-{selectedNodeData.properties.end}
-                  </span>
+                  <span className="font-medium text-sm">Code:</span>
+                  <div className="mt-1 max-h-48 overflow-y-auto">
+                    <MarkdownRenderer className="text-xs">
+                      {`\`\`\`${selectedNodeData.properties.language || 'javascript'}\n${selectedNodeData.properties.body}\n\`\`\``}
+                    </MarkdownRenderer>
+                  </div>
                 </div>
                 
-                <div>
-                  <span className="font-medium">Token Count:</span>
-                  <span className="ml-2 text-muted-foreground">
-                    {selectedNodeData.properties.token_count}
-                  </span>
-                </div>
               </div>
-              
-              <div>
-                <span className="font-medium text-sm">Code:</span>
-                <div className="mt-1 max-h-48 overflow-y-auto">
-                  <MarkdownRenderer className="text-xs">
-                    {`\`\`\`javascript\n${selectedNodeData.properties.body}\n\`\`\``}
-                  </MarkdownRenderer>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
+    </TooltipProvider>
   );
 }

@@ -14,16 +14,19 @@ import {
   Code,
   BarChart3,
   Settings,
+  GitBranch,
 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { CodeGraphVisualization, CodeNode } from "@/components/CodeGraphVisualization";
+import { useState, useEffect } from "react";
 
 export default function DashboardPage() {
   const { workspace, slug } = useWorkspace();
 
   // Example data from your provided structure
   const sampleNodes: CodeNode[] = [
+    // Functions
     {
       "node_type": "Function",
       "ref_id": "2bcc7d09-80b7-4dda-95e3-49a8db52cc0f",
@@ -50,30 +53,139 @@ export default function DashboardPage() {
         "body": "const handleSend = async (message: string) => {\n    await sendMessage(\n      message,\n      chatWebhook ? { webhook: chatWebhook } : undefined,\n    );\n  };"
       }
     },
+    // Classes
     {
-      "node_type": "Function",
-      "ref_id": "2a967502-7779-44c8-ad32-600e20cacf6e",
+      "node_type": "Class",
+      "ref_id": "class-1",
       "properties": {
-        "token_count": 120,
-        "file": "stakwork/hive/src/components/stakgraph/forms/ServicesForm.tsx",
-        "node_key": "function-handleservicechange-stakworkhivesrccomponentsstakgraphformsservicesformtsx-109",
-        "name": "handleServiceChange",
-        "start": 109,
-        "end": 124,
-        "body": "const handleServiceChange = (\n    idx: number,\n    field: keyof ServiceDataConfig,\n    value: string | number,\n  ) => {\n    const updatedServices = [...data];\n    if (field === \"port\") {\n      updatedServices[idx].port =\n        typeof value === \"number\" ? value : Number(value);\n    } else if (field === \"name\") {\n      updatedServices[idx].name = value as string;\n    } else if (field === \"interpreter\") {\n      updatedServices[idx].interpreter = value as string;\n    }\n    onChange(updatedServices);\n  };"
+        "token_count": 85,
+        "file": "stakwork/hive/src/services/CodeGraphService.ts",
+        "node_key": "class-codegraphservice",
+        "name": "CodeGraphService",
+        "start": 45,
+        "end": 147,
+        "body": "export class CodeGraphService {\n  private baseUrl: string;\n\n  constructor(graphUrl: string) {\n    this.baseUrl = graphUrl;\n  }\n  // ... methods\n}"
       }
     },
     {
-      "node_type": "Function",
-      "ref_id": "f9b77d35-8db8-4367-aefe-a6dad3a6ce0f",
+      "node_type": "Class",
+      "ref_id": "class-2", 
       "properties": {
-        "token_count": 57,
-        "file": "stakwork/hive/src/stores/useStakgraphStore.ts",
-        "node_key": "function-handleserviceschange-stakworkhivesrcstoresusestakgraphstorets-377",
-        "name": "handleServicesChange",
-        "start": 377,
-        "end": 384,
-        "body": "handleServicesChange: (services: ServiceDataConfig[]) => {\n      const state = get();\n      console.log(\"Store receiving services:\", services);\n      set({\n        formData: { ...state.formData, services: services },\n        saved: false,\n      });\n    }"
+        "token_count": 65,
+        "file": "stakwork/hive/src/components/ui/Button.tsx",
+        "node_key": "class-button",
+        "name": "ButtonComponent",
+        "start": 10,
+        "end": 45,
+        "body": "class ButtonComponent extends React.Component {\n  render() {\n    return <button {...this.props} />;\n  }\n}"
+      }
+    },
+    // Datamodel
+    {
+      "node_type": "Datamodel",
+      "ref_id": "datamodel-1",
+      "properties": {
+        "token_count": 95,
+        "file": "stakwork/hive/prisma/schema.prisma",
+        "node_key": "datamodel-workspace",
+        "name": "Workspace",
+        "start": 25,
+        "end": 45,
+        "body": "model Workspace {\n  id          String   @id @default(cuid())\n  name        String\n  slug        String   @unique\n  description String?\n  ownerId     String\n  createdAt   DateTime @default(now())\n  updatedAt   DateTime @updatedAt\n}"
+      }
+    },
+    {
+      "node_type": "Datamodel",
+      "ref_id": "datamodel-2",
+      "properties": {
+        "token_count": 75,
+        "file": "stakwork/hive/prisma/schema.prisma", 
+        "node_key": "datamodel-user",
+        "name": "User",
+        "start": 50,
+        "end": 70,
+        "body": "model User {\n  id            String    @id @default(cuid())\n  name          String?\n  email         String    @unique\n  emailVerified DateTime?\n  image         String?\n  accounts      Account[]\n}"
+      }
+    },
+    // Endpoints
+    {
+      "node_type": "Endpoint",
+      "ref_id": "endpoint-1",
+      "properties": {
+        "token_count": 55,
+        "file": "stakwork/hive/src/app/api/workspace/route.ts",
+        "node_key": "endpoint-post-workspace",
+        "name": "POST /api/workspace",
+        "start": 15,
+        "end": 35,
+        "body": "export async function POST(request: Request) {\n  const data = await request.json();\n  // Create workspace logic\n  return Response.json({ success: true });\n}"
+      }
+    },
+    {
+      "node_type": "Endpoint", 
+      "ref_id": "endpoint-2",
+      "properties": {
+        "token_count": 42,
+        "file": "stakwork/hive/src/app/api/auth/route.ts",
+        "node_key": "endpoint-get-auth",
+        "name": "GET /api/auth",
+        "start": 8,
+        "end": 20,
+        "body": "export async function GET() {\n  const session = await getServerSession();\n  return Response.json(session);\n}"
+      }
+    },
+    // Pages
+    {
+      "node_type": "Page",
+      "ref_id": "page-1",
+      "properties": {
+        "token_count": 78,
+        "file": "stakwork/hive/src/app/w/[slug]/page.tsx",
+        "node_key": "page-dashboard",
+        "name": "DashboardPage",
+        "start": 23,
+        "end": 138,
+        "body": "export default function DashboardPage() {\n  const { workspace, slug } = useWorkspace();\n  // Dashboard component logic\n  return <div>Dashboard</div>;\n}"
+      }
+    },
+    {
+      "node_type": "Page",
+      "ref_id": "page-2",
+      "properties": {
+        "token_count": 63,
+        "file": "stakwork/hive/src/app/login/page.tsx",
+        "node_key": "page-login",
+        "name": "LoginPage", 
+        "start": 5,
+        "end": 25,
+        "body": "export default function LoginPage() {\n  return (\n    <div>\n      <h1>Login</h1>\n      <SignInButton />\n    </div>\n  );\n}"
+      }
+    },
+    // Tests
+    {
+      "node_type": "Test",
+      "ref_id": "test-1",
+      "properties": {
+        "token_count": 45,
+        "file": "stakwork/hive/src/components/__tests__/Button.test.tsx",
+        "node_key": "test-button-render",
+        "name": "Button renders correctly",
+        "start": 10,
+        "end": 18,
+        "body": "test('Button renders correctly', () => {\n  render(<Button>Click me</Button>);\n  expect(screen.getByText('Click me')).toBeInTheDocument();\n});"
+      }
+    },
+    {
+      "node_type": "Test",
+      "ref_id": "test-2", 
+      "properties": {
+        "token_count": 52,
+        "file": "stakwork/hive/src/hooks/__tests__/useWorkspace.test.ts",
+        "node_key": "test-workspace-hook",
+        "name": "useWorkspace hook test",
+        "start": 15,
+        "end": 25,
+        "body": "test('useWorkspace returns workspace data', () => {\n  const { result } = renderHook(() => useWorkspace());\n  expect(result.current.workspace).toBeDefined();\n});"
       }
     }
   ];
@@ -95,139 +207,42 @@ export default function DashboardPage() {
         <ConnectRepository workspaceSlug={slug} />
       )}
 
-      {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-muted-foreground">+3 from last week</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Code Commits</CardTitle>
-            <Github className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">142</div>
-            <p className="text-xs text-muted-foreground">+12 from last week</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Sprint Progress
-            </CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">73%</div>
-            <p className="text-xs text-muted-foreground">+5% from yesterday</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
-            <Code className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">89</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Code Graph Visualization */}
       {workspace && workspace.isCodeGraphSetup && (
         <Card>
           <CardHeader>
-            <CardTitle>Code Graph</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <GitBranch className="w-5 h-5" />
+              Code Graph
+            </CardTitle>
             <CardDescription>Interactive visualization of your codebase functions and their relationships</CardDescription>
           </CardHeader>
           <CardContent>
-            <CodeGraphVisualization 
-              nodes={sampleNodes}
-              edges={[
-                { from: "2bcc7d09-80b7-4dda-95e3-49a8db52cc0f", to: "0c099b74-7a13-43af-a4a4-39e8beac5393", type: "calls" },
-                { from: "2a967502-7779-44c8-ad32-600e20cacf6e", to: "f9b77d35-8db8-4367-aefe-a6dad3a6ce0f", type: "calls" }
-              ]}
-            />
+            {workspace && workspace.isCodeGraphSetup ? (
+              <CodeGraphVisualization 
+                workspaceId={workspace.id} 
+                initialNodes={sampleNodes}
+                initialEdges={[
+                  { from: "2bcc7d09-80b7-4dda-95e3-49a8db52cc0f", to: "0c099b74-7a13-43af-a4a4-39e8beac5393", type: "calls" },
+                  { from: "class-1", to: "endpoint-1", type: "uses" },
+                  { from: "page-1", to: "class-1", type: "imports" },
+                  { from: "endpoint-1", to: "datamodel-1", type: "queries" },
+                  { from: "endpoint-2", to: "datamodel-2", type: "queries" },
+                  { from: "test-1", to: "class-2", type: "tests" },
+                  { from: "test-2", to: "page-1", type: "tests" }
+                ]}
+              />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>Code Graph requires a swarm to be deployed.</p>
+                <p className="text-sm mt-2">Complete the workspace setup to enable this feature.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Recent Activity */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Tasks</CardTitle>
-            <CardDescription>Your most recently updated tasks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    Update user authentication
-                  </p>
-                  <p className="text-xs text-muted-foreground">2 hours ago</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Fix sidebar navigation</p>
-                  <p className="text-xs text-muted-foreground">4 hours ago</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    Optimize database queries
-                  </p>
-                  <p className="text-xs text-muted-foreground">1 day ago</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common tasks and shortcuts</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Activity className="h-4 w-4 mr-2" />
-                Create new task
-              </button>
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Github className="h-4 w-4 mr-2" />
-                Connect repository
-              </button>
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Calendar className="h-4 w-4 mr-2" />
-                Schedule meeting
-              </button>
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Settings className="h-4 w-4 mr-2" />
-                Project settings
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

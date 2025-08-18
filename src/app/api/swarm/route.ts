@@ -12,6 +12,12 @@ import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
+
+export const runtime = "nodejs";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   if (isFakeMode) {
