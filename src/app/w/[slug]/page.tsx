@@ -197,7 +197,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground mt-2">
-            Welcome to your development workspace.
+            Explore your codebase, manage tasks, and track development progress.
           </p>
         </div>
       </div>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, Search, RotateCcw, GitBranch } from "lucide-react";
+import { Loader2, Search, RotateCcw } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { CodeGraphService, NodeType, CodeGraphNode } from "@/services/CodeGraphService";
 
@@ -251,7 +251,6 @@ export function CodeGraphVisualization({
   }, [nodes, edges, width, height]);
 
   const loadAllFunctions = useCallback(async () => {
-    console.log('Load all functions clicked');
     setLoading(true);
     setError(null);
     try {
@@ -318,7 +317,6 @@ export function CodeGraphVisualization({
     // Only start panning if clicking on the SVG background, not on nodes
     if (target.tagName === 'svg' || target.tagName === 'rect' || (target.tagName === 'g' && !target.closest('g[data-node]'))) {
       e.preventDefault();
-      console.log('Starting pan');
       setIsPanning(true);
       setPanStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
     }
@@ -393,7 +391,6 @@ export function CodeGraphVisualization({
   }, [layoutNodes, transform]);
 
   const resetZoom = useCallback(() => {
-    console.log('Reset zoom clicked');
     setTransform({ x: 0, y: 0, scale: 1 });
   }, []);
 
