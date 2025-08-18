@@ -367,6 +367,44 @@ export async function validateWorkspaceAccess(
 }
 
 /**
+ * Validates user access to a workspace by ID and returns permission details
+ */
+export async function validateWorkspaceAccessById(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceAccessValidation> {
+  const workspace = await getWorkspaceById(workspaceId, userId);
+
+  if (!workspace) {
+    return {
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    };
+  }
+
+  const roleLevel = WORKSPACE_PERMISSION_LEVELS[workspace.userRole as WorkspaceRole];
+
+  return {
+    hasAccess: true,
+    userRole: workspace.userRole,
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+      description: workspace.description,
+      slug: workspace.slug,
+      ownerId: workspace.ownerId,
+      createdAt: workspace.createdAt,
+      updatedAt: workspace.updatedAt,
+    },
+    canRead: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.VIEWER],
+    canWrite: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
+    canAdmin: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
+  };
+}
+
+/**
  * Gets the user's default/primary workspace (first owned, then first member)
  */
 export async function getDefaultWorkspaceForUser(
