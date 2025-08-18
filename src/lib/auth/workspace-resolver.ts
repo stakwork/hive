@@ -2,6 +2,7 @@ import {
   getDefaultWorkspaceForUser,
   getUserWorkspaces,
 } from "@/services/workspace";
+import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
 import { Session } from "next-auth";
 import { redirect } from "next/navigation";
 
@@ -25,11 +26,16 @@ export async function resolveUserWorkspaceRedirect(
     // Get all workspaces the user has access to
     const userWorkspaces = await getUserWorkspaces(userId);
 
-    if (process.env.POD_URL && userWorkspaces.length === 0) {
+    if (
+      (process.env.POD_URL || process.env.DEVELOPMENT === "true") &&
+      userWorkspaces.length === 0
+    ) {
+      const slug = await ensureMockWorkspaceForUser(userId);
       return {
         shouldRedirect: true,
-        redirectUrl: "/auth/signin",
-        workspaceCount: 0,
+        redirectUrl: `/w/${slug}/tasks`,
+        workspaceCount: 1,
+        defaultWorkspaceSlug: slug,
       };
     }
 
