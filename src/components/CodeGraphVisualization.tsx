@@ -38,9 +38,10 @@ interface CodeGraphVisualizationProps {
 const BASE_W = 1200;
 const BASE_H = 800;
 const NODE_RADIUS = 8;
-const FORCE_STRENGTH = 0.3;
-const CENTER_STRENGTH = 0.1;
-const COLLISION_RADIUS = 20;
+const FORCE_STRENGTH = 0.15; // Reduced to make edges less "sticky"
+const CENTER_STRENGTH = 0.05; // Reduced center pull
+const COLLISION_RADIUS = 35; // Increased to spread nodes apart
+const REPULSION_STRENGTH = 50; // New: repulsion force between nodes
 
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -94,10 +95,15 @@ function forceSimulation(
   const centerX = width / 2;
   const centerY = height / 2;
 
-  // Initialize positions randomly
-  nodes.forEach(node => {
-    if (node.x === undefined) node.x = Math.random() * width;
-    if (node.y === undefined) node.y = Math.random() * height;
+  // Initialize positions with better distribution
+  nodes.forEach((node, i) => {
+    if (node.x === undefined) {
+      // Spread nodes in a circle initially to avoid clustering
+      const angle = (i / nodes.length) * 2 * Math.PI;
+      const radius = Math.min(width, height) * 0.25;
+      node.x = centerX + Math.cos(angle) * radius;
+      node.y = centerY + Math.sin(angle) * radius;
+    }
     if (node.vx === undefined) node.vx = 0;
     if (node.vy === undefined) node.vy = 0;
   });
@@ -134,15 +140,26 @@ function forceSimulation(
       target.vy -= fy;
     });
 
-    // Collision detection
+    // Repulsion forces between all nodes
     for (let j = 0; j < nodes.length; j++) {
       for (let k = j + 1; k < nodes.length; k++) {
         const nodeA = nodes[j];
         const nodeB = nodes[k];
         const dx = nodeB.x - nodeA.x;
         const dy = nodeB.y - nodeA.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distance = Math.max(Math.sqrt(dx * dx + dy * dy), 0.1);
         
+        // Repulsion force (stronger when closer)
+        const repulsionForce = REPULSION_STRENGTH / (distance * distance) * alpha;
+        const fx = (dx / distance) * repulsionForce;
+        const fy = (dy / distance) * repulsionForce;
+        
+        nodeA.vx -= fx;
+        nodeA.vy -= fy;
+        nodeB.vx += fx;
+        nodeB.vy += fy;
+        
+        // Collision detection for minimum distance
         if (distance < COLLISION_RADIUS) {
           const overlap = COLLISION_RADIUS - distance;
           const moveX = (dx / distance) * overlap * 0.5;
@@ -196,6 +213,13 @@ export function CodeGraphVisualization({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<NodeType[]>([]);
 
+  // Zoom and pan state
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [draggedNode, setDraggedNode] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
   const width = size.width || BASE_W;
   const height = size.height || BASE_H;
 
@@ -223,6 +247,7 @@ export function CodeGraphVisualization({
   }, [nodes, edges, width, height]);
 
   const loadAllFunctions = useCallback(async () => {
+    console.log('Load all functions clicked');
     setLoading(true);
     setError(null);
     try {
@@ -263,6 +288,109 @@ export function CodeGraphVisualization({
         ? prev.filter(t => t !== nodeType)
         : [...prev, nodeType]
     );
+  }, []);
+
+  // Zoom and pan handlers
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.2, Math.min(3, transform.scale * delta));
+    
+    // Zoom towards mouse position
+    const newX = mouseX - (mouseX - transform.x) * (newScale / transform.scale);
+    const newY = mouseY - (mouseY - transform.y) * (newScale / transform.scale);
+    
+    setTransform({ x: newX, y: newY, scale: newScale });
+  }, [transform]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const target = e.target as Element;
+    // Only start panning if clicking on the SVG background, not on nodes
+    if (target.tagName === 'svg' || target.tagName === 'rect' || (target.tagName === 'g' && !target.closest('g[data-node]'))) {
+      e.preventDefault();
+      console.log('Starting pan');
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
+    }
+  }, [transform]);
+
+  // Global mouse handlers for better drag/pan experience
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isPanning) {
+        setTransform(prev => ({
+          ...prev,
+          x: e.clientX - panStart.x,
+          y: e.clientY - panStart.y
+        }));
+      }
+      
+      if (draggedNode) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        
+        const mouseX = (e.clientX - rect.left - transform.x) / transform.scale;
+        const mouseY = (e.clientY - rect.top - transform.y) / transform.scale;
+        
+        setLayoutNodes(prev => 
+          prev.map(node => 
+            node.ref_id === draggedNode
+              ? { ...node, x: mouseX - dragOffset.x, y: mouseY - dragOffset.y }
+              : node
+          )
+        );
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      setIsPanning(false);
+      setDraggedNode(null);
+    };
+
+    if (isPanning || draggedNode) {
+      document.addEventListener('mousemove', handleGlobalMouseMove);
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleGlobalMouseMove);
+        document.removeEventListener('mouseup', handleGlobalMouseUp);
+      };
+    }
+  }, [isPanning, panStart, draggedNode, dragOffset, transform]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    // Local mouse move for hover effects only
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+    setDraggedNode(null);
+  }, []);
+
+  const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    const node = layoutNodes.find(n => n.ref_id === nodeId);
+    if (!node) return;
+    
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    const mouseX = (e.clientX - rect.left - transform.x) / transform.scale;
+    const mouseY = (e.clientY - rect.top - transform.y) / transform.scale;
+    
+    setDraggedNode(nodeId);
+    setDragOffset({ x: mouseX - node.x, y: mouseY - node.y });
+  }, [layoutNodes, transform]);
+
+  const resetZoom = useCallback(() => {
+    console.log('Reset zoom clicked');
+    setTransform({ x: 0, y: 0, scale: 1 });
   }, []);
 
 
@@ -345,6 +473,9 @@ export function CodeGraphVisualization({
               <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
                 {nodes.length} nodes
               </Badge>
+              <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
+                {Math.round(transform.scale * 100)}%
+              </Badge>
               {loading && (
                 <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
                   <Loader2 className="w-3 h-3 animate-spin mr-1" />
@@ -358,8 +489,56 @@ export function CodeGraphVisualization({
               )}
             </div>
 
-            {/* Reset Button */}
-            <div className="absolute bottom-4 right-4 z-10">
+            {/* Zoom Controls */}
+            <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setTransform(prev => ({ ...prev, scale: Math.min(3, prev.scale * 1.2) }))}
+                    className="bg-background/80 backdrop-blur-sm hover:bg-background h-8 w-8 p-0"
+                  >
+                    +
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Zoom In</p>
+                </TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setTransform(prev => ({ ...prev, scale: Math.max(0.2, prev.scale * 0.8) }))}
+                    className="bg-background/80 backdrop-blur-sm hover:bg-background h-8 w-8 p-0"
+                  >
+                    −
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Zoom Out</p>
+                </TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={resetZoom}
+                    className="bg-background/80 backdrop-blur-sm hover:bg-background h-8 w-8 p-0"
+                  >
+                    ⌂
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset View</p>
+                </TooltipContent>
+              </Tooltip>
+              
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button 
@@ -367,17 +546,26 @@ export function CodeGraphVisualization({
                     size="sm" 
                     onClick={loadAllFunctions}
                     disabled={loading}
-                    className="bg-background/80 backdrop-blur-sm hover:bg-background"
+                    className="bg-background/80 backdrop-blur-sm hover:bg-background h-8 w-8 p-0"
                   >
-                    <RotateCcw className="w-4 h-4" />
+                    <RotateCcw className="w-3 h-3" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Reset</p>
+                  <p>Reset Data</p>
                 </TooltipContent>
               </Tooltip>
             </div>
-            <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${width} ${height}`}>
+            <svg 
+              className="absolute inset-0 w-full h-full cursor-grab"
+              viewBox={`0 0 ${width} ${height}`}
+              onWheel={handleWheel}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{ cursor: isPanning ? 'grabbing' : draggedNode ? 'grabbing' : 'grab' }}
+            >
               <defs>
                 <filter id="glow">
                   <feGaussianBlur stdDeviation="2" result="coloredBlur" />
@@ -387,6 +575,17 @@ export function CodeGraphVisualization({
                   </feMerge>
                 </filter>
               </defs>
+
+              {/* Background rect for capturing pan events */}
+              <rect 
+                width={width} 
+                height={height} 
+                fill="transparent" 
+                className="cursor-grab"
+                style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+              />
+
+              <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
 
               {/* Edges */}
               {edges.map((edge, i) => (
@@ -404,7 +603,7 @@ export function CodeGraphVisualization({
 
               {/* Nodes */}
               {layoutNodes.map((node) => (
-                <g key={node.ref_id}>
+                <g key={node.ref_id} data-node={node.ref_id}>
                   <circle
                     cx={node.x}
                     cy={node.y}
@@ -421,9 +620,11 @@ export function CodeGraphVisualization({
                     onClick={() => setSelectedNode(
                       selectedNode === node.ref_id ? null : node.ref_id
                     )}
+                    onMouseDown={(e) => handleNodeMouseDown(e, node.ref_id)}
                     onMouseEnter={() => setHoveredNode(node.ref_id)}
                     onMouseLeave={() => setHoveredNode(null)}
                     filter={selectedNode === node.ref_id ? "url(#glow)" : "none"}
+                    style={{ cursor: draggedNode === node.ref_id ? 'grabbing' : 'grab' }}
                   />
                   
                   {/* Node label */}
@@ -438,6 +639,7 @@ export function CodeGraphVisualization({
                   </text>
                 </g>
               ))}
+              </g>
             </svg>
 
             {/* Legend */}
