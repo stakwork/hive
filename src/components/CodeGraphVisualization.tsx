@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, useEffect, useCallback } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -299,8 +299,7 @@ export function CodeGraphVisualization({
     <TooltipProvider>
       <div className={className}>
         {/* Graph Visualization */}
-        <div className="flex gap-4">
-          <div className="flex-1">
+        <div className="relative">
           <div
             ref={containerRef}
             className="relative rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden"
@@ -455,57 +454,60 @@ export function CodeGraphVisualization({
                 ))}
               </div>
             </div>
+
+            {/* Node Details Panel - Overlay */}
+            {selectedNodeData && (
+              <div className="absolute top-4 right-4 z-20 w-80 max-h-96 overflow-hidden">
+                <Card className="bg-background/95 backdrop-blur-sm border-border/50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center justify-between">
+                      {selectedNodeData.properties.name}
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setSelectedNode(null)}
+                        className="h-6 w-6 p-0"
+                      >
+                        ×
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-6 pb-4 pt-0 max-h-80 overflow-y-auto">
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">{selectedNodeData.node_type}</p>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="font-medium">File:</span>
+                          <p className="text-muted-foreground break-all text-xs">
+                            {selectedNodeData.properties.file}
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <span className="font-medium">Lines:</span>
+                          <span className="ml-2 text-muted-foreground">
+                            {selectedNodeData.properties.start}-{selectedNodeData.properties.end}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <span className="font-medium text-sm">Code:</span>
+                        <div className="mt-1 max-h-32 overflow-y-auto">
+                          <MarkdownRenderer className="text-xs">
+                            {`\`\`\`${selectedNodeData.properties.language || 'javascript'}\n${selectedNodeData.properties.body}\n\`\`\``}
+                          </MarkdownRenderer>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Node Details Panel */}
-        {selectedNodeData && (
-          <Card className="w-80">
-            <CardContent className="p-4">
-              <div className="space-y-3">
-                <div>
-                  <h3 className="font-semibold text-lg">{selectedNodeData.properties.name}</h3>
-                  <p className="text-sm text-muted-foreground">{selectedNodeData.node_type}</p>
-                </div>
-                
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="font-medium">File:</span>
-                    <p className="text-muted-foreground break-all">
-                      {selectedNodeData.properties.file}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <span className="font-medium">Lines:</span>
-                    <span className="ml-2 text-muted-foreground">
-                      {selectedNodeData.properties.start}-{selectedNodeData.properties.end}
-                    </span>
-                  </div>
-                  
-                  <div>
-                    <span className="font-medium">Token Count:</span>
-                    <span className="ml-2 text-muted-foreground">
-                      {selectedNodeData.properties.token_count}
-                    </span>
-                  </div>
-                </div>
-                
-                <div>
-                  <span className="font-medium text-sm">Code:</span>
-                  <div className="mt-1 max-h-48 overflow-y-auto">
-                    <MarkdownRenderer className="text-xs">
-                      {`\`\`\`${selectedNodeData.properties.language || 'javascript'}\n${selectedNodeData.properties.body}\n\`\`\``}
-                    </MarkdownRenderer>
-                  </div>
-                </div>
-                
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
-    </div>
     </TooltipProvider>
   );
 }
