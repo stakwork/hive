@@ -63,28 +63,32 @@ function useElementSize<T extends HTMLElement>() {
   return { ref, size };
 }
 
-function getNodeColor(nodeType: string, tokenCount: number): string {
-  const intensity = Math.min(tokenCount / 100, 1);
-  const saturation = 70 + intensity * 30;
-  const lightness = 50 - intensity * 10;
-  
+function getBaseNodeColor(nodeType: string): string {
+  // Base colors for consistency across legend, badge, and nodes
   switch (nodeType) {
     case "Function":
-      return `hsl(217, ${saturation}%, ${lightness}%)`; // Blue
+      return "hsl(217, 70%, 50%)"; // Blue
     case "Class":
-      return `hsl(142, ${saturation}%, ${lightness}%)`; // Green
+      return "hsl(142, 70%, 50%)"; // Green
     case "Datamodel":
-      return `hsl(45, ${saturation}%, ${lightness}%)`; // Yellow
+      return "hsl(45, 70%, 50%)"; // Yellow
     case "Endpoint":
-      return `hsl(280, ${saturation}%, ${lightness}%)`; // Purple
+      return "hsl(280, 70%, 50%)"; // Purple
     case "Page":
-      return `hsl(25, ${saturation}%, ${lightness}%)`; // Orange
+      return "hsl(25, 70%, 50%)"; // Orange
     case "Test":
-      return `hsl(120, ${saturation}%, ${lightness}%)`; // Light Green
+      return "hsl(120, 70%, 50%)"; // Light Green
     default:
-      return `hsl(0, ${saturation}%, ${lightness}%)`;
+      return "hsl(0, 70%, 50%)";
   }
 }
+
+function getNodeColor(nodeType: string, tokenCount: number): string {
+  // For individual nodes, we can still vary intensity based on token count if desired
+  // But for now, let's use the same base color for complete consistency
+  return getBaseNodeColor(nodeType);
+}
+
 
 function forceSimulation(
   nodes: LayoutNode[],
@@ -649,7 +653,7 @@ export function CodeGraphVisualization({
                   <div key={nodeType} className="flex items-center gap-2">
                     <div 
                       className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: getNodeColor(nodeType, 50) }}
+                      style={{ backgroundColor: getBaseNodeColor(nodeType) }}
                     ></div>
                     <span>{nodeType}</span>
                   </div>
@@ -676,7 +680,13 @@ export function CodeGraphVisualization({
                   </CardHeader>
                   <CardContent className="px-6 pb-4 pt-0 max-h-80 overflow-y-auto">
                     <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">{selectedNodeData.node_type}</p>
+                      <Badge 
+                        variant="secondary" 
+                        className="text-xs text-white border-0"
+                        style={{ backgroundColor: getBaseNodeColor(selectedNodeData.node_type) }}
+                      >
+                        {selectedNodeData.node_type}
+                      </Badge>
                       
                       <div className="space-y-2 text-sm">
                         <div>
