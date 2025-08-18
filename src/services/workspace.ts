@@ -98,6 +98,86 @@ export async function getWorkspacesByUserId(
 }
 
 /**
+ * Gets a workspace by ID if user has access (owner or member)
+ */
+export async function getWorkspaceById(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceWithAccess | null> {
+  // Get the workspace with owner info and swarm status
+  const workspace = await db.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      deleted: false,
+    },
+    include: {
+      owner: {
+        select: { id: true, name: true, email: true },
+      },
+      swarm: {
+        select: { id: true, status: true },
+      },
+    },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  // Check if user is owner
+  if (workspace.ownerId === userId) {
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      hasKey: !!encryptionService.decryptField(
+        "stakworkApiKey",
+        workspace.stakworkApiKey || "",
+      ),
+      description: workspace.description,
+      slug: workspace.slug,
+      ownerId: workspace.ownerId,
+      createdAt: workspace.createdAt.toISOString(),
+      updatedAt: workspace.updatedAt.toISOString(),
+      userRole: "OWNER",
+      owner: workspace.owner,
+      isCodeGraphSetup:
+        workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    };
+  }
+
+  // Check if user is a member
+  const membership = await db.workspaceMember.findFirst({
+    where: {
+      workspaceId: workspace.id,
+      userId,
+      leftAt: null,
+    },
+  });
+
+  if (!membership) {
+    return null; // User has no access
+  }
+
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    description: workspace.description,
+    slug: workspace.slug,
+    ownerId: workspace.ownerId,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+    userRole: membership.role as WorkspaceRole,
+    owner: workspace.owner,
+    hasKey: !!encryptionService.decryptField(
+      "stakworkApiKey",
+      workspace.stakworkApiKey || "",
+    ),
+    isCodeGraphSetup:
+      workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+  };
+}
+
+/**
  * Gets a workspace by slug if user has access (owner or member)
  */
 export async function getWorkspaceBySlug(

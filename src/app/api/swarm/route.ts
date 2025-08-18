@@ -9,6 +9,7 @@ import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
+import { getWorkspaceById } from "@/services/workspace";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -51,6 +52,26 @@ export async function POST(request: NextRequest) {
             "Missing required fields: workspaceId, name, repositoryName, repositoryUrl",
         },
         { status: 400 },
+      );
+    }
+
+    // Validate workspace access - ensure user has permission to create swarms in this workspace
+    const workspace = await getWorkspaceById(workspaceId, session.user.id);
+    if (!workspace) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 },
+      );
+    }
+
+    // Only OWNER and ADMIN can create swarms
+    if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only workspace owners and admins can create swarms",
+        },
+        { status: 403 },
       );
     }
 
@@ -145,6 +166,36 @@ export async function PUT(request: NextRequest) {
           message: "Missing required fields: swarmId, envVars, services",
         },
         { status: 400 },
+      );
+    }
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Missing required field: workspaceId",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Validate workspace access - ensure user has permission to update swarms in this workspace
+    const workspace = await getWorkspaceById(workspaceId, session.user.id);
+    if (!workspace) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 },
+      );
+    }
+
+    // Only OWNER and ADMIN can update swarms
+    if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only workspace owners and admins can update swarms",
+        },
+        { status: 403 },
       );
     }
 
