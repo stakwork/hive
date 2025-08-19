@@ -14,7 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { AnimatePresence, motion } from "framer-motion";
-import { Anchor, Loader2, Save } from "lucide-react";
+import { Webhook, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 
@@ -170,7 +170,7 @@ export default function StakgraphPage() {
               variant="default"
               onClick={handleEnsureWebhooks}
             >
-              <Anchor className="mr-2 h-4 w-4" />
+              <Webhook className="mr-2 h-4 w-4" />
               Add Github Webhooks
             </Button>
           ) : null}
