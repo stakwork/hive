@@ -82,6 +82,10 @@ model User {
   
   // Comments and discussions
   comments           Comment[]
+  
+  // Janitor recommendations
+  acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
+  dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
 
   @@index([createdAt])
   @@index([deleted])
@@ -159,6 +163,9 @@ model Workspace {
 
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
+  
+  // Janitor configuration
+  janitorConfig JanitorConfig?
 
   @@index([ownerId])
   @@index([deleted])
@@ -405,6 +412,10 @@ model Task {
   // Stakwork project ID for log subscription
   stakworkProjectId Int?            @map("stakwork_project_id")
   
+  // Task source tracking
+  sourceType                TaskSourceType          @default(USER) @map("source_type")
+  janitorRecommendationId   String?                 @unique @map("janitor_recommendation_id")
+  
   // Audit fields
   createdById   String      @map("created_by_id")
   createdBy     User        @relation("TaskCreator", fields: [createdById], references: [id])
@@ -417,7 +428,8 @@ model Task {
   updatedAt     DateTime    @updatedAt @map("updated_at")
   
   comments      Comment[]   @relation("TaskComments")
-  chatMessages  ChatMessage[] 
+  chatMessages  ChatMessage[]
+  janitorRecommendation JanitorRecommendation? @relation(fields: [janitorRecommendationId], references: [id])
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -609,6 +621,84 @@ model Comment {
 }
 
 // =============================================
+// JANITOR CONFIGURATION
+// =============================================
+
+model JanitorConfig {
+  id                        String    @id @default(cuid())
+  workspaceId               String    @unique @map("workspace_id")
+  
+  // Individual janitor toggles
+  unitTestsEnabled          Boolean   @default(false) @map("unit_tests_enabled")
+  integrationTestsEnabled   Boolean   @default(false) @map("integration_tests_enabled")
+    
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  
+  workspace                 Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  janitorRuns               JanitorRun[]
+  
+  @@index([workspaceId])
+  @@map("janitor_configs")
+}
+
+model JanitorRun {
+  id                String           @id @default(cuid())
+  janitorConfigId   String           @map("janitor_config_id")
+  janitorType       JanitorType      @map("janitor_type")
+  status            JanitorStatus    @default(PENDING)
+  triggeredBy       JanitorTrigger   @default(SCHEDULED) @map("triggered_by")
+  stakworkProjectId Int?             @map("stakwork_project_id")
+  startedAt         DateTime?        @map("started_at")
+  completedAt       DateTime?        @map("completed_at")
+  error             String?
+  metadata          Json             @default("{}")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  
+  janitorConfig     JanitorConfig    @relation(fields: [janitorConfigId], references: [id], onDelete: Cascade)
+  recommendations   JanitorRecommendation[]
+  
+  @@index([janitorConfigId])
+  @@index([janitorType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("janitor_runs")
+}
+
+model JanitorRecommendation {
+  id                String               @id @default(cuid())
+  janitorRunId      String               @map("janitor_run_id")
+  
+  // Recommendation details
+  title             String
+  description       String
+  priority          Priority             @default(MEDIUM)
+  impact            String?
+
+  status            RecommendationStatus @default(PENDING)
+  acceptedAt        DateTime?            @map("accepted_at")
+  dismissedAt       DateTime?            @map("dismissed_at")
+  acceptedById      String?              @map("accepted_by_id")
+  dismissedById     String?              @map("dismissed_by_id")
+  
+  metadata          Json                 @default("{}")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  
+  janitorRun        JanitorRun           @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
+  task              Task?
+  acceptedBy        User?                @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
+  dismissedBy       User?                @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
+  
+  @@index([janitorRunId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@map("janitor_recommendations")
+}
+
+// =============================================
 // ENUMS
 // =============================================
 
@@ -732,4 +822,38 @@ enum StepStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum JanitorType {
+  UNIT_TESTS
+  INTEGRATION_TESTS
+}
+
+enum JanitorStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum JanitorTrigger {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+  ON_COMMIT
+}
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  DISMISSED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaskSourceType {
+  USER
+  JANITOR
+  SYSTEM
 }
