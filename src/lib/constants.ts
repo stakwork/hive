@@ -99,7 +99,7 @@ export const RESERVED_WORKSPACE_SLUGS = [
 
 // Workspace slug validation patterns
 export const WORKSPACE_SLUG_PATTERNS = {
-  VALID: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
+  VALID: /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/,
   MIN_LENGTH: 2,
   MAX_LENGTH: 50,
 } as const;
@@ -141,17 +141,17 @@ export function getSwarmVanityAddress(name: string) {
 
 // Language support for onboarding
 import {
-  SiReact,
-  SiPython,
-  SiGo,
-  SiRubyonrails,
-  SiTypescript,
-  SiSwift,
-  SiKotlin,
-  SiRust,
-  SiOpenjdk,
   SiAngular,
-  SiSvelte
+  SiGo,
+  SiKotlin,
+  SiOpenjdk,
+  SiPython,
+  SiReact,
+  SiRubyonrails,
+  SiRust,
+  SiSvelte,
+  SiSwift,
+  SiTypescript
 } from 'react-icons/si';
 
 type TSupportedLanguage = {

@@ -1,14 +1,13 @@
 import { serviceConfigs } from "@/config/services";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { env } from "@/lib/env";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { PoolManagerService } from "@/services/pool-manager/PoolManagerService";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { EnvironmentVariable, type ApiError } from "@/types";
-import { generateRandomPassword } from "@/utils/randomPassword";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
@@ -18,9 +17,6 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
-
-    // Will get poolApiKey from swarm later
-    let poolApiKey = "";
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -61,95 +57,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    if (!swarm) {
+      return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
+    }
+
     // Get poolApiKey from swarm
-    poolApiKey = swarm?.poolApiKey || "";
+    let poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
 
     const github_pat = await getGithubUsernameAndPAT(session?.user.id);
 
-    const password = generateRandomPassword(12);
 
     if (!poolApiKey) {
-      const loginResponse = await fetch(
-        "https://workspaces.sphinx.chat/api/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: "admin",
-            password: env.POOL_MANAGER_API_PASSWORD,
-          }),
-        },
-      );
-
-      const loginData = await loginResponse.json();
-
-      const poolManager = new PoolManagerService({
-        baseURL: "https://workspaces.sphinx.chat/api",
-        apiKey: JSON.stringify(
-          encryptionService.encryptField("poolApiKey", loginData.token),
-        ),
-        headers: {
-          Authorization: `Bearer ${loginData.token}`,
-        },
-      });
-
-      const sanitizedName = (session.user.name || "").replace(/\s+/g, "");
-
-      try {
-        const { user: poolUser } = await poolManager.createUser({
-          email: session.user.email,
-          password,
-          username: `${sanitizedName}-${swarmId}`.toLowerCase(),
-        });
-
-        // Update swarm with the new poolApiKey instead of user
-        if (swarm) {
-          await db.swarm.update({
-            where: {
-              id: swarm.id,
-            },
-            data: {
-              poolApiKey: JSON.stringify(
-                encryptionService.encryptField("poolApiKey", loginData.token),
-              ),
-            },
-          });
-        }
-
-        if (!poolUser) {
-          return NextResponse.json(
-            { error: "Failed to create pool user" },
-            { status: 500 },
-          );
-        }
-
-        poolApiKey = JSON.stringify(
-          encryptionService.encryptField(
-            "poolApiKey",
-            poolUser.authentication_token,
-          ),
-        );
-
-        // Also update swarm with the new authentication token
-        if (swarm) {
-          await db.swarm.update({
-            where: {
-              id: swarm.id,
-            },
-            data: {
-              poolApiKey,
-            },
-          });
-        }
-      } catch (error) {
-        console.error("Error creating pool user:", error);
-        return NextResponse.json(
-          { error: "Failed to create pool user" },
-          { status: 500 },
-        );
-      }
+      await updateSwarmPoolApiKeyFor(swarm.id);
+      poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
     saveOrUpdateSwarm({
