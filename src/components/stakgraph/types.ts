@@ -28,6 +28,7 @@ export interface StakgraphSettings {
   status?: string;
   lastUpdated?: string;
   containerFiles: Record<string, string>;
+  webhookEnsured?: boolean;
 }
 
 // Form section data types

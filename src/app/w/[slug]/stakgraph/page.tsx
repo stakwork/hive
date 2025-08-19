@@ -14,7 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, Save } from "lucide-react";
+import { Anchor, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 
@@ -53,6 +53,31 @@ export default function StakgraphPage() {
 
     await saveSettings(slug, toast);
     refreshCurrentWorkspace();
+  };
+
+  const handleEnsureWebhooks = async () => {
+    try {
+      const res = await fetch("/api/github/webhook/ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: undefined,
+          repositoryUrl: formData.repositoryUrl,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to ensure webhooks");
+      toast({
+        title: "Webhooks added",
+        description: "GitHub webhooks have been ensured",
+      });
+      await loadSettings(slug!);
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to add webhooks",
+        variant: "destructive",
+      });
+    }
   };
 
   // const allFieldsFilled =
@@ -128,8 +153,18 @@ export default function StakgraphPage() {
       </AnimatePresence>
 
       <Card className="max-w-2xl">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Stakgraph Settings</CardTitle>
+          {!formData.webhookEnsured && formData.repositoryUrl ? (
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleEnsureWebhooks}
+            >
+              <Anchor className="mr-2 h-4 w-4" />
+              Add Github Webhooks
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">

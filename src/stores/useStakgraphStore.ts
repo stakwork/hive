@@ -117,6 +117,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
               status: settings.status,
               lastUpdated: settings.lastUpdated,
               containerFiles: files,
+              webhookEnsured: Boolean(settings.webhookEnsured),
             };
 
             console.log("newFormData", newFormData);

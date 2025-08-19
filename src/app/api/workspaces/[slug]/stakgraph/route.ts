@@ -4,7 +4,10 @@ import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
-import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
+import {
+  getSwarmPoolApiKeyFor,
+  updateSwarmPoolApiKeyFor,
+} from "@/services/swarm/secrets";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
@@ -143,35 +146,35 @@ export async function GET(
         environmentVariables:
           typeof environmentVariables === "string"
             ? (() => {
-              try {
-                const parsed = JSON.parse(environmentVariables);
-                if (Array.isArray(parsed)) {
-                  try {
-                    return decryptEnvVars(
-                      parsed as Array<{ name: string; value: unknown }>,
-                    );
-                  } catch {
-                    return parsed;
-                  }
-                }
-                return parsed;
-              } catch {
-                return environmentVariables;
-              }
-            })()
-            : Array.isArray(environmentVariables)
-              ? (() => {
                 try {
-                  return decryptEnvVars(
-                    environmentVariables as Array<{
-                      name: string;
-                      value: unknown;
-                    }>,
-                  );
+                  const parsed = JSON.parse(environmentVariables);
+                  if (Array.isArray(parsed)) {
+                    try {
+                      return decryptEnvVars(
+                        parsed as Array<{ name: string; value: unknown }>,
+                      );
+                    } catch {
+                      return parsed;
+                    }
+                  }
+                  return parsed;
                 } catch {
                   return environmentVariables;
                 }
               })()
+            : Array.isArray(environmentVariables)
+              ? (() => {
+                  try {
+                    return decryptEnvVars(
+                      environmentVariables as Array<{
+                        name: string;
+                        value: unknown;
+                      }>,
+                    );
+                  } catch {
+                    return environmentVariables;
+                  }
+                })()
               : environmentVariables,
         services:
           typeof swarm.services === "string"
@@ -180,6 +183,17 @@ export async function GET(
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
+        webhookEnsured: await (async () => {
+          if (!swarm.repositoryUrl) return false;
+          const repo = await db.repository.findFirst({
+            where: {
+              repositoryUrl: swarm.repositoryUrl,
+              workspaceId: swarm.workspaceId,
+            },
+            select: { githubWebhookId: true, githubWebhookSecret: true },
+          });
+          return Boolean(repo?.githubWebhookId && repo?.githubWebhookSecret);
+        })(),
       },
     });
   } catch (error) {
@@ -270,10 +284,10 @@ export async function PUT(
       containerFiles: settings.containerFiles,
     });
 
-    const swarm = await db.swarm.findUnique({
+    const swarm = (await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
       select: swarmSelect,
-    }) as SwarmSelectResult | null;
+    })) as SwarmSelectResult | null;
 
     if (!swarm) {
       return NextResponse.json(
@@ -296,10 +310,9 @@ export async function PUT(
     let decryptedPoolApiKey: string;
 
     try {
-      decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField(
-        "poolApiKey",
-        swarmPoolApiKey,
-      ) : "";
+      decryptedPoolApiKey = swarmPoolApiKey
+        ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey)
+        : "";
     } catch (error) {
       console.error("Failed to decrypt poolApiKey:", error);
       decryptedPoolApiKey = swarmPoolApiKey;
