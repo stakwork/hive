@@ -9,6 +9,7 @@ import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -51,6 +52,25 @@ export async function POST(request: NextRequest) {
             "Missing required fields: workspaceId, name, repositoryName, repositoryUrl",
         },
         { status: 400 },
+      );
+    }
+
+    // Validate workspace access - ensure user has admin permissions to create swarms
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 },
+      );
+    }
+
+    if (!workspaceAccess.canAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only workspace owners and admins can create swarms",
+        },
+        { status: 403 },
       );
     }
 
@@ -145,6 +165,35 @@ export async function PUT(request: NextRequest) {
           message: "Missing required fields: swarmId, envVars, services",
         },
         { status: 400 },
+      );
+    }
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Missing required field: workspaceId",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Validate workspace access - ensure user has admin permissions to update swarms
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 },
+      );
+    }
+
+    if (!workspaceAccess.canAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only workspace owners and admins can update swarms",
+        },
+        { status: 403 },
       );
     }
 
