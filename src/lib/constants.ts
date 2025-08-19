@@ -99,7 +99,7 @@ export const RESERVED_WORKSPACE_SLUGS = [
 
 // Workspace slug validation patterns
 export const WORKSPACE_SLUG_PATTERNS = {
-  VALID: /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/,
+  VALID: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
   MIN_LENGTH: 2,
   MAX_LENGTH: 50,
 } as const;
