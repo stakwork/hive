@@ -414,7 +414,6 @@ model Task {
   
   // Task source tracking
   sourceType                TaskSourceType          @default(USER) @map("source_type")
-  janitorRecommendationId   String?                 @unique @map("janitor_recommendation_id")
   
   // Audit fields
   createdById   String      @map("created_by_id")
@@ -429,7 +428,6 @@ model Task {
   
   comments      Comment[]   @relation("TaskComments")
   chatMessages  ChatMessage[]
-  janitorRecommendation JanitorRecommendation? @relation(fields: [janitorRecommendationId], references: [id])
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -687,7 +685,6 @@ model JanitorRecommendation {
   updatedAt         DateTime             @updatedAt @map("updated_at")
   
   janitorRun        JanitorRun           @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
-  task              Task?
   acceptedBy        User?                @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
   dismissedBy       User?                @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
   
