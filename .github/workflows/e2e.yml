@@ -56,18 +56,18 @@ jobs:
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
-          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
-          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
-          STAKWORK_API_KEY: ${{ secrets.STAKWORK_API_KEY }}
+          NEXTAUTH_SECRET: fake_secret
+          JWT_SECRET: fake_secret
+          GITHUB_CLIENT_ID: fake_secret
+          GITHUB_CLIENT_SECRET: fake_secret
+          TOKEN_ENCRYPTION_KEY: fake_secret
+          STAKWORK_API_KEY: fake_secret
           STAKWORK_BASE_URL: https://jobs.stakwork.com/api/v1
-          POOL_MANAGER_API_KEY: ${{ secrets.POOL_MANAGER_API_KEY }}
+          POOL_MANAGER_API_KEY: fake_secret
           POOL_MANAGER_BASE_URL: https://workspaces.sphinx.chat/api
-          SWARM_SUPERADMIN_API_KEY: ${{ secrets.SWARM_SUPERADMIN_API_KEY }}
-          POOL_MANAGER_API_USERNAME: ${{ secrets.POOL_MANAGER_API_USERNAME }}
-          POOL_MANAGER_API_PASSWORD: ${{ secrets.POOL_MANAGER_API_PASSWORD }}
+          SWARM_SUPERADMIN_API_KEY: fake_secret
+          POOL_MANAGER_API_USERNAME: fake_secret
+          POOL_MANAGER_API_PASSWORD: fake_secret
           SWARM_SUPER_ADMIN_URL: placeholder
           POD_URL: http://localhost:3000
         run: npm run build
@@ -76,18 +76,18 @@ jobs:
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
-          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
-          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
-          STAKWORK_API_KEY: ${{ secrets.STAKWORK_API_KEY }}
+          NEXTAUTH_SECRET: fake_secret
+          JWT_SECRET: fake_secret
+          GITHUB_CLIENT_ID: fake_secret
+          GITHUB_CLIENT_SECRET: fake_secret
+          TOKEN_ENCRYPTION_KEY: fake_secret
+          STAKWORK_API_KEY: fake_secret
           STAKWORK_BASE_URL: https://jobs.stakwork.com/api/v1
-          POOL_MANAGER_API_KEY: ${{ secrets.POOL_MANAGER_API_KEY }}
+          POOL_MANAGER_API_KEY: fake_secret
           POOL_MANAGER_BASE_URL: https://workspaces.sphinx.chat/api
-          SWARM_SUPERADMIN_API_KEY: ${{ secrets.SWARM_SUPERADMIN_API_KEY }}
-          POOL_MANAGER_API_USERNAME: ${{ secrets.POOL_MANAGER_API_USERNAME }}
-          POOL_MANAGER_API_PASSWORD: ${{ secrets.POOL_MANAGER_API_PASSWORD }}
+          SWARM_SUPERADMIN_API_KEY: fake_secret
+          POOL_MANAGER_API_USERNAME: fake_secret
+          POOL_MANAGER_API_PASSWORD: fake_secret
           SWARM_SUPER_ADMIN_URL: placeholder
           POD_URL: http://localhost:3000
         run: npm start &
