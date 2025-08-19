@@ -44,10 +44,12 @@ export default async function SettingsPage({
 
           <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
 
-          <DeleteWorkspace
-            workspaceSlug={workspace.slug}
-            workspaceName={workspace.name}
-          />
+          {workspace.userRole === "OWNER" && (
+            <DeleteWorkspace
+              workspaceSlug={workspace.slug}
+              workspaceName={workspace.name}
+            />
+          )}
         </div>
       </div>
     </div>
