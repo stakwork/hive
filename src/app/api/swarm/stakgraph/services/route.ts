@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
-import { EncryptionService } from "@/lib/encryption";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequestAuth({
-      swarmUrl: `https://${swarm.name}:3355`,
+      swarmUrl: `https://${getSwarmVanityAddress(swarm.name)}:3355`,
       endpoint: "/services",
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),

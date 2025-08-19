@@ -4,6 +4,7 @@ import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
+import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
@@ -140,35 +141,35 @@ export async function GET(
         environmentVariables:
           typeof environmentVariables === "string"
             ? (() => {
-                try {
-                  const parsed = JSON.parse(environmentVariables);
-                  if (Array.isArray(parsed)) {
-                    try {
-                      return decryptEnvVars(
-                        parsed as Array<{ name: string; value: unknown }>,
-                      );
-                    } catch {
-                      return parsed;
-                    }
+              try {
+                const parsed = JSON.parse(environmentVariables);
+                if (Array.isArray(parsed)) {
+                  try {
+                    return decryptEnvVars(
+                      parsed as Array<{ name: string; value: unknown }>,
+                    );
+                  } catch {
+                    return parsed;
                   }
-                  return parsed;
+                }
+                return parsed;
+              } catch {
+                return environmentVariables;
+              }
+            })()
+            : Array.isArray(environmentVariables)
+              ? (() => {
+                try {
+                  return decryptEnvVars(
+                    environmentVariables as Array<{
+                      name: string;
+                      value: unknown;
+                    }>,
+                  );
                 } catch {
                   return environmentVariables;
                 }
               })()
-            : Array.isArray(environmentVariables)
-              ? (() => {
-                  try {
-                    return decryptEnvVars(
-                      environmentVariables as Array<{
-                        name: string;
-                        value: unknown;
-                      }>,
-                    );
-                  } catch {
-                    return environmentVariables;
-                  }
-                })()
               : environmentVariables,
         services:
           typeof swarm.services === "string"
@@ -252,7 +253,7 @@ export async function PUT(
 
     const settings = validationResult.data;
 
-    const swarm = await saveOrUpdateSwarm({
+    await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       name: settings.name,
       repositoryName: settings.name,
@@ -267,8 +268,29 @@ export async function PUT(
       containerFiles: settings.containerFiles,
     });
 
+    const swarm = await db.swarm.findUnique({
+      where: { workspaceId: workspace.id },
+      select: swarmSelect,
+    }) as SwarmSelectResult | null;
+
+    if (!swarm) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Swarm not found",
+          error: "SWARM_NOT_FOUND",
+        },
+        { status: 404 },
+      );
+    }
+
+    let swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    if (!swarmPoolApiKey) {
+      await updateSwarmPoolApiKeyFor(swarm.id);
+      swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    }
+
     // Get pool API key from swarm instead of user
-    const swarmPoolApiKey = swarm?.poolApiKey || "";
     let decryptedPoolApiKey: string;
 
     try {
@@ -332,7 +354,6 @@ export async function PUT(
         repositoryUrl: typedSwarm.repositoryUrl,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
-        poolApiKey: decryptedPoolApiKey,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services:
           typeof typedSwarm.services === "string"

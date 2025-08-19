@@ -1,11 +1,12 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
       pat,
     };
 
-    const stakgraphUrl = `https://${swarm.name}:7799`;
+    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
 
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
@@ -220,7 +221,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const stakgraphUrl = `https://${swarm.name}:7799`;
+    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
 
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({

@@ -1,3 +1,5 @@
+import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
+import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -6,8 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
-import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { useCallback, useState } from "react";
 

@@ -46,7 +46,7 @@ export function ProjectNameSetupStep() {
 
   useEffect(() => {
     if (selectedRepo) {
-      setProjectName(selectedRepo.name);
+      setProjectName(selectedRepo.name.toLowerCase());
     }
   }, [selectedRepo, setProjectName]);
 
@@ -58,9 +58,9 @@ export function ProjectNameSetupStep() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: projectName.trim(),
+          name: projectName.trim().toLowerCase(),
           description: '',
-          slug: projectName.trim(),
+          slug: projectName.trim().toLowerCase(),
         }),
       });
 
