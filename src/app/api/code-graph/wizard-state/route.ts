@@ -126,6 +126,7 @@ export async function GET(request: NextRequest) {
           : [],
         ingestRefId: swarm.ingestRefId || "",
         poolName: swarm.poolName || "",
+        repoName: swarm.repositoryName || "",
         user: {
           id: userId,
           name: session.user.name,

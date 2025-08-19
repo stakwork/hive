@@ -139,6 +139,7 @@ export const useWizardStore = create<WizardStore>()(
             ingestRefId,
             environmentVariables,
             poolName,
+            repoName,
           } = data;
           set({
             envVars: environmentVariables,
@@ -149,6 +150,7 @@ export const useWizardStore = create<WizardStore>()(
             services,
             ingestRefId,
             poolName,
+            repoName,
           });
         }
       } catch (err) {
