@@ -3,7 +3,6 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
 import { generateRandomPassword } from "@/utils/randomPassword";
-import "server-only";
 import { PoolManagerService } from "../pool-manager";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
