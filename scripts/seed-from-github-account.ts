@@ -153,8 +153,12 @@ async function seedForUser(userId: string) {
   ];
 
   const services = [
-    { name: "web", image: "node:18", replicas: 1 },
-    { name: "worker", image: "node:18", replicas: 1 },
+    {
+      name: "web",
+      port: 3000,
+      env: { NODE_ENV: "development" },
+      scripts: { start: "npm run dev", install: "npm install" },
+    },
   ];
 
   const swarm = await prisma.swarm.create({

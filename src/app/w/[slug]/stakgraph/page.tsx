@@ -19,7 +19,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 
 export default function StakgraphPage() {
-  const { slug, refreshCurrentWorkspace } = useWorkspace();
+  const { slug, id, refreshCurrentWorkspace } = useWorkspace();
   const {
     formData,
     errors,
@@ -57,11 +57,19 @@ export default function StakgraphPage() {
 
   const handleEnsureWebhooks = async () => {
     try {
+      if (!id) {
+        toast({
+          title: "Error",
+          description: "Workspace not ready",
+          variant: "destructive",
+        });
+        return;
+      }
       const res = await fetch("/api/github/webhook/ensure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workspaceId: undefined,
+          workspaceId: id,
           repositoryUrl: formData.repositoryUrl,
         }),
       });
@@ -71,7 +79,8 @@ export default function StakgraphPage() {
         description: "GitHub webhooks have been ensured",
       });
       await loadSettings(slug!);
-    } catch {
+    } catch (error) {
+      console.error("Failed to ensure webhooks", error);
       toast({
         title: "Error",
         description: "Failed to add webhooks",
