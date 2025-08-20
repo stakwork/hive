@@ -21,6 +21,7 @@ export async function createTaskWithStakworkWorkflow(params: {
   userId: string;
   initialMessage: string;
   status?: TaskStatus;
+  mode?: string;
 }) {
   const { 
     title, 
@@ -32,7 +33,8 @@ export async function createTaskWithStakworkWorkflow(params: {
     sourceType = "USER", 
     userId, 
     initialMessage,
-    status = "TODO"
+    status = "TODO",
+    mode = "default"
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -102,6 +104,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     message: initialMessage,
     userId: userId,
     task: task,
+    mode: mode,
   });
 
   return {
@@ -172,8 +175,9 @@ async function createChatMessageAndTriggerStakwork(params: {
   task: any; // Task with workspace and swarm details
   contextTags?: any[];
   attachments?: string[];
+  mode?: string;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [] } = params;
+  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default" } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -252,6 +256,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         poolName,
         repo2GraphUrl,
         attachments,
+        mode,
       });
 
       if (stakworkData.success) {
@@ -260,8 +265,14 @@ async function createChatMessageAndTriggerStakwork(params: {
           workflowStartedAt: new Date(),
         };
 
-        if (stakworkData.data?.project_id) {
-          updateData.stakworkProjectId = stakworkData.data.project_id;
+        // Extract project ID from various possible locations in response
+        const projectId = stakworkData.data?.project_id || 
+                         stakworkData.data?.id ||
+                         (stakworkData.data as any)?.data?.project_id ||
+                         (stakworkData.data as any)?.data?.id;
+        
+        if (projectId) {
+          updateData.stakworkProjectId = projectId;
         }
 
         await db.task.update({

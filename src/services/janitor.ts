@@ -17,7 +17,6 @@ import {
 } from "@/types/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
 import { config as envConfig } from "@/lib/env";
@@ -358,8 +357,11 @@ export async function getJanitorRecommendations(
     }
   };
 
+  // Default to PENDING status if no status filter is provided
   if (status) {
     where.status = status;
+  } else {
+    where.status = "PENDING";
   }
 
   if (priority) {
@@ -444,11 +446,11 @@ export async function acceptJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND);
   }
 
-  // Verify user has permission - check if user can write to workspace
-  const workspaceId = recommendation.janitorRun.janitorConfig.workspace.id;
-  const member = await findActiveMember(workspaceId, userId);
+  // Verify user has permission - use proper workspace validation
+  const workspaceSlug = recommendation.janitorRun.janitorConfig.workspace.slug;
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   
-  if (!member || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(member.role)) {
+  if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
@@ -500,7 +502,7 @@ export async function acceptJanitorRecommendation(
   });
 
   // Create task and trigger Stakwork workflow using shared service
-  const message = `Task: ${recommendation.title}\n\nDescription: ${recommendation.description}\n\nThis task was created from a janitor recommendation. Please implement the requested changes.`;
+  const message = `Task: ${recommendation.title}\n\nDescription: ${recommendation.description}\n\n. Please implement the requested changes.`;
   
   const taskResult = await createTaskWithStakworkWorkflow({
     title: recommendation.title,
@@ -511,7 +513,8 @@ export async function acceptJanitorRecommendation(
     priority: recommendation.priority,
     sourceType: "JANITOR",
     userId: userId,
-    initialMessage: message
+    initialMessage: message,
+    mode: "live"  // Use production workflow for janitor-created tasks
   });
 
   return { 
@@ -548,11 +551,11 @@ export async function dismissJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND);
   }
 
-  // Verify user has permission - check if user can write to workspace
-  const workspaceId = recommendation.janitorRun.janitorConfig.workspace.id;
-  const member = await findActiveMember(workspaceId, userId);
+  // Verify user has permission - use proper workspace validation
+  const workspaceSlug = recommendation.janitorRun.janitorConfig.workspace.slug;
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   
-  if (!member || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(member.role)) {
+  if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 

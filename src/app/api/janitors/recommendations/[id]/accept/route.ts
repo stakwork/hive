@@ -15,10 +15,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    console.log("Accept route called");
     const session = await getServerSession(authOptions);
     const userId = (session?.user as { id?: string })?.id;
+    console.log("Session user ID:", userId);
 
     if (!userId) {
+      console.log("No user ID found, returning unauthorized");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

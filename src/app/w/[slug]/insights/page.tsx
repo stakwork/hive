@@ -119,6 +119,7 @@ export default function InsightsPage() {
 
   const handleAccept = async (recommendationId: string) => {
     try {
+      console.log("Accepting recommendation:", recommendationId);
       const response = await fetch(`/api/janitors/recommendations/${recommendationId}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -128,20 +129,35 @@ export default function InsightsPage() {
       if (response.ok) {
         setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
         const result = await response.json();
+        console.log("Accept response:", result);
         if (result.task) {
           toast({
             title: "Recommendation accepted!",
             description: "Task created successfully. You can view it in the tasks section.",
           });
         }
+      } else {
+        const error = await response.json();
+        console.error("Accept failed:", error);
+        toast({
+          title: "Failed to accept recommendation",
+          description: error.error || "Unknown error",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error accepting recommendation:", error);
+      toast({
+        title: "Failed to accept recommendation",
+        description: "Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleDismiss = async (recommendationId: string) => {
     try {
+      console.log("Dismissing recommendation:", recommendationId);
       const response = await fetch(`/api/janitors/recommendations/${recommendationId}/dismiss`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,9 +166,28 @@ export default function InsightsPage() {
       
       if (response.ok) {
         setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
+        const result = await response.json();
+        console.log("Dismiss response:", result);
+        toast({
+          title: "Recommendation dismissed",
+          description: "Recommendation has been removed from your list.",
+        });
+      } else {
+        const error = await response.json();
+        console.error("Dismiss failed:", error);
+        toast({
+          title: "Failed to dismiss recommendation",
+          description: error.error || "Unknown error",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error dismissing recommendation:", error);
+      toast({
+        title: "Failed to dismiss recommendation", 
+        description: "Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
