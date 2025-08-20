@@ -68,7 +68,7 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
 
         if (!cancelled)
           setState({
-            baseUrl: swarmUrl,
+            baseUrl: `${swarmUrl}:3355`, // Ensure the port is correct for the test runner
             apiKey: swarmApiKey ?? null,
             loading: false,
             error: null,

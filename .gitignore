@@ -76,3 +76,5 @@ yarn.lock
 
 # Tests
 mock-tests/
+
+test-results

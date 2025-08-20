@@ -201,6 +201,9 @@ RUN sudo mkdir -p -m 755 /etc/apt/keyrings \\
     && sudo apt update -y \\
     && sudo apt install gh -y
 
+# Install playwright
+npx playwright install --with-deps
+
 # Install PM2 globally and ensure it's accessible
 RUN npm install -g pm2 && \\
     ln -sf /usr/local/node/bin/pm2 /usr/local/bin/pm2 && \\
