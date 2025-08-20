@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,53 +28,51 @@ import {
 import { redirect } from "next/navigation";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 
-const topSuggestions = [
-  {
-    id: "1",
-    priority: "high",
-    title: "Add test coverage for payment logic",
-    description: "We found calculatePayment() in src/billing/core.ts could benefit from unit tests to ensure reliability",
-    impact: "Prevents payment calculation bugs",
-    icon: TestTube,
-    color: "blue"
+// Testing janitors - fetch real data
+const testingJanitors = [
+  { 
+    id: "UNIT_TESTS", 
+    name: "Unit Tests", 
+    icon: FlaskConical, 
+    description: "Identify missing unit tests.",
+    configKey: "unitTestsEnabled" as const
   },
-  {
-    id: "2",
-    priority: "medium", 
-    title: "Split UserDashboard into smaller components",
-    description: "This 450-line component could be more maintainable as 3 focused components",
-    impact: "Easier to maintain and test",
-    icon: Wrench,
-    color: "orange"
+  { 
+    id: "INTEGRATION_TESTS", 
+    name: "Integration Tests", 
+    icon: Zap, 
+    description: "Identify missing integration tests.",
+    configKey: "integrationTestsEnabled" as const
   },
-  {
-    id: "3",
-    priority: "low",
-    title: "Upgrade TypeScript to v5.3",
-    description: "Newer version available with performance improvements and better type inference",
-    impact: "Enhanced developer experience",
-    icon: Package,
-    color: "green"
-  }
 ];
 
-const agents = [
-  { id: "1", name: "Documentation", icon: BookOpen, status: "running", description: "Generate missing documentation." },
-  { id: "2", name: "Unit Tests", icon: FlaskConical, status: "idle", description: "Identify missing unit tests." },
-  { id: "3", name: "Integration Tests", icon: Zap, status: "running", description: "Identify missing integration tests." },
-  { id: "4", name: "E2E Tests", icon: Globe, status: "idle", description: "Identify missing end-to-end tests." },
-  { id: "5", name: "Refactoring", icon: Wrench, status: "completed", description: "Identify refactoring opportunities." },
-  { id: "6", name: "PR Reviews", icon: GitPullRequest, status: "idle", description: "Enable automatic PR reviews." },
-  { id: "7", name: "Security", icon: Shield, status: "completed", description: "Scan for vulnerabilities." },
-  { id: "8", name: "Supply Chain", icon: Package, status: "running", description: "Check dependencies risk." },
-  { id: "9", name: "Semantic Renaming", icon: Type, status: "running", description: "Suggest better variable names." },
+// Hardcoded for v1
+const maintainabilityJanitors = [
+  { id: "refactoring", name: "Refactoring", icon: Wrench, status: "idle", description: "Identify refactoring opportunities." },
+  { id: "semantic", name: "Semantic Renaming", icon: Type, status: "idle", description: "Suggest better variable names." },
+  { id: "documentation", name: "Documentation", icon: BookOpen, status: "idle", description: "Generate missing documentation." },
+];
+
+const securityJanitors = [
+  { id: "security", name: "Security Scan", icon: Shield, status: "idle", description: "Scan for vulnerabilities." },
+  { id: "supply-chain", name: "Supply Chain", icon: Package, status: "idle", description: "Check dependencies risk." },
+  { id: "pr-reviews", name: "PR Reviews", icon: GitPullRequest, status: "idle", description: "Enable automatic PR reviews." },
 ];
 
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
-  const [agentStates, setAgentStates] = useState<Record<string, boolean>>(
-    agents.reduce((acc, agent) => ({ ...acc, [agent.id]: agent.status !== 'idle' }), {} as Record<string, boolean>)
+  const { workspace } = useWorkspace();
+  
+  // State for real data
+  const [janitorConfig, setJanitorConfig] = useState<any>(null);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // State for hardcoded janitors
+  const [hardcodedStates, setHardcodedStates] = useState<Record<string, boolean>>(
+    [...maintainabilityJanitors, ...securityJanitors].reduce((acc, janitor) => ({ ...acc, [janitor.id]: false }), {})
   );
+  
   const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
   const [showAll, setShowAll] = useState(false);
 
@@ -81,19 +80,100 @@ export default function InsightsPage() {
     redirect("/");
   }
 
-  const handleAccept = (suggestionId: string) => {
-    setDismissedSuggestions(prev => new Set([...prev, suggestionId]));
+  // Fetch janitor config and recommendations
+  useEffect(() => {
+    if (!workspace?.slug) return;
+    
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch janitor config
+        const configResponse = await fetch(`/api/workspaces/${workspace.slug}/janitors/config`);
+        if (configResponse.ok) {
+          const configData = await configResponse.json();
+          setJanitorConfig(configData.config);
+        }
+        
+        // Fetch recommendations (top 3 by priority)
+        const recsResponse = await fetch(`/api/workspaces/${workspace.slug}/janitors/recommendations?limit=3`);
+        if (recsResponse.ok) {
+          const recsData = await recsResponse.json();
+          setRecommendations(recsData.recommendations);
+        }
+        
+      } catch (error) {
+        console.error("Error fetching janitor data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [workspace?.slug]);
+
+  const handleAccept = async (recommendationId: string) => {
+    try {
+      const response = await fetch(`/api/janitors/recommendations/${recommendationId}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      
+      if (response.ok) {
+        setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
+        const result = await response.json();
+        if (result.task) {
+          alert(`Task created! You can view it in the tasks section.`);
+        }
+      }
+    } catch (error) {
+      console.error("Error accepting recommendation:", error);
+    }
   };
 
-  const handleDismiss = (suggestionId: string) => {
-    setDismissedSuggestions(prev => new Set([...prev, suggestionId]));
+  const handleDismiss = async (recommendationId: string) => {
+    try {
+      const response = await fetch(`/api/janitors/recommendations/${recommendationId}/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      
+      if (response.ok) {
+        setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
+      }
+    } catch (error) {
+      console.error("Error dismissing recommendation:", error);
+    }
   };
 
-  const visibleSuggestions = topSuggestions.filter(s => !dismissedSuggestions.has(s.id));
-  const displayedSuggestions = showAll ? visibleSuggestions : visibleSuggestions.slice(0, 3);
+  const visibleRecommendations = recommendations.filter(r => !dismissedSuggestions.has(r.id));
+  const displayedRecommendations = showAll ? visibleRecommendations : visibleRecommendations.slice(0, 3);
 
-  const toggleAgent = (agentId: string) => {
-    setAgentStates(prev => ({ ...prev, [agentId]: !prev[agentId] }));
+  const toggleTestingJanitor = async (configKey: string) => {
+    if (!janitorConfig || !workspace?.slug) return;
+    
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          [configKey]: !janitorConfig[configKey]
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setJanitorConfig(data.config);
+      }
+    } catch (error) {
+      console.error("Error updating janitor config:", error);
+    }
+  };
+
+  const toggleHardcodedJanitor = (janitorId: string) => {
+    setHardcodedStates(prev => ({ ...prev, [janitorId]: !prev[janitorId] }));
   };
 
   const getStatusIcon = (isOn: boolean) => {
@@ -108,10 +188,19 @@ export default function InsightsPage() {
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
-      case 'high': return <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-200">High</Badge>;
-      case 'medium': return <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200">Medium</Badge>;
-      case 'low': return <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200">Low</Badge>;
+      case 'CRITICAL': return <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-200">Critical</Badge>;
+      case 'HIGH': return <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-200">High</Badge>;
+      case 'MEDIUM': return <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200">Medium</Badge>;
+      case 'LOW': return <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200">Low</Badge>;
       default: return <Badge variant="outline" className="text-xs">Unknown</Badge>;
+    }
+  };
+
+  const getRecommendationIcon = (janitorType: string) => {
+    switch (janitorType) {
+      case 'UNIT_TESTS': return TestTube;
+      case 'INTEGRATION_TESTS': return Wrench;
+      default: return CheckCircle2;
     }
   };
 
@@ -141,48 +230,63 @@ export default function InsightsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {displayedSuggestions.map((suggestion) => {
-            const Icon = suggestion.icon;
-            return (
-              <div key={suggestion.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <h4 className="text-sm font-medium line-clamp-1">
-                      {suggestion.title}
-                    </h4>
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">Loading recommendations...</p>
+            </div>
+          ) : displayedRecommendations.length > 0 ? (
+            displayedRecommendations.map((recommendation) => {
+              const Icon = getRecommendationIcon(recommendation.janitorRun?.type);
+              return (
+                <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-medium line-clamp-1">
+                        {recommendation.title}
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getPriorityBadge(recommendation.priority)}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {getPriorityBadge(suggestion.priority)}
+                  
+                  <p className="text-xs text-muted-foreground mb-3">{recommendation.description}</p>
+                  {recommendation.impact && (
+                    <p className="text-xs text-blue-600 mb-3">Impact: {recommendation.impact}</p>
+                  )}
+                  
+                  <div className="flex items-center justify-start">
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-7 text-xs"
+                        onClick={() => handleDismiss(recommendation.id)}
+                      >
+                        Dismiss
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        className="h-7 text-xs"
+                        onClick={() => handleAccept(recommendation.id)}
+                      >
+                        Accept
+                      </Button>
+                    </div>
                   </div>
                 </div>
-                
-                <p className="text-xs text-muted-foreground mb-3">{suggestion.description}</p>
-                
-                <div className="flex items-center justify-start">
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="h-7 text-xs"
-                      onClick={() => handleDismiss(suggestion.id)}
-                    >
-                      Dismiss
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      className="h-7 text-xs"
-                      onClick={() => handleAccept(suggestion.id)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div className="text-center py-8">
+              <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">No recommendations available!</p>
+            </div>
+          )}
           
-          {visibleSuggestions.length > 3 && !showAll && (
+          {!loading && visibleRecommendations.length > 3 && !showAll && (
             <div className="pt-2 text-center">
               <Button 
                 variant="ghost" 
@@ -190,39 +294,32 @@ export default function InsightsPage() {
                 onClick={() => setShowAll(true)}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                Show {visibleSuggestions.length - 3} more suggestions
+                Show {visibleRecommendations.length - 3} more recommendations
               </Button>
-            </div>
-          )}
-          
-          {visibleSuggestions.length === 0 && (
-            <div className="text-center py-8">
-              <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">All suggestions reviewed!</p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Janitors */}
+      {/* Testing Janitors */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Bot className="h-5 w-5 text-blue-500" />
-            <span>Janitors</span>
+            <TestTube className="h-5 w-5 text-blue-500" />
+            <span>Testing</span>
           </CardTitle>
           <CardDescription>
-            Tireless workers keeping your codebase clean, tested, and secure
+            Automated testing recommendations and coverage analysis
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {agents.map((agent) => {
-              const Icon = agent.icon;
-              const isOn = agentStates[agent.id];
+            {testingJanitors.map((janitor) => {
+              const Icon = janitor.icon;
+              const isOn = janitorConfig?.[janitor.configKey] || false;
               
               return (
-                <div key={agent.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                <div key={janitor.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
                   <div className="flex items-center space-x-3 flex-1">
                     <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${
                       isOn 
@@ -238,10 +335,10 @@ export default function InsightsPage() {
                     
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-1">
-                        <span className="font-medium text-sm">{agent.name}</span>
+                        <span className="font-medium text-sm">{janitor.name}</span>
                         {getStatusBadge(isOn)}
                       </div>
-                      <p className="text-xs text-muted-foreground">{agent.description}</p>
+                      <p className="text-xs text-muted-foreground">{janitor.description}</p>
                     </div>
                   </div>
                   
@@ -249,7 +346,120 @@ export default function InsightsPage() {
                     {getStatusIcon(isOn)}
                     <Switch
                       checked={isOn}
-                      onCheckedChange={() => toggleAgent(agent.id)}
+                      onCheckedChange={() => toggleTestingJanitor(janitor.configKey)}
+                      className="data-[state=checked]:bg-green-500"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Maintainability Janitors */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Wrench className="h-5 w-5 text-orange-500" />
+            <span>Maintainability</span>
+          </CardTitle>
+          <CardDescription>
+            Code quality and maintainability improvements (Coming soon)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {maintainabilityJanitors.map((janitor) => {
+              const Icon = janitor.icon;
+              const isOn = hardcodedStates[janitor.id];
+              
+              return (
+                <div key={janitor.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors opacity-60">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${
+                      isOn 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-background border-gray-200'
+                    }`}>
+                      <Icon className={`h-4 w-4 ${
+                        isOn 
+                          ? 'text-green-600' 
+                          : 'text-muted-foreground'
+                      }`} />
+                    </div>
+                    
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-medium text-sm">{janitor.name}</span>
+                        <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{janitor.description}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <Clock className="h-4 w-4 text-gray-400" />
+                    <Switch
+                      checked={false}
+                      disabled={true}
+                      className="data-[state=checked]:bg-green-500"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Security Janitors */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Shield className="h-5 w-5 text-red-500" />
+            <span>Security</span>
+          </CardTitle>
+          <CardDescription>
+            Security scanning and vulnerability detection (Coming soon)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {securityJanitors.map((janitor) => {
+              const Icon = janitor.icon;
+              const isOn = hardcodedStates[janitor.id];
+              
+              return (
+                <div key={janitor.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors opacity-60">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${
+                      isOn 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-background border-gray-200'
+                    }`}>
+                      <Icon className={`h-4 w-4 ${
+                        isOn 
+                          ? 'text-green-600' 
+                          : 'text-muted-foreground'
+                      }`} />
+                    </div>
+                    
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-medium text-sm">{janitor.name}</span>
+                        <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{janitor.description}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <Clock className="h-4 w-4 text-gray-400" />
+                    <Switch
+                      checked={false}
+                      disabled={true}
                       className="data-[state=checked]:bg-green-500"
                     />
                   </div>
