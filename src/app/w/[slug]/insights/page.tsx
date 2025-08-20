@@ -212,6 +212,9 @@ export default function InsightsPage() {
           description: error.error || 'Unknown error',
           variant: "destructive",
         });
+        
+        // Log the error for debugging
+        console.error("Janitor run failed:", error);
       }
     } catch (error) {
       console.error("Error running janitor:", error);

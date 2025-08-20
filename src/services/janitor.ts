@@ -19,6 +19,8 @@ import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
+import { stakworkService } from "@/lib/service-factory";
+import { config as envConfig } from "@/lib/env";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -127,8 +129,8 @@ export async function createJanitorRun(
     throw new Error(JANITOR_ERRORS.RUN_IN_PROGRESS);
   }
 
-  // Create new run
-  return await db.janitorRun.create({
+  // First create the database record without stakwork project ID
+  let janitorRun = await db.janitorRun.create({
     data: {
       janitorConfigId: config.id,
       janitorType,
@@ -138,8 +140,111 @@ export async function createJanitorRun(
         triggeredByUserId: userId,
         workspaceId,
       }
+    },
+    include: {
+      janitorConfig: {
+        include: {
+          workspace: true
+        }
+      }
     }
   });
+
+  try {
+    // Check if Stakwork is configured for janitors
+    if (!envConfig.STAKWORK_API_KEY) {
+      throw new Error("STAKWORK_API_KEY is required for janitor runs");
+    }
+    if (!envConfig.STAKWORK_JANITOR_WORKFLOW_ID) {
+      throw new Error("STAKWORK_JANITOR_WORKFLOW_ID is required for janitor runs");
+    }
+
+    // Get workflow ID - single workflow for janitors
+    const workflowId = envConfig.STAKWORK_JANITOR_WORKFLOW_ID;
+
+    // Build webhook URL for janitor completion (recommendations endpoint)
+    const baseUrl = envConfig.STAKWORK_BASE_URL;
+    const webhookUrl = `${baseUrl.replace('/api/v1', '')}/api/janitors/webhook`;
+
+    // Prepare variables - only janitorType and webhookUrl
+    const vars = {
+      janitorType: janitorType,
+      webhookUrl: webhookUrl,
+    };
+
+    // Create Stakwork project using the stakworkRequest method (following existing pattern)
+    const stakworkPayload = {
+      name: `janitor-${janitorType.toLowerCase()}-${Date.now()}`,
+      workflow_id: parseInt(workflowId),
+      workflow_params: {
+        set_var: {
+          attributes: {
+            vars
+          }
+        }
+      }
+    };
+
+    const stakworkProject = await stakworkService().stakworkRequest(
+      "/projects",
+      stakworkPayload
+    );
+
+    // Extract project ID from Stakwork response
+    const projectId = (stakworkProject as any)?.id || 
+                     (stakworkProject as any)?.project_id || 
+                     (stakworkProject as any)?.data?.id ||
+                     (stakworkProject as any)?.data?.project_id;
+
+    if (!projectId) {
+      throw new Error("No project ID returned from Stakwork");
+    }
+
+    // Update the run with the Stakwork project ID
+    janitorRun = await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        stakworkProjectId: projectId,
+        status: "RUNNING",
+        startedAt: new Date(),
+      },
+      include: {
+        janitorConfig: {
+          include: {
+            workspace: true
+          }
+        }
+      }
+    });
+
+    return janitorRun;
+
+  } catch (stakworkError) {
+    console.error("Failed to create Stakwork project for janitor run:", stakworkError);
+    
+    // Update the run status to failed
+    await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        error: `Failed to initialize Stakwork project: ${stakworkError instanceof Error ? stakworkError.message : 'Unknown error'}`
+      }
+    });
+
+    // Throw error to be handled by the API route
+    throw new Error(`Failed to start janitor run: ${stakworkError instanceof Error ? stakworkError.message : 'Stakwork integration failed'}`);
+  }
+}
+
+
+/**
+ * Get repository URLs for workspace
+ */
+function getWorkspaceRepositoryUrls(workspace: any): string[] {
+  // This would extract repository URLs from the workspace
+  // For now, return empty array - this should be implemented based on your workspace model
+  return [];
 }
 
 /**
