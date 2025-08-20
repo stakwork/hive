@@ -10,6 +10,7 @@ export interface ServiceDataConfig {
     install?: string;
     build?: string;
     test?: string;
+    e2eTest?: string;
     preStart?: string;
     postStart?: string;
     rebuild?: string;

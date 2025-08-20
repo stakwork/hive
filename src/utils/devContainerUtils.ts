@@ -25,6 +25,7 @@ export const generatePM2Apps = (
         env: {
           INSTALL_COMMAND: "npm install",
           TEST_COMMAND: "npm test",
+          E2E_TEST_COMMAND: "npm run test:e2e",
           BUILD_COMMAND: "npm run build",
           PORT: "3000",
         },
@@ -55,6 +56,10 @@ export const generatePM2Apps = (
 
     if (service.scripts?.test) {
       appConfig.env.TEST_COMMAND = service.scripts.test;
+    }
+
+    if (service.scripts?.e2eTest) {
+      appConfig.env.E2E_TEST_COMMAND = service.scripts.e2eTest;
     }
 
     if (service.scripts?.build) {

@@ -12,6 +12,7 @@ import {
   FastForward,
   Rewind,
   RefreshCw,
+  Zap,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -57,6 +58,13 @@ export default function ServicesForm({
       icon: <TestTube className="w-4 h-4 text-muted-foreground" />,
       placeholder: "npm test",
       description: "test command",
+    },
+    e2eTest: {
+      key: "e2eTest",
+      label: "E2E Test Command",
+      icon: <Zap className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm run test:e2e",
+      description: "end-to-end test command",
     },
     preStart: {
       key: "preStart",
