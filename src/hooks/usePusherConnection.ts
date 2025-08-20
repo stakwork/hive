@@ -119,34 +119,56 @@ export function usePusherConnection({
         });
 
         // Bind to new message events
-        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, (message: ChatMessage) => {
-          if (LOGS) {
-            console.log("Received Pusher message:", {
-              id: message.id,
-              message: message.message,
-              role: message.role,
-              timestamp: message.timestamp,
-              channelName,
-            });
-          }
-          if (onMessageRef.current) {
-            onMessageRef.current(message);
+        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: unknown) => {
+          try {
+            // String payload: messageId only (simple mode)
+            if (typeof payload === "string") {
+              const res = await fetch(`/api/chat/messages/${payload}`);
+              if (res.ok) {
+                const data = await res.json();
+                const full: ChatMessage = data.data;
+                if (onMessageRef.current) onMessageRef.current(full);
+                return;
+              }
+              console.warn("Failed to fetch message by id", payload);
+              return;
+            }
+
+            // Backward compatibility: server sent full ChatMessage
+            const message = payload as ChatMessage;
+            if (LOGS) {
+              console.log("Received Pusher message:", {
+                id: message?.id,
+                message: message?.message,
+                role: message?.role,
+                timestamp: message?.timestamp,
+                channelName,
+              });
+            }
+            if (onMessageRef.current && message?.id) {
+              onMessageRef.current(message);
+            }
+          } catch (err) {
+            console.error("Error handling NEW_MESSAGE event:", err);
           }
         });
 
         // Bind to workflow status update events
-        channel.bind(PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, (update: WorkflowStatusUpdate) => {
-          if (LOGS) {
-            console.log("Received workflow status update:", {
-              taskId: update.taskId,
-              workflowStatus: update.workflowStatus,
-              channelName,
-            });
-          }
-          if (onWorkflowStatusUpdateRef.current) {
-            onWorkflowStatusUpdateRef.current(update);
-          }
-        });
+        channel.bind(
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          (update: WorkflowStatusUpdate) => {
+            if (LOGS) {
+              console.log("Received workflow status update:", {
+                taskId: update.taskId,
+                workflowStatus: update.workflowStatus,
+                channelName,
+              });
+            }
+            if (onWorkflowStatusUpdateRef.current) {
+              onWorkflowStatusUpdateRef.current(update);
+            }
+          },
+        );
 
         channelRef.current = channel;
         currentTaskIdRef.current = targetTaskId;
