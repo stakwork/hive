@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useToast } from "@/components/ui/use-toast";
 import { 
   BarChart3, 
   CheckCircle2, 
@@ -23,7 +25,8 @@ import {
   Globe,
   BookOpen,
   Zap,
-  Bot
+  Bot,
+  Play
 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
@@ -62,11 +65,13 @@ const securityJanitors = [
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
+  const { toast } = useToast();
   
   // State for real data
   const [janitorConfig, setJanitorConfig] = useState<any>(null);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [runningJanitors, setRunningJanitors] = useState<Set<string>>(new Set());
   
   // State for hardcoded janitors
   const [hardcodedStates, setHardcodedStates] = useState<Record<string, boolean>>(
@@ -124,7 +129,10 @@ export default function InsightsPage() {
         setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
         const result = await response.json();
         if (result.task) {
-          alert(`Task created! You can view it in the tasks section.`);
+          toast({
+            title: "Recommendation accepted!",
+            description: "Task created successfully. You can view it in the tasks section.",
+          });
         }
       }
     } catch (error) {
@@ -176,10 +184,65 @@ export default function InsightsPage() {
     setHardcodedStates(prev => ({ ...prev, [janitorId]: !prev[janitorId] }));
   };
 
-  const getStatusIcon = (isOn: boolean) => {
-    if (isOn) return <Loader2 className="h-4 w-4 text-green-500 animate-spin" />;
-    return <Clock className="h-4 w-4 text-gray-400" />;
+  const runJanitorManually = async (janitorType: string) => {
+    if (!workspace?.slug) return;
+    
+    try {
+      setRunningJanitors(prev => new Set([...prev, janitorType]));
+      
+      const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/${janitorType}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Janitor run started!",
+          description: "The janitor is now analyzing your codebase.",
+        });
+        
+        // Refresh recommendations after a short delay to potentially show new results
+        setTimeout(() => {
+          fetchRecommendations();
+        }, 2000);
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Failed to start janitor run",
+          description: error.error || 'Unknown error',
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error running janitor:", error);
+      toast({
+        title: "Failed to start janitor run",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRunningJanitors(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(janitorType);
+        return newSet;
+      });
+    }
   };
+
+  const fetchRecommendations = async () => {
+    if (!workspace?.slug) return;
+    
+    try {
+      const recsResponse = await fetch(`/api/workspaces/${workspace.slug}/janitors/recommendations?limit=3`);
+      if (recsResponse.ok) {
+        const recsData = await recsResponse.json();
+        setRecommendations(recsData.recommendations);
+      }
+    } catch (error) {
+      console.error("Error fetching recommendations:", error);
+    }
+  };
+
 
   const getStatusBadge = (isOn: boolean) => {
     if (isOn) return <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge>;
@@ -317,6 +380,7 @@ export default function InsightsPage() {
             {testingJanitors.map((janitor) => {
               const Icon = janitor.icon;
               const isOn = janitorConfig?.[janitor.configKey] || false;
+              const isRunning = runningJanitors.has(janitor.id);
               
               return (
                 <div key={janitor.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
@@ -342,8 +406,29 @@ export default function InsightsPage() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center space-x-3">
-                    {getStatusIcon(isOn)}
+                  <div className="flex items-center space-x-2">
+                    {isOn && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => runJanitorManually(janitor.id)}
+                            disabled={isRunning || loading}
+                          >
+                            {isRunning ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Play className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Manually run</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                     <Switch
                       checked={isOn}
                       onCheckedChange={() => toggleTestingJanitor(janitor.configKey)}
