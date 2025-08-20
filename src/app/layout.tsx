@@ -32,9 +32,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <Script src="/js/staktrak.js" />
-      <Script src="/js/replay.js" />
-      <Script src="/js/playwright-generator.js" />
+      <head>
+        <Script id="staktrak-config" strategy="beforeInteractive">
+          {`window.STAKTRAK_CONFIG = { maxTraversalDepth: 10 };`}
+        </Script>
+        <Script src="/js/staktrak.js" />
+        <Script src="/js/replay.js" />
+        <Script src="/js/playwright-generator.js" />
+      </head>
       <body
         className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
       >
