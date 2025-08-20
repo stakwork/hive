@@ -19,3 +19,6 @@ export * from "./encryption";
 
 // Test coverage types
 export * from "./test-coverage";
+
+// Janitor types
+export * from "./janitor";
