@@ -86,11 +86,9 @@ export async function POST(request: NextRequest) {
       try {
         const channelName = getTaskChannelName(taskId);
 
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.NEW_MESSAGE,
-          clientMessage,
-        );
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, {
+          id: chatMessage.id,
+        });
       } catch (error) {
         console.error("❌ Error broadcasting to Pusher:", error);
       }

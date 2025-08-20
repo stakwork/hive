@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChatMessage, WorkflowStatus } from "@/lib/chat";
+import { ChatMessage, ChatRole, ChatStatus, WorkflowStatus } from "@/lib/chat";
 import {
   getPusherClient,
   getTaskChannelName,
@@ -119,34 +119,81 @@ export function usePusherConnection({
         });
 
         // Bind to new message events
-        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, (message: ChatMessage) => {
-          if (LOGS) {
-            console.log("Received Pusher message:", {
-              id: message.id,
-              message: message.message,
-              role: message.role,
-              timestamp: message.timestamp,
-              channelName,
-            });
-          }
-          if (onMessageRef.current) {
-            onMessageRef.current(message);
-          }
-        });
+        channel.bind(
+          PUSHER_EVENTS.NEW_MESSAGE,
+          async (data: { id: string }) => {
+            if (LOGS) {
+              console.log("Received Pusher message event:", {
+                messageId: data.id,
+                channelName,
+              });
+            }
+
+            // Fetch the task first to get full context
+            try {
+              const taskResponse = await fetch(`/api/tasks/${targetTaskId}`);
+              if (!taskResponse.ok) {
+                throw new Error(
+                  `Failed to fetch task: ${taskResponse.statusText}`,
+                );
+              }
+
+              const taskResult = await taskResponse.json();
+              if (taskResult.success && taskResult.data) {
+                if (LOGS) {
+                  console.log("Fetched task data:", {
+                    taskId: taskResult.data.id,
+                    title: taskResult.data.title,
+                    messageId: data.id,
+                  });
+                }
+
+                // Now fetch the specific message with the task context
+                // For now, we'll trigger the message callback with the message ID
+                // You may want to modify this to fetch the actual message data
+                if (onMessageRef.current) {
+                  // Create a minimal message object with the ID for now
+                  // This can be expanded to fetch the full message if needed
+                  const messageData: ChatMessage = {
+                    id: data.id,
+                    taskId: targetTaskId,
+                    message: "", // Will be populated when message is fetched
+                    role: ChatRole.ASSISTANT, // Default, will be updated when message is fetched
+                    timestamp: new Date(),
+                    contextTags: [],
+                    artifacts: [],
+                    status: ChatStatus.SENT,
+                    workflowUrl: null,
+                    sourceWebsocketID: null,
+                    replyId: null,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  };
+                  onMessageRef.current(messageData);
+                }
+              }
+            } catch (error) {
+              console.error("Error fetching task for message:", error);
+            }
+          },
+        );
 
         // Bind to workflow status update events
-        channel.bind(PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, (update: WorkflowStatusUpdate) => {
-          if (LOGS) {
-            console.log("Received workflow status update:", {
-              taskId: update.taskId,
-              workflowStatus: update.workflowStatus,
-              channelName,
-            });
-          }
-          if (onWorkflowStatusUpdateRef.current) {
-            onWorkflowStatusUpdateRef.current(update);
-          }
-        });
+        channel.bind(
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          (update: WorkflowStatusUpdate) => {
+            if (LOGS) {
+              console.log("Received workflow status update:", {
+                taskId: update.taskId,
+                workflowStatus: update.workflowStatus,
+                channelName,
+              });
+            }
+            if (onWorkflowStatusUpdateRef.current) {
+              onWorkflowStatusUpdateRef.current(update);
+            }
+          },
+        );
 
         channelRef.current = channel;
         currentTaskIdRef.current = targetTaskId;
