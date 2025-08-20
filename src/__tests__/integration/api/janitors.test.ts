@@ -24,6 +24,15 @@ vi.mock("@/lib/service-factory", () => ({
   })),
 }));
 
+// Mock environment config
+vi.mock("@/lib/env", () => ({
+  config: {
+    STAKWORK_API_KEY: "test-api-key",
+    STAKWORK_JANITOR_WORKFLOW_ID: "123",
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+  },
+}));
+
 const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
