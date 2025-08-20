@@ -3,22 +3,22 @@ import { JanitorType, JanitorStatus, RecommendationStatus, Priority } from "@pri
 /**
  * Type guards for janitor system using Prisma enums
  */
-export function isValidJanitorType(type: string): type is JanitorType {
+function isValidJanitorType(type: string): type is JanitorType {
   const values = Object.values(JanitorType) as string[];
   return values.includes(type.toUpperCase());
 }
 
-export function isValidJanitorStatus(status: string): status is JanitorStatus {
+function isValidJanitorStatus(status: string): status is JanitorStatus {
   const values = Object.values(JanitorStatus) as string[];
   return values.includes(status.toUpperCase());
 }
 
-export function isValidRecommendationStatus(status: string): status is RecommendationStatus {
+function isValidRecommendationStatus(status: string): status is RecommendationStatus {
   const values = Object.values(RecommendationStatus) as string[];
   return values.includes(status.toUpperCase());
 }
 
-export function isValidPriority(priority: string): priority is Priority {
+function isValidPriority(priority: string): priority is Priority {
   const values = Object.values(Priority) as string[];
   return values.includes(priority.toUpperCase());
 }
@@ -75,34 +75,3 @@ export function validatePaginationParams(limit?: string | number | null, page?: 
   };
 }
 
-/**
- * Format janitor types and statuses for display
- */
-export function formatJanitorTypeForDisplay(type: JanitorType): string {
-  return type.toLowerCase().replace(/_/g, " ");
-}
-
-export function formatJanitorStatusForDisplay(status: JanitorStatus): string {
-  return status.toLowerCase();
-}
-
-export function formatRecommendationStatusForDisplay(status: RecommendationStatus): string {
-  return status.toLowerCase();
-}
-
-/**
- * Check if janitor type is enabled on config
- */
-export function getEnabledFieldForJanitorType(janitorType: JanitorType): keyof {
-  unitTestsEnabled: boolean;
-  integrationTestsEnabled: boolean;
-} {
-  switch (janitorType) {
-    case "UNIT_TESTS":
-      return "unitTestsEnabled";
-    case "INTEGRATION_TESTS":
-      return "integrationTestsEnabled";
-    default:
-      throw new Error(`Unsupported janitor type: ${janitorType}`);
-  }
-}

@@ -1,4 +1,4 @@
-import { WorkspaceRole, JanitorType, Priority } from "@prisma/client";
+import { JanitorType, Priority } from "@prisma/client";
 
 /**
  * Janitor system error messages
@@ -17,14 +17,6 @@ export const JANITOR_ERRORS = {
 } as const;
 
 // Janitor permission levels removed - using standard workspace permissions instead
-
-/**
- * Default pagination limits
- */
-export const JANITOR_PAGINATION = {
-  DEFAULT_LIMIT: 10,
-  MAX_LIMIT: 100,
-} as const;
 
 /**
  * Janitor type display names

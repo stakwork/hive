@@ -8,7 +8,7 @@ import { GET as GetRecommendations } from "@/app/api/workspaces/[slug]/janitors/
 import { POST as AcceptRecommendation } from "@/app/api/janitors/recommendations/[id]/accept/route";
 import { POST as DismissRecommendation } from "@/app/api/janitors/recommendations/[id]/dismiss/route";
 import { POST as WebhookHandler } from "@/app/api/janitors/webhook/route";
-import { WorkspaceRole, JanitorType } from "@prisma/client";
+import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
 
 // Mock NextAuth - only external dependency

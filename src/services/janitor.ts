@@ -682,25 +682,3 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
   }
 }
 
-/**
- * Check if a janitor type is enabled for a workspace
- */
-export async function isJanitorEnabled(
-  workspaceId: string,
-  janitorType: JanitorType
-): Promise<boolean> {
-  const config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
-  });
-
-  if (!config) return false;
-
-  switch (janitorType) {
-    case "UNIT_TESTS":
-      return config.unitTestsEnabled;
-    case "INTEGRATION_TESTS":
-      return config.integrationTestsEnabled;
-    default:
-      return false;
-  }
-}
