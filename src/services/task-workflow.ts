@@ -397,5 +397,5 @@ async function callStakworkAPI(params: {
   }
 
   const result = await response.json();
-  return { success: true, data: result };
+  return result; // Return Stakwork response directly, don't double-wrap
 }

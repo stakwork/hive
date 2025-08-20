@@ -183,8 +183,10 @@ export async function createJanitorRun(
     const projectId = (stakworkProject as any)?.data?.project_id;
 
     if (!projectId) {
+      console.error("No project_id found in Stakwork response:", stakworkProject);
       throw new Error("No project ID returned from Stakwork");
     }
+
 
     // Update the run with the Stakwork project ID
     janitorRun = await db.janitorRun.update({
