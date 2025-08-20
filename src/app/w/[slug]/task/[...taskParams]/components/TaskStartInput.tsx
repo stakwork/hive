@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ArrowUp } from "lucide-react";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 interface TaskStartInputProps {
   onStart: (task: string) => void;
@@ -23,11 +24,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (taskMode === "unit") {
-        onStart("Find functions that need unit tests and suggest test implementations");
-      } else if (taskMode === "integration") {
-        onStart("Find API routes that need integration tests and suggest test implementations");
-      } else if (value.trim()) {
+      if (value.trim()) {
         onStart(value.trim());
       }
     }
@@ -36,11 +33,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
   const hasText = value.trim().length > 0;
 
   const handleClick = () => {
-    if (taskMode === "unit") {
-      onStart("Find functions that need unit tests and suggest test implementations");
-    } else if (taskMode === "integration") {
-      onStart("Find API routes that need integration tests and suggest test implementations");
-    } else if (hasText) {
+    if (hasText) {
       onStart(value.trim());
     }
   };
@@ -51,69 +44,27 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
         What do you want to do?
       </h1>
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
-        {taskMode === "unit" ? (
-          <div className="px-8 pt-8 pb-16 min-h-[180px] flex flex-col items-center justify-center text-center">
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              Find Functions to Test
-            </h3>
-            <p className="text-muted-foreground mb-6">
-              I'll scan your codebase and recommend functions that would benefit from unit tests
-            </p>
-            <Button
-              type="button"
-              variant="default"
-              size="default"
-              className="rounded-full px-6"
-              onClick={handleClick}
-              tabIndex={0}
-            >
-              Scan for Testable Functions
-            </Button>
-          </div>
-        ) : taskMode === "integration" ? (
-          <div className="px-8 pt-8 pb-16 min-h-[180px] flex flex-col items-center justify-center text-center">
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              Find Integration Test Opportunities
-            </h3>
-            <p className="text-muted-foreground mb-6">
-              I'll scan your API routes to recommend integration test implementations
-            </p>
-            <Button
-              type="button"
-              variant="default"
-              size="default"
-              className="rounded-full px-6"
-              onClick={handleClick}
-              tabIndex={0}
-            >
-              Scan for Integration Tests
-            </Button>
-          </div>
-        ) : (
-          <>
-            <Textarea
-              ref={textareaRef}
-              placeholder="Describe a task"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-16 rounded-3xl shadow-none"
-              autoFocus
-            />
-            <Button
-              type="button"
-              variant="default"
-              size="icon"
-              className="absolute bottom-6 right-8 z-10 rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
-              style={{ width: 32, height: 32 }}
-              disabled={!hasText}
-              onClick={handleClick}
-              tabIndex={0}
-            >
-              <ArrowUp className="w-4 h-4" />
-            </Button>
-          </>
-        )}
+        <Textarea
+          ref={textareaRef}
+          placeholder="Describe a task"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-16 rounded-3xl shadow-none"
+          autoFocus
+        />
+        <Button
+          type="button"
+          variant="default"
+          size="icon"
+          className="absolute bottom-6 right-8 z-10 rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+          style={{ width: 32, height: 32 }}
+          disabled={!hasText}
+          onClick={handleClick}
+          tabIndex={0}
+        >
+          <ArrowUp className="w-4 h-4" />
+        </Button>
       </Card>
       <div className="flex justify-center mt-6">
         <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
@@ -132,48 +83,22 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
             />
             <span className="text-sm text-foreground">Live</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="test"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={taskMode === "test"}
-              onChange={() => onModeChange("test")}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Test</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="unit"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={taskMode === "unit"}
-              onChange={() => onModeChange("unit")}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Unit Tests</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="integration"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={taskMode === "integration"}
-              onChange={() => onModeChange("integration")}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Integration Tests</span>
-          </label>
+          {isDevelopmentMode() && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="mode"
+                value="test"
+                style={{
+                  accentColor: "var(--color-green-500)",
+                }}
+                checked={taskMode === "test"}
+                onChange={() => onModeChange("test")}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Test</span>
+            </label>
+          )}
         </fieldset>
       </div>
     </div>
