@@ -16,6 +16,8 @@ interface TaskStartInputProps {
 export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  const devMode = isDevelopmentMode();
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -66,24 +68,24 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
           <ArrowUp className="w-4 h-4" />
         </Button>
       </Card>
-      <div className="flex justify-center mt-6">
-        <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
-          <legend className="sr-only">Mode</legend>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="live"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={taskMode === "live"}
-              onChange={() => onModeChange("live")}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Live</span>
-          </label>
-          {isDevelopmentMode() && (
+      {devMode && (
+        <div className="flex justify-center mt-6">
+          <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
+            <legend className="sr-only">Mode</legend>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="mode"
+                value="live"
+                style={{
+                  accentColor: "var(--color-green-500)",
+                }}
+                checked={taskMode === "live"}
+                onChange={() => onModeChange("live")}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Live</span>
+            </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -98,9 +100,9 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
               />
               <span className="text-sm text-foreground">Test</span>
             </label>
-          )}
-        </fieldset>
-      </div>
+          </fieldset>
+        </div>
+      )}
     </div>
   );
 }
