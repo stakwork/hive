@@ -1,51 +1,17 @@
-import { db } from "@/lib/db";
-import { JanitorType, JanitorStatus, RecommendationStatus, Priority } from "@prisma/client";
+/**
+ * Utility functions for janitor system
+ * Note: Most validation and permission logic has been moved to dedicated helper files
+ */
 
-export async function ensureJanitorConfig(workspaceId: string) {
-  let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
-  });
+import { JanitorType, Priority } from "@prisma/client";
+import {
+  JANITOR_TYPE_DISPLAY_NAMES,
+  PRIORITY_CONFIG,
+} from "@/lib/constants/janitor";
 
-  if (!config) {
-    config = await db.janitorConfig.create({
-      data: { workspaceId }
-    });
-  }
-
-  return config;
-}
-
-export async function isJanitorEnabled(
-  workspaceId: string, 
-  janitorType: JanitorType
-): Promise<boolean> {
-  const config = await ensureJanitorConfig(workspaceId);
-  
-  switch (janitorType) {
-    case "UNIT_TESTS":
-      return config.unitTestsEnabled;
-    case "INTEGRATION_TESTS":
-      return config.integrationTestsEnabled;
-    default:
-      return false;
-  }
-}
-
-export async function hasRunningJanitor(
-  configId: string, 
-  janitorType: JanitorType
-): Promise<boolean> {
-  const runningJanitor = await db.janitorRun.findFirst({
-    where: {
-      janitorConfigId: configId,
-      janitorType,
-      status: { in: ["PENDING", "RUNNING"] }
-    }
-  });
-
-  return !!runningJanitor;
-}
-
+/**
+ * Map priority string to Priority enum with fallback
+ */
 export function mapPriorityFromString(priority: string): Priority {
   const priorityUpper = priority.toUpperCase();
   
@@ -56,82 +22,41 @@ export function mapPriorityFromString(priority: string): Priority {
   return "MEDIUM";
 }
 
-export function isValidJanitorType(type: string): type is JanitorType {
-  return ["UNIT_TESTS", "INTEGRATION_TESTS"].includes(type.toUpperCase());
+/**
+ * Get display name for janitor type
+ */
+export function getJanitorTypeDisplayName(type: JanitorType): string {
+  return JANITOR_TYPE_DISPLAY_NAMES[type] || type;
 }
 
-export function isValidJanitorStatus(status: string): status is JanitorStatus {
-  return ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"].includes(status.toUpperCase());
+/**
+ * Get priority configuration (label, color, weight)
+ */
+export function getPriorityConfig(priority: Priority) {
+  return PRIORITY_CONFIG[priority];
 }
 
-export function isValidRecommendationStatus(status: string): status is RecommendationStatus {
-  return ["PENDING", "ACCEPTED", "DISMISSED"].includes(status.toUpperCase());
-}
-
-export function isValidPriority(priority: string): priority is Priority {
-  return ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priority.toUpperCase());
-}
-
-export function formatJanitorTypeName(type: JanitorType): string {
-  return type.toLowerCase().replace('_', ' ');
-}
-
-export function formatJanitorStatusName(status: JanitorStatus): string {
-  return status.toLowerCase();
-}
-
-export async function getWorkspaceBySlugWithPermission(
-  slug: string, 
-  userId: string, 
-  requiredRoles: string[] = []
-) {
-  const where: any = {
-    slug,
-    members: {
-      some: { userId }
-    }
-  };
-
-  if (requiredRoles.length > 0) {
-    where.members.some.role = { in: requiredRoles };
-  }
-
-  return await db.workspace.findFirst({
-    where,
-    include: {
-      janitorConfig: true,
-      members: {
-        where: { userId },
-        select: { role: true }
-      }
-    }
+/**
+ * Sort recommendations by priority (highest first)
+ */
+export function sortByPriority<T extends { priority: Priority }>(items: T[]): T[] {
+  return items.sort((a, b) => {
+    const aWeight = PRIORITY_CONFIG[a.priority].weight;
+    const bWeight = PRIORITY_CONFIG[b.priority].weight;
+    return bWeight - aWeight;
   });
 }
 
-export async function validateWorkspaceMember(
-  workspaceId: string, 
-  userId: string
-): Promise<boolean> {
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId
-    }
-  });
-
-  return !!member;
+/**
+ * Check if a janitor run is in progress
+ */
+export function isJanitorRunInProgress(status: string): boolean {
+  return ["PENDING", "RUNNING"].includes(status.toUpperCase());
 }
 
-export async function validateWorkspaceRepository(
-  workspaceId: string, 
-  repositoryId: string
-): Promise<boolean> {
-  const repository = await db.repository.findFirst({
-    where: {
-      id: repositoryId,
-      workspaceId
-    }
-  });
-
-  return !!repository;
+/**
+ * Check if a janitor run is completed (success or failure)
+ */
+export function isJanitorRunCompleted(status: string): boolean {
+  return ["COMPLETED", "FAILED", "CANCELLED"].includes(status.toUpperCase());
 }

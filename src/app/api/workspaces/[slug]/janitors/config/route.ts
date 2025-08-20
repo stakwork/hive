@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
 import { z } from "zod";
+import { getOrCreateJanitorConfig, updateJanitorConfig } from "@/services/janitor";
+import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
+import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 
 const updateJanitorConfigSchema = z.object({
   unitTestsEnabled: z.boolean().optional(),
@@ -23,38 +25,20 @@ export async function GET(
 
     const { slug } = await params;
 
-    const workspace = await db.workspace.findFirst({
-      where: { 
-        slug,
-        members: {
-          some: { userId }
-        }
-      },
-      include: {
-        janitorConfig: true
-      }
-    });
+    const { workspace } = await validateWorkspaceAccess(slug, userId, "VIEW");
+    const config = await getOrCreateJanitorConfig(workspace.id);
 
-    if (!workspace) {
+    return NextResponse.json({ config });
+  } catch (error) {
+    console.error("Error fetching janitor config:", error);
+    
+    if (error instanceof Error && error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
         { status: 404 }
       );
     }
 
-    let config = workspace.janitorConfig;
-    
-    if (!config) {
-      config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-        }
-      });
-    }
-
-    return NextResponse.json({ config });
-  } catch (error) {
-    console.error("Error fetching janitor config:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -78,43 +62,8 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateJanitorConfigSchema.parse(body);
 
-    const workspace = await db.workspace.findFirst({
-      where: { 
-        slug,
-        members: {
-          some: { 
-            userId,
-            role: { in: ["OWNER", "ADMIN", "PM"] }
-          }
-        }
-      },
-      include: {
-        janitorConfig: true
-      }
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or insufficient permissions" },
-        { status: 404 }
-      );
-    }
-
-    let config = workspace.janitorConfig;
-    
-    if (!config) {
-      config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-          ...validatedData,
-        }
-      });
-    } else {
-      config = await db.janitorConfig.update({
-        where: { id: config.id },
-        data: validatedData,
-      });
-    }
+    const { workspace } = await validateWorkspaceAccess(slug, userId, "CONFIGURE");
+    const config = await updateJanitorConfig(workspace.id, userId, validatedData);
 
     return NextResponse.json({ 
       success: true,
@@ -128,6 +77,21 @@ export async function PUT(
         { error: "Validation failed", details: error.issues },
         { status: 400 }
       );
+    }
+
+    if (error instanceof Error) {
+      if (error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 }
+        );
+      }
+      if (error.message === JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS) {
+        return NextResponse.json(
+          { error: "Insufficient permissions" },
+          { status: 403 }
+        );
+      }
     }
 
     return NextResponse.json(

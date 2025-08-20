@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
-import { JanitorType } from "@prisma/client";
+import { createJanitorRun } from "@/services/janitor";
+import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
+import { parseJanitorType } from "@/lib/helpers/janitor-validation";
+import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 
-const VALID_JANITOR_TYPES: JanitorType[] = ["UNIT_TESTS", "INTEGRATION_TESTS"];
 
 export async function POST(
   request: NextRequest,
@@ -19,85 +20,16 @@ export async function POST(
     }
 
     const { slug, type } = await params;
-    const janitorType = type.toUpperCase() as JanitorType;
-
-    if (!VALID_JANITOR_TYPES.includes(janitorType)) {
-      return NextResponse.json(
-        { error: "Invalid janitor type" },
-        { status: 400 }
-      );
-    }
-
-    const workspace = await db.workspace.findFirst({
-      where: { 
-        slug,
-        members: {
-          some: { 
-            userId,
-            role: { in: ["OWNER", "ADMIN", "PM", "DEVELOPER"] }
-          }
-        }
-      },
-      include: {
-        janitorConfig: true
-      }
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or insufficient permissions" },
-        { status: 404 }
-      );
-    }
-
-    let config = workspace.janitorConfig;
     
-    if (!config) {
-      config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-        }
-      });
-    }
-
-    const enabledField = janitorType === "UNIT_TESTS" 
-      ? "unitTestsEnabled" 
-      : "integrationTestsEnabled";
+    const janitorType = parseJanitorType(type);
+    const { workspace } = await validateWorkspaceAccess(slug, userId, "EXECUTE");
     
-    if (!config[enabledField]) {
-      return NextResponse.json(
-        { error: `${janitorType.toLowerCase().replace('_', ' ')} janitor is not enabled` },
-        { status: 400 }
-      );
-    }
-
-    const existingRun = await db.janitorRun.findFirst({
-      where: {
-        janitorConfigId: config.id,
-        janitorType,
-        status: { in: ["PENDING", "RUNNING"] }
-      }
-    });
-
-    if (existingRun) {
-      return NextResponse.json(
-        { error: "A janitor run of this type is already in progress" },
-        { status: 409 }
-      );
-    }
-
-    const run = await db.janitorRun.create({
-      data: {
-        janitorConfigId: config.id,
-        janitorType,
-        triggeredBy: "MANUAL",
-        status: "PENDING",
-        metadata: {
-          triggeredByUserId: userId,
-          workspaceSlug: slug,
-        }
-      }
-    });
+    const run = await createJanitorRun(
+      workspace.id,
+      userId,
+      janitorType,
+      "MANUAL"
+    );
 
     return NextResponse.json({
       success: true,
@@ -111,6 +43,40 @@ export async function POST(
     });
   } catch (error) {
     console.error("Error triggering janitor run:", error);
+    
+    if (error instanceof Error) {
+      if (error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 }
+        );
+      }
+      if (error.message === JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS) {
+        return NextResponse.json(
+          { error: "Insufficient permissions" },
+          { status: 403 }
+        );
+      }
+      if (error.message === JANITOR_ERRORS.JANITOR_DISABLED) {
+        return NextResponse.json(
+          { error: "This janitor type is not enabled" },
+          { status: 400 }
+        );
+      }
+      if (error.message === JANITOR_ERRORS.RUN_IN_PROGRESS) {
+        return NextResponse.json(
+          { error: "A janitor run of this type is already in progress" },
+          { status: 409 }
+        );
+      }
+      if (error.message.includes("Invalid janitor type")) {
+        return NextResponse.json(
+          { error: "Invalid janitor type" },
+          { status: 400 }
+        );
+      }
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

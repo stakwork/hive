@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
+import { getJanitorRuns } from "@/services/janitor";
+import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
+import { parseJanitorType, parseJanitorStatus, validatePaginationParams } from "@/lib/helpers/janitor-validation";
+import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { JanitorType, JanitorStatus } from "@prisma/client";
 
 export async function GET(
@@ -21,79 +24,37 @@ export async function GET(
     
     const typeParam = searchParams.get("type");
     const statusParam = searchParams.get("status");
-    const limitParam = searchParams.get("limit");
-    const pageParam = searchParams.get("page");
+    const { limit, page } = validatePaginationParams(
+      searchParams.get("limit"),
+      searchParams.get("page")
+    );
 
-    const limit = limitParam ? Math.min(parseInt(limitParam), 100) : 10;
-    const page = pageParam ? Math.max(parseInt(pageParam), 1) : 1;
-    const skip = (page - 1) * limit;
+    const { workspace } = await validateWorkspaceAccess(slug, userId, "VIEW");
 
-    const workspace = await db.workspace.findFirst({
-      where: { 
-        slug,
-        members: {
-          some: { userId }
-        }
-      },
-      include: {
-        janitorConfig: true
+    const filters: {
+      type?: JanitorType;
+      status?: JanitorStatus;
+      limit: number;
+      page: number;
+    } = { limit, page };
+
+    if (typeParam) {
+      try {
+        filters.type = parseJanitorType(typeParam);
+      } catch {
+        // Ignore invalid type, don't filter
       }
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
     }
 
-    let config = workspace.janitorConfig;
-    
-    if (!config) {
-      config = await db.janitorConfig.create({
-        data: {
-          workspaceId: workspace.id,
-        }
-      });
+    if (statusParam) {
+      try {
+        filters.status = parseJanitorStatus(statusParam);
+      } catch {
+        // Ignore invalid status, don't filter
+      }
     }
 
-    const where: any = {
-      janitorConfigId: config.id,
-    };
-
-    if (typeParam && ["UNIT_TESTS", "INTEGRATION_TESTS"].includes(typeParam.toUpperCase())) {
-      where.janitorType = typeParam.toUpperCase() as JanitorType;
-    }
-
-    if (statusParam && ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"].includes(statusParam.toUpperCase())) {
-      where.status = statusParam.toUpperCase() as JanitorStatus;
-    }
-
-    const [runs, total] = await Promise.all([
-      db.janitorRun.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-        include: {
-          _count: {
-            select: {
-              recommendations: true
-            }
-          }
-        }
-      }),
-      db.janitorRun.count({ where })
-    ]);
-
-    const pagination = {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    };
+    const { runs, pagination } = await getJanitorRuns(workspace.id, filters);
 
     return NextResponse.json({
       runs: runs.map(run => ({
@@ -107,12 +68,20 @@ export async function GET(
         error: run.error,
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
-        recommendationCount: run._count.recommendations,
+        recommendationCount: run._count?.recommendations || 0,
       })),
       pagination
     });
   } catch (error) {
     console.error("Error fetching janitor runs:", error);
+    
+    if (error instanceof Error && error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -105,6 +105,11 @@ async function cleanDatabase() {
     await db.userStory.deleteMany();
     await db.task.deleteMany();
     
+    // Janitor system cleanup
+    await db.janitorRecommendation.deleteMany();
+    await db.janitorRun.deleteMany();
+    await db.janitorConfig.deleteMany();
+    
     // Level 2: Entities that depend on Level 3+ entities
     await db.feature.deleteMany();
     await db.repository.deleteMany();
@@ -140,7 +145,8 @@ async function aggressiveCleanup() {
     const tableNames = [
       'attachments', 'artifacts', 'comments', 'roadmap_items',
       'chat_messages', 'roadmaps', 'requirements', 'user_stories', 
-      'tasks', 'features', 'repositories', 'products', 'swarms',
+      'tasks', 'janitor_recommendations', 'janitor_runs', 'janitor_configs',
+      'features', 'repositories', 'products', 'swarms',
       'workspace_members', 'workspaces', 'sessions', 'accounts', 
       'verification_tokens', 'github_auth', 'users'
     ];
