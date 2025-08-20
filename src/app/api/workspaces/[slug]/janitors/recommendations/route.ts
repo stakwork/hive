@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getJanitorRecommendations } from "@/services/janitor";
-import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
 import { parseJanitorType, parseRecommendationStatus, parsePriority, validatePaginationParams } from "@/lib/helpers/janitor-validation";
-import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { JanitorType, RecommendationStatus, Priority } from "@prisma/client";
 
 export async function GET(
@@ -30,7 +28,6 @@ export async function GET(
       searchParams.get("page")
     );
 
-    const { workspace } = await validateWorkspaceAccess(slug, userId, "VIEW");
 
     const filters: {
       status?: RecommendationStatus;
@@ -64,7 +61,7 @@ export async function GET(
       }
     }
 
-    const { recommendations, pagination } = await getJanitorRecommendations(workspace.id, filters);
+    const { recommendations, pagination } = await getJanitorRecommendations(slug, userId, filters);
 
     return NextResponse.json({
       recommendations: recommendations.map(rec => ({
@@ -88,13 +85,6 @@ export async function GET(
   } catch (error) {
     console.error("Error fetching janitor recommendations:", error);
     
-    if (error instanceof Error && error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
-    }
-
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

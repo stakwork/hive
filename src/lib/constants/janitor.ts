@@ -16,14 +16,7 @@ export const JANITOR_ERRORS = {
   WORKSPACE_NOT_FOUND: "Workspace not found or access denied",
 } as const;
 
-/**
- * Permission levels for janitor operations
- */
-export const JANITOR_PERMISSION_LEVELS = {
-  VIEW: ["OWNER", "ADMIN", "PM", "DEVELOPER", "STAKEHOLDER", "VIEWER"] as WorkspaceRole[],
-  CONFIGURE: ["OWNER", "ADMIN"] as WorkspaceRole[],
-  EXECUTE: ["OWNER", "ADMIN"] as WorkspaceRole[],
-} as const;
+// Janitor permission levels removed - using standard workspace permissions instead
 
 /**
  * Default pagination limits

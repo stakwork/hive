@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { createJanitorRun } from "@/services/janitor";
-import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
-import { parseJanitorType } from "@/lib/helpers/janitor-validation";
-import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 
 
 export async function POST(
@@ -21,13 +18,10 @@ export async function POST(
 
     const { slug, type } = await params;
     
-    const janitorType = parseJanitorType(type);
-    const { workspace } = await validateWorkspaceAccess(slug, userId, "EXECUTE");
-    
     const run = await createJanitorRun(
-      workspace.id,
+      slug,
       userId,
-      janitorType,
+      type,
       "MANUAL"
     );
 
@@ -45,25 +39,13 @@ export async function POST(
     console.error("Error triggering janitor run:", error);
     
     if (error instanceof Error) {
-      if (error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
-        return NextResponse.json(
-          { error: "Workspace not found or access denied" },
-          { status: 404 }
-        );
-      }
-      if (error.message === JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS) {
-        return NextResponse.json(
-          { error: "Insufficient permissions" },
-          { status: 403 }
-        );
-      }
-      if (error.message === JANITOR_ERRORS.JANITOR_DISABLED) {
+      if (error.message.includes("not enabled")) {
         return NextResponse.json(
           { error: "This janitor type is not enabled" },
           { status: 400 }
         );
       }
-      if (error.message === JANITOR_ERRORS.RUN_IN_PROGRESS) {
+      if (error.message.includes("already in progress")) {
         return NextResponse.json(
           { error: "A janitor run of this type is already in progress" },
           { status: 409 }

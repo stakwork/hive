@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getJanitorRuns } from "@/services/janitor";
-import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
 import { parseJanitorType, parseJanitorStatus, validatePaginationParams } from "@/lib/helpers/janitor-validation";
-import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { JanitorType, JanitorStatus } from "@prisma/client";
 
 export async function GET(
@@ -29,7 +27,6 @@ export async function GET(
       searchParams.get("page")
     );
 
-    const { workspace } = await validateWorkspaceAccess(slug, userId, "VIEW");
 
     const filters: {
       type?: JanitorType;
@@ -54,7 +51,7 @@ export async function GET(
       }
     }
 
-    const { runs, pagination } = await getJanitorRuns(workspace.id, filters);
+    const { runs, pagination } = await getJanitorRuns(slug, userId, filters);
 
     return NextResponse.json({
       runs: runs.map(run => ({
@@ -75,13 +72,6 @@ export async function GET(
   } catch (error) {
     console.error("Error fetching janitor runs:", error);
     
-    if (error instanceof Error && error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
-    }
-
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

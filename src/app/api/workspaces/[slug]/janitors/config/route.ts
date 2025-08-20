@@ -3,8 +3,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { z } from "zod";
 import { getOrCreateJanitorConfig, updateJanitorConfig } from "@/services/janitor";
-import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
-import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 
 const updateJanitorConfigSchema = z.object({
   unitTestsEnabled: z.boolean().optional(),
@@ -24,15 +22,13 @@ export async function GET(
     }
 
     const { slug } = await params;
-
-    const { workspace } = await validateWorkspaceAccess(slug, userId, "VIEW");
-    const config = await getOrCreateJanitorConfig(workspace.id);
+    const config = await getOrCreateJanitorConfig(slug, userId);
 
     return NextResponse.json({ config });
   } catch (error) {
     console.error("Error fetching janitor config:", error);
     
-    if (error instanceof Error && error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
+    if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
         { status: 404 }
@@ -62,8 +58,7 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateJanitorConfigSchema.parse(body);
 
-    const { workspace } = await validateWorkspaceAccess(slug, userId, "CONFIGURE");
-    const config = await updateJanitorConfig(workspace.id, userId, validatedData);
+    const config = await updateJanitorConfig(slug, userId, validatedData);
 
     return NextResponse.json({ 
       success: true,
@@ -80,13 +75,13 @@ export async function PUT(
     }
 
     if (error instanceof Error) {
-      if (error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
+      if (error.message.includes("not found")) {
         return NextResponse.json(
           { error: "Workspace not found or access denied" },
           { status: 404 }
         );
       }
-      if (error.message === JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS) {
+      if (error.message.includes("Insufficient permissions")) {
         return NextResponse.json(
           { error: "Insufficient permissions" },
           { status: 403 }

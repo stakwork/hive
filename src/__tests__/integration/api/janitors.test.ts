@@ -21,6 +21,7 @@ const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getSer
 describe("Janitor API Integration Tests", () => {
   async function createTestWorkspaceWithUser(role: WorkspaceRole = "OWNER") {
     return await db.$transaction(async (tx) => {
+      // Create the test user
       const user = await tx.user.create({
         data: {
           id: `user-${Date.now()}-${Math.random()}`,
@@ -29,23 +30,63 @@ describe("Janitor API Integration Tests", () => {
         },
       });
 
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `Test Workspace ${Date.now()}`,
-          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-          ownerId: user.id,
-        },
-      });
+      if (role === "OWNER") {
+        // If role is OWNER, make them the actual workspace owner
+        const workspace = await tx.workspace.create({
+          data: {
+            name: `Test Workspace ${Date.now()}`,
+            slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            ownerId: user.id,
+          },
+        });
 
-      await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
-          role: role,
-        },
-      });
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: workspace.id,
+            userId: user.id,
+            role: "OWNER",
+          },
+        });
 
-      return { user, workspace };
+        return { user, workspace };
+      } else {
+        // For non-OWNER roles, create a separate owner and add user as member
+        const owner = await tx.user.create({
+          data: {
+            id: `owner-${Date.now()}-${Math.random()}`,
+            email: `owner-${Date.now()}@example.com`,
+            name: "Workspace Owner",
+          },
+        });
+
+        const workspace = await tx.workspace.create({
+          data: {
+            name: `Test Workspace ${Date.now()}`,
+            slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            ownerId: owner.id,
+          },
+        });
+
+        // Create owner membership
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: workspace.id,
+            userId: owner.id,
+            role: "OWNER",
+          },
+        });
+
+        // Create test user membership with specified role
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: workspace.id,
+            userId: user.id,
+            role: role,
+          },
+        });
+
+        return { user, workspace };
+      }
     });
   }
 

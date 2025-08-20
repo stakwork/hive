@@ -15,12 +15,20 @@ import {
   JanitorRunFilters,
   JanitorRecommendationFilters,
 } from "@/types/janitor";
-import { JANITOR_ERRORS, JANITOR_PERMISSION_LEVELS } from "@/lib/constants/janitor";
+import { JANITOR_ERRORS } from "@/lib/constants/janitor";
+import { validateWorkspaceAccess } from "@/services/workspace";
+import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 
 /**
  * Get or create janitor configuration for a workspace
  */
-export async function getOrCreateJanitorConfig(workspaceId: string) {
+export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: string) {
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+  if (!validation.hasAccess || !validation.canRead) {
+    throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
+  }
+
+  const workspaceId = validation.workspace!.id;
   let config = await db.janitorConfig.findUnique({
     where: { workspaceId }
   });
@@ -38,24 +46,25 @@ export async function getOrCreateJanitorConfig(workspaceId: string) {
  * Update janitor configuration
  */
 export async function updateJanitorConfig(
-  workspaceId: string,
+  workspaceSlug: string,
   userId: string,
   data: JanitorConfigUpdate
 ) {
-  // Verify user has permission
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId,
-      role: { in: JANITOR_PERMISSION_LEVELS.CONFIGURE }
-    }
-  });
-
-  if (!member) {
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+  if (!validation.hasAccess || !validation.canAdmin) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
-  const config = await getOrCreateJanitorConfig(workspaceId);
+  const workspaceId = validation.workspace!.id;
+  let config = await db.janitorConfig.findUnique({
+    where: { workspaceId }
+  });
+
+  if (!config) {
+    config = await db.janitorConfig.create({
+      data: { workspaceId }
+    });
+  }
 
   return await db.janitorConfig.update({
     where: { id: config.id },
@@ -67,25 +76,33 @@ export async function updateJanitorConfig(
  * Create a new janitor run
  */
 export async function createJanitorRun(
-  workspaceId: string,
+  workspaceSlug: string,
   userId: string,
-  janitorType: JanitorType,
+  janitorTypeString: string,
   triggeredBy: JanitorTrigger = "MANUAL"
 ) {
-  // Verify user has permission
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId,
-      userId,
-      role: { in: JANITOR_PERMISSION_LEVELS.EXECUTE }
-    }
-  });
-
-  if (!member) {
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+  if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
-  const config = await getOrCreateJanitorConfig(workspaceId);
+  // Parse janitor type
+  const janitorTypeUpper = janitorTypeString.toUpperCase();
+  if (!["UNIT_TESTS", "INTEGRATION_TESTS"].includes(janitorTypeUpper)) {
+    throw new Error(`Invalid janitor type: ${janitorTypeString}`);
+  }
+  const janitorType = janitorTypeUpper as JanitorType;
+
+  const workspaceId = validation.workspace!.id;
+  let config = await db.janitorConfig.findUnique({
+    where: { workspaceId }
+  });
+
+  if (!config) {
+    config = await db.janitorConfig.create({
+      data: { workspaceId }
+    });
+  }
 
   // Check if janitor is enabled
   const enabledField = janitorType === "UNIT_TESTS" 
@@ -128,10 +145,25 @@ export async function createJanitorRun(
  * Get janitor runs with filters
  */
 export async function getJanitorRuns(
-  workspaceId: string,
+  workspaceSlug: string,
+  userId: string,
   filters: JanitorRunFilters = {}
 ) {
-  const config = await getOrCreateJanitorConfig(workspaceId);
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+  if (!validation.hasAccess || !validation.canRead) {
+    throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
+  }
+
+  const workspaceId = validation.workspace!.id;
+  let config = await db.janitorConfig.findUnique({
+    where: { workspaceId }
+  });
+
+  if (!config) {
+    config = await db.janitorConfig.create({
+      data: { workspaceId }
+    });
+  }
   
   const { type, status, limit = 10, page = 1 } = filters;
   const skip = (page - 1) * limit;
@@ -182,9 +214,16 @@ export async function getJanitorRuns(
  * Get janitor recommendations with filters
  */
 export async function getJanitorRecommendations(
-  workspaceId: string,
+  workspaceSlug: string,
+  userId: string,
   filters: JanitorRecommendationFilters = {}
 ) {
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+  if (!validation.hasAccess || !validation.canRead) {
+    throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
+  }
+
+  const workspaceId = validation.workspace!.id;
   const config = await db.janitorConfig.findUnique({
     where: { workspaceId }
   });
@@ -299,16 +338,11 @@ export async function acceptJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND);
   }
 
-  // Verify user has permission
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId: recommendation.janitorRun.janitorConfig.workspace.id,
-      userId,
-      role: { in: JANITOR_PERMISSION_LEVELS.EXECUTE }
-    }
-  });
-
-  if (!member) {
+  // Verify user has permission - check if user can write to workspace
+  const workspaceId = recommendation.janitorRun.janitorConfig.workspace.id;
+  const member = await findActiveMember(workspaceId, userId);
+  
+  if (!member || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(member.role)) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
@@ -423,16 +457,11 @@ export async function dismissJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND);
   }
 
-  // Verify user has permission
-  const member = await db.workspaceMember.findFirst({
-    where: {
-      workspaceId: recommendation.janitorRun.janitorConfig.workspace.id,
-      userId,
-      role: { in: JANITOR_PERMISSION_LEVELS.EXECUTE }
-    }
-  });
-
-  if (!member) {
+  // Verify user has permission - check if user can write to workspace
+  const workspaceId = recommendation.janitorRun.janitorConfig.workspace.id;
+  const member = await findActiveMember(workspaceId, userId);
+  
+  if (!member || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(member.role)) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
