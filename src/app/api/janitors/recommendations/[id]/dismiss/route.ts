@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
+import { dismissJanitorRecommendation } from "@/services/janitor";
+import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
 
 const dismissRecommendationSchema = z.object({
@@ -24,71 +25,11 @@ export async function POST(
     const body = await request.json();
     const validatedData = dismissRecommendationSchema.parse(body);
 
-    const recommendation = await db.janitorRecommendation.findUnique({
-      where: { id },
-      include: {
-        janitorRun: {
-          include: {
-            janitorConfig: {
-              include: {
-                workspace: {
-                  include: {
-                    members: {
-                      where: { userId },
-                      select: { role: true }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-
-    if (!recommendation) {
-      return NextResponse.json(
-        { error: "Recommendation not found" },
-        { status: 404 }
-      );
-    }
-
-    const userMembership = recommendation.janitorRun.janitorConfig.workspace.members[0];
-    if (!userMembership || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(userMembership.role)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to dismiss recommendations" },
-        { status: 403 }
-      );
-    }
-
-    if (recommendation.status !== "PENDING") {
-      return NextResponse.json(
-        { error: "Recommendation has already been processed" },
-        { status: 400 }
-      );
-    }
-
-    const updatedRecommendation = await db.janitorRecommendation.update({
-      where: { id },
-      data: {
-        status: "DISMISSED",
-        dismissedAt: new Date(),
-        dismissedById: userId,
-        metadata: {
-          ...recommendation.metadata as object,
-          dismissalReason: validatedData.reason,
-        }
-      },
-      include: {
-        dismissedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          }
-        }
-      }
-    });
+    const updatedRecommendation = await dismissJanitorRecommendation(
+      id,
+      userId,
+      validatedData
+    );
 
     return NextResponse.json({
       success: true,
@@ -108,6 +49,27 @@ export async function POST(
         { error: "Validation failed", details: error.issues },
         { status: 400 }
       );
+    }
+
+    if (error instanceof Error) {
+      if (error.message === JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND) {
+        return NextResponse.json(
+          { error: "Recommendation not found" },
+          { status: 404 }
+        );
+      }
+      if (error.message === JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to dismiss recommendations" },
+          { status: 403 }
+        );
+      }
+      if (error.message === JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED) {
+        return NextResponse.json(
+          { error: "Recommendation has already been processed" },
+          { status: 400 }
+        );
+      }
     }
 
     return NextResponse.json(

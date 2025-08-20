@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
+import { getJanitorRecommendations } from "@/services/janitor";
+import { validateWorkspaceAccess } from "@/lib/helpers/janitor-permissions";
+import { parseJanitorType, parseRecommendationStatus, parsePriority, validatePaginationParams } from "@/lib/helpers/janitor-validation";
+import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { JanitorType, RecommendationStatus, Priority } from "@prisma/client";
 
 export async function GET(
@@ -22,112 +25,46 @@ export async function GET(
     const statusParam = searchParams.get("status");
     const janitorTypeParam = searchParams.get("janitorType");
     const priorityParam = searchParams.get("priority");
-    const limitParam = searchParams.get("limit");
-    const pageParam = searchParams.get("page");
+    const { limit, page } = validatePaginationParams(
+      searchParams.get("limit"),
+      searchParams.get("page")
+    );
 
-    const limit = limitParam ? Math.min(parseInt(limitParam), 100) : 10;
-    const page = pageParam ? Math.max(parseInt(pageParam), 1) : 1;
-    const skip = (page - 1) * limit;
+    const { workspace } = await validateWorkspaceAccess(slug, userId, "VIEW");
 
-    const workspace = await db.workspace.findFirst({
-      where: { 
-        slug,
-        members: {
-          some: { userId }
-        }
-      },
-      include: {
-        janitorConfig: true
+    const filters: {
+      status?: RecommendationStatus;
+      janitorType?: JanitorType;
+      priority?: Priority;
+      limit: number;
+      page: number;
+    } = { limit, page };
+
+    if (statusParam) {
+      try {
+        filters.status = parseRecommendationStatus(statusParam);
+      } catch {
+        // Ignore invalid status, don't filter
       }
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
     }
 
-    let config = workspace.janitorConfig;
-    
-    if (!config) {
-      return NextResponse.json({
-        recommendations: [],
-        pagination: {
-          page: 1,
-          limit,
-          total: 0,
-          totalPages: 0,
-          hasNext: false,
-          hasPrev: false,
-        }
-      });
-    }
-
-    const where: any = {
-      janitorRun: {
-        janitorConfigId: config.id,
+    if (janitorTypeParam) {
+      try {
+        filters.janitorType = parseJanitorType(janitorTypeParam);
+      } catch {
+        // Ignore invalid janitor type, don't filter
       }
-    };
-
-    if (statusParam && ["PENDING", "ACCEPTED", "DISMISSED"].includes(statusParam.toUpperCase())) {
-      where.status = statusParam.toUpperCase() as RecommendationStatus;
     }
 
-    if (janitorTypeParam && ["UNIT_TESTS", "INTEGRATION_TESTS"].includes(janitorTypeParam.toUpperCase())) {
-      where.janitorRun.janitorType = janitorTypeParam.toUpperCase() as JanitorType;
+    if (priorityParam) {
+      try {
+        filters.priority = parsePriority(priorityParam);
+      } catch {
+        // Ignore invalid priority, don't filter
+      }
     }
 
-    if (priorityParam && ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priorityParam.toUpperCase())) {
-      where.priority = priorityParam.toUpperCase() as Priority;
-    }
-
-    const [recommendations, total] = await Promise.all([
-      db.janitorRecommendation.findMany({
-        where,
-        orderBy: [
-          { status: "asc" },
-          { priority: "desc" },
-          { createdAt: "desc" }
-        ],
-        skip,
-        take: limit,
-        include: {
-          janitorRun: {
-            select: {
-              id: true,
-              janitorType: true,
-              status: true,
-              createdAt: true,
-            }
-          },
-          acceptedBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            }
-          },
-          dismissedBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            }
-          }
-        }
-      }),
-      db.janitorRecommendation.count({ where })
-    ]);
-
-    const pagination = {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    };
+    const { recommendations, pagination } = await getJanitorRecommendations(workspace.id, filters);
 
     return NextResponse.json({
       recommendations: recommendations.map(rec => ({
@@ -150,6 +87,14 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error fetching janitor recommendations:", error);
+    
+    if (error instanceof Error && error.message === JANITOR_ERRORS.WORKSPACE_NOT_FOUND) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

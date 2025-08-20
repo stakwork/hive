@@ -469,34 +469,51 @@ export async function dismissJanitorRecommendation(
 export async function processJanitorWebhook(webhookData: StakworkWebhookPayload) {
   const { projectId, status, results, error } = webhookData;
 
-  const janitorRun = await db.janitorRun.findFirst({
-    where: { 
-      stakworkProjectId: projectId,
-      status: { in: ["PENDING", "RUNNING"] }
-    },
-    include: {
-      janitorConfig: {
-        include: {
-          workspace: true
-        }
-      }
-    }
-  });
-
-  if (!janitorRun) {
-    throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
-  }
-
   const isCompleted = status.toLowerCase() === "completed" || status.toLowerCase() === "success";
   const isFailed = status.toLowerCase() === "failed" || status.toLowerCase() === "error";
 
   if (isCompleted) {
+    // Use atomic updateMany to prevent race conditions
+    const updateResult = await db.janitorRun.updateMany({
+      where: {
+        stakworkProjectId: projectId,
+        status: { in: ["PENDING", "RUNNING"] }
+      },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+      }
+    });
+
+    if (updateResult.count === 0) {
+      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+    }
+
+    // Get the updated run for processing recommendations
+    const janitorRun = await db.janitorRun.findFirst({
+      where: {
+        stakworkProjectId: projectId,
+        status: "COMPLETED"
+      },
+      include: {
+        janitorConfig: {
+          include: {
+            workspace: true
+          }
+        }
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    if (!janitorRun) {
+      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+    }
+
+    // Update metadata and create recommendations in a transaction
     await db.$transaction(async (tx) => {
       await tx.janitorRun.update({
         where: { id: janitorRun.id },
         data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
           metadata: {
             ...janitorRun.metadata as object,
             stakworkStatus: status,
@@ -544,41 +561,93 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       recommendationCount: results?.recommendations?.length || 0
     };
   } else if (isFailed) {
-    await db.janitorRun.update({
-      where: { id: janitorRun.id },
+    // Use atomic updateMany to prevent race conditions
+    const updateResult = await db.janitorRun.updateMany({
+      where: {
+        stakworkProjectId: projectId,
+        status: { in: ["PENDING", "RUNNING"] }
+      },
       data: {
         status: "FAILED",
         completedAt: new Date(),
         error: error || `Stakwork project failed with status: ${status}`,
-        metadata: {
-          ...janitorRun.metadata as object,
-          stakworkStatus: status,
-          failedByWebhook: true,
-        }
       }
     });
 
+    if (updateResult.count === 0) {
+      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+    }
+
+    // Get the updated run for return data
+    const janitorRun = await db.janitorRun.findFirst({
+      where: {
+        stakworkProjectId: projectId,
+        status: "FAILED"
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    if (janitorRun) {
+      // Update metadata separately
+      await db.janitorRun.update({
+        where: { id: janitorRun.id },
+        data: {
+          metadata: {
+            ...janitorRun.metadata as object,
+            stakworkStatus: status,
+            failedByWebhook: true,
+          }
+        }
+      });
+    }
+
     return {
-      runId: janitorRun.id,
+      runId: janitorRun?.id || "",
       status: "FAILED" as JanitorStatus,
       error: error || status
     };
   } else {
-    await db.janitorRun.update({
-      where: { id: janitorRun.id },
+    // Use atomic updateMany to prevent race conditions
+    const updateResult = await db.janitorRun.updateMany({
+      where: {
+        stakworkProjectId: projectId,
+        status: { in: ["PENDING", "RUNNING"] }
+      },
       data: {
         status: "RUNNING",
-        startedAt: janitorRun.startedAt || new Date(),
-        metadata: {
-          ...janitorRun.metadata as object,
-          stakworkStatus: status,
-          lastWebhookUpdate: new Date(),
-        }
+        startedAt: new Date(),
       }
     });
 
+    if (updateResult.count === 0) {
+      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+    }
+
+    // Get the updated run for metadata update
+    const janitorRun = await db.janitorRun.findFirst({
+      where: {
+        stakworkProjectId: projectId,
+        status: "RUNNING"
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    if (janitorRun) {
+      // Update metadata separately
+      await db.janitorRun.update({
+        where: { id: janitorRun.id },
+        data: {
+          metadata: {
+            ...janitorRun.metadata as object,
+            stakworkStatus: status,
+            lastWebhookUpdate: new Date(),
+          }
+        }
+      });
+    }
+
     return {
-      runId: janitorRun.id,
+      runId: janitorRun?.id || "",
       status: "RUNNING" as JanitorStatus
     };
   }

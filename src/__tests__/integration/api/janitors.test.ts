@@ -504,8 +504,245 @@ describe("Janitor API Integration Tests", () => {
   });
 
   describe("Recommendation Management", () => {
-    test("POST /api/janitors/recommendations/[id]/accept - should accept recommendation and create task", async () => {
+    test("GET /api/workspaces/[slug]/janitors/recommendations - should get recommendations with pagination", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
+      
+      // Create test data
+      const config = await db.janitorConfig.create({
+        data: {
+          workspaceId: workspace.id,
+          unitTestsEnabled: true,
+        },
+      });
+
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: config.id,
+          janitorType: "UNIT_TESTS",
+          triggeredBy: "MANUAL",
+          status: "COMPLETED",
+        },
+      });
+
+      await db.janitorRecommendation.createMany({
+        data: [
+          {
+            janitorRunId: janitorRun.id,
+            title: "Add unit tests for UserService",
+            description: "UserService needs test coverage",
+            priority: "HIGH",
+            status: "PENDING",
+          },
+          {
+            janitorRunId: janitorRun.id,
+            title: "Add integration tests", 
+            description: "Missing integration test coverage",
+            priority: "MEDIUM",
+            status: "ACCEPTED",
+            acceptedById: user.id,
+            acceptedAt: new Date(),
+          },
+        ],
+      });
+      
+      mockGetServerSession.mockResolvedValue({
+        user: { id: user.id, email: user.email },
+      } as any);
+
+      const url = new URL(`http://localhost/api/test?limit=10&page=1`);
+      const request = new NextRequest(url, { method: "GET" });
+      
+      const response = await GetRecommendations(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData).toHaveProperty("recommendations");
+      expect(responseData).toHaveProperty("pagination");
+      expect(responseData.recommendations).toHaveLength(2);
+      expect(responseData.pagination).toMatchObject({
+        page: 1,
+        limit: 10,
+        total: 2,
+      });
+
+      // Verify recommendation data structure
+      const pendingRec = responseData.recommendations.find((r: any) => r.status === "PENDING");
+      const acceptedRec = responseData.recommendations.find((r: any) => r.status === "ACCEPTED");
+      
+      expect(pendingRec).toMatchObject({
+        title: "Add unit tests for UserService",
+        priority: "HIGH",
+        status: "PENDING",
+      });
+
+      expect(acceptedRec).toMatchObject({
+        title: "Add integration tests",
+        priority: "MEDIUM", 
+        status: "ACCEPTED",
+        acceptedBy: {
+          id: user.id,
+          email: user.email,
+        },
+      });
+    });
+
+    test("GET /api/workspaces/[slug]/janitors/recommendations - should filter by status", async () => {
+      const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
+      
+      const config = await db.janitorConfig.create({
+        data: {
+          workspaceId: workspace.id,
+          unitTestsEnabled: true,
+        },
+      });
+
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: config.id,
+          janitorType: "UNIT_TESTS",
+          triggeredBy: "MANUAL",
+          status: "COMPLETED",
+        },
+      });
+
+      await db.janitorRecommendation.createMany({
+        data: [
+          {
+            janitorRunId: janitorRun.id,
+            title: "Pending recommendation",
+            description: "This is pending",
+            priority: "HIGH",
+            status: "PENDING",
+          },
+          {
+            janitorRunId: janitorRun.id,
+            title: "Accepted recommendation",
+            description: "This is accepted",
+            priority: "MEDIUM",
+            status: "ACCEPTED",
+            acceptedById: user.id,
+            acceptedAt: new Date(),
+          },
+        ],
+      });
+      
+      mockGetServerSession.mockResolvedValue({
+        user: { id: user.id, email: user.email },
+      } as any);
+
+      const url = new URL(`http://localhost/api/test?status=PENDING`);
+      const request = new NextRequest(url, { method: "GET" });
+      
+      const response = await GetRecommendations(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.recommendations).toHaveLength(1);
+      expect(responseData.recommendations[0].status).toBe("PENDING");
+      expect(responseData.recommendations[0].title).toBe("Pending recommendation");
+    });
+
+    test("GET /api/workspaces/[slug]/janitors/recommendations - should filter by priority", async () => {
+      const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
+      
+      const config = await db.janitorConfig.create({
+        data: {
+          workspaceId: workspace.id,
+          unitTestsEnabled: true,
+        },
+      });
+
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: config.id,
+          janitorType: "UNIT_TESTS",
+          triggeredBy: "MANUAL",
+          status: "COMPLETED",
+        },
+      });
+
+      await db.janitorRecommendation.createMany({
+        data: [
+          {
+            janitorRunId: janitorRun.id,
+            title: "High priority recommendation",
+            description: "This is high priority",
+            priority: "HIGH",
+            status: "PENDING",
+          },
+          {
+            janitorRunId: janitorRun.id,
+            title: "Low priority recommendation",
+            description: "This is low priority",
+            priority: "LOW",
+            status: "PENDING",
+          },
+        ],
+      });
+      
+      mockGetServerSession.mockResolvedValue({
+        user: { id: user.id, email: user.email },
+      } as any);
+
+      const url = new URL(`http://localhost/api/test?priority=HIGH`);
+      const request = new NextRequest(url, { method: "GET" });
+      
+      const response = await GetRecommendations(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.recommendations).toHaveLength(1);
+      expect(responseData.recommendations[0].priority).toBe("HIGH");
+      expect(responseData.recommendations[0].title).toBe("High priority recommendation");
+    });
+
+    test("GET /api/workspaces/[slug]/janitors/recommendations - should return empty array when no janitor config exists", async () => {
+      const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
+      
+      mockGetServerSession.mockResolvedValue({
+        user: { id: user.id, email: user.email },
+      } as any);
+
+      const url = new URL(`http://localhost/api/test`);
+      const request = new NextRequest(url, { method: "GET" });
+      
+      const response = await GetRecommendations(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.recommendations).toHaveLength(0);
+      expect(responseData.pagination.total).toBe(0);
+    });
+
+    test("GET /api/workspaces/[slug]/janitors/recommendations - should reject unauthorized user", async () => {
+      const { workspace } = await createTestWorkspaceWithUser();
+      
+      mockGetServerSession.mockResolvedValue(null);
+
+      const url = new URL(`http://localhost/api/test`);
+      const request = new NextRequest(url, { method: "GET" });
+      
+      const response = await GetRecommendations(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    test("POST /api/janitors/recommendations/[id]/accept - should accept recommendation and create task", async () => {
+      const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       // Create test data
       const config = await db.janitorConfig.create({
@@ -568,7 +805,7 @@ describe("Janitor API Integration Tests", () => {
     });
 
     test("POST /api/janitors/recommendations/[id]/dismiss - should dismiss recommendation", async () => {
-      const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
+      const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       const config = await db.janitorConfig.create({
         data: {
