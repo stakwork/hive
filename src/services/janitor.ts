@@ -406,7 +406,9 @@ export async function acceptJanitorRecommendation(
     priority: recommendation.priority,
     sourceType: "JANITOR",
     userId: userId,
-    initialMessage: message
+    initialMessage: message,
+    useJanitorWorkflow: true,
+    janitorType: recommendation.janitorRun.janitorType
   });
 
   return { 

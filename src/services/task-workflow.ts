@@ -21,6 +21,8 @@ export async function createTaskWithStakworkWorkflow(params: {
   userId: string;
   initialMessage: string;
   status?: TaskStatus;
+  useJanitorWorkflow?: boolean;
+  janitorType?: string;
 }) {
   const { 
     title, 
@@ -32,7 +34,9 @@ export async function createTaskWithStakworkWorkflow(params: {
     sourceType = "USER", 
     userId, 
     initialMessage,
-    status = "TODO"
+    status = "TODO",
+    useJanitorWorkflow = false,
+    janitorType
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -102,6 +106,8 @@ export async function createTaskWithStakworkWorkflow(params: {
     message: initialMessage,
     userId: userId,
     task: task,
+    useJanitorWorkflow,
+    janitorType,
   });
 
   return {
@@ -122,8 +128,10 @@ export async function sendMessageToStakwork(params: {
   userId: string;
   contextTags?: any[];
   attachments?: string[];
+  useJanitorWorkflow?: boolean;
+  janitorType?: string;
 }) {
-  const { taskId, message, userId, contextTags = [], attachments = [] } = params;
+  const { taskId, message, userId, contextTags = [], attachments = [], useJanitorWorkflow = false, janitorType } = params;
 
   // Get task with workspace and swarm details
   const task = await db.task.findFirst({
@@ -159,6 +167,8 @@ export async function sendMessageToStakwork(params: {
     task,
     contextTags,
     attachments,
+    useJanitorWorkflow,
+    janitorType,
   });
 }
 
@@ -172,8 +182,10 @@ async function createChatMessageAndTriggerStakwork(params: {
   task: any; // Task with workspace and swarm details
   contextTags?: any[];
   attachments?: string[];
+  useJanitorWorkflow?: boolean;
+  janitorType?: string;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [] } = params;
+  const { taskId, message, userId, task, contextTags = [], attachments = [], useJanitorWorkflow = false, janitorType } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -230,7 +242,8 @@ async function createChatMessageAndTriggerStakwork(params: {
   }
 
   // Prepare Stakwork integration (replicating callStakwork logic)
-  const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
+  const workflowId = useJanitorWorkflow ? config.STAKWORK_JANITOR_WORKFLOW_ID : config.STAKWORK_WORKFLOW_ID;
+  const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && workflowId;
   let stakworkData = null;
 
   if (useStakwork) {
@@ -252,6 +265,8 @@ async function createChatMessageAndTriggerStakwork(params: {
         poolName,
         repo2GraphUrl,
         attachments,
+        useJanitorWorkflow,
+        janitorType,
       });
 
       if (stakworkData.success) {
@@ -303,7 +318,8 @@ async function callStakworkAPI(params: {
   poolName: string | null;
   repo2GraphUrl: string;
   attachments?: string[];
-  mode?: string;
+  useJanitorWorkflow?: boolean;
+  janitorType?: string;
 }) {
   const { 
     taskId, 
@@ -316,10 +332,13 @@ async function callStakworkAPI(params: {
     poolName, 
     repo2GraphUrl,
     attachments = [],
-    mode = "default"
+    useJanitorWorkflow = false,
+    janitorType
   } = params;
 
-  if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
+  const workflowId = useJanitorWorkflow ? config.STAKWORK_JANITOR_WORKFLOW_ID : config.STAKWORK_WORKFLOW_ID;
+  
+  if (!config.STAKWORK_API_KEY || !workflowId) {
     throw new Error("Stakwork configuration missing");
   }
 
@@ -329,7 +348,7 @@ async function callStakworkAPI(params: {
   const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
   // Build vars object (replicating the vars structure from chat/message route)
-  const vars = {
+  const vars: any = {
     taskId,
     message,
     contextTags,
@@ -342,22 +361,14 @@ async function callStakworkAPI(params: {
     poolName,
     repo2graph_url: repo2GraphUrl,
     attachments,
-    taskMode: mode,
   };
 
-  // Get workflow ID (replicating workflow selection logic)
-  const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
-  
-  let workflowId: string;
-  if (mode === "live") {
-    workflowId = stakworkWorkflowIds[0];
-  } else if (mode === "unit") {
-    workflowId = stakworkWorkflowIds[2];
-  } else if (mode === "integration") {
-    workflowId = stakworkWorkflowIds[2];
-  } else {
-    workflowId = stakworkWorkflowIds[1] || stakworkWorkflowIds[0]; // default to test mode or first
+  // Add janitor type if using janitor workflow
+  if (useJanitorWorkflow && janitorType) {
+    vars.janitorType = janitorType;
   }
+
+  // Use the workflow ID determined earlier
 
   // Build Stakwork payload (replicating StakworkWorkflowPayload structure)
   const stakworkPayload = {
