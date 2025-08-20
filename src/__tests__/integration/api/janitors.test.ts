@@ -279,7 +279,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.error).toContain("Invalid janitor type");
     });
 
-    test("POST /api/workspaces/[slug]/janitors/[type]/run - should prevent concurrent runs", async () => {
+    test("POST /api/workspaces/[slug]/janitors/[type]/run - should allow concurrent runs", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       // Enable unit tests and create existing run
@@ -314,9 +314,10 @@ describe("Janitor API Integration Tests", () => {
         }),
       });
 
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(200);
       const responseData = await response.json();
-      expect(responseData.error).toContain("already in progress");
+      expect(responseData.success).toBe(true);
+      expect(responseData.run.janitorType).toBe("UNIT_TESTS");
     });
   });
 

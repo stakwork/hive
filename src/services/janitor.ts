@@ -115,18 +115,8 @@ export async function createJanitorRun(
     throw new Error(JANITOR_ERRORS.JANITOR_DISABLED);
   }
 
-  // Check for existing run in progress
-  const existingRun = await db.janitorRun.findFirst({
-    where: {
-      janitorConfigId: config.id,
-      janitorType,
-      status: { in: ["PENDING", "RUNNING"] }
-    }
-  });
-
-  if (existingRun) {
-    throw new Error(JANITOR_ERRORS.RUN_IN_PROGRESS);
-  }
+  // Allow multiple manual runs - concurrent check removed for manual triggers
+  // This will be replaced by cron scheduling in the future
 
   // First create the database record without stakwork project ID
   let janitorRun = await db.janitorRun.create({
@@ -237,14 +227,6 @@ export async function createJanitorRun(
 }
 
 
-/**
- * Get repository URLs for workspace
- */
-function getWorkspaceRepositoryUrls(workspace: any): string[] {
-  // This would extract repository URLs from the workspace
-  // For now, return empty array - this should be implemented based on your workspace model
-  return [];
-}
 
 /**
  * Get janitor runs with filters
