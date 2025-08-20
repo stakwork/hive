@@ -7,10 +7,10 @@ import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useToast } from "@/components/ui/use-toast";
 import { redirect } from "next/navigation";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
-import { InsightsHeader } from "@/components/insights/InsightsHeader";
+import { PageHeader } from "@/components/ui/page-header";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
 import { JanitorSection, JanitorItem } from "@/components/insights/JanitorSection";
-import { TestTube, Wrench, Shield, FlaskConical, Zap, Type, BookOpen, Package, GitPullRequest } from "lucide-react";
+import { BarChart3, TestTube, Wrench, Shield, FlaskConical, Zap, Type, BookOpen, Package, GitPullRequest } from "lucide-react";
 
 // Testing janitors - real data
 const testingJanitors: JanitorItem[] = [
@@ -269,7 +269,11 @@ export default function InsightsPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-8 max-w-4xl">
-      <InsightsHeader />
+      <PageHeader
+        title="Insights"
+        description="Automated codebase analysis and recommendations"
+        icon={BarChart3}
+      />
 
       <TestCoverageCard />
 
