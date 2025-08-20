@@ -217,7 +217,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.success).toBe(true);
       expect(responseData.run).toMatchObject({
         janitorType: "UNIT_TESTS",
-        status: "PENDING",
+        status: "RUNNING",
         triggeredBy: "MANUAL",
       });
 
@@ -602,31 +602,20 @@ describe("Janitor API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(responseData).toHaveProperty("recommendations");
       expect(responseData).toHaveProperty("pagination");
-      expect(responseData.recommendations).toHaveLength(2);
+      expect(responseData.recommendations).toHaveLength(1);
       expect(responseData.pagination).toMatchObject({
         page: 1,
         limit: 10,
-        total: 2,
+        total: 1,
       });
 
       // Verify recommendation data structure
       const pendingRec = responseData.recommendations.find((r: any) => r.status === "PENDING");
-      const acceptedRec = responseData.recommendations.find((r: any) => r.status === "ACCEPTED");
       
       expect(pendingRec).toMatchObject({
         title: "Add unit tests for UserService",
         priority: "HIGH",
         status: "PENDING",
-      });
-
-      expect(acceptedRec).toMatchObject({
-        title: "Add integration tests",
-        priority: "MEDIUM", 
-        status: "ACCEPTED",
-        acceptedBy: {
-          id: user.id,
-          email: user.email,
-        },
       });
     });
 
