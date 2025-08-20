@@ -18,6 +18,7 @@ import {
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
+import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -378,56 +379,41 @@ export async function acceptJanitorRecommendation(
     }
   }
 
-  // Use transaction to ensure consistency
-  return await db.$transaction(async (tx) => {
-    const updatedRecommendation = await tx.janitorRecommendation.update({
-      where: { id: recommendationId },
-      data: {
-        status: "ACCEPTED",
-        acceptedAt: new Date(),
-        acceptedById: userId,
-      }
-    });
-
-    const task = await tx.task.create({
-      data: {
-        title: recommendation.title,
-        description: recommendation.description,
-        workspaceId: recommendation.janitorRun.janitorConfig.workspace.id,
+  // Update recommendation status 
+  const updatedRecommendation = await db.janitorRecommendation.update({
+    where: { id: recommendationId },
+    data: {
+      status: "ACCEPTED",
+      acceptedAt: new Date(),
+      acceptedById: userId,
+      metadata: {
+        ...recommendation.metadata as object,
         assigneeId: options.assigneeId,
         repositoryId: options.repositoryId,
-        priority: recommendation.priority,
-        sourceType: "JANITOR",
-        createdById: userId,
-        updatedById: userId,
-      },
-      include: {
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          }
-        },
-        repository: {
-          select: {
-            id: true,
-            name: true,
-            repositoryUrl: true,
-          }
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          }
-        }
       }
-    });
-
-    return { recommendation: updatedRecommendation, task };
+    }
   });
+
+  // Create task and trigger Stakwork workflow using shared service
+  const message = `Task: ${recommendation.title}\n\nDescription: ${recommendation.description}\n\nThis task was created from a janitor recommendation. Please implement the requested changes.`;
+  
+  const taskResult = await createTaskWithStakworkWorkflow({
+    title: recommendation.title,
+    description: recommendation.description,
+    workspaceId: recommendation.janitorRun.janitorConfig.workspace.id,
+    assigneeId: options.assigneeId,
+    repositoryId: options.repositoryId,
+    priority: recommendation.priority,
+    sourceType: "JANITOR",
+    userId: userId,
+    initialMessage: message
+  });
+
+  return { 
+    recommendation: updatedRecommendation,
+    task: taskResult.task,
+    workflow: taskResult.stakworkResult
+  };
 }
 
 /**

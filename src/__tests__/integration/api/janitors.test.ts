@@ -831,6 +831,11 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.success).toBe(true);
       expect(responseData.task).toHaveProperty("id");
       expect(responseData.task.title).toBe("Add unit tests");
+      // Stakwork returns success and project_id immediately, actual results come via webhook
+      if (responseData.workflow) {
+        expect(responseData.workflow).toHaveProperty("success");
+        // May have project_id if Stakwork integration is configured
+      }
 
       // Verify database updates
       const updatedRecommendation = await db.janitorRecommendation.findUnique({
