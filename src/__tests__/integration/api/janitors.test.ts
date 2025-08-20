@@ -102,6 +102,10 @@ describe("Janitor API Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
+    // Set up required environment variables for tests
+    process.env.STAKWORK_API_KEY = "test-api-key";
+    process.env.STAKWORK_JANITOR_WORKFLOW_ID = "123";
+    
     // Set up default Stakwork service mock
     const mockStakworkRequest = vi.fn().mockResolvedValue({
       success: true,
