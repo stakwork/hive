@@ -10,13 +10,22 @@ import { POST as DismissRecommendation } from "@/app/api/janitors/recommendation
 import { POST as WebhookHandler } from "@/app/api/janitors/webhook/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
+import { stakworkService } from "@/lib/service-factory";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+// Mock Stakwork service
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: vi.fn(() => ({
+    stakworkRequest: vi.fn(),
+  })),
+}));
+
 const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
+const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
 describe("Janitor API Integration Tests", () => {
   async function createTestWorkspaceWithUser(role: WorkspaceRole = "OWNER") {
@@ -92,6 +101,16 @@ describe("Janitor API Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Set up default Stakwork service mock
+    const mockStakworkRequest = vi.fn().mockResolvedValue({
+      success: true,
+      data: { project_id: 123 }
+    });
+    
+    mockStakworkService.mockReturnValue({
+      stakworkRequest: mockStakworkRequest
+    } as any);
   });
 
   describe("Janitor Configuration", () => {

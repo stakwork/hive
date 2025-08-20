@@ -180,7 +180,7 @@ export async function createJanitorRun(
     );
 
     // Extract project ID from Stakwork response
-    const projectId = (stakworkProject as any)?.project_id;
+    const projectId = (stakworkProject as any)?.data?.project_id;
 
     if (!projectId) {
       throw new Error("No project ID returned from Stakwork");
