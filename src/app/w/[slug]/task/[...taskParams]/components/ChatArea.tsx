@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   ChatMessage as ChatMessageType,
   Option,
+  Artifact,
   WorkflowStatus,
 } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
@@ -24,6 +25,8 @@ interface ChatAreaProps {
   hasNonFormArtifacts?: boolean;
   isChainVisible?: boolean;
   lastLogLine?: string;
+  pendingDebugAttachment?: Artifact | null;
+  onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
 }
 
@@ -36,6 +39,8 @@ export function ChatArea({
   hasNonFormArtifacts = false,
   isChainVisible = false,
   lastLogLine = "",
+  pendingDebugAttachment = null,
+  onRemoveDebugAttachment,
   workflowStatus,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -115,6 +120,8 @@ export function ChatArea({
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}
+        pendingDebugAttachment={pendingDebugAttachment}
+        onRemoveDebugAttachment={onRemoveDebugAttachment}
         workflowStatus={workflowStatus}
       />
     </motion.div>

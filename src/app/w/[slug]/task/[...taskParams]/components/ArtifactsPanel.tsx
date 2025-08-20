@@ -8,9 +8,10 @@ import { CodeArtifactPanel, BrowserArtifactPanel } from "../artifacts";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
+  onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
 }
 
-export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -101,7 +102,7 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
               forceMount
               hidden={activeTab !== "BROWSER"}
             >
-              <BrowserArtifactPanel artifacts={browserArtifacts} />
+              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} />
             </TabsContent>
           )}
           {ideArtifacts.length > 0 && (
@@ -111,7 +112,7 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
               forceMount
               hidden={activeTab !== "IDE"}
             >
-              <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} />
+              <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} onDebugMessage={onDebugMessage} />
             </TabsContent>
           )}
         </motion.div>

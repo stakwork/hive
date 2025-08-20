@@ -136,10 +136,27 @@ export function generateLongformResponse() {
   ]);
 }
 
+export function generateBugReportResponse(artifacts: { type: string; content: unknown }[]) {
+  // Find BUG_REPORT artifacts
+  const bugReportArtifacts = artifacts?.filter(artifact => artifact.type === "BUG_REPORT") || [];
+  
+  if (bugReportArtifacts.length === 0) {
+    return makeRes("No debug information found in the request.");
+  }
+
+  return makeRes("Debug artifact received. A proper response will be returned once the source mapping feature is complete.");
+}
+
 export function generateResponseBasedOnMessage(
   message: string,
   mockBrowserUrl: string,
+  artifacts?: { type: string; content: unknown }[]
 ) {
+  // Check for BUG_REPORT artifacts first
+  if (artifacts && artifacts.some(artifact => artifact.type === "BUG_REPORT")) {
+    return generateBugReportResponse(artifacts);
+  }
+
   const messageText = message.toLowerCase();
 
   if (process.env.MOCK_BROWSER_URL) {

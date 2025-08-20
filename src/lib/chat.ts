@@ -51,9 +51,26 @@ export interface LongformContent {
   title?: string;
 }
 
+export interface BugReportContent {
+  bugDescription: string;
+  iframeUrl: string;
+  method: 'click' | 'selection';
+  sourceFiles: Array<{
+    file: string;
+    lines: number[];
+    context?: string;
+  }>;
+  coordinates?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent;
 }
 
 export interface Attachment extends PrismaAttachment {
@@ -103,7 +120,7 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

@@ -11,8 +11,14 @@ import {
   Target,
   Copy,
   FlaskConical,
+  Bug,
 } from "lucide-react";
-import { Artifact, BrowserContent } from "@/lib/chat";
+import {
+  Artifact,
+  BrowserContent,
+  BugReportContent,
+  ArtifactType,
+} from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import {
   Dialog,
@@ -101,15 +107,134 @@ function PlaywrightTestModal({
   );
 }
 
+interface DebugOverlayProps {
+  isActive: boolean;
+  isSubmitting: boolean;
+  onDebugSelection: (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => void;
+}
+
+function DebugOverlay({
+  isActive,
+  isSubmitting,
+  onDebugSelection,
+}: DebugOverlayProps) {
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectionCurrent, setSelectionCurrent] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  if (!isActive) return null;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setIsSelecting(true);
+    setSelectionStart({ x, y });
+    setSelectionCurrent({ x, y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isSelecting || !selectionStart) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setSelectionCurrent({ x, y });
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (!selectionStart) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const endX = e.clientX - rect.left;
+    const endY = e.clientY - rect.top;
+
+    // Calculate selection area (works for both clicks and drags)
+    const x = Math.min(selectionStart.x, endX);
+    const y = Math.min(selectionStart.y, endY);
+    const width = Math.abs(endX - selectionStart.x);
+    const height = Math.abs(endY - selectionStart.y);
+
+    onDebugSelection(x, y, width, height);
+
+    // Reset selection state
+    setIsSelecting(false);
+    setSelectionStart(null);
+    setSelectionCurrent(null);
+  };
+
+  const getSelectionStyle = () => {
+    if (!isSelecting || !selectionStart || !selectionCurrent) return {};
+
+    const x = Math.min(selectionStart.x, selectionCurrent.x);
+    const y = Math.min(selectionStart.y, selectionCurrent.y);
+    const width = Math.abs(selectionCurrent.x - selectionStart.x);
+    const height = Math.abs(selectionCurrent.y - selectionStart.y);
+
+    return {
+      left: x,
+      top: y,
+      width,
+      height,
+    };
+  };
+
+  return (
+    <div
+      className="absolute inset-0 z-10 cursor-crosshair"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      style={{ backgroundColor: "rgba(59, 130, 246, 0.1)" }}
+    >
+      {/* Selection rectangle (only show if actively selecting and has some size) */}
+      {isSelecting && selectionStart && selectionCurrent && (
+        <div
+          className="absolute border-2 border-blue-500 bg-blue-200/20"
+          style={getSelectionStyle()}
+        />
+      )}
+
+      {/* Debug mode indicator */}
+      <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
+        {isSubmitting ? (
+          <>⏳ Sending debug info...</>
+        ) : (
+          <>🐛 Debug Mode: Click or drag to identify elements</>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BrowserArtifactPanel({
   artifacts,
   ide,
+  onDebugMessage,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
+  onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  
+  // Debug state
+  const [debugMode, setDebugMode] = useState(false);
+  const [isSubmittingDebug, setIsSubmittingDebug] = useState(false);
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -159,6 +284,166 @@ export function BrowserArtifactPanel({
     }
   };
 
+  // Tab change handler
+  const handleTabChange = (newTab: number) => {
+    setActiveTab(newTab);
+    if (debugMode) {
+      setDebugMode(false);
+    }
+  };
+
+  // Debug handlers
+  const handleDebugElement = () => {
+    setDebugMode(!debugMode);
+  };
+
+  const handleDebugSelection = async (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => {
+    const activeArtifact = artifacts[activeTab];
+    const content = activeArtifact.content as BrowserContent;
+
+    setIsSubmittingDebug(true);
+
+    try {
+      // Get the iframe element for the active tab
+      const iframeElement = iframeRef.current;
+      if (!iframeElement) {
+        throw new Error("Iframe not found");
+      }
+
+      // Create unique message ID for tracking responses
+      const messageId = `debug-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+      // Set up response listener
+      const responsePromise = new Promise<
+        Array<{ file: string; lines: number[]; context?: string }>
+      >((resolve) => {
+        const timeout = setTimeout(() => {
+          // If postMessage fails, use empty source files array
+          resolve([]);
+        }, 10000); // 10 second timeout
+
+        const handleMessage = (event: MessageEvent) => {
+          // Verify origin matches iframe URL for security
+          const iframeOrigin = new URL(content.url).origin;
+          if (event.origin !== iframeOrigin) return;
+
+          if (
+            event.data?.type === "staktrak-debug-response" &&
+            event.data?.messageId === messageId
+          ) {
+            clearTimeout(timeout);
+            window.removeEventListener("message", handleMessage);
+
+            if (event.data.success) {
+              resolve(event.data.sourceFiles || []);
+            } else {
+              resolve([]); // Graceful fallback on error
+            }
+          }
+        };
+
+        window.addEventListener("message", handleMessage);
+      });
+
+      // Send coordinates to iframe via postMessage
+      iframeElement.contentWindow?.postMessage(
+        {
+          type: "staktrak-debug-request",
+          messageId,
+          coordinates: { x, y, width, height },
+        },
+        new URL(content.url).origin,
+      );
+
+      // Wait for response from iframe
+      const sourceFiles = await responsePromise;
+
+      // Create BugReportContent artifact with PLACEHOLDER DATA
+      const bugReportContent: BugReportContent = {
+        bugDescription:
+          width === 0 && height === 0
+            ? `Debug click at coordinates (${x}, ${y})`
+            : `Debug selection area ${width}×${height} at coordinates (${x}, ${y})`,
+        iframeUrl: content.url,
+        method: width === 0 && height === 0 ? "click" : "selection",
+        sourceFiles: sourceFiles.length > 0 ? sourceFiles : [
+          {
+            file: "Source mapping will be available in future update",
+            lines: [],
+            context: "Debug UI preview - actual source mapping implementation coming soon"
+          }
+        ],
+        coordinates: { x, y, width, height },
+      };
+
+      // Create debug artifact
+      const debugArtifact: Artifact = {
+        id: `debug-${Date.now()}`,
+        messageId: "", // Will be set by chat system
+        type: ArtifactType.BUG_REPORT,
+        content: bugReportContent,
+        icon: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Send artifact without visible chat message (debug attachment will appear directly)
+      if (onDebugMessage) {
+        await onDebugMessage("", debugArtifact); // Empty message - no chat bubble will be created
+      }
+
+      // Auto-disable debug mode after successful interaction
+      setDebugMode(false);
+    } catch (error) {
+      console.error("Failed to process debug selection:", error);
+
+      // Fallback: create debug artifact with error info
+      const bugReportContent: BugReportContent = {
+        bugDescription: `Debug ${width === 0 && height === 0 ? "click" : "selection"} failed - communication error with iframe`,
+        iframeUrl: content.url,
+        method: width === 0 && height === 0 ? "click" : "selection",
+        sourceFiles: [
+          {
+            file: "Source mapping will be available in future update",
+            lines: [],
+            context: "Debug UI preview - actual source mapping implementation coming soon"
+          }
+        ],
+        coordinates: { x, y, width, height },
+      };
+
+      const debugArtifact: Artifact = {
+        id: `debug-error-${Date.now()}`,
+        messageId: "",
+        type: ArtifactType.BUG_REPORT,
+        content: bugReportContent,
+        icon: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      if (onDebugMessage) {
+        try {
+          await onDebugMessage(
+            `🐛 Debug element analysis (with errors)`,
+            debugArtifact,
+          );
+          setDebugMode(false);
+        } catch (chatError) {
+          console.error("Failed to send fallback debug message:", chatError);
+          // Keep debug mode active on error so user can retry
+        }
+      }
+    } finally {
+      setIsSubmittingDebug(false);
+    }
+  };
+
   if (artifacts.length === 0) return null;
 
   return (
@@ -169,7 +454,7 @@ export function BrowserArtifactPanel({
             {artifacts.map((artifact, index) => (
               <button
                 key={artifact.id}
-                onClick={() => setActiveTab(index)}
+                onClick={() => handleTabChange(index)}
                 className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                   activeTab === index
                     ? "border-primary text-primary bg-background"
@@ -275,6 +560,22 @@ export function BrowserArtifactPanel({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
+                            variant={debugMode ? "default" : "ghost"}
+                            size="sm"
+                            onClick={handleDebugElement}
+                            className="h-8 w-8 p-0"
+                            title="Debug Element"
+                          >
+                            <Bug className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Debug Element</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleTabOut(tabUrl)}
@@ -306,7 +607,7 @@ export function BrowserArtifactPanel({
                   </div>
                 </div>
               )}
-              <div className="flex-1 overflow-hidden min-h-0 min-w-0">
+              <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
@@ -314,6 +615,14 @@ export function BrowserArtifactPanel({
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                 />
+                {/* Debug overlay - only active for the current tab */}
+                {isActive && (
+                  <DebugOverlay
+                    isActive={debugMode}
+                    isSubmitting={isSubmittingDebug}
+                    onDebugSelection={handleDebugSelection}
+                  />
+                )}
               </div>
             </div>
           );
