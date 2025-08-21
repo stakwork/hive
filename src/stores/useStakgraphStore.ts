@@ -31,6 +31,7 @@ const initialState = {
   initialLoading: true,
   saved: false,
   envVars: [] as Array<{ name: string; value: string; show?: boolean }>,
+  hashStatus: null,
 };
 
 type StakgraphStore = {
@@ -41,6 +42,14 @@ type StakgraphStore = {
   initialLoading: boolean;
   saved: boolean;
   envVars: Array<{ name: string; value: string; show?: boolean }>;
+  hashStatus: {
+    storedHash: string | null;
+    latestHash: string | null;
+    needsSync: boolean;
+    lastSync: Date | null;
+    latestCommitDate: Date | null;
+    branch: string | null;
+  } | null;
 
   // Actions
   loadSettings: (slug: string) => Promise<void>;
@@ -48,6 +57,8 @@ type StakgraphStore = {
     slug: string,
     toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void,
   ) => Promise<void>;
+  checkHashStatus: (slug: string) => Promise<void>;
+  refreshHash: (slug: string) => Promise<void>;
   resetForm: () => void;
 
   // Form change handlers
@@ -138,6 +149,8 @@ export const useStakgraphStore = create<StakgraphStore>()(
               );
               set({ envVars: newEnvVars });
             }
+
+            await get().checkHashStatus(slug);
           }
         } else if (response.status === 404) {
           // No swarm found - this is expected for workspaces without swarms
@@ -413,6 +426,39 @@ export const useStakgraphStore = create<StakgraphStore>()(
     setLoading: (loading) => set({ loading }),
     setInitialLoading: (loading) => set({ initialLoading: loading }),
     setSaved: (saved) => set({ saved }),
+    checkHashStatus: async (slug: string) => {
+      try {
+        const response = await fetch(
+          `/api/workspaces/${slug}/stakgraph/hash-status`,
+        );
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            set({ hashStatus: result.data });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to check hash status:", error);
+      }
+    },
+    refreshHash: async (slug: string) => {
+      try {
+        const response = await fetch(
+          `/api/workspaces/${slug}/stakgraph/refresh-hash`,
+          {
+            method: "POST",
+          },
+        );
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            await get().checkHashStatus(slug);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to refresh hash:", error);
+      }
+    },
     resetForm: () => set(initialState),
   })),
 );

@@ -1,3 +1,100 @@
+export async function fetchLatestCommitHash(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  branch: string = "main",
+): Promise<{ hash: string; date: Date } | null> {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=1`,
+      {
+        headers: {
+          Authorization: `token ${accessToken}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const commits = await response.json();
+    const latestCommit = commits[0];
+
+    if (!latestCommit) {
+      return null;
+    }
+
+    return {
+      hash: latestCommit.sha,
+      date: new Date(latestCommit.commit.author.date),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function ensureRepoWebhook(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  webhookUrl: string,
+  webhookSecret: string,
+): Promise<boolean> {
+  try {
+    const existingWebhooks = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/hooks`,
+      {
+        headers: {
+          Authorization: `token ${accessToken}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      },
+    );
+
+    if (!existingWebhooks.ok) {
+      return false;
+    }
+
+    const webhooks = await existingWebhooks.json();
+    const existingWebhook = webhooks.find(
+      (hook: { config: { url: string } }) => hook.config.url === webhookUrl,
+    );
+
+    if (existingWebhook) {
+      return true;
+    }
+
+    const webhookData = {
+      name: "web",
+      active: true,
+      events: ["push", "pull_request"],
+      config: {
+        url: webhookUrl,
+        content_type: "json",
+        secret: webhookSecret,
+      },
+    };
+
+    const createResponse = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/hooks`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `token ${accessToken}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+        body: JSON.stringify(webhookData),
+      },
+    );
+
+    return createResponse.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function listRepoHooks(
   token: string,
   owner: string,
