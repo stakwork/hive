@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+    const clone = searchParams.get("clone");
+
     const swarmId = searchParams.get("swarmId");
     if (!workspaceId || !swarmId) {
       return NextResponse.json(
@@ -57,6 +59,7 @@ export async function GET(request: NextRequest) {
       swarmUrl: `https://${getSwarmVanityAddress(swarm.name)}:3355`,
       endpoint: "/services",
       method: "GET",
+      params: { clone },
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 

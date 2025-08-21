@@ -7,9 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { 
-  BarChart3, 
-  CheckCircle2, 
+import {
+  BarChart3,
+  CheckCircle2,
   Clock,
   TestTube,
   Shield,
@@ -39,7 +39,7 @@ const topSuggestions = [
   },
   {
     id: "2",
-    priority: "medium", 
+    priority: "medium",
     title: "Split UserDashboard into smaller components",
     description: "This 450-line component could be more maintainable as 3 focused components",
     impact: "Easier to maintain and test",
@@ -156,21 +156,21 @@ export default function InsightsPage() {
                     {getPriorityBadge(suggestion.priority)}
                   </div>
                 </div>
-                
+
                 <p className="text-xs text-muted-foreground mb-3">{suggestion.description}</p>
-                
+
                 <div className="flex items-center justify-start">
                   <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
+                    <Button
+                      size="sm"
+                      variant="outline"
                       className="h-7 text-xs"
                       onClick={() => handleDismiss(suggestion.id)}
                     >
                       Dismiss
                     </Button>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       className="h-7 text-xs"
                       onClick={() => handleAccept(suggestion.id)}
                     >
@@ -181,12 +181,12 @@ export default function InsightsPage() {
               </div>
             );
           })}
-          
+
           {visibleSuggestions.length > 3 && !showAll && (
             <div className="pt-2 text-center">
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowAll(true)}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
@@ -194,7 +194,7 @@ export default function InsightsPage() {
               </Button>
             </div>
           )}
-          
+
           {visibleSuggestions.length === 0 && (
             <div className="text-center py-8">
               <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
@@ -220,22 +220,20 @@ export default function InsightsPage() {
             {agents.map((agent) => {
               const Icon = agent.icon;
               const isOn = agentStates[agent.id];
-              
+
               return (
                 <div key={agent.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
                   <div className="flex items-center space-x-3 flex-1">
-                    <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${
-                      isOn 
-                        ? 'bg-green-50 border-green-200' 
-                        : 'bg-background border-gray-200'
-                    }`}>
-                      <Icon className={`h-4 w-4 ${
-                        isOn 
-                          ? 'text-green-600' 
-                          : 'text-muted-foreground'
-                      }`} />
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${isOn
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-background border-gray-200'
+                      }`}>
+                      <Icon className={`h-4 w-4 ${isOn
+                        ? 'text-green-600'
+                        : 'text-muted-foreground'
+                        }`} />
                     </div>
-                    
+
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-1">
                         <span className="font-medium text-sm">{agent.name}</span>
@@ -244,7 +242,7 @@ export default function InsightsPage() {
                       <p className="text-xs text-muted-foreground">{agent.description}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-3">
                     {getStatusIcon(isOn)}
                     <Switch
