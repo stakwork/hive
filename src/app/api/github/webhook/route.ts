@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
       repository.githubWebhookSecret,
     );
 
-    const expected = computeHmacSha256Hex(secret, rawBody);
+    const expectedDigest = computeHmacSha256Hex(secret, rawBody);
+    const expected = `sha256=${expectedDigest}`;
 
     if (!timingSafeEqual(expected, signature)) {
       console.error("Signature mismatch");
