@@ -9,6 +9,7 @@ import {
 import { ToastProps } from "@/components/ui/toast";
 import { EnvironmentVariable } from "@/types/wizard";
 import { getPM2AppsContent } from "@/utils/devContainerUtils";
+import { createRequestManager, isAbortError } from "@/utils/request-manager";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
@@ -35,33 +36,7 @@ const initialState = {
   currentWorkspaceSlug: null as string | null,
 };
 
-class RequestManager {
-  private controller: AbortController | null = null;
-
-  abort() {
-    if (this.controller) {
-      this.controller.abort();
-      this.controller = null;
-    }
-  }
-
-  getSignal() {
-    this.abort();
-    this.controller = new AbortController();
-    return this.controller.signal;
-  }
-
-  isAborted() {
-    return this.controller?.signal.aborted ?? false;
-  }
-
-  reset() {
-    this.abort();
-    this.controller = null;
-  }
-}
-
-const requestManager = new RequestManager();
+const requestManager = createRequestManager();
 
 type StakgraphStore = {
   // State
@@ -191,12 +166,14 @@ export const useStakgraphStore = create<StakgraphStore>()(
           console.error("Failed to load stakgraph settings");
         }
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError")
+        if (isAbortError(error)) {
           return;
+        }
         console.error("Error loading stakgraph settings:", error);
       } finally {
-        if (requestManager.isAborted() || get().currentWorkspaceSlug !== slug)
+        if (requestManager.isAborted() || get().currentWorkspaceSlug !== slug) {
           return;
+        }
 
         set({ initialLoading: false });
       }
