@@ -53,12 +53,6 @@ export interface JanitorRecommendationFilters {
   page?: number;
 }
 
-export interface CronConfiguration {
-  enabled: boolean;
-  schedule: string;
-  secret: string;
-}
-
 export interface CronExecutionResult {
   success: boolean;
   workspacesProcessed: number;
@@ -75,7 +69,7 @@ export interface CronExecutionResult {
 export interface CronHealthCheck {
   enabled: boolean;
   schedule: string;
-  scheduleValid: boolean;
+  scheduleSource: string;
   timestamp: string;
 }
 

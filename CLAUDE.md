@@ -179,7 +179,7 @@ NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION=true
 ### Janitor Cron Jobs
 Automated janitor runs via Vercel cron jobs. Configure with:
 - `JANITOR_CRON_ENABLED=true` - Enable automation
-- `JANITOR_CRON_SCHEDULE="0 */6 * * *"` - Schedule (every 6 hours)
 - `CRON_SECRET="token"` - Endpoint security
+- Schedule configured in `vercel.json` (currently every 6 hours: `"0 */6 * * *"`)
 
 Endpoint: `/api/cron/janitors` (processes all enabled workspaces)

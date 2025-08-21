@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
-import * as cron from "node-cron";
 
 export interface CronExecutionResult {
   success: boolean;
@@ -55,23 +54,6 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
   });
 }
 
-/**
- * Check if there are any pending or running janitor runs for a workspace
- */
-export async function hasActiveJanitorRuns(
-  janitorConfigId: string, 
-  janitorType: JanitorType
-): Promise<boolean> {
-  const activeRun = await db.janitorRun.findFirst({
-    where: {
-      janitorConfigId,
-      janitorType,
-      status: { in: ["PENDING", "RUNNING"] }
-    }
-  });
-
-  return !!activeRun;
-}
 
 /**
  * Execute scheduled janitor runs across all enabled workspaces
@@ -106,15 +88,9 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       // Process unit tests janitor if enabled
       if (janitorConfig.unitTestsEnabled) {
         try {
-          const hasActive = await hasActiveJanitorRuns(janitorConfig.id, "UNIT_TESTS");
-          
-          if (!hasActive) {
-            console.log(`[JanitorCron] Creating UNIT_TESTS run for workspace ${slug}`);
-            await createJanitorRun(slug, ownerId, "unit_tests", "SCHEDULED");
-            result.runsCreated++;
-          } else {
-            console.log(`[JanitorCron] Skipping UNIT_TESTS for workspace ${slug}: run already active`);
-          }
+          console.log(`[JanitorCron] Creating UNIT_TESTS run for workspace ${slug}`);
+          await createJanitorRun(slug, ownerId, "unit_tests", "SCHEDULED");
+          result.runsCreated++;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[JanitorCron] Error creating UNIT_TESTS run for workspace ${slug}:`, errorMessage);
@@ -130,15 +106,9 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       // Process integration tests janitor if enabled
       if (janitorConfig.integrationTestsEnabled) {
         try {
-          const hasActive = await hasActiveJanitorRuns(janitorConfig.id, "INTEGRATION_TESTS");
-          
-          if (!hasActive) {
-            console.log(`[JanitorCron] Creating INTEGRATION_TESTS run for workspace ${slug}`);
-            await createJanitorRun(slug, ownerId, "integration_tests", "SCHEDULED");
-            result.runsCreated++;
-          } else {
-            console.log(`[JanitorCron] Skipping INTEGRATION_TESTS for workspace ${slug}: run already active`);
-          }
+          console.log(`[JanitorCron] Creating INTEGRATION_TESTS run for workspace ${slug}`);
+          await createJanitorRun(slug, ownerId, "integration_tests", "SCHEDULED");
+          result.runsCreated++;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[JanitorCron] Error creating INTEGRATION_TESTS run for workspace ${slug}:`, errorMessage);
@@ -166,52 +136,4 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
   }
 
   return result;
-}
-
-/**
- * Validate cron expression using node-cron
- */
-export function validateCronExpression(expression: string): boolean {
-  return cron.validate(expression);
-}
-
-/**
- * Get human-readable description of cron schedule
- */
-export function describeCronSchedule(expression: string): string {
-  if (!validateCronExpression(expression)) {
-    return "Invalid cron expression";
-  }
-
-  // Common patterns
-  const patterns = [
-    { pattern: "0 * * * *", description: "Every hour" },
-    { pattern: "0 */2 * * *", description: "Every 2 hours" },
-    { pattern: "0 */6 * * *", description: "Every 6 hours" },
-    { pattern: "0 */12 * * *", description: "Every 12 hours" },
-    { pattern: "0 0 * * *", description: "Daily at midnight" },
-    { pattern: "0 2 * * *", description: "Daily at 2:00 AM" },
-    { pattern: "0 9 * * 1", description: "Every Monday at 9:00 AM" },
-    { pattern: "0 0 * * 0", description: "Every Sunday at midnight" }
-  ];
-
-  const match = patterns.find(p => p.pattern === expression);
-  if (match) {
-    return match.description;
-  }
-
-  // Parse the expression parts
-  const parts = expression.split(" ");
-  if (parts.length !== 5) {
-    return "Custom schedule";
-  }
-
-  const [minute, hour] = parts;
-  
-  if (minute === "0" && hour.startsWith("*/")) {
-    const interval = hour.slice(2);
-    return `Every ${interval} hours`;
-  }
-
-  return "Custom schedule";
 }

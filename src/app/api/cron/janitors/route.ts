@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { executeScheduledJanitorRuns, validateCronExpression } from "@/services/janitor-cron";
+import { executeScheduledJanitorRuns } from "@/services/janitor-cron";
+import fs from "fs";
+import path from "path";
 
 /**
  * Cron endpoint for automated janitor execution
@@ -111,13 +113,23 @@ export async function GET(request: NextRequest) {
     }
 
     const cronEnabled = process.env.JANITOR_CRON_ENABLED === "true";
-    const cronSchedule = process.env.JANITOR_CRON_SCHEDULE || "Not configured";
-    const isValidSchedule = cronSchedule !== "Not configured" ? validateCronExpression(cronSchedule) : false;
+    
+    // Read schedule from vercel.json
+    let cronSchedule = "Not configured";
+    try {
+      const vercelPath = path.join(process.cwd(), "vercel.json");
+      const vercelConfig = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
+      const janitorCron = vercelConfig.crons?.find((cron: any) => cron.path === "/api/cron/janitors");
+      cronSchedule = janitorCron?.schedule || "Not found in vercel.json";
+    } catch (error) {
+      console.error("[CronAPI] Error reading vercel.json:", error);
+      cronSchedule = "Error reading vercel.json";
+    }
 
     return NextResponse.json({
       enabled: cronEnabled,
       schedule: cronSchedule,
-      scheduleValid: isValidSchedule,
+      scheduleSource: "vercel.json",
       timestamp: new Date().toISOString()
     });
 
