@@ -175,3 +175,11 @@ NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION=true
 ```
 
 **Important:** Next.js client-side feature flags require `NEXT_PUBLIC_` prefix and explicit environment variable references due to build-time optimization. When adding new features, update the switch statement in `/src/lib/feature-flags.ts`.
+
+### Janitor Cron Jobs
+Automated janitor runs via Vercel cron jobs. Configure with:
+- `JANITOR_CRON_ENABLED=true` - Enable automation
+- `JANITOR_CRON_SCHEDULE="0 */6 * * *"` - Schedule (every 6 hours)
+- `CRON_SECRET="token"` - Endpoint security
+
+Endpoint: `/api/cron/janitors` (processes all enabled workspaces)

@@ -53,4 +53,30 @@ export interface JanitorRecommendationFilters {
   page?: number;
 }
 
+export interface CronConfiguration {
+  enabled: boolean;
+  schedule: string;
+  secret: string;
+}
+
+export interface CronExecutionResult {
+  success: boolean;
+  workspacesProcessed: number;
+  runsCreated: number;
+  errorCount: number;
+  errors: Array<{
+    workspaceSlug: string;
+    janitorType: JanitorType;
+    error: string;
+  }>;
+  timestamp: string;
+}
+
+export interface CronHealthCheck {
+  enabled: boolean;
+  schedule: string;
+  scheduleValid: boolean;
+  timestamp: string;
+}
+
 export { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus };
