@@ -17,32 +17,6 @@ export const JANITOR_ERRORS = {
   WORKSPACE_NOT_FOUND: "Workspace not found or access denied",
 } as const;
 
-// Janitor permission levels removed - using standard workspace permissions instead
-
-/**
- * Janitor type display names
- */
-export const JANITOR_TYPE_DISPLAY_NAMES: Record<JanitorType, string> = {
-  UNIT_TESTS: "Unit Tests",
-  INTEGRATION_TESTS: "Integration Tests",
-} as const;
-
-/**
- * Janitor type descriptions
- */
-export const JANITOR_TYPE_DESCRIPTIONS: Record<JanitorType, string> = {
-  UNIT_TESTS: "Identify missing unit tests.",
-  INTEGRATION_TESTS: "Identify missing integration tests.",
-} as const;
-
-/**
- * Janitor type icons for UI components
- */
-export const JANITOR_TYPE_ICONS: Record<JanitorType, LucideIcon> = {
-  UNIT_TESTS: FlaskConical,
-  INTEGRATION_TESTS: Zap,
-} as const;
-
 /**
  * Type representing the enabled fields in JanitorConfig
  * Update this when adding new janitor types to the database schema
@@ -53,19 +27,33 @@ export interface JanitorConfigFields {
 }
 
 /**
- * Central mapping between JanitorType enum values and database column names
- * This ensures consistency across the codebase when working with janitor configurations
+ * Complete janitor type configuration
  */
-export const JANITOR_TYPE_TO_ENABLED_FIELD: Record<JanitorType, keyof JanitorConfigFields> = {
-  UNIT_TESTS: "unitTestsEnabled",
-  INTEGRATION_TESTS: "integrationTestsEnabled",
+export const JANITOR_CONFIG: Record<JanitorType, {
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  enabledField: keyof JanitorConfigFields;
+}> = {
+  UNIT_TESTS: {
+    name: "Unit Tests",
+    description: "Identify missing unit tests.",
+    icon: FlaskConical,
+    enabledField: "unitTestsEnabled",
+  },
+  INTEGRATION_TESTS: {
+    name: "Integration Tests", 
+    description: "Identify missing integration tests.",
+    icon: Zap,
+    enabledField: "integrationTestsEnabled",
+  },
 } as const;
 
 /**
  * Get the database field name for a given janitor type
  */
 export function getEnabledFieldName(janitorType: JanitorType): keyof JanitorConfigFields {
-  return JANITOR_TYPE_TO_ENABLED_FIELD[janitorType];
+  return JANITOR_CONFIG[janitorType].enabledField;
 }
 
 /**
@@ -92,12 +80,13 @@ export function getEnabledJanitorTypes(janitorConfig: JanitorConfigFields): Jani
  * Create a complete janitor item configuration for UI components
  */
 export function createJanitorItem(janitorType: JanitorType) {
+  const config = JANITOR_CONFIG[janitorType];
   return {
     id: janitorType,
-    name: JANITOR_TYPE_DISPLAY_NAMES[janitorType],
-    icon: JANITOR_TYPE_ICONS[janitorType],
-    description: JANITOR_TYPE_DESCRIPTIONS[janitorType],
-    configKey: getEnabledFieldName(janitorType),
+    name: config.name,
+    icon: config.icon,
+    description: config.description,
+    configKey: config.enabledField,
   };
 }
 
@@ -113,7 +102,7 @@ export function getAllJanitorItems() {
  */
 export function createEnabledJanitorWhereConditions() {
   return Object.values(JanitorType).map(janitorType => ({
-    [getEnabledFieldName(janitorType)]: true
+    [JANITOR_CONFIG[janitorType].enabledField]: true
   }));
 }
 
@@ -158,5 +147,5 @@ export function getPriorityConfig(priority: Priority) {
  * Get icon component for a janitor type
  */
 export function getJanitorIcon(janitorType: JanitorType) {
-  return JANITOR_TYPE_ICONS[janitorType];
+  return JANITOR_CONFIG[janitorType].icon;
 }
