@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { redirect } from "next/navigation";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useInsightsStore } from "@/stores/useInsightsStore";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
@@ -44,19 +46,25 @@ const securityJanitors: JanitorItem[] = [
 
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
-  
-  // Trigger for refreshing recommendations
-  const [recommendationsRefreshTrigger, setRecommendationsRefreshTrigger] = useState(0);
+  const { workspace } = useWorkspace();
+  const { fetchRecommendations, fetchJanitorConfig, reset } = useInsightsStore();
 
   if (!canAccessInsights) {
     redirect("/");
   }
 
-  // Callback for refreshing recommendations from child components
-  const handleRecommendationsUpdate = () => {
-    // Increment trigger to force RecommendationsSection to re-fetch data
-    setRecommendationsRefreshTrigger(prev => prev + 1);
-  };
+  // Initialize store data on mount
+  useEffect(() => {
+    if (workspace?.slug) {
+      fetchRecommendations(workspace.slug);
+      fetchJanitorConfig(workspace.slug);
+    }
+    
+    // Reset store when component unmounts or workspace changes
+    return () => {
+      reset();
+    };
+  }, [workspace?.slug, fetchRecommendations, fetchJanitorConfig, reset]);
 
 
 
@@ -70,14 +78,13 @@ export default function InsightsPage() {
 
       <TestCoverageCard />
 
-      <RecommendationsSection refreshTrigger={recommendationsRefreshTrigger} />
+      <RecommendationsSection />
 
       <JanitorSection
         title="Testing"
         description="Automated testing recommendations and coverage analysis"
         icon={<TestTube className="h-5 w-5 text-blue-500" />}
         janitors={testingJanitors}
-        onRecommendationsUpdate={handleRecommendationsUpdate}
       />
 
       <JanitorSection

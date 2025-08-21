@@ -1,88 +1,48 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, TestTube, Wrench, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useInsightsStore } from "@/stores/useInsightsStore";
 
-interface Recommendation {
-  id: string;
-  title: string;
-  description: string;
-  impact?: string;
-  priority: string;
-  janitorRun?: {
-    type: string;
-  };
-}
-
-interface RecommendationsSectionProps {
-  // Optional trigger to refresh recommendations
-  refreshTrigger?: number;
-}
-
-export function RecommendationsSection({ refreshTrigger }: RecommendationsSectionProps = {}) {
+export function RecommendationsSection() {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set<string>());
-  const [showAll, setShowAll] = useState(false);
+  
+  // Get state and actions from store
+  const {
+    recommendations,
+    recommendationsLoading: loading,
+    dismissedSuggestions,
+    showAll,
+    fetchRecommendations,
+    acceptRecommendation,
+    dismissRecommendation,
+    setShowAll
+  } = useInsightsStore();
 
-  // Fetch recommendations
+  // Fetch recommendations on mount
   useEffect(() => {
-    if (!workspace?.slug) return;
-    
-    const fetchRecommendations = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/recommendations?limit=3`);
-        if (response.ok) {
-          const data = await response.json();
-          setRecommendations(data.recommendations);
-        }
-      } catch (error) {
-        console.error("Error fetching recommendations:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchRecommendations();
-  }, [workspace?.slug, refreshTrigger]);
+    if (workspace?.slug) {
+      fetchRecommendations(workspace.slug);
+    }
+  }, [workspace?.slug, fetchRecommendations]);
 
   const handleAccept = async (recommendationId: string) => {
     try {
-      const response = await fetch(`/api/janitors/recommendations/${recommendationId}/accept`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      
-      if (response.ok) {
-        setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
-        const result = await response.json();
-        if (result.task) {
-          toast({
-            title: "Recommendation accepted!",
-            description: "Task created successfully. You can view it in the tasks section.",
-          });
-        }
-      } else {
-        const error = await response.json();
-        console.error("Accept failed:", error);
+      const result = await acceptRecommendation(recommendationId);
+      if (result.task) {
         toast({
-          title: "Failed to accept recommendation",
-          description: error.error || "Unknown error",
-          variant: "destructive",
+          title: "Recommendation accepted!",
+          description: "Task created successfully. You can view it in the tasks section.",
         });
       }
     } catch (error) {
-      console.error("Error accepting recommendation:", error);
       toast({
         title: "Failed to accept recommendation",
-        description: "Please try again.",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
     }
@@ -90,33 +50,15 @@ export function RecommendationsSection({ refreshTrigger }: RecommendationsSectio
 
   const handleDismiss = async (recommendationId: string) => {
     try {
-      const response = await fetch(`/api/janitors/recommendations/${recommendationId}/dismiss`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      
-      if (response.ok) {
-        setDismissedSuggestions(prev => new Set([...prev, recommendationId]));
-        await response.json();
-        toast({
-          title: "Recommendation dismissed",
-          description: "Recommendation has been removed from your list.",
-        });
-      } else {
-        const error = await response.json();
-        console.error("Dismiss failed:", error);
-        toast({
-          title: "Failed to dismiss recommendation",
-          description: error.error || "Unknown error",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error dismissing recommendation:", error);
+      await dismissRecommendation(recommendationId);
       toast({
-        title: "Failed to dismiss recommendation", 
-        description: "Please try again.",
+        title: "Recommendation dismissed",
+        description: "Recommendation has been removed from your list.",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to dismiss recommendation",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
     }

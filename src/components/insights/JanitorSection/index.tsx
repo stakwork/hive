@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { LucideIcon, Loader2, Play, Clock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useInsightsStore } from "@/stores/useInsightsStore";
 
 export interface JanitorItem {
   id: string;
@@ -22,8 +23,6 @@ export interface JanitorSectionProps {
   icon: ReactNode;
   janitors: JanitorItem[];
   comingSoon?: boolean;
-  // Optional callback when recommendations are updated
-  onRecommendationsUpdate?: () => void;
 }
 
 const getStatusBadge = (isOn: boolean, comingSoon: boolean) => {
@@ -37,36 +36,27 @@ export function JanitorSection({
   description,
   icon,
   janitors,
-  comingSoon = false,
-  onRecommendationsUpdate
+  comingSoon = false
 }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
-  const [janitorConfig, setJanitorConfig] = useState<Record<string, boolean> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [runningJanitors, setRunningJanitors] = useState<Set<string>>(new Set());
+  
+  // Get state and actions from store
+  const {
+    janitorConfig,
+    loading,
+    runningJanitors,
+    fetchJanitorConfig,
+    toggleJanitor,
+    runJanitor
+  } = useInsightsStore();
 
   // Fetch janitor config for real janitors
   useEffect(() => {
-    if (!workspace?.slug || comingSoon) return;
-    
-    const fetchConfig = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/config`);
-        if (response.ok) {
-          const data = await response.json();
-          setJanitorConfig(data.config);
-        }
-      } catch (error) {
-        console.error("Error fetching janitor config:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchConfig();
-  }, [workspace?.slug, comingSoon]);
+    if (workspace?.slug && !comingSoon) {
+      fetchJanitorConfig(workspace.slug);
+    }
+  }, [workspace?.slug, comingSoon, fetchJanitorConfig]);
 
   const getJanitorState = (janitor: JanitorItem): boolean => {
     if (comingSoon) return false;
@@ -84,20 +74,8 @@ export function JanitorSection({
     if (comingSoon || !janitor.configKey || !workspace?.slug) return;
     
     try {
-      const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          [janitor.configKey]: !janitorConfig?.[janitor.configKey]
-        }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setJanitorConfig(data.config);
-      }
+      await toggleJanitor(workspace.slug, janitor.configKey);
     } catch (error) {
-      console.error("Error updating janitor config:", error);
       toast({
         title: "Failed to update janitor configuration",
         description: "Please try again.",
@@ -110,45 +88,16 @@ export function JanitorSection({
     if (comingSoon || !workspace?.slug) return;
     
     try {
-      setRunningJanitors(prev => new Set([...prev, janitor.id]));
-      
-      const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/${janitor.id}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      await runJanitor(workspace.slug, janitor.id);
+      toast({
+        title: "Janitor run started!",
+        description: "The janitor is now analyzing your codebase.",
       });
-      
-      if (response.ok) {
-        toast({
-          title: "Janitor run started!",
-          description: "The janitor is now analyzing your codebase.",
-        });
-        
-        // Notify parent to refresh recommendations immediately
-        // The RecommendationsSection will handle its own loading state
-        if (onRecommendationsUpdate) {
-          onRecommendationsUpdate();
-        }
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Failed to start janitor run",
-          description: error.error || 'Unknown error',
-          variant: "destructive",
-        });
-        console.error("Janitor run failed:", error);
-      }
     } catch (error) {
-      console.error("Error running janitor:", error);
       toast({
         title: "Failed to start janitor run",
-        description: "Please try again.",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
-      });
-    } finally {
-      setRunningJanitors(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(janitor.id);
-        return newSet;
       });
     }
   };
