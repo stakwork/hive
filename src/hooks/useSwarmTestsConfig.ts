@@ -28,7 +28,7 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
 
     async function load() {
       try {
-        if (process.env.NEXT_PUBLIC_DEVELOPMENT === "true") {
+        if (process.env.NODE_ENV === "development") {
           console.log("Development: using local runner");
           if (!cancelled) {
             setState({

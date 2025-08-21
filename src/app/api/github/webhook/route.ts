@@ -3,18 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import crypto from "node:crypto";
-
-function timingSafeEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return crypto.timingSafeEqual(aBuf, bBuf);
-}
-
-function normalizeRepoUrl(url: string): string {
-  return url.replace(/\.git$/i, "");
-}
+import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,15 +35,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
-    const normalizedUrl = normalizeRepoUrl(candidateUrl);
+    const webhookId = request.headers.get("x-github-hook-id");
+    if (!webhookId) {
+      console.error("Missing webhook ID header");
+      return NextResponse.json({ success: false }, { status: 400 });
+    }
 
     const repository = await db.repository.findFirst({
-      where: {
-        OR: [
-          { repositoryUrl: normalizedUrl },
-          { repositoryUrl: `${normalizedUrl}.git` },
-        ],
-      },
+      where: { githubWebhookId: webhookId },
       select: {
         id: true,
         repositoryUrl: true,
@@ -75,9 +63,7 @@ export async function POST(request: NextRequest) {
       repository.githubWebhookSecret,
     );
 
-    const expected =
-      "sha256=" +
-      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    const expected = computeHmacSha256Hex(secret, rawBody);
 
     if (!timingSafeEqual(expected, signature)) {
       console.error("Signature mismatch");

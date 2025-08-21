@@ -1,2 +1,2 @@
 -- AlterEnum
-ALTER TYPE "ArtifactType" ADD VALUE 'BUG_REPORT';
+ALTER TYPE "ArtifactType" ADD VALUE IF NOT EXISTS 'BUG_REPORT';

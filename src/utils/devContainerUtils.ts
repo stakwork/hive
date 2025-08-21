@@ -57,6 +57,10 @@ export const generatePM2Apps = (
       appConfig.env.TEST_COMMAND = service.scripts.test;
     }
 
+    if (service.scripts?.e2eTest) {
+      appConfig.env.E2E_TEST_COMMAND = service.scripts.e2eTest;
+    }
+
     if (service.scripts?.build) {
       appConfig.env.BUILD_COMMAND = service.scripts.build;
     }
