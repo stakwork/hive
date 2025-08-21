@@ -12,10 +12,6 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-function normalizeRepoUrl(url: string): string {
-  return url.replace(/\.git$/i, "");
-}
-
 export async function POST(request: NextRequest) {
   try {
     const signature = request.headers.get("x-hub-signature-256");
@@ -46,15 +42,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
-    const normalizedUrl = normalizeRepoUrl(candidateUrl);
+    const webhookId = request.headers.get("x-github-hook-id");
+    if (!webhookId) {
+      console.error("Missing webhook ID header");
+      return NextResponse.json({ success: false }, { status: 400 });
+    }
 
     const repository = await db.repository.findFirst({
-      where: {
-        OR: [
-          { repositoryUrl: normalizedUrl },
-          { repositoryUrl: `${normalizedUrl}.git` },
-        ],
-      },
+      where: { githubWebhookId: webhookId },
       select: {
         id: true,
         repositoryUrl: true,
