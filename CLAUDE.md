@@ -158,6 +158,9 @@ Required environment variables:
 - TypeScript strict mode enabled
 - Prettier for code formatting
 - Use comments sparingly
+- Components should own their data and handlers (avoid prop drilling)
+- Move static functions/configs outside components to prevent recreations
+- Avoid setTimeout for delays - use proper async/loading states instead
 
 ### Feature Flags
 The application uses environment-based feature flags with role-based access control. See `/docs/feature-flags.md` for complete documentation.
