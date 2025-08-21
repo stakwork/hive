@@ -6,7 +6,7 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
-import { mapAsyncStatusToStepStatus } from "@/utils/conversions";
+import { mapStatusToStepStatus } from "@/utils/conversions";
 import { StakgraphStatusResponse } from "@/types";
 
 const encryptionService = EncryptionService.getInstance();
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     try {
       const data = apiResult?.data as StakgraphStatusResponse | undefined;
       if (data) {
-        const nextStepStatus = mapAsyncStatusToStepStatus(data.status);
+        const nextStepStatus = mapStatusToStepStatus(data.status ?? "");
         const stakgraphSnapshot = {
           requestId: id,
           status: data.status,
