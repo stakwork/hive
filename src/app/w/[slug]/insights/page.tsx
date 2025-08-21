@@ -10,25 +10,11 @@ import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
 import { JanitorSection, JanitorItem } from "@/components/insights/JanitorSection";
-import { BarChart3, TestTube, Wrench, Shield, FlaskConical, Zap, Type, BookOpen, Package, GitPullRequest } from "lucide-react";
+import { getAllJanitorItems } from "@/lib/constants/janitor";
+import { BarChart3, TestTube, Wrench, Shield, Type, BookOpen, Package, GitPullRequest } from "lucide-react";
 
-// Testing janitors - real data
-const testingJanitors: JanitorItem[] = [
-  { 
-    id: "UNIT_TESTS", 
-    name: "Unit Tests", 
-    icon: FlaskConical, 
-    description: "Identify missing unit tests.",
-    configKey: "unitTestsEnabled"
-  },
-  { 
-    id: "INTEGRATION_TESTS", 
-    name: "Integration Tests", 
-    icon: Zap, 
-    description: "Identify missing integration tests.",
-    configKey: "integrationTestsEnabled"
-  },
-];
+// Testing janitors - real data from centralized constants
+const testingJanitors: JanitorItem[] = getAllJanitorItems();
 
 // Maintainability janitors - coming soon
 const maintainabilityJanitors: JanitorItem[] = [

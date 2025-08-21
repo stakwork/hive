@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
 import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
+import { 
+  createEnabledJanitorWhereConditions, 
+  isJanitorEnabled 
+} from "@/lib/constants/janitor";
 
 export interface CronExecutionResult {
   success: boolean;
@@ -32,10 +36,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
     where: {
       deleted: false,
       janitorConfig: {
-        OR: [
-          { unitTestsEnabled: true },
-          { integrationTestsEnabled: true }
-        ]
+        OR: createEnabledJanitorWhereConditions()
       }
     },
     select: {
@@ -85,39 +86,23 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
 
       console.log(`[JanitorCron] Processing workspace: ${name} (${slug})`);
 
-      // Process unit tests janitor if enabled
-      if (janitorConfig.unitTestsEnabled) {
-        try {
-          console.log(`[JanitorCron] Creating UNIT_TESTS run for workspace ${slug}`);
-          await createJanitorRun(slug, ownerId, "unit_tests", "SCHEDULED");
-          result.runsCreated++;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[JanitorCron] Error creating UNIT_TESTS run for workspace ${slug}:`, errorMessage);
-          result.errors.push({
-            workspaceSlug: slug,
-            janitorType: "UNIT_TESTS",
-            error: errorMessage
-          });
-          result.success = false;
-        }
-      }
-
-      // Process integration tests janitor if enabled
-      if (janitorConfig.integrationTestsEnabled) {
-        try {
-          console.log(`[JanitorCron] Creating INTEGRATION_TESTS run for workspace ${slug}`);
-          await createJanitorRun(slug, ownerId, "integration_tests", "SCHEDULED");
-          result.runsCreated++;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[JanitorCron] Error creating INTEGRATION_TESTS run for workspace ${slug}:`, errorMessage);
-          result.errors.push({
-            workspaceSlug: slug,
-            janitorType: "INTEGRATION_TESTS",
-            error: errorMessage
-          });
-          result.success = false;
+      // Process all enabled janitor types
+      for (const janitorType of Object.values(JanitorType)) {
+        if (isJanitorEnabled(janitorConfig, janitorType)) {
+          try {
+            console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
+            await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
+            result.runsCreated++;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[JanitorCron] Error creating ${janitorType} run for workspace ${slug}:`, errorMessage);
+            result.errors.push({
+              workspaceSlug: slug,
+              janitorType: janitorType,
+              error: errorMessage
+            });
+            result.success = false;
+          }
         }
       }
     }

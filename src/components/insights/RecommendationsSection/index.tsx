@@ -2,10 +2,12 @@ import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, TestTube, Wrench, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
+import { getPriorityConfig, getJanitorIcon } from "@/lib/constants/janitor";
+import { JanitorType, Priority } from "@prisma/client";
 
 export function RecommendationsSection() {
   const { workspace } = useWorkspace();
@@ -66,21 +68,28 @@ export function RecommendationsSection() {
   const visibleRecommendations = recommendations.filter(r => !dismissedSuggestions.has(r.id));
   const displayedRecommendations = showAll ? visibleRecommendations : visibleRecommendations.slice(0, 3);
 
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'CRITICAL': return <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-200">Critical</Badge>;
-      case 'HIGH': return <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-200">High</Badge>;
-      case 'MEDIUM': return <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200">Medium</Badge>;
-      case 'LOW': return <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200">Low</Badge>;
-      default: return <Badge variant="outline" className="text-xs">Unknown</Badge>;
-    }
+  const getPriorityBadge = (priority: Priority) => {
+    const config = getPriorityConfig(priority);
+    const colorClasses: Record<string, string> = {
+      red: "bg-red-100 text-red-700 hover:bg-red-200",
+      orange: "bg-orange-100 text-orange-700 hover:bg-orange-200", 
+      blue: "bg-blue-100 text-blue-700 hover:bg-blue-200",
+      gray: "bg-gray-100 text-gray-700 hover:bg-gray-200",
+    };
+    
+    return (
+      <Badge className={`text-xs ${colorClasses[config.color] || "bg-gray-100 text-gray-700"}`}>
+        {config.label}
+      </Badge>
+    );
   };
 
-  const getRecommendationIcon = (janitorType?: string) => {
-    switch (janitorType) {
-      case 'UNIT_TESTS': return TestTube;
-      case 'INTEGRATION_TESTS': return Wrench;
-      default: return CheckCircle2;
+  const getRecommendationIcon = (janitorType?: JanitorType) => {
+    if (!janitorType) return CheckCircle2;
+    try {
+      return getJanitorIcon(janitorType);
+    } catch {
+      return CheckCircle2;
     }
   };
 
@@ -103,7 +112,7 @@ export function RecommendationsSection() {
           </div>
         ) : displayedRecommendations.length > 0 ? (
           displayedRecommendations.map((recommendation) => {
-            const Icon = getRecommendationIcon(recommendation.janitorRun?.type);
+            const Icon = getRecommendationIcon(recommendation.janitorRun?.type as JanitorType);
             return (
               <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
                 <div className="flex items-center justify-between mb-2">
@@ -114,7 +123,7 @@ export function RecommendationsSection() {
                     </h4>
                   </div>
                   <div className="flex items-center gap-2">
-                    {getPriorityBadge(recommendation.priority)}
+                    {getPriorityBadge(recommendation.priority as Priority)}
                   </div>
                 </div>
                 
