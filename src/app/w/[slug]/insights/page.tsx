@@ -45,16 +45,6 @@ const securityJanitors: JanitorItem[] = [
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   
-  // State for hardcoded janitors
-  const [hardcodedStates] = useState<Record<string, boolean>>({
-    refactoring: false,
-    semantic: false,
-    documentation: false,
-    security: false,
-    'supply-chain': false,
-    'pr-reviews': false
-  });
-  
   // Trigger for refreshing recommendations
   const [recommendationsRefreshTrigger, setRecommendationsRefreshTrigger] = useState(0);
 
@@ -95,7 +85,6 @@ export default function InsightsPage() {
         description="Code quality and maintainability improvements (Coming soon)"
         icon={<Wrench className="h-5 w-5 text-orange-500" />}
         janitors={maintainabilityJanitors}
-        hardcodedStates={hardcodedStates}
         comingSoon={true}
       />
 
@@ -104,7 +93,6 @@ export default function InsightsPage() {
         description="Security scanning and vulnerability detection (Coming soon)"
         icon={<Shield className="h-5 w-5 text-red-500" />}
         janitors={securityJanitors}
-        hardcodedStates={hardcodedStates}
         comingSoon={true}
       />
     </div>

@@ -21,8 +21,6 @@ export interface JanitorSectionProps {
   description: string;
   icon: ReactNode;
   janitors: JanitorItem[];
-  // For hardcoded janitors (like maintainability/security)
-  hardcodedStates?: Record<string, boolean>;
   comingSoon?: boolean;
   // Optional callback when recommendations are updated
   onRecommendationsUpdate?: () => void;
@@ -39,7 +37,6 @@ export function JanitorSection({
   description,
   icon,
   janitors,
-  hardcodedStates,
   comingSoon = false,
   onRecommendationsUpdate
 }: JanitorSectionProps) {
@@ -75,9 +72,6 @@ export function JanitorSection({
     if (comingSoon) return false;
     if (janitor.configKey && janitorConfig) {
       return janitorConfig[janitor.configKey] || false;
-    }
-    if (hardcodedStates) {
-      return hardcodedStates[janitor.id] || false;
     }
     return false;
   };
