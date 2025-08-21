@@ -42,12 +42,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Validate cron schedule (for logging purposes)
-    const cronSchedule = process.env.JANITOR_CRON_SCHEDULE;
-    if (cronSchedule && !validateCronExpression(cronSchedule)) {
-      console.warn(`[CronAPI] Invalid cron schedule configured: ${cronSchedule}`);
-    }
-
     console.log("[CronAPI] Starting scheduled janitor execution");
     
     // Execute the janitor runs
