@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
         branch: true,
         workspaceId: true,
         githubWebhookSecret: true,
+        commitHash: true,
       },
     });
 
@@ -127,6 +128,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true }, { status: 202 });
     }
 
+    const newCommitHash = payload?.head_commit?.id || payload?.commits?.[0]?.id;
+    if (!newCommitHash) {
+      console.error("No commit hash found in webhook payload");
+      return NextResponse.json({ success: false }, { status: 400 });
+    }
+
     // const mockSwarm = {
     //   name: "alpha-swarm",
     //   swarmApiKey: "sk_test_mock_123",
@@ -157,17 +164,41 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const apiResult = await triggerAsyncSync(
-      swarm.name,
-      swarm.swarmApiKey,
-      repository.repositoryUrl,
-      username && pat ? { username, pat } : undefined,
-    );
+    const needsSync = repository.commitHash !== newCommitHash;
 
-    return NextResponse.json(
-      { success: apiResult.ok, delivery },
-      { status: 202 },
-    );
+    if (needsSync) {
+      const apiResult = await triggerAsyncSync(
+        swarm.name,
+        swarm.swarmApiKey,
+        repository.repositoryUrl,
+        username && pat ? { username, pat } : undefined,
+      );
+
+      if (apiResult.ok) {
+        await db.repository.update({
+          where: { id: repository.id },
+          data: {
+            commitHash: newCommitHash,
+            lastCommitDate: new Date(),
+          },
+        });
+      }
+
+      return NextResponse.json(
+        { success: apiResult.ok, delivery, synced: true },
+        { status: 202 },
+      );
+    } else {
+      return NextResponse.json(
+        {
+          success: true,
+          delivery,
+          synced: false,
+          message: "Repository is up to date",
+        },
+        { status: 202 },
+      );
+    }
   } catch (error) {
     console.error(`Error processing webhook: ${error}`);
     console.error(error);

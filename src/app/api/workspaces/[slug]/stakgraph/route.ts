@@ -19,6 +19,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import { fetchLatestCommitHash } from "@/services/github/api/webhooks";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -360,10 +361,24 @@ export async function PUT(
           const repoInfo = (await resp.json()) as { default_branch?: string };
           const defaultBranch = repoInfo.default_branch;
           if (defaultBranch) {
+            const commitInfo = await fetchLatestCommitHash(
+              account.access_token,
+              owner,
+              repoName,
+              defaultBranch,
+            );
+
+            const commitHash = commitInfo?.hash;
+            const lastCommitDate = commitInfo?.date;
+
             await Promise.all([
               db.repository.update({
                 where: { id: repo.id },
-                data: { branch: defaultBranch },
+                data: {
+                  branch: defaultBranch,
+                  commitHash,
+                  lastCommitDate,
+                },
               }),
               db.swarm.update({
                 where: { id: swarm.id },

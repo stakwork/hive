@@ -242,15 +242,15 @@ model Repository {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
-  // Webhook integration
+  commitHash     String?   @map("commit_hash")
+  lastCommitDate DateTime? @map("last_commit_date")
+
   githubWebhookId     String? @map("github_webhook_id")
   githubWebhookSecret String? @map("github_webhook_secret")
 
-  // Repository belongs to workspace
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // Tasks can be linked to repositories
   tasks Task[]
 
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
