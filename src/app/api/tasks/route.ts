@@ -86,7 +86,16 @@ export async function GET(request: NextRequest) {
           workspaceId,
           deleted: false,
         },
-        include: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          workflowStatus: true,
+          sourceType: true,
+          createdAt: true,
+          updatedAt: true,
           assignee: {
             select: {
               id: true,

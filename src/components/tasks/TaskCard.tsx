@@ -1,10 +1,11 @@
 "use client";
 
-import { Users, Calendar, User } from "lucide-react";
+import { Users, Calendar, User, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
 
 interface TaskCardProps {
@@ -30,6 +31,12 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
           {task.title}
         </h4>
         <div className="flex items-center gap-2">
+          {task.sourceType === "JANITOR" && (
+            <Badge variant="secondary" className="gap-1">
+              <Sparkles className="w-3 h-3" />
+              Janitor
+            </Badge>
+          )}
           <div className="px-2 py-1 rounded-full border bg-background text-xs">
             <WorkflowStatusBadge status={task.workflowStatus} />
           </div>
