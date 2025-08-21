@@ -1,7 +1,7 @@
 import { BaseServiceClass } from "@/lib/base-service";
 import { db } from "@/lib/db";
 import type { ServiceConfig } from "@/types";
-import type { EnsureWebhookParams, DeleteWebhookParams } from "@/types";
+import type { DeleteWebhookParams } from "@/types";
 import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
@@ -15,14 +15,115 @@ export class WebhookService extends BaseServiceClass {
     super(config);
   }
 
+  async setupRepositoryWithWebhook({
+    userId,
+    workspaceId,
+    repositoryUrl,
+    callbackUrl,
+    repositoryName,
+    events = ["push", "pull_request"],
+    active = true,
+  }: {
+    userId: string;
+    workspaceId: string;
+    repositoryUrl: string;
+    callbackUrl: string;
+    repositoryName: string;
+    events?: string[];
+    active?: boolean;
+  }): Promise<{
+    repositoryId: string;
+    defaultBranch: string | null;
+    webhookId: number;
+  }> {
+    const token = await this.getUserGithubAccessToken(userId);
+    const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
+
+    const repository = await db.repository.upsert({
+      where: {
+        repositoryUrl_workspaceId: {
+          repositoryUrl,
+          workspaceId,
+        },
+      },
+      update: {},
+      create: {
+        name: repositoryName || repositoryUrl.split("/").pop() || "repo",
+        repositoryUrl,
+        workspaceId,
+      },
+    });
+
+    const defaultBranch = await this.detectRepositoryDefaultBranch(
+      token,
+      owner,
+      repo,
+    );
+
+    if (defaultBranch) {
+      await db.repository.update({
+        where: { id: repository.id },
+        data: { branch: defaultBranch },
+      });
+    }
+
+    const webhookResult = await this.ensureRepoWebhook({
+      userId,
+      workspaceId,
+      repositoryUrl,
+      callbackUrl,
+      events,
+      active,
+    });
+
+    return {
+      repositoryId: repository.id,
+      defaultBranch,
+      webhookId: webhookResult.id,
+    };
+  }
+
+  private async detectRepositoryDefaultBranch(
+    token: string,
+    owner: string,
+    repo: string,
+  ): Promise<string | null> {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}`,
+        {
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        },
+      );
+
+      if (response.ok) {
+        const repoInfo = (await response.json()) as { default_branch?: string };
+        return repoInfo.default_branch || null;
+      }
+    } catch (error) {
+      console.error("Failed to detect repository default branch:", error);
+    }
+    return null;
+  }
+
   async ensureRepoWebhook({
     userId,
     workspaceId,
     repositoryUrl,
     callbackUrl,
-    events = ["push"],
+    events = ["push", "pull_request"],
     active = true,
-  }: EnsureWebhookParams): Promise<{ id: number; secret: string }> {
+  }: {
+    userId: string;
+    workspaceId: string;
+    repositoryUrl: string;
+    callbackUrl: string;
+    events?: string[];
+    active?: boolean;
+  }): Promise<{ id: number; secret: string }> {
     const token = await this.getUserGithubAccessToken(userId);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
