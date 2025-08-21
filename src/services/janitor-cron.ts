@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { JanitorType, JanitorTrigger } from "@prisma/client";
+import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
 import * as cron from "node-cron";
 
@@ -206,7 +206,7 @@ export function describeCronSchedule(expression: string): string {
     return "Custom schedule";
   }
 
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  const [minute, hour] = parts;
   
   if (minute === "0" && hour.startsWith("*/")) {
     const interval = hour.slice(2);
