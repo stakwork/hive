@@ -83,16 +83,16 @@ export async function POST(request: NextRequest) {
     if (event === "push") {
       const ref: string | undefined = payload?.ref;
       if (!ref) {
-        console.error("Missing ref");
+        console.log("Missing ref");
         return NextResponse.json({ success: false }, { status: 400 });
       }
       const pushedBranch = ref.split("/").pop();
       if (!pushedBranch) {
-        console.error("Missing pushed branch");
+        console.log("Missing pushed branch");
         return NextResponse.json({ success: false }, { status: 400 });
       }
       if (!allowedBranches.has(pushedBranch)) {
-        console.error("Pushed branch not allowed");
+        console.log("Pushed branch ", pushedBranch, "not allowed");
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else if (event === "pull_request") {
@@ -107,11 +107,11 @@ export async function POST(request: NextRequest) {
           allowedBranches.has(baseRef)
         )
       ) {
-        console.error("Pull request not allowed");
+        console.log("Pull request not allowed. action:", action);
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else {
-      console.error("Event not allowed", event);
+      console.log("Event not allowed", event);
       return NextResponse.json({ success: true }, { status: 202 });
     }
 
