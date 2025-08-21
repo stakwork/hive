@@ -58,6 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `stakgraph/` - Components for stakgraph integration and forms
 - `roadmap/` - Product roadmap management components
 - `onboarding/` - User onboarding components
+- Any time you create a react component, create a directory always call the file index.ts
 
 #### `/src/lib` - Core Utilities
 - `auth/` - NextAuth.js configuration and workspace resolution
@@ -156,6 +157,10 @@ Required environment variables:
 - Tailwind CSS for styling
 - TypeScript strict mode enabled
 - Prettier for code formatting
+- Use comments sparingly
+- Components should own their data and handlers (avoid prop drilling)
+- Move static functions/configs outside components to prevent recreations
+- Avoid setTimeout for delays - use proper async/loading states instead
 
 ### Feature Flags
 The application uses environment-based feature flags with role-based access control. See `/docs/feature-flags.md` for complete documentation.
