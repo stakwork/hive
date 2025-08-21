@@ -117,11 +117,9 @@ export function usePusherConnection({
           setError("Failed to connect to real-time messaging");
           setIsConnected(false);
         });
-
-        // Bind to new message events
-        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: unknown) => {
+        //payload is messageId
+        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
           try {
-            // String payload: messageId only (simple mode)
             if (typeof payload === "string") {
               const res = await fetch(`/api/chat/messages/${payload}`);
               if (res.ok) {
@@ -129,27 +127,14 @@ export function usePusherConnection({
                 const full: ChatMessage = data.data;
                 if (onMessageRef.current) onMessageRef.current(full);
                 return;
+              } else {
+                console.error("Failed to fetch message by id", payload);
+                return;
               }
-              console.warn("Failed to fetch message by id", payload);
-              return;
-            }
-
-            // Backward compatibility: server sent full ChatMessage
-            const message = payload as ChatMessage;
-            if (LOGS) {
-              console.log("Received Pusher message:", {
-                id: message?.id,
-                message: message?.message,
-                role: message?.role,
-                timestamp: message?.timestamp,
-                channelName,
-              });
-            }
-            if (onMessageRef.current && message?.id) {
-              onMessageRef.current(message);
             }
           } catch (err) {
             console.error("Error handling NEW_MESSAGE event:", err);
+            return;
           }
         });
 
