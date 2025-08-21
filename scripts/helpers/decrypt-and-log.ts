@@ -48,22 +48,21 @@ async function logUsers() {
 }
 
 async function logGitHubAuths() {
-  const auths = await prisma.gitHubAuth.findMany({});
+  const auths = await prisma.gitHubAuth.findMany({
+    select: {
+      userId: true,
+      githubUsername: true,
+      scopes: true,
+      organizationsHash: true,
+      updatedAt: true,
+    },
+  });
   console.log("\n=== GITHUB AUTH ===");
   for (const a of auths) {
     console.log(
       `[GITHUB] userId=${a.userId} username=${a.githubUsername} scopes=${(a.scopes || []).join(",")} organizationsHash=${a.organizationsHash} updatedAt=${a.updatedAt.toISOString()}`,
     );
-    try {
-      console.log(a);
-      const key = a.poolApiKey ?? null;
-      const decrypted = key ? encryption.decryptField("poolApiKey", key) : null;
-      console.log(`[USER] id=${a.id} email=${a.email}`);
-      console.log(`  poolApiKey (decrypted): ${decrypted}`);
-    } catch (err) {
-      console.log(`[USER] id=${u.id} email=${u.email}`);
-      console.log(`  error: ${String(err)}`);
-    }
+    console.log(a);
   }
 }
 
