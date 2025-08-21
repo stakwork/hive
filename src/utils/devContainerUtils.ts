@@ -25,7 +25,6 @@ export const generatePM2Apps = (
         env: {
           INSTALL_COMMAND: "npm install",
           TEST_COMMAND: "npm test",
-          E2E_TEST_COMMAND: "npm run test:e2e",
           BUILD_COMMAND: "npm run build",
           PORT: "3000",
         },

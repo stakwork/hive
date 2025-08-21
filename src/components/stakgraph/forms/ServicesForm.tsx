@@ -63,7 +63,7 @@ export default function ServicesForm({
       key: "e2eTest",
       label: "E2E Test Command",
       icon: <Zap className="w-4 h-4 text-muted-foreground" />,
-      placeholder: "npm run test:e2e",
+      placeholder: "npx playwright test",
       description: "end-to-end test command",
     },
     preStart: {
