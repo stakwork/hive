@@ -23,14 +23,14 @@ export async function triggerSync(
 }
 
 export async function triggerAsyncSync(
-  swarmName: string,
+  swarmHost: string,
   apiKey: string,
   repoUrl: string,
   creds?: Creds,
   callbackUrl?: string,
 ) {
   console.log("===Trigger AsyncSync was hit");
-  const stakgraphUrl = `https://${swarmName}:7799`;
+  const stakgraphUrl = `https://${swarmHost}:7799`;
   const data: Record<string, string> = { repo_url: repoUrl };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;

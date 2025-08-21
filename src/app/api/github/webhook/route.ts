@@ -145,8 +145,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const swarmHost = swarm.swarmUrl
+      ? new URL(swarm.swarmUrl).host
+      : `${swarm.name}.sphinx.chat`;
     const apiResult = await triggerAsyncSync(
-      swarm.name,
+      swarmHost,
       swarm.swarmApiKey,
       repository.repositoryUrl,
       username && pat ? { username, pat } : undefined,
