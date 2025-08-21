@@ -1,10 +1,12 @@
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { LucideIcon, Loader2, Play, Clock } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export interface JanitorItem {
   id: string;
@@ -19,35 +21,55 @@ export interface JanitorSectionProps {
   description: string;
   icon: ReactNode;
   janitors: JanitorItem[];
-  // For real janitors (like testing)
-  janitorConfig?: Record<string, boolean> | null;
-  runningJanitors?: Set<string>;
-  loading?: boolean;
-  onToggleJanitor?: (configKey: string) => Promise<void>;
-  onRunManually?: (janitorType: string) => Promise<void>;
   // For hardcoded janitors (like maintainability/security)
   hardcodedStates?: Record<string, boolean>;
   comingSoon?: boolean;
+  // Optional callback when recommendations are updated
+  onRecommendationsUpdate?: () => void;
 }
+
+const getStatusBadge = (isOn: boolean, comingSoon: boolean) => {
+  if (comingSoon) return <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>;
+  if (isOn) return <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge>;
+  return <Badge variant="outline" className="text-gray-600 border-gray-300">Idle</Badge>;
+};
 
 export function JanitorSection({
   title,
   description,
   icon,
   janitors,
-  janitorConfig,
-  runningJanitors = new Set(),
-  loading = false,
-  onToggleJanitor,
-  onRunManually,
   hardcodedStates,
-  comingSoon = false
+  comingSoon = false,
+  onRecommendationsUpdate
 }: JanitorSectionProps) {
-  const getStatusBadge = (isOn: boolean) => {
-    if (comingSoon) return <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>;
-    if (isOn) return <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge>;
-    return <Badge variant="outline" className="text-gray-600 border-gray-300">Idle</Badge>;
-  };
+  const { workspace } = useWorkspace();
+  const { toast } = useToast();
+  const [janitorConfig, setJanitorConfig] = useState<Record<string, boolean> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [runningJanitors, setRunningJanitors] = useState<Set<string>>(new Set());
+
+  // Fetch janitor config for real janitors
+  useEffect(() => {
+    if (!workspace?.slug || comingSoon) return;
+    
+    const fetchConfig = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/config`);
+        if (response.ok) {
+          const data = await response.json();
+          setJanitorConfig(data.config);
+        }
+      } catch (error) {
+        console.error("Error fetching janitor config:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchConfig();
+  }, [workspace?.slug, comingSoon]);
 
   const getJanitorState = (janitor: JanitorItem): boolean => {
     if (comingSoon) return false;
@@ -65,15 +87,76 @@ export function JanitorSection({
   };
 
   const handleToggle = async (janitor: JanitorItem) => {
-    if (comingSoon) return;
-    if (janitor.configKey && onToggleJanitor) {
-      await onToggleJanitor(janitor.configKey);
+    if (comingSoon || !janitor.configKey || !workspace?.slug) return;
+    
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          [janitor.configKey]: !janitorConfig?.[janitor.configKey]
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setJanitorConfig(data.config);
+      }
+    } catch (error) {
+      console.error("Error updating janitor config:", error);
+      toast({
+        title: "Failed to update janitor configuration",
+        description: "Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleManualRun = async (janitor: JanitorItem) => {
-    if (comingSoon || !onRunManually) return;
-    await onRunManually(janitor.id);
+    if (comingSoon || !workspace?.slug) return;
+    
+    try {
+      setRunningJanitors(prev => new Set([...prev, janitor.id]));
+      
+      const response = await fetch(`/api/workspaces/${workspace.slug}/janitors/${janitor.id}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Janitor run started!",
+          description: "The janitor is now analyzing your codebase.",
+        });
+        
+        // Notify parent to refresh recommendations immediately
+        // The RecommendationsSection will handle its own loading state
+        if (onRecommendationsUpdate) {
+          onRecommendationsUpdate();
+        }
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Failed to start janitor run",
+          description: error.error || 'Unknown error',
+          variant: "destructive",
+        });
+        console.error("Janitor run failed:", error);
+      }
+    } catch (error) {
+      console.error("Error running janitor:", error);
+      toast({
+        title: "Failed to start janitor run",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRunningJanitors(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(janitor.id);
+        return newSet;
+      });
+    }
   };
 
   return (
@@ -115,7 +198,7 @@ export function JanitorSection({
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="font-medium text-sm">{janitor.name}</span>
-                      {getStatusBadge(isOn)}
+                      {getStatusBadge(isOn, comingSoon)}
                     </div>
                     <p className="text-xs text-muted-foreground">{janitor.description}</p>
                   </div>
@@ -125,7 +208,7 @@ export function JanitorSection({
                   {comingSoon ? (
                     <Clock className="h-4 w-4 text-gray-400" />
                   ) : (
-                    isOn && onRunManually && (
+                    isOn && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
