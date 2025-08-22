@@ -15,7 +15,7 @@ import {
   JanitorRunFilters,
   JanitorRecommendationFilters,
 } from "@/types/janitor";
-import { JANITOR_ERRORS } from "@/lib/constants/janitor";
+import { JANITOR_ERRORS, getEnabledFieldName } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
@@ -107,9 +107,7 @@ export async function createJanitorRun(
   }
 
   // Check if janitor is enabled
-  const enabledField = janitorType === "UNIT_TESTS" 
-    ? "unitTestsEnabled" 
-    : "integrationTestsEnabled";
+  const enabledField = getEnabledFieldName(janitorType);
   
   if (!config[enabledField]) {
     throw new Error(JANITOR_ERRORS.JANITOR_DISABLED);
