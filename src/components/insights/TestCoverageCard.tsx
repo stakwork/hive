@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TestTube, FunctionSquare, Globe, Loader2 } from "lucide-react";
+import { TestTube, FunctionSquare, Globe, Loader2, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
@@ -187,6 +187,26 @@ export function TestCoverageCard() {
               <span>{data.endpoints.total} total</span>
             </div>
           </div>
+
+          {/* End to End Tests */}
+          {data.e2e_tests && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Target className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">End to End Tests</span>
+                </div>
+                <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">
+                  {data.e2e_tests.total} tests
+                </Badge>
+              </div>
+              
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Total E2E tests available</span>
+                <span>{data.e2e_tests.total} total</span>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
