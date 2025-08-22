@@ -1,28 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
+import { getMiddlewareContext, requireAuth } from "@/types/middleware";
 
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
-  const workspaces = await getUserWorkspaces(userId);
+export async function GET(request: NextRequest) {
+  const context = getMiddlewareContext(request);
+  const user = requireAuth(context);
+  
+  const workspaces = await getUserWorkspaces(user.id);
   return NextResponse.json({ workspaces }, { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+  const context = getMiddlewareContext(request);
+  const user = requireAuth(context);
   const body = await request.json();
   const { name, description, slug } = body;
   if (!name || !slug) {
@@ -36,7 +30,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       slug,
-      ownerId: userId,
+      ownerId: user.id,
     });
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {
@@ -50,15 +44,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+export async function DELETE(request: NextRequest) {
+  const context = getMiddlewareContext(request);
+  const user = requireAuth(context);
+  
   // Find the workspace owned by this user
   const workspace = await db.workspace.findFirst({
-    where: { ownerId: userId, deleted: false },
+    where: { ownerId: user.id, deleted: false },
   });
   if (!workspace) {
     return NextResponse.json(
