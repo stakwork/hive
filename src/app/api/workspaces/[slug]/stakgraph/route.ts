@@ -134,6 +134,17 @@ export async function GET(
 
     const environmentVariables = swarm?.environmentVariables;
 
+    // Decrypt swarmApiKey if it exists
+    let decryptedSwarmApiKey = "";
+    if (swarm.swarmApiKey) {
+      try {
+        const parsedKey = JSON.parse(swarm.swarmApiKey as string);
+        decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", parsedKey);
+      } catch (error) {
+        console.error("Failed to decrypt swarmApiKey:", error);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings retrieved successfully",
@@ -142,6 +153,7 @@ export async function GET(
         description: swarm.repositoryDescription || "",
         repositoryUrl: swarm.repositoryUrl || "",
         swarmUrl: swarm.swarmUrl || "",
+        swarmApiKey: decryptedSwarmApiKey,
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
         environmentVariables:
