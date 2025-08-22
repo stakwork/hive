@@ -90,7 +90,7 @@ export async function createJanitorRun(
 
   // Parse janitor type
   const janitorTypeUpper = janitorTypeString.toUpperCase();
-  if (!["UNIT_TESTS", "INTEGRATION_TESTS"].includes(janitorTypeUpper)) {
+  if (!Object.values(JanitorType).includes(janitorTypeUpper as JanitorType)) {
     throw new Error(`Invalid janitor type: ${janitorTypeString}`);
   }
   const janitorType = janitorTypeUpper as JanitorType;
