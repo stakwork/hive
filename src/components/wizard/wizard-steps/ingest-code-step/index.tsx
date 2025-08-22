@@ -81,7 +81,7 @@ export function IngestCodeStep({ onNext }: IngestCodeStepStepProps) {
 
       try {
         const res = await fetch(
-          `/api/swarm/stakgraph/ingest?id=${ingestRefId}&swarmId=${swarmId}&workspaceId=${workspaceId}`,
+          `/api/swarm/stakgraph/status?id=${ingestRefId}&swarmId=${swarmId}&workspaceId=${workspaceId}`,
         );
         const { apiResult } = await res.json();
         const { data } = apiResult;
