@@ -221,17 +221,19 @@ export default function TaskChatPage() {
       taskId?: string;
       replyId?: string;
       webhook?: string;
+      artifact?: Artifact;
     },
   ) => {
     if (isLoading) return;
 
+    const finalArtifact = options?.artifact || artifact;
     const newMessage: ChatMessage = createChatMessage({
       id: generateUniqueId(),
       message: messageText,
       role: ChatRole.USER,
       status: ChatStatus.SENDING,
       replyId: options?.replyId,
-      artifacts: artifact ? [artifact] : [],
+      artifacts: finalArtifact ? [finalArtifact] : [],
     });
 
     setMessages((msgs) => [...msgs, newMessage]);
@@ -247,7 +249,7 @@ export default function TaskChatPage() {
         mode: taskMode,
         ...(options?.replyId && { replyId: options.replyId }),
         ...(options?.webhook && { webhook: options.webhook }),
-        ...(artifact && { artifacts: [artifact] }),
+        ...(finalArtifact && { artifacts: [finalArtifact] }),
       };
       const response = await fetch("/api/chat/message", {
         method: "POST",
