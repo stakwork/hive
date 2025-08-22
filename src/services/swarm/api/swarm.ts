@@ -103,7 +103,7 @@ export async function swarmApiRequest({
     try {
       responseData = JSON.parse(responseText);
     } catch (error) {
-      console.error("swarmApiRequest JSON error", error, responseText);
+      console.error("swarmApiRequest JSON error", responseText, error);
       responseData = undefined;
     }
     return {
