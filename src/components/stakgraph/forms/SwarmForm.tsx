@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { SwarmData, FormSectionProps } from "../types";
+import { Key } from "lucide-react";
 
 export default function SwarmForm({
   data,
@@ -8,8 +11,14 @@ export default function SwarmForm({
   loading,
   onChange,
 }: FormSectionProps<SwarmData>) {
+  const [showApiKey, setShowApiKey] = useState(false);
+
   const handleInputChange = (field: keyof SwarmData, value: string) => {
     onChange({ [field]: value });
+  };
+
+  const toggleKeyView = () => {
+    setShowApiKey(!showApiKey);
   };
 
   return (
@@ -36,23 +45,52 @@ export default function SwarmForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="swarmSecretAlias">Swarm API Key</Label>
-        <Input
-          id="swarmSecretAlias"
-          type="text"
-          placeholder="e.g. {{SWARM_123456_API_KEY}}"
-          value={data.swarmSecretAlias}
-          onChange={(e) =>
-            handleInputChange("swarmSecretAlias", e.target.value)
-          }
-          className={errors.swarmSecretAlias ? "border-destructive" : ""}
-          disabled={loading}
-        />
-        {errors.swarmSecretAlias && (
-          <p className="text-sm text-destructive">{errors.swarmSecretAlias}</p>
+        <Label htmlFor={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}>
+          {showApiKey ? "Swarm Api Key" : "Swarm Secret Alias"}
+        </Label>
+        <div className="relative">
+          <Input
+            key={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}
+            id={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}
+            type="text"
+            placeholder={
+              showApiKey
+                ? "Your actual API key"
+                : "e.g. {{SWARM_123456_API_KEY}}"
+            }
+            value={showApiKey ? (data.swarmApiKey || "") : (data.swarmSecretAlias || "")}
+            onChange={(e) =>
+              handleInputChange(
+                showApiKey ? "swarmApiKey" : "swarmSecretAlias",
+                e.target.value
+              )
+            }
+            className={
+              errors.swarmSecretAlias || errors.swarmApiKey
+                ? "border-destructive pr-10"
+                : "pr-10"
+            }
+            disabled={loading}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 p-0"
+            onClick={toggleKeyView}
+          >
+            <Key className="h-4 w-4" />
+          </Button>
+        </div>
+        {(errors.swarmSecretAlias || errors.swarmApiKey) && (
+          <p className="text-sm text-destructive">
+            {showApiKey ? errors.swarmApiKey : errors.swarmSecretAlias}
+          </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Your API key for authenticating with the Swarm service
+          {showApiKey
+            ? "Your actual API key for authenticating with the Swarm service"
+            : "The secret alias reference for your Swarm API key"}
         </p>
       </div>
     </div>
