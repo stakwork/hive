@@ -133,7 +133,19 @@ export async function createJanitorRun(
     include: {
       janitorConfig: {
         include: {
-          workspace: true
+          workspace: {
+            include: {
+              swarm: {
+                select: {
+                  swarmUrl: true,
+                  swarmSecretAlias: true,
+                  poolName: true,
+                  name: true,
+                  id: true,
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -155,10 +167,17 @@ export async function createJanitorRun(
     const baseUrl = envConfig.STAKWORK_BASE_URL;
     const webhookUrl = `${baseUrl.replace('/api/v1', '')}/api/janitors/webhook`;
 
-    // Prepare variables - only janitorType and webhookUrl
+    // Get swarm data from workspace
+    const swarm = janitorRun.janitorConfig.workspace.swarm;
+    const swarmUrl = swarm?.swarmUrl || "";
+    const swarmSecretAlias = swarm?.swarmSecretAlias || "";
+
+    // Prepare variables - include janitorType, webhookUrl, swarmUrl, and swarmSecretAlias
     const vars = {
       janitorType: janitorType,
       webhookUrl: webhookUrl,
+      swarmUrl: swarmUrl,
+      swarmSecretAlias: swarmSecretAlias,
     };
 
     // Create Stakwork project using the stakworkRequest method (following existing pattern)
@@ -199,7 +218,19 @@ export async function createJanitorRun(
       include: {
         janitorConfig: {
           include: {
-            workspace: true
+            workspace: {
+              include: {
+                swarm: {
+                  select: {
+                    swarmUrl: true,
+                    swarmSecretAlias: true,
+                    poolName: true,
+                    name: true,
+                    id: true,
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -602,7 +633,19 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       include: {
         janitorConfig: {
           include: {
-            workspace: true
+            workspace: {
+              include: {
+                swarm: {
+                  select: {
+                    swarmUrl: true,
+                    swarmSecretAlias: true,
+                    poolName: true,
+                    name: true,
+                    id: true,
+                  }
+                }
+              }
+            }
           }
         }
       },
