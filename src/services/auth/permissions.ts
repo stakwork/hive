@@ -8,7 +8,8 @@ import type { WorkspacePermissions } from "@/types/auth";
  */
 export class PermissionService {
   /**
-   * Get permissions for a specific role
+   * Get core permissions for a specific role
+   * Matches existing validation patterns used throughout the codebase
    */
   public getRolePermissions(role: WorkspaceRole): WorkspacePermissions {
     const roleLevel = WORKSPACE_PERMISSION_LEVELS[role];
@@ -17,13 +18,6 @@ export class PermissionService {
       canRead: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.VIEWER],
       canWrite: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
       canAdmin: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
-      canDelete: role === WorkspaceRole.OWNER,
-      canManageMembers: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
-      canManageSettings: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
-      canManageIntegrations: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
-      canCreateTasks: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
-      canManageProducts: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.PM],
-      canManageRoadmap: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.PM],
     };
   }
 

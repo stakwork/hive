@@ -20,18 +20,12 @@ export interface AuthSession {
 
 /**
  * Workspace permissions based on user role
+ * Core permissions that match existing validation patterns
  */
 export interface WorkspacePermissions {
   canRead: boolean;
   canWrite: boolean;
   canAdmin: boolean;
-  canDelete: boolean;
-  canManageMembers: boolean;
-  canManageSettings: boolean;
-  canManageIntegrations: boolean;
-  canCreateTasks: boolean;
-  canManageProducts: boolean;
-  canManageRoadmap: boolean;
 }
 
 /**
