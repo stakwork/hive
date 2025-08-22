@@ -10,6 +10,7 @@ import {
 export interface JanitorConfigUpdate {
   unitTestsEnabled?: boolean;
   integrationTestsEnabled?: boolean;
+  e2eTestsEnabled?: boolean;
 }
 
 export interface AcceptRecommendationRequest {

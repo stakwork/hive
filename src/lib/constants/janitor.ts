@@ -1,5 +1,5 @@
 import { JanitorType, Priority } from "@prisma/client";
-import { FlaskConical, Zap, LucideIcon } from "lucide-react";
+import { FlaskConical, Zap, Monitor, LucideIcon } from "lucide-react";
 
 /**
  * Janitor system error messages
@@ -24,6 +24,7 @@ export const JANITOR_ERRORS = {
 export interface JanitorConfigFields {
   unitTestsEnabled: boolean;
   integrationTestsEnabled: boolean;
+  e2eTestsEnabled: boolean;
 }
 
 /**
@@ -46,6 +47,12 @@ export const JANITOR_CONFIG: Record<JanitorType, {
     description: "Identify missing integration tests.",
     icon: Zap,
     enabledField: "integrationTestsEnabled",
+  },
+  E2E_TESTS: {
+    name: "E2E Tests",
+    description: "Identify missing end-to-end tests.",
+    icon: Monitor,
+    enabledField: "e2eTestsEnabled",
   },
 } as const;
 
