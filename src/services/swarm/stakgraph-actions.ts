@@ -22,6 +22,7 @@ export async function triggerSync(
   });
 }
 
+//
 export async function triggerAsyncSync(
   swarmHost: string,
   apiKey: string,
