@@ -106,7 +106,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
               {} as Record<string, string>,
             );
 
-            const newFormData = {
+            const newFormData: StakgraphSettings = {
               name: settings.name || "",
               description: settings.description || "",
               repositoryUrl: settings.repositoryUrl || "",
@@ -222,13 +222,12 @@ export const useStakgraphStore = create<StakgraphStore>()(
           {} as Record<string, string>,
         );
 
-        const payload = {
+        const payload: Partial<StakgraphSettings> = {
           name: state.formData.name.trim(),
           description: state.formData.description.trim(),
           repositoryUrl: state.formData.repositoryUrl.trim(),
           swarmUrl: state.formData.swarmUrl.trim(),
           swarmSecretAlias: state.formData.swarmSecretAlias.trim(),
-          swarmApiKey: state.formData.swarmApiKey.trim(),
           poolName: state.formData.poolName.trim(),
           environmentVariables: state.envVars.map((env) => ({
             name: env.name,
@@ -237,6 +236,9 @@ export const useStakgraphStore = create<StakgraphStore>()(
           services: state.formData.services,
           containerFiles: base64EncodedFiles,
         };
+        if (state.formData.swarmApiKey) {
+          payload.swarmApiKey = state.formData.swarmApiKey.trim();
+        }
 
         const response = await fetch(`/api/workspaces/${slug}/stakgraph`, {
           method: "PUT",
