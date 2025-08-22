@@ -197,12 +197,12 @@ export function TestCoverageCard() {
                   <span className="text-sm font-medium">End to End Tests</span>
                 </div>
                 <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">
-                  {data.e2e_tests.total} tests
+                  {data.e2e_tests.total}
                 </Badge>
               </div>
               
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Total E2E tests available</span>
+                <span>Testing User Journeys</span>
                 <span>{data.e2e_tests.total} total</span>
               </div>
             </div>
