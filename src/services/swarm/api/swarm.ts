@@ -98,10 +98,12 @@ export async function swarmApiRequest({
       ...(data ? { body: JSON.stringify(data) } : {}),
     });
     let responseData: unknown = undefined;
+    // Get the text first, then try to parse as JSON
+    const responseText = await response.text();
     try {
-      responseData = await response.json();
+      responseData = JSON.parse(responseText);
     } catch (error) {
-      console.error("swarmApiRequest error", error);
+      console.error("swarmApiRequest JSON error", error, responseText);
       responseData = undefined;
     }
     return {
