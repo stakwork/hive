@@ -37,7 +37,7 @@ export async function triggerAsyncSync(
   if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
-    endpoint: "/async_sync",
+    endpoint: "/sync_async",
     method: "POST",
     apiKey,
     data,
