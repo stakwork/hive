@@ -145,10 +145,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    //
     const swarmHost = swarm.swarmUrl
       ? new URL(swarm.swarmUrl).host
       : `${swarm.name}.sphinx.chat`;
+    console.log("Trigger sync at:", swarmHost, swarm.swarmApiKey[0]);
     const apiResult = await triggerAsyncSync(
       swarmHost,
       swarm.swarmApiKey,
