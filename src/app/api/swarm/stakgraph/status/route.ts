@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const stakgraphUrl = `https://${swarm.name}:7799`;
+    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: `/status/${id}`,
