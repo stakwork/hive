@@ -12,14 +12,31 @@ export default function SwarmForm({
   onChange,
 }: FormSectionProps<SwarmData>) {
   const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKeyTouched, setApiKeyTouched] = useState(false);
 
   const handleInputChange = (field: keyof SwarmData, value: string) => {
     onChange({ [field]: value });
+    if (field === "swarmApiKey") {
+      setApiKeyTouched(true);
+    }
   };
 
   const toggleKeyView = () => {
     setShowApiKey(!showApiKey);
+    if (!showApiKey) {
+      setApiKeyTouched(false); // Reset when switching to API key view
+    }
   };
+
+  const handleApiKeyFocus = () => {
+    if (showApiKey) {
+      setApiKeyTouched(true);
+    }
+  };
+
+  // Show visual dots if we're in API key mode, field hasn't been touched, and there's no actual value
+  const showVisualDots = showApiKey && !apiKeyTouched && (!data.swarmApiKey || data.swarmApiKey === "");
+  const displayValue = showVisualDots ? "••••••••••••••••" : (showApiKey ? (data.swarmApiKey || "") : (data.swarmSecretAlias || ""));
 
   return (
     <div className="space-y-2">
@@ -52,19 +69,20 @@ export default function SwarmForm({
           <Input
             key={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}
             id={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}
-            type="text"
+            type={showApiKey ? "password" : "text"}
             placeholder={
               showApiKey
-                ? "Your actual API key"
+                ? "Enter your actual API key to update"
                 : "e.g. {{SWARM_123456_API_KEY}}"
             }
-            value={showApiKey ? (data.swarmApiKey || "") : (data.swarmSecretAlias || "")}
+            value={displayValue}
             onChange={(e) =>
               handleInputChange(
                 showApiKey ? "swarmApiKey" : "swarmSecretAlias",
                 e.target.value
               )
             }
+            onFocus={showApiKey ? handleApiKeyFocus : undefined}
             className={
               errors.swarmSecretAlias || errors.swarmApiKey
                 ? "border-destructive pr-10"
@@ -89,7 +107,7 @@ export default function SwarmForm({
         )}
         <p className="text-xs text-muted-foreground">
           {showApiKey
-            ? "Your actual API key for authenticating with the Swarm service"
+            ? "Your actual API key for authenticating with the Swarm service (write-only)"
             : "The secret alias reference for your Swarm API key"}
         </p>
       </div>

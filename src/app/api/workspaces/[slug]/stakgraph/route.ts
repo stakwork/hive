@@ -143,18 +143,6 @@ export async function GET(
         repositoryUrl: swarm.repositoryUrl || "",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
-        swarmApiKey: (() => {
-          if (!swarm.swarmApiKey) return "";
-          try {
-            const parsed =
-              typeof swarm.swarmApiKey === "string"
-                ? JSON.parse(swarm.swarmApiKey)
-                : swarm.swarmApiKey;
-            return encryptionService.decryptField("swarmApiKey", parsed);
-          } catch {
-            return swarm.swarmApiKey;
-          }
-        })(),
         poolName: swarm.id || "",
         environmentVariables:
           typeof environmentVariables === "string"
@@ -408,18 +396,6 @@ export async function PUT(
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
-        swarmApiKey: (() => {
-          if (!typedSwarm.swarmApiKey) return "";
-          try {
-            const parsed =
-              typeof typedSwarm.swarmApiKey === "string"
-                ? JSON.parse(typedSwarm.swarmApiKey)
-                : typedSwarm.swarmApiKey;
-            return encryptionService.decryptField("swarmApiKey", parsed);
-          } catch {
-            return typedSwarm.swarmApiKey;
-          }
-        })(),
         services:
           typeof typedSwarm.services === "string"
             ? JSON.parse(typedSwarm.services)

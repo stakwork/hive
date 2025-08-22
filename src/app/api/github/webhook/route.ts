@@ -145,13 +145,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Decrypt the swarm API key
+    let decryptedSwarmApiKey: string;
+    try {
+      const parsed =
+        typeof swarm.swarmApiKey === "string"
+          ? JSON.parse(swarm.swarmApiKey)
+          : swarm.swarmApiKey;
+      decryptedSwarmApiKey = enc.decryptField("swarmApiKey", parsed);
+    } catch (error) {
+      console.error("Failed to decrypt swarmApiKey:", error);
+      decryptedSwarmApiKey = swarm.swarmApiKey as string;
+    }
+
     const swarmHost = swarm.swarmUrl
       ? new URL(swarm.swarmUrl).host
       : `${swarm.name}.sphinx.chat`;
-    console.log("Trigger sync at:", swarmHost, swarm.swarmApiKey[0]);
+    console.log(
+      "Trigger sync at:",
+      swarmHost,
+      decryptedSwarmApiKey.slice(0, 2) + "...",
+    );
     const apiResult = await triggerAsyncSync(
       swarmHost,
-      swarm.swarmApiKey,
+      decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && pat ? { username, pat } : undefined,
     );
