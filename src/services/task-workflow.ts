@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { Priority, TaskStatus, TaskSourceType } from "@prisma/client";
 import { config } from "@/lib/env";
 import { EncryptionService } from "@/lib/encryption";
+import { getBaseUrl } from "@/lib/utils";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -332,9 +333,9 @@ async function callStakworkAPI(params: {
   }
 
   // Build webhook URLs (replicating the webhook URL logic)
-  const baseUrl = config.STAKWORK_BASE_URL;
-  const webhookUrl = `${baseUrl}/api/chat/response`;
-  const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
+  const appBaseUrl = getBaseUrl();
+  const webhookUrl = `${appBaseUrl}/api/chat/response`;
+  const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
   // Build vars object (replicating the vars structure from chat/message route)
   const vars = {
