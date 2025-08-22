@@ -212,7 +212,7 @@ export default function StakgraphPage() {
               <SwarmForm
                 data={{
                   swarmUrl: formData.swarmUrl,
-                  swarmApiKey: formData.swarmApiKey,
+                  swarmApiKey: formData.swarmApiKey || "",
                   swarmSecretAlias: formData.swarmSecretAlias,
                 }}
                 errors={errors}
