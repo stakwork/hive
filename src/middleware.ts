@@ -7,6 +7,11 @@ import {
   WEBHOOK_ROUTE_PATTERN 
 } from "@/config/middleware";
 
+// Environment validation - fail fast if required secrets are missing
+if (!process.env.NEXTAUTH_SECRET) {
+  throw new Error('NEXTAUTH_SECRET is required for middleware authentication');
+}
+
 // Generate a unique request ID for tracing using crypto API when available
 function generateRequestId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
