@@ -8,6 +8,7 @@ interface PageHeaderProps {
   iconClassName?: string;
   actions?: ReactNode;
   className?: string;
+  spacing?: string;
 }
 
 export function PageHeader({
@@ -16,16 +17,19 @@ export function PageHeader({
   icon: Icon,
   iconClassName = "h-8 w-8 text-blue-600",
   actions,
-  className = "flex items-center justify-between"
+  className,
+  spacing = "mb-6"
 }: PageHeaderProps) {
+  const defaultClassName = actions ? "flex justify-between items-start" : "";
+  
   return (
-    <div className={className}>
+    <div className={`${className || defaultClassName} ${spacing}`}>
       <div className="flex items-center space-x-3">
         {Icon && <Icon className={iconClassName} />}
         <div>
-          <h1 className="text-3xl font-bold">{title}</h1>
+          <h1 className="text-3xl font-bold text-foreground">{title}</h1>
           {description && (
-            <p className="text-muted-foreground">{description}</p>
+            <p className="text-muted-foreground mt-2">{description}</p>
           )}
         </div>
       </div>
