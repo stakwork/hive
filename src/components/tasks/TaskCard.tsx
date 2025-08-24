@@ -1,7 +1,8 @@
 "use client";
 
-import { Users, Calendar, User, Sparkles } from "lucide-react";
+import { Users, Calendar, User, Sparkles, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -36,6 +37,18 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
               <Sparkles className="w-3 h-3" />
               Janitor
             </Badge>
+          )}
+          {task.stakworkProjectId && (
+            <Link
+              href={`https://stakwork.com/project/${task.stakworkProjectId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+            >
+              Project
+              <ExternalLink className="w-3 h-3" />
+            </Link>
           )}
           <div className="px-2 py-1 rounded-full border bg-background text-xs">
             <WorkflowStatusBadge status={task.workflowStatus} />
