@@ -40,7 +40,7 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
           )}
           {task.stakworkProjectId && (
             <Link
-              href={`https://stakwork.com/project/${task.stakworkProjectId}`}
+              href={`https://jobs.stakwork.com/admin/projects/${task.stakworkProjectId}`}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
