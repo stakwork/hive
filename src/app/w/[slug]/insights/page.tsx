@@ -55,12 +55,13 @@ export default function InsightsPage() {
 
 
   return (
-    <div className="container mx-auto p-6 space-y-8 max-w-4xl">
+    <div className="space-y-6">
       <PageHeader
         title="Insights"
         description="Automated codebase analysis and recommendations"
-        icon={BarChart3}
       />
+      
+      <div className="max-w-4xl space-y-6">{/* Content container */}
 
       <TestCoverageCard />
 
@@ -88,6 +89,7 @@ export default function InsightsPage() {
         janitors={securityJanitors}
         comingSoon={true}
       />
+      </div>{/* End content container */}
     </div>
   );
 }

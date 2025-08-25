@@ -11,6 +11,7 @@ import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { AnimatePresence, motion } from "framer-motion";
@@ -103,15 +104,10 @@ export default function StakgraphPage() {
   if (initialLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          {/* <Network className="w-8 h-8 text-primary" /> */}
-          <div>
-            <h1 className="text-3xl font-bold">Stakgraph Configuration</h1>
-            <p className="text-muted-foreground">
-              Configure your settings for Stakgraph integration
-            </p>
-          </div>
-        </div>
+        <PageHeader 
+          title="Stakgraph Configuration"
+          description="Configure your settings for Stakgraph integration"
+        />
         <Card className="max-w-2xl">
           <CardContent className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2">
@@ -126,16 +122,10 @@ export default function StakgraphPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        {/* <Network className="w-8 h-8 text-primary" /> */}
-        <div>
-          <h1 className="text-3xl font-bold">Stakgraph Configuration</h1>
-          <p className="text-muted-foreground">
-            Configure your settings for Stakgraph integration
-          </p>
-          {/* Removed Swarm Status and Last updated */}
-        </div>
-      </div>
+      <PageHeader 
+        title="Stakgraph Configuration"
+        description="Configure your settings for Stakgraph integration"
+      />
 
       {/* Subtle: Create Stakgraph section (only if all fields are empty, with smooth animation) */}
       <AnimatePresence>
