@@ -298,6 +298,14 @@ export const useStakgraphStore = create<StakgraphStore>()(
           // Handle validation errors
           if (result.error === "VALIDATION_ERROR" && result.details) {
             set({ errors: result.details });
+          } else if (result.error === "INSUFFICIENT_PERMISSIONS") {
+            set({
+              errors: {
+                general:
+                  result.message ||
+                  "Admin access required to manage webhooks on this repository",
+              },
+            });
           } else {
             set({
               errors: {
@@ -309,7 +317,10 @@ export const useStakgraphStore = create<StakgraphStore>()(
           }
 
           toast({
-            title: "Error",
+            title:
+              result.error === "INSUFFICIENT_PERMISSIONS"
+                ? "Permission Required"
+                : "Error",
             description: result.message || "Failed to save configuration",
             variant: "destructive",
           });
