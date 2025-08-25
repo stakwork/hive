@@ -397,10 +397,12 @@ describe("Workspace Service - Unit Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(mockOwnedWorkspaces);
-      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMemberships);
-      (db.workspaceMember.count as Mock)
-        .mockResolvedValueOnce(5) // For owned workspace
-        .mockResolvedValueOnce(3); // For member workspace
+      (db.workspaceMember.findMany as Mock)
+        .mockResolvedValueOnce(mockMemberships) // First call for memberships
+        .mockResolvedValueOnce([ // Second call for member counts
+          { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, // 5 members for ws1
+          { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" } // 3 members for ws2
+        ]);
 
       const result = await getUserWorkspaces("user1");
 

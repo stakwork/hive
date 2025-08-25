@@ -2,11 +2,12 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { redirect } from "next/navigation";
 import { getUserWorkspaces } from "@/services/workspace";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Plus, Users, Calendar, Settings } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Building2, Plus, Users, Calendar, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { LogoutButton } from "./LogoutButton";
 
 export default async function WorkspacesPage() {
   const session = await getServerSession(authOptions);
@@ -24,117 +25,108 @@ export default async function WorkspacesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Choose Your Workspace</h1>
-          <p className="text-xl text-muted-foreground">
-            Select a workspace to continue, or create a new one
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
+              <Building2 className="w-6 h-6 text-primary-foreground" />
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold mb-2">Choose Your Workspace</h1>
+          <p className="text-muted-foreground">
+            Welcome back, {session.user.name || session.user.email}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {/* Workspaces List */}
+        <div className="space-y-3 mb-8">
           {userWorkspaces.map((workspace) => (
-            <Card
-              key={workspace.id}
-              className="group hover:shadow-lg transition-all duration-200 cursor-pointer relative"
-            >
+            <Card key={workspace.id} className="group hover:shadow-md transition-all duration-200">
               <Link href={`/w/${workspace.slug}`} className="block">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg mb-2 group-hover:text-blue-600 transition-colors">
-                        {workspace.name}
-                      </CardTitle>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    {/* Workspace Icon */}
+                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    
+                    {/* Workspace Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold text-lg group-hover:text-primary transition-colors truncate">
+                          {workspace.name}
+                        </h3>
+                        <Badge
+                          variant={workspace.userRole === "OWNER" ? "default" : "secondary"}
+                          className="text-xs shrink-0"
+                        >
+                          {workspace.userRole.toLowerCase()}
+                        </Badge>
+                      </div>
+                      
                       {workspace.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
+                        <p className="text-sm text-muted-foreground line-clamp-1 mb-2">
                           {workspace.description}
                         </p>
                       )}
+                      
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" />
+                          <span>
+                            {workspace.memberCount} member{workspace.memberCount !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>
+                            Created {new Date(workspace.createdAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <Badge
-                      variant={
-                        workspace.userRole === "OWNER" ? "default" : "secondary"
-                      }
-                    >
-                      {workspace.userRole}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-                    <div className="flex items-center space-x-1">
-                      <Users className="w-4 h-4" />
-                      <span>
-                        {workspace.memberCount} member
-                        {workspace.memberCount !== 1 ? "s" : ""}
-                      </span>
+                    
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>
-                        Created{" "}
-                        {new Date(workspace.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700">
-                      Open workspace
-                    </span>
-                    <ArrowRight className="w-4 h-4 text-blue-600 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </CardContent>
               </Link>
-
-              {workspace.userRole === "OWNER" && (
-                <div className="absolute top-4 right-4">
-                  <Link
-                    href={`/workspaces/${workspace.slug}/settings`}
-                    className="p-1 rounded-md hover:bg-muted"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Settings className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                  </Link>
-                </div>
-              )}
             </Card>
           ))}
 
-          {/* Create New Workspace Card */}
-          <Card className="group hover:shadow-lg transition-all duration-200 cursor-pointer border-dashed border-2 border-muted-foreground/25 hover:border-blue-500/50">
-            <Link href="/workspaces/new" className="block h-full">
-              <CardContent className="flex flex-col items-center justify-center h-full py-12 text-center">
-                <div className="w-12 h-12 rounded-full bg-muted group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 flex items-center justify-center mb-4 transition-colors">
-                  <Plus className="w-6 h-6 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+          {/* Create New Workspace */}
+          <Card className="border-dashed border-2 hover:border-primary/50 transition-colors">
+            <Link href="/onboarding/workspace" className="block">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg border-2 border-dashed border-muted-foreground">
+                    <Plus className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg mb-1">Create New Workspace</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Start a new project or organization
+                    </p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium mb-2 group-hover:text-blue-600 transition-colors">
-                  Create New Workspace
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Start a new project or organization
-                </p>
               </CardContent>
             </Link>
           </Card>
         </div>
 
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground mb-4">
-            Need help managing your workspaces?{" "}
-            <Link
-              href="/docs/workspaces"
-              className="text-blue-600 hover:text-blue-700 underline"
-            >
-              View documentation
-            </Link>
-          </p>
+        <Separator className="mb-6" />
 
-          <div className="flex justify-center space-x-4">
-            <Button variant="outline" asChild>
-              <Link href="/auth/signout">Sign Out</Link>
-            </Button>
-          </div>
+        {/* Footer Actions */}
+        <div className="flex justify-center">
+          <LogoutButton />
         </div>
       </div>
     </div>
