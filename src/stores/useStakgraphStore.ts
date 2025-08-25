@@ -9,6 +9,7 @@ import {
 import { ToastProps } from "@/components/ui/toast";
 import { EnvironmentVariable } from "@/types/wizard";
 import { getPM2AppsContent } from "@/utils/devContainerUtils";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { createRequestManager, isAbortError } from "@/utils/request-manager";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
@@ -232,10 +233,23 @@ export const useStakgraphStore = create<StakgraphStore>()(
       set({ loading: true });
 
       try {
+        // Extract repository name from URL for dev container paths
+        // The cwd path should always be based on the actual repo name, not the project name
+        const repoName = (() => {
+          try {
+            const { repo } = parseGithubOwnerRepo(state.formData.repositoryUrl);
+            return repo;
+          } catch {
+            // Fallback to extracting from URL pattern if parseGithubOwnerRepo fails
+            const match = state.formData.repositoryUrl.match(/\/([^/]+?)(?:\.git)?$/);
+            return match?.[1]?.replace(/\.git$/i, "") || state.formData.name;
+          }
+        })();
+
         const containerFiles = {
           ...state.formData.containerFiles,
           "pm2.config.js":
-            getPM2AppsContent(state.formData.name, state.formData.services)
+            getPM2AppsContent(repoName, state.formData.services)
               ?.content || "",
         };
 
