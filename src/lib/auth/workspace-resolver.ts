@@ -105,21 +105,89 @@ export async function validateUserWorkspaceAccess(
   session: Session | null,
   requestedSlug: string,
 ): Promise<string | null> {
-  if (!session?.user) {
+  // Check if session exists
+  if (!session) {
+    console.debug("validateUserWorkspaceAccess: No session provided");
     return null;
   }
 
-  const userId = (session.user as { id: string }).id;
+  // Check if session has user
+  if (!session.user) {
+    console.debug("validateUserWorkspaceAccess: Session has no user");
+    return null;
+  }
+
+  // Check if user has ID
+  const userWithId = session.user as { id?: string };
+  if (!userWithId.id) {
+    console.error("validateUserWorkspaceAccess: Session user has no ID", {
+      sessionUser: session.user,
+    });
+    return null;
+  }
+
+  const userId = userWithId.id;
+
+  // Validate inputs
+  if (!requestedSlug || typeof requestedSlug !== 'string') {
+    console.error("validateUserWorkspaceAccess: Invalid requestedSlug", {
+      requestedSlug,
+      type: typeof requestedSlug,
+    });
+    return null;
+  }
+
+  // Normalize the slug (trim whitespace)
+  const normalizedSlug = requestedSlug.trim();
+  if (!normalizedSlug) {
+    console.error("validateUserWorkspaceAccess: Empty slug after normalization");
+    return null;
+  }
 
   try {
+    console.debug("validateUserWorkspaceAccess: Checking access", {
+      userId,
+      requestedSlug: normalizedSlug,
+    });
+
     const userWorkspaces = await getUserWorkspaces(userId);
+    
+    console.debug("validateUserWorkspaceAccess: Retrieved workspaces", {
+      userId,
+      workspaceCount: userWorkspaces.length,
+      workspaceSlugs: userWorkspaces.map(w => w.slug),
+      requestedSlug: normalizedSlug,
+    });
+
     const hasAccess = userWorkspaces.some(
-      (workspace) => workspace.slug === requestedSlug,
+      (workspace) => workspace.slug === normalizedSlug,
     );
 
-    return hasAccess ? requestedSlug : null;
+    if (!hasAccess) {
+      console.warn("validateUserWorkspaceAccess: Access denied", {
+        userId,
+        requestedSlug: normalizedSlug,
+        availableWorkspaces: userWorkspaces.map(w => ({
+          slug: w.slug,
+          name: w.name,
+          role: w.userRole,
+        })),
+      });
+    } else {
+      console.debug("validateUserWorkspaceAccess: Access granted", {
+        userId,
+        requestedSlug: normalizedSlug,
+      });
+    }
+
+    return hasAccess ? normalizedSlug : null;
   } catch (error) {
-    console.error("Error validating workspace access:", error);
+    console.error("validateUserWorkspaceAccess: Database error", {
+      userId,
+      requestedSlug: normalizedSlug,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return null;
   }
 }
