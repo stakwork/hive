@@ -13,8 +13,23 @@ import { useWizardStore } from "@/stores/useWizardStore";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SwarmVisualization } from "./swarm-visualization";
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function nextIndexedName(base: string, pool: string[]) {
+  const re = new RegExp(`^${escapeRegex(base)}(?:-(\\d+))?$`, "i");
+  let max = -1;
+  for (const name of pool) {
+    const m = name.match(re);
+    if (!m) continue;
+    const idx = m[1] ? Number(m[1]) : 0; // plain "base" => 0
+    if (idx > max) max = idx;
+  }
+  const next = max + 1;
+  return next === 0 ? base : `${base}-${next}`;
+}
 
 
 export function ProjectNameSetupStep() {
@@ -22,35 +37,43 @@ export function ProjectNameSetupStep() {
   const [isLoading, setIsLoading] = useState(false);
   const swarmId = useWizardStore((s) => s.swarmId);
 
+  const newNamesIsSettled = useRef(false);
+
   const router = useRouter();
 
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const swarmIsLoading = useWizardStore((s) => s.swarmIsLoading);
   const repositoryUrlDraft = useWizardStore((s) => s.repositoryUrlDraft);
-  const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
-  const setHasKey = useWizardStore((s) => s.setHasKey);
-  const workspaceSlug = useWizardStore((s) => s.workspaceSlug);
-  const workspaceId = useWizardStore((s) => s.workspaceId);
   const createSwarm = useWizardStore((s) => s.createSwarm);
   const selectedRepo = useWizardStore((s) => s.selectedRepo);
-  const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
   const projectName = useWizardStore((s) => s.projectName);
   const setProjectName = useWizardStore((s) => s.setProjectName);
   const setSelectedRepo = useWizardStore((s) => s.setSelectedRepo);
+  const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
+  const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
+  const setHasKey = useWizardStore((s) => s.setHasKey);
   const resetWizard = useWizardStore((s) => s.resetWizard);
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
-  const { refreshWorkspaces } = useWorkspace();
+  const { refreshWorkspaces, workspaces } = useWorkspace();
   const isPending = currentStepStatus === "PENDING";
 
-  useEffect(() => {
-    if (selectedRepo) {
-      setProjectName(selectedRepo.name.toLowerCase());
-    }
-  }, [selectedRepo, setProjectName]);
+  const workspaceSlug = useWizardStore((s) => s.workspaceSlug);
 
-  const handleCreate = async () => {
+
+
+  useEffect(() => {
+    if (!selectedRepo || projectName) return;
+
+    const base = selectedRepo.name.toLowerCase();
+    const pool = workspaces.map(w => w.name.toLowerCase());
+    const nextName = nextIndexedName(base, pool)
+
+    setProjectName(nextName);
+  }, [selectedRepo, workspaces, setProjectName, projectName]);
+
+  const handleCreateWorkspace = async () => {
 
     setCurrentStepStatus("PENDING");
     try {
@@ -74,7 +97,7 @@ export function ProjectNameSetupStep() {
         setWorkspaceSlug(data.workspace.slug);
         setWorkspaceId(data.workspace.id);
         setHasKey(data.workspace.hasKey);
-        refreshWorkspaces()
+        await refreshWorkspaces()
       }
 
     } catch (error) {
@@ -130,6 +153,7 @@ export function ProjectNameSetupStep() {
 
           setProjectName(newProjectName);
         } else {
+          newNamesIsSettled.current = true;
           setIsLookingForAvailableName(false);
           setInfoMessage("Available name found");
         }
@@ -138,10 +162,10 @@ export function ProjectNameSetupStep() {
       }
     }
 
-    if (selectedRepo && projectName) {
+    if (selectedRepo && projectName && !newNamesIsSettled.current) {
       validateUri();
     }
-  }, [workspaceSlug, workspaceId, selectedRepo, projectName, setProjectName, router]);
+  }, [selectedRepo, projectName, setProjectName, router, newNamesIsSettled]);
 
   useEffect(() => {
 
@@ -157,10 +181,10 @@ export function ProjectNameSetupStep() {
       }
     }
 
-    if (!swarmId && workspaceSlug && workspaceId && projectName) {
+    if (!swarmId && projectName && workspaceSlug) {
       handleCreateSwarm();
     }
-  }, [createSwarm, projectName, router, setCurrentStepStatus, swarmId, workspaceId, workspaceSlug]);
+  }, [createSwarm, projectName, router, setCurrentStepStatus, swarmId, workspaceSlug]);
 
   const resetProgress = () => {
     localStorage.removeItem("repoUrl");
@@ -331,7 +355,7 @@ export function ProjectNameSetupStep() {
                       disabled={swarmIsLoading}
                       className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
                       type="button"
-                      onClick={handleCreate}
+                      onClick={handleCreateWorkspace}
                     >
                       Create
                       <ArrowRight className="w-4 h-4 ml-2" />
