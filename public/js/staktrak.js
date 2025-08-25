@@ -363,40 +363,8 @@ var userBehaviour = (() => {
   function extractReactDebugSource(element) {
     var _a, _b;
     try {
-      // Priority 1: Try React 19.1.0 captureOwnerStack API (primary method)
-      
-      if (typeof React !== 'undefined' && React.captureOwnerStack) {
-        try {
-          const ownerStack = React.captureOwnerStack();
-          if (ownerStack) {
-            const parsed = parseOwnerStack(ownerStack);
-            if (parsed) {
-              return {
-                fileName: parsed.fileName,
-                lineNumber: parsed.lineNumber,
-                columnNumber: parsed.columnNumber || 0,
-                method: 'captureOwnerStack'
-              };
-            }
-          }
-        } catch (captureError) {
-          // captureOwnerStack failed, continue to next method
-        }
-      }
-
-      // Priority 2: Check for manually injected source attributes (from captureOwnerStack)
-      const sourceFile = element.getAttribute('data-source-file');
-      const sourceLine = element.getAttribute('data-source-line');
-      if (sourceFile && sourceLine) {
-        return {
-          fileName: sourceFile,
-          lineNumber: parseInt(sourceLine, 10),
-          columnNumber: parseInt(element.getAttribute('data-source-column') || '0', 10),
-          method: 'captureOwnerStack-injected'
-        };
-      }
-
-      // Priority 3: Fall back to jsx-dev-runtime extraction
+      // Primary method: jsx-dev-runtime extraction (enhanced)
+      // This is our main source location detection method for Next.js 15 + Turbopack
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
       );
@@ -414,8 +382,7 @@ var userBehaviour = (() => {
         return {
           fileName: source.fileName,
           lineNumber: source.lineNumber,
-          columnNumber: source.columnNumber,
-          method: 'jsx-dev-runtime'
+          columnNumber: source.columnNumber
         };
       };
       while (fiber && level < maxTraversalDepth) {
@@ -497,7 +464,7 @@ var userBehaviour = (() => {
                 fileEntry = { 
                   file: fileName, 
                   lines: [],
-                  method: debugSource.method || 'jsx-dev-runtime'
+                  method: 'jsx-dev-runtime'
                 };
                 sourceFiles.push(fileEntry);
               }
@@ -1049,47 +1016,16 @@ var userBehaviour = (() => {
   };
   // Function to detect and expose React globally
   var detectAndExposeReact = () => {
-    let React = null;
-    
-    // Method 1: Already global
+    // Method 1: Check if React is already global
     if (window.React) {
       return window.React;
     }
     
-    // Method 2: Turbopack module access (Next.js 15 with Turbopack)
-    if (window.TURBOPACK) {
-      try {
-        const turbopack = window.TURBOPACK;
-        
-        // Try different Turbopack patterns for accessing React
-        if (typeof turbopack.require === 'function') {
-          try {
-            React = turbopack.require('react');
-            if (React) return React;
-          } catch (e) {
-            // Failed to require React via Turbopack
-          }
-        }
-        
-        // Try accessing cache if available
-        if (turbopack.cache) {
-          if (turbopack.cache.react || turbopack.cache.React) {
-            React = turbopack.cache.react || turbopack.cache.React;
-            if (React) return React;
-          }
-        }
-        
-      } catch (e) {
-        // Turbopack exploration failed
-      }
-    }
+    // Method 2: React.captureOwnerStack is not accessible in Next.js 15 + Turbopack
+    // The exploration showed TURBOPACK is only a chunk loader, not a module system
+    // jsx-dev-runtime extraction is our primary method for source location detection
     
-    // Make React globally available if found
-    if (React && !window.React) {
-      window.React = React;
-    }
-    
-    return React;
+    return null;
   };
 
   // Function to wait for Next.js context to be available
