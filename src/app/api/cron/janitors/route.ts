@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
         message: "Janitor cron is disabled",
         workspacesProcessed: 0,
         runsCreated: 0,
+        runsSkipped: 0,
         errors: []
       });
     }
@@ -49,9 +50,9 @@ export async function POST(request: NextRequest) {
     
     // Log execution results
     if (result.success) {
-      console.log(`[CronAPI] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs`);
+      console.log(`[CronAPI] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, skipped ${result.runsSkipped}`);
     } else {
-      console.error(`[CronAPI] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, ${result.errors.length} errors`);
+      console.error(`[CronAPI] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, skipped ${result.runsSkipped}, ${result.errors.length} errors`);
       
       // Log individual errors
       result.errors.forEach((error, index) => {
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
       success: result.success,
       workspacesProcessed: result.workspacesProcessed,
       runsCreated: result.runsCreated,
+      runsSkipped: result.runsSkipped,
       errorCount: result.errors.length,
       errors: result.errors,
       timestamp: result.timestamp.toISOString()

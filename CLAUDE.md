@@ -144,6 +144,14 @@ npx shadcn@latest add [component-name]
 - Separate test database configuration
 - Use `vitest.config.ts` for test configuration
 
+**Integration Test Patterns:**
+- Use `db.$transaction()` for test data creation
+- Generate unique IDs: `test-user-${Date.now()}-${Math.random()}`
+- Mock only external dependencies (NextAuth, external APIs)
+- No afterEach cleanup - tests self-isolate via unique IDs
+- Helper functions for reusable test data setup
+- Verify actual database state, not just API responses
+
 ### Environment Setup
 Required environment variables:
 - `DATABASE_URL` - PostgreSQL connection string

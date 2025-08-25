@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { JanitorType } from "@prisma/client";
+import { JanitorType, RecommendationStatus } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
 import { 
   createEnabledJanitorWhereConditions, 
@@ -10,12 +10,34 @@ export interface CronExecutionResult {
   success: boolean;
   workspacesProcessed: number;
   runsCreated: number;
+  runsSkipped: number;
   errors: Array<{
     workspaceSlug: string;
     janitorType: JanitorType;
     error: string;
   }>;
   timestamp: Date;
+}
+
+/**
+ * Check if there are too many pending recommendations for a specific janitor type and workspace
+ */
+async function hasTooManyPendingRecommendations(
+  janitorConfigId: string, 
+  janitorType: JanitorType,
+  maxPendingRecommendations: number = 5
+): Promise<boolean> {
+  const pendingCount = await db.janitorRecommendation.count({
+    where: {
+      janitorRun: {
+        janitorConfigId,
+        janitorType
+      },
+      status: RecommendationStatus.PENDING
+    }
+  });
+  
+  return pendingCount >= maxPendingRecommendations;
 }
 
 /**
@@ -66,6 +88,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     success: true,
     workspacesProcessed: 0,
     runsCreated: 0,
+    runsSkipped: 0,
     errors: [],
     timestamp: new Date()
   };
@@ -92,6 +115,15 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
           try {
+            // Check if there are too many pending recommendations for this janitor type
+            const tooManyPending = await hasTooManyPendingRecommendations(janitorConfig.id, janitorType);
+            
+            if (tooManyPending) {
+              console.log(`[JanitorCron] Skipping ${janitorType} for workspace ${slug}: too many pending recommendations (5+)`);
+              result.runsSkipped++;
+              continue;
+            }
+            
             console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
             await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
             result.runsCreated++;
@@ -109,7 +141,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       }
     }
 
-    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Errors: ${result.errors.length}`);
+    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Skipped: ${result.runsSkipped}, Errors: ${result.errors.length}`);
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
