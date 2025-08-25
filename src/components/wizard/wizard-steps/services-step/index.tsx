@@ -21,6 +21,7 @@ export const ServicesStep = ({ onNext, onBack }: ServicesStepProps) => {
   const setServices = useWizardStore((s) => s.setServices);
   const workspaceId = useWizardStore((s) => s.workspaceId);
   const swarmId = useWizardStore((s) => s.swarmId);
+  const repositoryUrl = useWizardStore((s) => s.repositoryUrl);
   const [loading, setLoading] = useState(false);
 
   const handleServices = useCallback(async () => {
@@ -28,19 +29,16 @@ export const ServicesStep = ({ onNext, onBack }: ServicesStepProps) => {
       const res = await fetch(
         `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
           workspaceId,
-        )}&swarmId=${encodeURIComponent(swarmId!)}&clone=true`,
+        )}&swarmId=${encodeURIComponent(swarmId!)}&clone=true&repo_url=${encodeURIComponent(repositoryUrl)}`,
       );
       const data = await res.json();
-
-      console.log(data, 'data--data')
-
 
       setServices(data.data.services);
 
     } catch (error) {
       console.error("Polling error:", error);
     }
-  }, [workspaceId, swarmId, setServices]);
+  }, [workspaceId, swarmId, repositoryUrl, setServices]);
 
   const onServicesChange = useCallback(
     (data: ServiceDataConfig[]) => {
