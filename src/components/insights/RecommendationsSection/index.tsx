@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Sparkles, Clock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
@@ -19,6 +19,8 @@ export function RecommendationsSection() {
     recommendationsLoading: loading,
     dismissedSuggestions,
     showAll,
+    janitorConfig,
+    runningJanitors,
     fetchRecommendations,
     acceptRecommendation,
     dismissRecommendation,
@@ -67,6 +69,13 @@ export function RecommendationsSection() {
   };
   const visibleRecommendations = recommendations.filter(r => !dismissedSuggestions.has(r.id));
   const displayedRecommendations = showAll ? visibleRecommendations : visibleRecommendations.slice(0, 3);
+  
+  // Check if any janitors are enabled
+  const hasEnabledJanitors = janitorConfig ? 
+    (janitorConfig.unitTestsEnabled || janitorConfig.integrationTestsEnabled) : false;
+  
+  // Check if any janitors are currently running
+  const hasRunningJanitors = runningJanitors.size > 0;
 
   const getPriorityBadge = (priority: Priority) => {
     const config = getPriorityConfig(priority);
@@ -101,7 +110,7 @@ export function RecommendationsSection() {
           <span>Recommendations</span>
         </CardTitle>
         <CardDescription>
-          Our janitors have been hard at work. They&apos;ve analyzed your codebase and prepared these recommendations for your review.
+          Get automated code quality insights and improvement suggestions tailored to your codebase.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -109,6 +118,16 @@ export function RecommendationsSection() {
           <div className="text-center py-8">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Loading recommendations...</p>
+          </div>
+        ) : !hasEnabledJanitors ? (
+          <div className="text-center py-12">
+            <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+              <Sparkles className="h-8 w-8 text-blue-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Enable Automated Analysis</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Turn on code analysis to receive personalized recommendations for improving your codebase quality, performance, and maintainability.
+            </p>
           </div>
         ) : displayedRecommendations.length > 0 ? (
           displayedRecommendations.map((recommendation) => {
@@ -155,9 +174,14 @@ export function RecommendationsSection() {
             );
           })
         ) : (
-          <div className="text-center py-8">
-            <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No recommendations available!</p>
+          <div className="text-center py-12">
+            <div className="mx-auto w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mb-4">
+              <Clock className="h-8 w-8 text-orange-500 animate-pulse" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis in Progress</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              We're currently scanning your codebase for potential improvements.
+            </p>
           </div>
         )}
         

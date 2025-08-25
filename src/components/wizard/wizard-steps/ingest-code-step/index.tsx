@@ -4,9 +4,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useCallback, useRef } from "react";
 import { useWizardStore } from "@/stores/useWizardStore";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useRef } from "react";
 
 interface IngestCodeStepStepProps {
   onNext: () => void;
@@ -15,18 +15,14 @@ interface IngestCodeStepStepProps {
 
 export function IngestCodeStep({ onNext }: IngestCodeStepStepProps) {
   const swarmId = useWizardStore((s) => s.swarmId);
-  const workspaceId = useWizardStore((s) => s.workspaceId);
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const setIngestRefId = useWizardStore((s) => s.setIngestRefId);
-  const setServices = useWizardStore((s) => s.setServices);
   const updateWizardProgress = useWizardStore((s) => s.updateWizardProgress);
-  const ingestRefId = useWizardStore((s) => s.ingestRefId);
   const isPending = currentStepStatus === "PENDING";
 
   const ingestHasBeenSet = useRef(false);
 
-  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleIngestStart = useCallback(async () => {
     try {
@@ -38,99 +34,45 @@ export function IngestCodeStep({ onNext }: IngestCodeStepStepProps) {
 
       const { data } = await res.json();
 
-      updateWizardProgress({
+      await updateWizardProgress({
         wizardStep: "INGEST_CODE",
         stepStatus: "PROCESSING",
         wizardData: {},
       });
 
       setIngestRefId(data.request_id);
+
+      await updateWizardProgress({
+        wizardStep: "INGEST_CODE",
+        stepStatus: "COMPLETED",
+        wizardData: {},
+      });
+
+      onNext();
+
     } catch (error) {
       console.error("Failed to ingest code:", error);
       setCurrentStepStatus("FAILED");
     }
-  }, [swarmId, setIngestRefId, setCurrentStepStatus, updateWizardProgress]);
-
-  const handleServices = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
-          workspaceId,
-        )}&swarmId=${encodeURIComponent(swarmId!)}`,
-      );
-      const data = await res.json();
-
-      if (data.success || data.status === "ACTIVE") {
-        setServices(data.data.services);
-      } else {
-        console.log("polling response (not ready):", data);
-      }
-    } catch (error) {
-      console.error("Polling error:", error);
-      setCurrentStepStatus("FAILED");
-    }
-  }, [workspaceId, swarmId, setServices, setCurrentStepStatus]);
+  }, [swarmId, updateWizardProgress, setIngestRefId, onNext, setCurrentStepStatus]);
 
   useEffect(() => {
-    if (!ingestRefId) return;
 
-    let isCancelled = false;
-
-    const getIngestStatus = async () => {
-      if (isCancelled) return;
-
+    const init = async () => {
       try {
-        const res = await fetch(
-          `/api/swarm/stakgraph/status?id=${ingestRefId}&swarmId=${swarmId}&workspaceId=${workspaceId}`,
-        );
-        const { apiResult } = await res.json();
-        const { data } = apiResult;
-
-        console.log("Ingest status:", data);
-
-        if (data.status === "Complete") {
-          await handleServices();
-          await updateWizardProgress({
-            wizardStep: "INGEST_CODE",
-            stepStatus: "COMPLETED",
-            wizardData: {},
-          });
-          setCurrentStepStatus("COMPLETED");
-          onNext();
-        } else {
-          pollTimeoutRef.current = setTimeout(getIngestStatus, 3000);
-        }
+        await handleIngestStart();
+        onNext()
       } catch (error) {
-        console.error("Failed to get ingest status:", error);
+        console.error("Failed to ingest code:", error);
         setCurrentStepStatus("FAILED");
       }
-    };
-
-    getIngestStatus();
-
-    return () => {
-      isCancelled = true;
-      if (pollTimeoutRef.current) {
-        clearTimeout(pollTimeoutRef.current);
-        pollTimeoutRef.current = null;
-      }
-    };
-  }, [
-    ingestRefId,
-    swarmId,
-    workspaceId,
-    handleServices,
-    setCurrentStepStatus,
-    onNext,
-    updateWizardProgress,
-  ]);
-
-  useEffect(() => {
-    if (isPending && !ingestHasBeenSet.current) {
-      handleIngestStart();
-      ingestHasBeenSet.current = true;
     }
-  }, [isPending, handleIngestStart, ingestHasBeenSet]);
+    if (isPending && !ingestHasBeenSet.current) {
+      ingestHasBeenSet.current = true;
+
+      init();
+    }
+  }, [isPending, handleIngestStart, ingestHasBeenSet, setCurrentStepStatus, onNext]);
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">

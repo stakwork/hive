@@ -12,7 +12,7 @@ import { WizardStepRenderer } from "@/components/wizard/WizardStepRenderer";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { AlertCircle, Loader2 } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const STEPS_ARRAY = [
   "GRAPH_INFRASTRUCTURE",
@@ -40,6 +40,9 @@ export default function CodeGraphPage() {
   const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
   const setHasKey = useWizardStore((s) => s.setHasKey);
   const resetWizard = useWizardStore((s) => s.resetWizard);
+  const ingestRefId = useWizardStore((s) => s.ingestRefId);
+  const workspaceId = useWizardStore((s) => s.workspaceId);
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const stepIsSettled = STEPS_ARRAY.includes(currentStep);
 
@@ -71,6 +74,44 @@ export default function CodeGraphPage() {
       fetchWizardState();
     }
   }, [workspaceSlug, fetchWizardState]);
+
+  useEffect(() => {
+    if (!ingestRefId) return;
+
+    let isCancelled = false;
+
+    const getIngestStatus = async () => {
+      if (isCancelled) return;
+
+      try {
+        const res = await fetch(
+          `/api/swarm/stakgraph/ingest?id=${ingestRefId}&swarmId=${swarmId}&workspaceId=${workspaceId}`,
+        );
+        const { apiResult } = await res.json();
+        const { data } = apiResult;
+
+        console.log("Ingest status:", data);
+
+        if (data.status === "Complete") {
+          console.log('ingestion completed');
+        } else {
+          pollTimeoutRef.current = setTimeout(getIngestStatus, 3000);
+        }
+      } catch (error) {
+        console.error("Failed to get ingest status:", error);
+      }
+    };
+
+    getIngestStatus();
+
+    return () => {
+      isCancelled = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [ingestRefId, swarmId, workspaceId, setCurrentStepStatus, updateWizardProgress]);
 
   const handleNext = useCallback(async () => {
     const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
