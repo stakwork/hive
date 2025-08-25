@@ -57,6 +57,12 @@ export async function POST(
           { status: 400 }
         );
       }
+      if (error.message.includes("Too many pending recommendations")) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 429 }
+        );
+      }
     }
 
     return NextResponse.json(

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { JanitorType, RecommendationStatus } from "@prisma/client";
+import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
 import { 
   createEnabledJanitorWhereConditions, 
@@ -17,41 +17,6 @@ export interface CronExecutionResult {
     error: string;
   }>;
   timestamp: Date;
-}
-
-/**
- * Check if there are too many pending recommendations for a specific janitor type and workspace
- */
-async function hasTooManyPendingRecommendations(
-  janitorConfigId: string, 
-  janitorType: JanitorType,
-  maxPendingRecommendations: number = 5
-): Promise<boolean> {
-  // First get all run IDs for this config and type
-  const runs = await db.janitorRun.findMany({
-    where: {
-      janitorConfigId,
-      janitorType
-    },
-    select: { id: true }
-  });
-  
-  if (runs.length === 0) {
-    console.log(`[JanitorCron] No previous runs for ${janitorType} in config ${janitorConfigId}`);
-    return false;
-  }
-  
-  // Then count pending recommendations for those runs
-  const pendingCount = await db.janitorRecommendation.count({
-    where: {
-      janitorRunId: { in: runs.map(r => r.id) },
-      status: RecommendationStatus.PENDING
-    }
-  });
-  
-  console.log(`[JanitorCron] Pending recommendations for ${janitorType} in config ${janitorConfigId}: ${pendingCount} (from ${runs.length} runs)`);
-  
-  return pendingCount >= maxPendingRecommendations;
 }
 
 /**
@@ -128,30 +93,28 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
-          console.log(`[JanitorCron] Checking ${janitorType} for workspace ${slug} (config: ${janitorConfig.id})`);
+          console.log(`[JanitorCron] Processing ${janitorType} for workspace ${slug} (config: ${janitorConfig.id})`);
           
           try {
-            // Check if there are too many pending recommendations for this janitor type
-            const tooManyPending = await hasTooManyPendingRecommendations(janitorConfig.id, janitorType);
-            
-            if (tooManyPending) {
-              console.log(`[JanitorCron] Skipping ${janitorType} for workspace ${slug}: too many pending recommendations (5+)`);
-              result.runsSkipped++;
-              continue;
-            }
-            
             console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
             await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
             result.runsCreated++;
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`[JanitorCron] Error creating ${janitorType} run for workspace ${slug}:`, errorMessage);
-            result.errors.push({
-              workspaceSlug: slug,
-              janitorType: janitorType,
-              error: errorMessage
-            });
-            result.success = false;
+            
+            // If it's the "too many pending" error, count it as skipped instead of error
+            if (errorMessage.includes("Too many pending recommendations")) {
+              console.log(`[JanitorCron] Skipped ${janitorType} for workspace ${slug}: ${errorMessage}`);
+              result.runsSkipped++;
+            } else {
+              console.error(`[JanitorCron] Error creating ${janitorType} run for workspace ${slug}:`, errorMessage);
+              result.errors.push({
+                workspaceSlug: slug,
+                janitorType: janitorType,
+                error: errorMessage
+              });
+              result.success = false;
+            }
           }
         }
       }

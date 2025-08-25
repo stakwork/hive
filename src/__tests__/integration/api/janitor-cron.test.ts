@@ -6,6 +6,10 @@ import { JanitorType, RecommendationStatus, Priority, JanitorStatus } from "@pri
 // Mock the createJanitorRun function to avoid authentication issues in test environment
 vi.mock("@/services/janitor", () => ({
   createJanitorRun: vi.fn(async (workspaceSlug, userId, janitorType, triggeredBy) => {
+    const { db } = await import("@/lib/db");
+    const { JanitorType, JanitorStatus } = await import("@prisma/client");
+    const { hasTooManyPendingRecommendations } = await import("@/services/janitor/helpers");
+    
     // Find the workspace
     const workspace = await db.workspace.findUnique({
       where: { slug: workspaceSlug },
@@ -16,11 +20,22 @@ vi.mock("@/services/janitor", () => ({
       throw new Error("Workspace or config not found");
     }
     
+    // Check for too many pending recommendations
+    const janitorTypeEnum = janitorType.toUpperCase() as JanitorType;
+    const tooManyPending = await hasTooManyPendingRecommendations(
+      workspace.janitorConfig.id,
+      janitorTypeEnum
+    );
+    
+    if (tooManyPending) {
+      throw new Error("Too many pending recommendations. Please review existing recommendations before creating new runs.");
+    }
+    
     // Create the run directly
     return await db.janitorRun.create({
       data: {
         janitorConfigId: workspace.janitorConfig.id,
-        janitorType: janitorType.toUpperCase() as JanitorType,
+        janitorType: janitorTypeEnum,
         status: JanitorStatus.PENDING,
         triggeredBy,
       }

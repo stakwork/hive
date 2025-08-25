@@ -20,6 +20,7 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
 import { config as envConfig } from "@/lib/env";
+import { hasTooManyPendingRecommendations } from "@/services/janitor/helpers";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -111,6 +112,13 @@ export async function createJanitorRun(
   
   if (!config[enabledField]) {
     throw new Error(JANITOR_ERRORS.JANITOR_DISABLED);
+  }
+
+  // Check if there are too many pending recommendations
+  const tooManyPending = await hasTooManyPendingRecommendations(config.id, janitorType);
+  if (tooManyPending) {
+    console.log(`[Janitor] Blocking ${triggeredBy} run for ${janitorType} in workspace ${workspaceSlug}: too many pending recommendations (5+)`);
+    throw new Error("Too many pending recommendations. Please review existing recommendations before creating new runs.");
   }
 
   // Allow multiple manual runs - concurrent check removed for manual triggers
