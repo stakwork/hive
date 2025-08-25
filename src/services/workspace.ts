@@ -263,22 +263,57 @@ export async function getWorkspaceBySlug(
 export async function getUserWorkspaces(
   userId: string,
 ): Promise<WorkspaceWithRole[]> {
-  const result: WorkspaceWithRole[] = [];
+  // Get all workspaces the user owns or is a member of in a single query
+  const [ownedWorkspaces, memberships] = await Promise.all([
+    db.workspace.findMany({
+      where: {
+        ownerId: userId,
+        deleted: false,
+      },
+    }),
+    db.workspaceMember.findMany({
+      where: {
+        userId,
+        leftAt: null,
+      },
+      include: {
+        workspace: true,
+      },
+    }),
+  ]);
 
-  // Get owned workspaces
-  const ownedWorkspaces = await db.workspace.findMany({
-    where: {
-      ownerId: userId,
-      deleted: false,
-    },
-  });
+  // Get all workspace IDs to batch the member count query
+  const allWorkspaceIds = [
+    ...ownedWorkspaces.map(w => w.id),
+    ...memberships
+      .filter(m => m.workspace && !m.workspace.deleted)
+      .map(m => m.workspace!.id)
+  ];
 
-  // Add owned workspaces with member count
-  for (const workspace of ownedWorkspaces) {
-    const memberCount = await db.workspaceMember.count({
-      where: { workspaceId: workspace.id, leftAt: null },
+  // Get all member counts in a single query if we have workspace IDs
+  const memberCountMap: Record<string, number> = {};
+  if (allWorkspaceIds.length > 0) {
+    const allMembers = await db.workspaceMember.findMany({
+      where: {
+        workspaceId: { in: allWorkspaceIds },
+        leftAt: null,
+      },
+      select: {
+        workspaceId: true,
+      },
     });
 
+    // Count members per workspace
+    for (const member of allMembers) {
+      memberCountMap[member.workspaceId] = (memberCountMap[member.workspaceId] || 0) + 1;
+    }
+  }
+
+  const result: WorkspaceWithRole[] = [];
+
+  // Add owned workspaces
+  for (const workspace of ownedWorkspaces) {
+    const memberCount = memberCountMap[workspace.id] || 0;
     result.push({
       id: workspace.id,
       name: workspace.name,
@@ -292,24 +327,10 @@ export async function getUserWorkspaces(
     });
   }
 
-  // Get member workspaces
-  const memberships = await db.workspaceMember.findMany({
-    where: {
-      userId,
-      leftAt: null,
-    },
-    include: {
-      workspace: true,
-    },
-  });
-
   // Add member workspaces
   for (const membership of memberships) {
     if (membership.workspace && !membership.workspace.deleted) {
-      const memberCount = await db.workspaceMember.count({
-        where: { workspaceId: membership.workspace.id, leftAt: null },
-      });
-
+      const memberCount = memberCountMap[membership.workspace.id] || 0;
       result.push({
         id: membership.workspace.id,
         name: membership.workspace.name,
