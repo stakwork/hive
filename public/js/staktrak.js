@@ -300,15 +300,111 @@ var userBehaviour = (() => {
       return false;
     }
   }
+  function parseOwnerStack(ownerStack) {
+    try {
+      if (!ownerStack || typeof ownerStack !== 'string') {
+        return null;
+      }
+
+      // Parse React 19 captureOwnerStack format
+      // Example format: "    at ComponentName (/path/to/file.tsx:42:13)"
+      const lines = ownerStack.split('\n');
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        
+        // Look for lines with file paths
+        const match = trimmed.match(/at\s+.*?\s+\(([^:]+):(\d+):(\d+)\)/);
+        if (match) {
+          const [, fileName, lineNumber, columnNumber] = match;
+          
+          // Skip node_modules and internal React files
+          if (fileName.includes('node_modules') || 
+              fileName.includes('react-dom') || 
+              fileName.includes('react/') ||
+              fileName.includes('scheduler/')) {
+            continue;
+          }
+          
+          return {
+            fileName: fileName,
+            lineNumber: parseInt(lineNumber, 10),
+            columnNumber: parseInt(columnNumber, 10)
+          };
+        }
+        
+        // Alternative format: "ComponentName@/path/to/file.tsx:42:13"
+        const altMatch = trimmed.match(/([^@]+)@([^:]+):(\d+):(\d+)/);
+        if (altMatch) {
+          const [, , fileName, lineNumber, columnNumber] = altMatch;
+          
+          if (fileName.includes('node_modules') || 
+              fileName.includes('react-dom') || 
+              fileName.includes('react/') ||
+              fileName.includes('scheduler/')) {
+            continue;
+          }
+          
+          return {
+            fileName: fileName,
+            lineNumber: parseInt(lineNumber, 10),
+            columnNumber: parseInt(columnNumber, 10)
+          };
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error parsing owner stack:', error);
+      return null;
+    }
+  }
+
   function extractReactDebugSource(element) {
     var _a, _b;
     try {
+      // Priority 1: Try React 19.1.0 captureOwnerStack API (primary method)
+      
+      if (typeof React !== 'undefined' && React.captureOwnerStack) {
+        try {
+          const ownerStack = React.captureOwnerStack();
+          if (ownerStack) {
+            const parsed = parseOwnerStack(ownerStack);
+            if (parsed) {
+              return {
+                fileName: parsed.fileName,
+                lineNumber: parsed.lineNumber,
+                columnNumber: parsed.columnNumber || 0,
+                method: 'captureOwnerStack'
+              };
+            }
+          }
+        } catch (captureError) {
+          // captureOwnerStack failed, continue to next method
+        }
+      }
+
+      // Priority 2: Check for manually injected source attributes (from captureOwnerStack)
+      const sourceFile = element.getAttribute('data-source-file');
+      const sourceLine = element.getAttribute('data-source-line');
+      if (sourceFile && sourceLine) {
+        return {
+          fileName: sourceFile,
+          lineNumber: parseInt(sourceLine, 10),
+          columnNumber: parseInt(element.getAttribute('data-source-column') || '0', 10),
+          method: 'captureOwnerStack-injected'
+        };
+      }
+
+      // Priority 3: Fall back to jsx-dev-runtime extraction
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
       );
+      
       if (!fiberKey) {
         return null;
       }
+      
       let fiber = element[fiberKey];
       let level = 0;
       const maxTraversalDepth = Number((_a = window.STAKTRAK_CONFIG) == null ? void 0 : _a.maxTraversalDepth) || 10;
@@ -318,7 +414,8 @@ var userBehaviour = (() => {
         return {
           fileName: source.fileName,
           lineNumber: source.lineNumber,
-          columnNumber: source.columnNumber
+          columnNumber: source.columnNumber,
+          method: 'jsx-dev-runtime'
         };
       };
       while (fiber && level < maxTraversalDepth) {
@@ -329,6 +426,7 @@ var userBehaviour = (() => {
         fiber = fiber.return;
         level++;
       }
+      
       return null;
     } catch (error) {
       console.error("Error extracting React debug source:", error);
@@ -396,13 +494,22 @@ var userBehaviour = (() => {
               processedFiles.get(fileName).add(lineNum);
               let fileEntry = sourceFiles.find((f) => f.file === fileName);
               if (!fileEntry) {
-                fileEntry = { file: fileName, lines: [] };
+                fileEntry = { 
+                  file: fileName, 
+                  lines: [],
+                  method: debugSource.method || 'jsx-dev-runtime'
+                };
                 sourceFiles.push(fileEntry);
               }
               fileEntry.lines.push(lineNum);
               const tagName = element.tagName.toLowerCase();
               const className = element.className ? `.${element.className.split(" ")[0]}` : "";
               fileEntry.context = `${tagName}${className}`;
+              
+              // Add column information if available
+              if (debugSource.columnNumber) {
+                fileEntry.columnNumber = debugSource.columnNumber;
+              }
             }
           }
         }
@@ -410,6 +517,17 @@ var userBehaviour = (() => {
       sourceFiles.forEach((file) => {
         file.lines.sort((a, b) => a - b);
       });
+      
+      // Add graceful fallback if no source files were found
+      if (sourceFiles.length === 0) {
+        sourceFiles.push({
+          file: "Could not find filename or line number",
+          lines: [],
+          context: "Debug info not available - this can happen when components don't have source mapping or when React dev tools are not active",
+          method: "fallback"
+        });
+      }
+      
       window.parent.postMessage(
         {
           type: "staktrak-debug-response",
@@ -929,13 +1047,91 @@ var userBehaviour = (() => {
       });
     }
   };
+  // Function to detect and expose React globally
+  var detectAndExposeReact = () => {
+    let React = null;
+    
+    // Method 1: Already global
+    if (window.React) {
+      return window.React;
+    }
+    
+    // Method 2: Turbopack module access (Next.js 15 with Turbopack)
+    if (window.TURBOPACK) {
+      try {
+        const turbopack = window.TURBOPACK;
+        
+        // Try different Turbopack patterns for accessing React
+        if (typeof turbopack.require === 'function') {
+          try {
+            React = turbopack.require('react');
+            if (React) return React;
+          } catch (e) {
+            // Failed to require React via Turbopack
+          }
+        }
+        
+        // Try accessing cache if available
+        if (turbopack.cache) {
+          if (turbopack.cache.react || turbopack.cache.React) {
+            React = turbopack.cache.react || turbopack.cache.React;
+            if (React) return React;
+          }
+        }
+        
+      } catch (e) {
+        // Turbopack exploration failed
+      }
+    }
+    
+    // Make React globally available if found
+    if (React && !window.React) {
+      window.React = React;
+    }
+    
+    return React;
+  };
+
+  // Function to wait for Next.js context to be available
+  var waitForNextJS = (callback, maxRetries = 50) => {
+    let retries = 0;
+    
+    const checkNextJS = () => {
+      const hasTurbopack = !!window.TURBOPACK;
+      const hasNext = !!window.__NEXT_DATA__;
+      const isReady = hasTurbopack || hasNext;
+      
+      if (isReady) {
+        callback();
+      } else if (retries < maxRetries) {
+        retries++;
+        setTimeout(checkNextJS, 100); // Check every 100ms
+      } else {
+        // Next.js context not found after timeout, proceeding anyway
+        callback();
+      }
+    };
+    
+    checkNextJS();
+  };
+
   var userBehaviour = new UserBehaviorTracker();
   var initializeStakTrak = () => {
-    userBehaviour.makeConfig({
-      processData: (results) => console.log("StakTrak recording processed:", results)
-    }).listen();
+    // Wait for Next.js context before React detection
+    waitForNextJS(() => {
+      detectAndExposeReact();
+      
+      // Then start normal staktrak
+      userBehaviour.makeConfig({
+        processData: (results) => console.log("StakTrak recording processed:", results)
+      }).listen();
+    });
   };
-  document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", initializeStakTrak) : initializeStakTrak();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeStakTrak);
+  } else {
+    initializeStakTrak();
+  }
   var src_default = userBehaviour;
   return __toCommonJS(src_exports);
 })();
