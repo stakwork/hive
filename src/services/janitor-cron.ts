@@ -27,15 +27,29 @@ async function hasTooManyPendingRecommendations(
   janitorType: JanitorType,
   maxPendingRecommendations: number = 5
 ): Promise<boolean> {
+  // First get all run IDs for this config and type
+  const runs = await db.janitorRun.findMany({
+    where: {
+      janitorConfigId,
+      janitorType
+    },
+    select: { id: true }
+  });
+  
+  if (runs.length === 0) {
+    console.log(`[JanitorCron] No previous runs for ${janitorType} in config ${janitorConfigId}`);
+    return false;
+  }
+  
+  // Then count pending recommendations for those runs
   const pendingCount = await db.janitorRecommendation.count({
     where: {
-      janitorRun: {
-        janitorConfigId,
-        janitorType
-      },
+      janitorRunId: { in: runs.map(r => r.id) },
       status: RecommendationStatus.PENDING
     }
   });
+  
+  console.log(`[JanitorCron] Pending recommendations for ${janitorType} in config ${janitorConfigId}: ${pendingCount} (from ${runs.length} runs)`);
   
   return pendingCount >= maxPendingRecommendations;
 }
@@ -114,6 +128,8 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
+          console.log(`[JanitorCron] Checking ${janitorType} for workspace ${slug} (config: ${janitorConfig.id})`);
+          
           try {
             // Check if there are too many pending recommendations for this janitor type
             const tooManyPending = await hasTooManyPendingRecommendations(janitorConfig.id, janitorType);
