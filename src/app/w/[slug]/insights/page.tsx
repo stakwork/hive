@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
-import { useFeatureFlag } from "@/hooks/useFeatureFlag";
-import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import { redirect } from "next/navigation";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { useInsightsStore } from "@/stores/useInsightsStore";
+import { JanitorItem, JanitorSection } from "@/components/insights/JanitorSection";
+import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
-import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
-import { JanitorSection, JanitorItem } from "@/components/insights/JanitorSection";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { getAllJanitorItems } from "@/lib/constants/janitor";
-import { BarChart3, TestTube, Wrench, Shield, Type, BookOpen, Package, GitPullRequest } from "lucide-react";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { useInsightsStore } from "@/stores/useInsightsStore";
+import { BarChart3, BookOpen, GitPullRequest, Package, Shield, TestTube, Type, Wrench } from "lucide-react";
+import { redirect } from "next/navigation";
+import { useEffect } from "react";
 
 // Testing janitors - real data from centralized constants
 const testingJanitors: JanitorItem[] = getAllJanitorItems();
@@ -45,7 +45,7 @@ export default function InsightsPage() {
       fetchRecommendations(workspace.slug);
       fetchJanitorConfig(workspace.slug);
     }
-    
+
     // Reset store when component unmounts or workspace changes
     return () => {
       reset();

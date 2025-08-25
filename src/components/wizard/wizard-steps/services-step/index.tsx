@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useWizardStore } from "@/stores/useWizardStore";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface ServicesStepProps {
   onNext: () => void;
@@ -23,11 +23,30 @@ export const ServicesStep = ({ onNext, onBack }: ServicesStepProps) => {
   const swarmId = useWizardStore((s) => s.swarmId);
   const [loading, setLoading] = useState(false);
 
+  const handleServices = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
+          workspaceId,
+        )}&swarmId=${encodeURIComponent(swarmId!)}&clone=true`,
+      );
+      const data = await res.json();
+
+      console.log(data, 'data--data')
+
+
+      setServices(data.data.services);
+
+    } catch (error) {
+      console.error("Polling error:", error);
+    }
+  }, [workspaceId, swarmId, setServices]);
+
   const onServicesChange = useCallback(
     (data: ServiceDataConfig[]) => {
       setServices(data);
     },
-    [services],
+    [setServices],
   );
 
   const handleNext = useCallback(async () => {
@@ -48,6 +67,10 @@ export const ServicesStep = ({ onNext, onBack }: ServicesStepProps) => {
       setLoading(false);
     }
   }, [onNext, services, workspaceId, swarmId]);
+
+  useEffect(() => {
+    handleServices();
+  }, [handleServices]);
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
