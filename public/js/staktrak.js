@@ -311,7 +311,7 @@ var userBehaviour = (() => {
       }
       let fiber = element[fiberKey];
       let level = 0;
-      const maxTraversalDepth = Number(process.env.NEXT_PUBLIC_REACT_FIBER_TRAVERSAL_DEPTH) || 10;
+      const maxTraversalDepth = Number((_a = window.STAKTRAK_CONFIG) == null ? void 0 : _a.maxTraversalDepth) || 10;
       const extractSource = (source) => {
         if (!source)
           return null;

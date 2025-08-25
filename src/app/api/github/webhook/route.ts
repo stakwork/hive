@@ -3,19 +3,9 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import crypto from "node:crypto";
+import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 
-function timingSafeEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return crypto.timingSafeEqual(aBuf, bBuf);
-}
-
-function normalizeRepoUrl(url: string): string {
-  return url.replace(/\.git$/i, "");
-}
-
+//
 export async function POST(request: NextRequest) {
   try {
     const signature = request.headers.get("x-hub-signature-256");
@@ -46,15 +36,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
-    const normalizedUrl = normalizeRepoUrl(candidateUrl);
+    const webhookId = request.headers.get("x-github-hook-id");
+    if (!webhookId) {
+      console.error("Missing webhook ID header");
+      return NextResponse.json({ success: false }, { status: 400 });
+    }
 
     const repository = await db.repository.findFirst({
-      where: {
-        OR: [
-          { repositoryUrl: normalizedUrl },
-          { repositoryUrl: `${normalizedUrl}.git` },
-        ],
-      },
+      where: { githubWebhookId: webhookId },
       select: {
         id: true,
         repositoryUrl: true,
@@ -75,9 +64,8 @@ export async function POST(request: NextRequest) {
       repository.githubWebhookSecret,
     );
 
-    const expected =
-      "sha256=" +
-      crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    const expectedDigest = computeHmacSha256Hex(secret, rawBody);
+    const expected = `sha256=${expectedDigest}`;
 
     if (!timingSafeEqual(expected, signature)) {
       console.error("Signature mismatch");
@@ -95,16 +83,16 @@ export async function POST(request: NextRequest) {
     if (event === "push") {
       const ref: string | undefined = payload?.ref;
       if (!ref) {
-        console.error("Missing ref");
+        console.log("Missing ref");
         return NextResponse.json({ success: false }, { status: 400 });
       }
       const pushedBranch = ref.split("/").pop();
       if (!pushedBranch) {
-        console.error("Missing pushed branch");
+        console.log("Missing pushed branch");
         return NextResponse.json({ success: false }, { status: 400 });
       }
       if (!allowedBranches.has(pushedBranch)) {
-        console.error("Pushed branch not allowed");
+        console.log("Pushed branch ", pushedBranch, "not allowed");
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else if (event === "pull_request") {
@@ -119,11 +107,11 @@ export async function POST(request: NextRequest) {
           allowedBranches.has(baseRef)
         )
       ) {
-        console.error("Pull request not allowed");
+        console.log("Pull request not allowed. action:", action);
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else {
-      console.error("Event not allowed", event);
+      console.log("Event not allowed", event);
       return NextResponse.json({ success: true }, { status: 202 });
     }
 
@@ -157,9 +145,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Decrypt the swarm API key
+    let decryptedSwarmApiKey: string;
+    try {
+      const parsed =
+        typeof swarm.swarmApiKey === "string"
+          ? JSON.parse(swarm.swarmApiKey)
+          : swarm.swarmApiKey;
+      decryptedSwarmApiKey = enc.decryptField("swarmApiKey", parsed);
+    } catch (error) {
+      console.error("Failed to decrypt swarmApiKey:", error);
+      decryptedSwarmApiKey = swarm.swarmApiKey as string;
+    }
+
+    const swarmHost = swarm.swarmUrl
+      ? new URL(swarm.swarmUrl).host
+      : `${swarm.name}.sphinx.chat`;
+    console.log(
+      "Trigger sync at:",
+      swarmHost,
+      decryptedSwarmApiKey.slice(0, 2) + "...",
+    );
     const apiResult = await triggerAsyncSync(
-      swarm.name,
-      swarm.swarmApiKey,
+      swarmHost,
+      decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && pat ? { username, pat } : undefined,
     );

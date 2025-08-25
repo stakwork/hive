@@ -57,6 +57,10 @@ export const generatePM2Apps = (
       appConfig.env.TEST_COMMAND = service.scripts.test;
     }
 
+    if (service.scripts?.e2eTest) {
+      appConfig.env.E2E_TEST_COMMAND = service.scripts.e2eTest;
+    }
+
     if (service.scripts?.build) {
       appConfig.env.BUILD_COMMAND = service.scripts.build;
     }
@@ -200,6 +204,9 @@ RUN sudo mkdir -p -m 755 /etc/apt/keyrings \\
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\
     && sudo apt update -y \\
     && sudo apt install gh -y
+
+# Install playwright
+# RUN npx playwright install --with-deps
 
 # Install PM2 globally and ensure it's accessible
 RUN npm install -g pm2 && \\

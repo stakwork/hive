@@ -24,6 +24,7 @@ export const optionalEnvVars = {
   STAKWORK_BASE_URL:
     process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
+  STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
   POOL_MANAGER_BASE_URL:
     process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),

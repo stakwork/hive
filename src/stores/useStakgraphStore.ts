@@ -9,6 +9,7 @@ import {
 import { ToastProps } from "@/components/ui/toast";
 import { EnvironmentVariable } from "@/types/wizard";
 import { getPM2AppsContent } from "@/utils/devContainerUtils";
+import { createRequestManager, isAbortError } from "@/utils/request-manager";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
@@ -18,6 +19,7 @@ const initialFormData: StakgraphSettings = {
   repositoryUrl: "",
   swarmUrl: "",
   swarmSecretAlias: "",
+  swarmApiKey: "",
   poolName: "",
   environmentVariables: [],
   services: [],
@@ -31,7 +33,10 @@ const initialState = {
   initialLoading: true,
   saved: false,
   envVars: [] as Array<{ name: string; value: string; show?: boolean }>,
+  currentWorkspaceSlug: null as string | null,
 };
+
+const requestManager = createRequestManager();
 
 type StakgraphStore = {
   // State
@@ -41,6 +46,7 @@ type StakgraphStore = {
   initialLoading: boolean;
   saved: boolean;
   envVars: Array<{ name: string; value: string; show?: boolean }>;
+  currentWorkspaceSlug: string | null;
 
   // Actions
   loadSettings: (slug: string) => Promise<void>;
@@ -85,10 +91,23 @@ export const useStakgraphStore = create<StakgraphStore>()(
     // Load existing settings
     loadSettings: async (slug: string) => {
       if (!slug) return;
+      const state = get();
+
+      if (state.currentWorkspaceSlug !== slug) {
+        set({
+          ...initialState,
+          currentWorkspaceSlug: slug,
+          initialLoading: true,
+        });
+      }
 
       try {
-        set({ initialLoading: true });
-        const response = await fetch(`/api/workspaces/${slug}/stakgraph`);
+        const signal = requestManager.getSignal();
+        const response = await fetch(`/api/workspaces/${slug}/stakgraph`, {
+          signal,
+        });
+
+        if (get().currentWorkspaceSlug !== slug) return;
 
         if (response.ok) {
           const result = await response.json();
@@ -105,12 +124,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
               {} as Record<string, string>,
             );
 
-            const newFormData = {
+            const newFormData: StakgraphSettings = {
               name: settings.name || "",
               description: settings.description || "",
               repositoryUrl: settings.repositoryUrl || "",
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
+              swarmApiKey: settings.swarmApiKey || "",
               poolName: settings.poolName || "",
               environmentVariables: settings.environmentVariables || [],
               services: settings.services || [],
@@ -146,8 +166,15 @@ export const useStakgraphStore = create<StakgraphStore>()(
           console.error("Failed to load stakgraph settings");
         }
       } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
         console.error("Error loading stakgraph settings:", error);
       } finally {
+        if (requestManager.isAborted() || get().currentWorkspaceSlug !== slug) {
+          return;
+        }
+
         set({ initialLoading: false });
       }
     },
@@ -220,7 +247,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           {} as Record<string, string>,
         );
 
-        const payload = {
+        const payload: Partial<StakgraphSettings> = {
           name: state.formData.name.trim(),
           description: state.formData.description.trim(),
           repositoryUrl: state.formData.repositoryUrl.trim(),
@@ -234,6 +261,9 @@ export const useStakgraphStore = create<StakgraphStore>()(
           services: state.formData.services,
           containerFiles: base64EncodedFiles,
         };
+        if (state.formData.swarmApiKey) {
+          payload.swarmApiKey = state.formData.swarmApiKey.trim();
+        }
 
         const response = await fetch(`/api/workspaces/${slug}/stakgraph`, {
           method: "PUT",
@@ -354,6 +384,9 @@ export const useStakgraphStore = create<StakgraphStore>()(
       if (data.swarmSecretAlias !== undefined && newErrors.swarmSecretAlias) {
         delete newErrors.swarmSecretAlias;
       }
+      if (data.swarmApiKey !== undefined && newErrors.swarmApiKey) {
+        delete newErrors.swarmApiKey;
+      }
       if (Object.keys(newErrors).length !== Object.keys(state.errors).length) {
         set({ errors: newErrors });
       }
@@ -413,6 +446,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
     setLoading: (loading) => set({ loading }),
     setInitialLoading: (loading) => set({ initialLoading: loading }),
     setSaved: (saved) => set({ saved }),
-    resetForm: () => set(initialState),
+    resetForm: () => {
+      requestManager.reset();
+      set({
+        ...initialState,
+        formData: JSON.parse(JSON.stringify(initialFormData)),
+        envVars: [],
+      });
+    },
   })),
 );

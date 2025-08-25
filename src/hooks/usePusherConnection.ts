@@ -117,36 +117,43 @@ export function usePusherConnection({
           setError("Failed to connect to real-time messaging");
           setIsConnected(false);
         });
-
-        // Bind to new message events
-        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, (message: ChatMessage) => {
-          if (LOGS) {
-            console.log("Received Pusher message:", {
-              id: message.id,
-              message: message.message,
-              role: message.role,
-              timestamp: message.timestamp,
-              channelName,
-            });
-          }
-          if (onMessageRef.current) {
-            onMessageRef.current(message);
+        //payload is messageId
+        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
+          try {
+            if (typeof payload === "string") {
+              const res = await fetch(`/api/chat/messages/${payload}`);
+              if (res.ok) {
+                const data = await res.json();
+                const full: ChatMessage = data.data;
+                if (onMessageRef.current) onMessageRef.current(full);
+                return;
+              } else {
+                console.error("Failed to fetch message by id", payload);
+                return;
+              }
+            }
+          } catch (err) {
+            console.error("Error handling NEW_MESSAGE event:", err);
+            return;
           }
         });
 
         // Bind to workflow status update events
-        channel.bind(PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, (update: WorkflowStatusUpdate) => {
-          if (LOGS) {
-            console.log("Received workflow status update:", {
-              taskId: update.taskId,
-              workflowStatus: update.workflowStatus,
-              channelName,
-            });
-          }
-          if (onWorkflowStatusUpdateRef.current) {
-            onWorkflowStatusUpdateRef.current(update);
-          }
-        });
+        channel.bind(
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          (update: WorkflowStatusUpdate) => {
+            if (LOGS) {
+              console.log("Received workflow status update:", {
+                taskId: update.taskId,
+                workflowStatus: update.workflowStatus,
+                channelName,
+              });
+            }
+            if (onWorkflowStatusUpdateRef.current) {
+              onWorkflowStatusUpdateRef.current(update);
+            }
+          },
+        );
 
         channelRef.current = channel;
         currentTaskIdRef.current = targetTaskId;

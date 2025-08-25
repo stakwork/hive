@@ -10,6 +10,7 @@ export interface ServiceDataConfig {
     install?: string;
     build?: string;
     test?: string;
+    e2eTest?: string;
     preStart?: string;
     postStart?: string;
     rebuild?: string;
@@ -22,6 +23,7 @@ export interface StakgraphSettings {
   repositoryUrl: string;
   swarmUrl: string;
   swarmSecretAlias: string;
+  swarmApiKey?: string;
   poolName: string;
   environmentVariables: EnvironmentVariable[];
   services: ServiceDataConfig[];
@@ -44,6 +46,7 @@ export interface RepositoryData {
 export interface SwarmData {
   swarmUrl: string;
   swarmSecretAlias: string;
+  swarmApiKey: string;
 }
 
 export interface EnvironmentData {

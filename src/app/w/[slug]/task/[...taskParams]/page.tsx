@@ -11,6 +11,7 @@ import {
   WorkflowStatus,
   createChatMessage,
   Option,
+  Artifact,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import {
@@ -57,6 +58,7 @@ export default function TaskChatPage() {
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
     WorkflowStatus.PENDING,
   );
+  const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -198,10 +200,17 @@ export default function TaskChatPage() {
   };
 
   const handleSend = async (message: string) => {
-    await sendMessage(
-      message,
-      chatWebhook ? { webhook: chatWebhook } : undefined,
-    );
+    // Allow sending if we have either text or a pending debug attachment
+    if (!message.trim() && !pendingDebugAttachment) return;
+
+    // For artifact-only messages, provide a default message
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    
+    await sendMessage(messageText, {
+      ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
+      ...(chatWebhook && { webhook: chatWebhook }),
+    });
+    setPendingDebugAttachment(null); // Clear attachment after sending
   };
 
   const sendMessage = async (
@@ -210,6 +219,7 @@ export default function TaskChatPage() {
       taskId?: string;
       replyId?: string;
       webhook?: string;
+      artifact?: Artifact;
     },
   ) => {
     if (isLoading) return;
@@ -220,6 +230,7 @@ export default function TaskChatPage() {
       role: ChatRole.USER,
       status: ChatStatus.SENDING,
       replyId: options?.replyId,
+      artifacts: options?.artifact ? [options.artifact] : [],
     });
 
     setMessages((msgs) => [...msgs, newMessage]);
@@ -228,13 +239,14 @@ export default function TaskChatPage() {
     // console.log("Sending message:", messageText, options);
 
     try {
-      const body: { [k: string]: string | string[] | null } = {
+      const body: { [k: string]: unknown } = {
         taskId: options?.taskId || currentTaskId,
         message: messageText,
         contextTags: [],
         mode: taskMode,
         ...(options?.replyId && { replyId: options.replyId }),
         ...(options?.webhook && { webhook: options.webhook }),
+        ...(options?.artifact && { artifacts: [options.artifact] }),
       };
       const response = await fetch("/api/chat/message", {
         method: "POST",
@@ -307,6 +319,15 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
+    if (debugArtifact) {
+      // Set pending attachment instead of sending immediately
+      setPendingDebugAttachment(debugArtifact);
+      // Focus the input for user to add context
+      // Note: This will be handled by the ChatInput component
+    }
+  };
+
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some(
@@ -363,6 +384,8 @@ export default function TaskChatPage() {
                     hasNonFormArtifacts={hasNonFormArtifacts}
                     isChainVisible={isChainVisible}
                     lastLogLine={lastLogLine}
+                    pendingDebugAttachment={pendingDebugAttachment}
+                    onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                     workflowStatus={workflowStatus}
                   />
                 </div>
@@ -370,7 +393,7 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} />
+                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -385,6 +408,8 @@ export default function TaskChatPage() {
                 hasNonFormArtifacts={hasNonFormArtifacts}
                 isChainVisible={isChainVisible}
                 lastLogLine={lastLogLine}
+                pendingDebugAttachment={pendingDebugAttachment}
+                onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 workflowStatus={workflowStatus}
               />
             </div>

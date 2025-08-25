@@ -19,3 +19,12 @@ export * from "./encryption";
 
 // Test coverage types
 export * from "./test-coverage";
+
+// Janitor types
+export * from "./janitor";
+
+// Stakgraph types
+export * from "./stakgraph";
+
+// Github types
+export * from "./github";

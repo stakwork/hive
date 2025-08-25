@@ -28,7 +28,7 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
 
     async function load() {
       try {
-        if (process.env.NEXT_PUBLIC_DEVELOPMENT === "true") {
+        if (process.env.NODE_ENV === "development") {
           console.log("Development: using local runner");
           if (!cancelled) {
             setState({
@@ -68,7 +68,7 @@ export function useSwarmTestsConfig(): SwarmTestsConfig {
 
         if (!cancelled)
           setState({
-            baseUrl: swarmUrl,
+            baseUrl: `${swarmUrl}:3355`, // Ensure the port is correct for the test runner
             apiKey: swarmApiKey ?? null,
             loading: false,
             error: null,

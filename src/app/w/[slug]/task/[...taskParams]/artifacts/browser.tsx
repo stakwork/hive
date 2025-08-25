@@ -11,8 +11,14 @@ import {
   Target,
   Copy,
   FlaskConical,
+  Bug,
 } from "lucide-react";
-import { Artifact, BrowserContent } from "@/lib/chat";
+import {
+  Artifact,
+  BrowserContent,
+  BugReportContent,
+  ArtifactType,
+} from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import {
   Dialog,
@@ -30,6 +36,8 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { DebugOverlay } from "@/components/DebugOverlay";
+import { useDebugSelection } from "@/hooks/useDebugSelection";
 
 interface PlaywrightTestModalProps {
   isOpen: boolean;
@@ -101,12 +109,15 @@ function PlaywrightTestModal({
   );
 }
 
+
 export function BrowserArtifactPanel({
   artifacts,
   ide,
+  onDebugMessage,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
+  onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -130,6 +141,15 @@ export function BrowserArtifactPanel({
     generatedPlaywrightTest,
     closePlaywrightModal,
   } = useStaktrak(activeContent?.url);
+  
+  // Use debug selection hook with iframeRef from staktrak
+  const {
+    debugMode,
+    isSubmittingDebug,
+    setDebugMode,
+    handleDebugElement,
+    handleDebugSelection: handleDebugSelectionHook,
+  } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
 
   // Use currentUrl from staktrak hook, fallback to content.url
@@ -159,6 +179,24 @@ export function BrowserArtifactPanel({
     }
   };
 
+  // Tab change handler
+  const handleTabChange = (newTab: number) => {
+    setActiveTab(newTab);
+    if (debugMode) {
+      setDebugMode(false);
+    }
+  };
+
+  // Wrapper to pass artifacts and activeTab to the hook's handleDebugSelection
+  const handleDebugSelection = async (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => {
+    await handleDebugSelectionHook(x, y, width, height, artifacts, activeTab);
+  };
+
   if (artifacts.length === 0) return null;
 
   return (
@@ -169,7 +207,7 @@ export function BrowserArtifactPanel({
             {artifacts.map((artifact, index) => (
               <button
                 key={artifact.id}
-                onClick={() => setActiveTab(index)}
+                onClick={() => handleTabChange(index)}
                 className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                   activeTab === index
                     ? "border-primary text-primary bg-background"
@@ -275,6 +313,22 @@ export function BrowserArtifactPanel({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
+                            variant={debugMode ? "default" : "ghost"}
+                            size="sm"
+                            onClick={handleDebugElement}
+                            className="h-8 w-8 p-0"
+                            title="Debug Element"
+                          >
+                            <Bug className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Debug Element</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleTabOut(tabUrl)}
@@ -306,7 +360,7 @@ export function BrowserArtifactPanel({
                   </div>
                 </div>
               )}
-              <div className="flex-1 overflow-hidden min-h-0 min-w-0">
+              <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
@@ -314,6 +368,14 @@ export function BrowserArtifactPanel({
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                 />
+                {/* Debug overlay - only active for the current tab */}
+                {isActive && (
+                  <DebugOverlay
+                    isActive={debugMode}
+                    isSubmitting={isSubmittingDebug}
+                    onDebugSelection={handleDebugSelection}
+                  />
+                )}
               </div>
             </div>
           );

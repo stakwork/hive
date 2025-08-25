@@ -3,10 +3,12 @@ import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    console.log("SESSION", session);
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
@@ -46,11 +48,13 @@ export async function POST(request: NextRequest) {
       pat = creds.pat;
     }
 
+    const callbackUrl = getStakgraphWebhookCallbackUrl(request);
     const apiResult = await triggerAsyncSync(
       swarm.name,
       swarm.swarmApiKey,
       swarm.repositoryUrl,
       username && pat ? { username, pat } : undefined,
+      callbackUrl,
     );
 
     return NextResponse.json(

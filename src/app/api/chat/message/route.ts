@@ -14,6 +14,7 @@ import {
 import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 import { getS3Service } from "@/services/s3";
+import { getBaseUrl } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -47,21 +48,15 @@ interface StakworkWorkflowPayload {
   };
 }
 
-function getBaseUrl(request?: NextRequest): string {
-  // Use the request host or fallback to localhost
-  const host = request?.headers.get("host") || "localhost:3000";
-  const protocol = host.includes("localhost") ? "http" : "https";
-  const baseUrl = `${protocol}://${host}`;
-  return baseUrl;
-}
 
 async function callMock(
   taskId: string,
   message: string,
   userId: string,
+  artifacts: ArtifactRequest[],
   request?: NextRequest,
 ) {
-  const baseUrl = getBaseUrl(request);
+  const baseUrl = getBaseUrl(request?.headers.get("host"));
 
   try {
     const response = await fetch(`${baseUrl}/api/mock`, {
@@ -70,6 +65,7 @@ async function callMock(
         taskId,
         message,
         userId,
+        artifacts,
       }),
       headers: {
         "Content-Type": "application/json",
@@ -117,7 +113,7 @@ async function callStakwork(
       );
     }
 
-    const baseUrl = getBaseUrl(request);
+    const baseUrl = getBaseUrl(request?.headers.get("host"));
     let webhookUrl = `${baseUrl}/api/chat/response`;
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
@@ -445,7 +441,7 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      stakworkData = await callMock(taskId, message, userId, request);
+      stakworkData = await callMock(taskId, message, userId, artifacts, request);
     }
 
     return NextResponse.json(
