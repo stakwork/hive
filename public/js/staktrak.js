@@ -1053,9 +1053,17 @@ var userBehaviour = (() => {
 
   var userBehaviour = new UserBehaviorTracker();
   var initializeStakTrak = () => {
-    // Wait for Next.js context before React detection
+    console.log('🚀 StakTrak: Initialized in', window.parent !== window ? 'iframe' : 'main window');
+    
+    // Try to detect React immediately
+    const reactFound = detectAndExposeReact();
+    
+    // Wait for Next.js context before starting behavior tracking
     waitForNextJS(() => {
-      detectAndExposeReact();
+      // Try React detection again if it failed earlier
+      if (!reactFound) {
+        detectAndExposeReact();
+      }
       
       // Then start normal staktrak
       userBehaviour.makeConfig({
