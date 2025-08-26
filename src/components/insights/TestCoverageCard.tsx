@@ -102,7 +102,9 @@ export function TestCoverageCard() {
     );
   }
 
-  if (!data) {
+  const hasNoData = !data || (!data.functions && !data.endpoints && !data.e2e_tests);
+  
+  if (hasNoData) {
     return (
       <Card>
         <CardHeader>
@@ -111,13 +113,14 @@ export function TestCoverageCard() {
             <span>Test Coverage</span>
           </CardTitle>
           <CardDescription>
-            Code coverage analysis.
+            Code coverage analysis from your test suite
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">
-              No coverage data available.
+          <div className="text-center py-8 space-y-3">
+            <TestTube className="h-12 w-12 mx-auto text-muted-foreground/50" />
+            <p className="text-sm font-medium text-muted-foreground">
+              No test coverage data available
             </p>
           </div>
         </CardContent>
