@@ -139,55 +139,55 @@ export function TestCoverageCard() {
       <CardContent>
         <div className="space-y-6">
           {/* Unit Tests Coverage */}
-          {data.functions && (
+          {data.unit_tests && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <FunctionSquare className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Unit Tests</span>
                 </div>
-                <Badge variant="outline" className={getPercentageColor(data.functions.percent || 0)}>
-                  {(data.functions.percent || 0).toFixed(1)}%
+                <Badge variant="outline" className={getPercentageColor(data.unit_tests.percent || 0)}>
+                  {(data.unit_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
               
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.functions.percent || 0)}`}
-                  style={{ width: `${Math.min(data.functions.percent || 0, 100)}%` }}
+                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.unit_tests.percent || 0)}`}
+                  style={{ width: `${Math.min(data.unit_tests.percent || 0, 100)}%` }}
                 />
               </div>
               
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.functions.covered || 0} covered</span>
-                <span>{data.functions.total || 0} total</span>
+                <span>{data.unit_tests.covered || 0} covered</span>
+                <span>{data.unit_tests.total || 0} total</span>
               </div>
             </div>
           )}
 
           {/* Integration Tests Coverage */}
-          {data.endpoints && (
+          {data.integration_tests && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Globe className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Integration Tests</span>
                 </div>
-                <Badge variant="outline" className={getPercentageColor(data.endpoints.percent || 0)}>
-                  {(data.endpoints.percent || 0).toFixed(1)}%
+                <Badge variant="outline" className={getPercentageColor(data.integration_tests.percent || 0)}>
+                  {(data.integration_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
               
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.endpoints.percent || 0)}`}
-                  style={{ width: `${Math.min(data.endpoints.percent || 0, 100)}%` }}
+                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.integration_tests.percent || 0)}`}
+                  style={{ width: `${Math.min(data.integration_tests.percent || 0, 100)}%` }}
                 />
               </div>
               
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.endpoints.covered || 0} covered</span>
-                <span>{data.endpoints.total || 0} total</span>
+                <span>{data.integration_tests.covered || 0} covered</span>
+                <span>{data.integration_tests.total || 0} total</span>
               </div>
             </div>
           )}
@@ -200,14 +200,21 @@ export function TestCoverageCard() {
                   <Target className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">End to End Tests</span>
                 </div>
-                <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">
-                  {data.e2e_tests.total}
+                <Badge variant="outline" className={getPercentageColor(data.e2e_tests.percent || 0)}>
+                  {(data.e2e_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
               
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.e2e_tests.percent || 0)}`}
+                  style={{ width: `${Math.min(data.e2e_tests.percent || 0, 100)}%` }}
+                />
+              </div>
+              
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Testing User Journeys</span>
-                <span>{data.e2e_tests.total} total</span>
+                <span>{data.e2e_tests.covered || 0} covered</span>
+                <span>{data.e2e_tests.total || 0} total</span>
               </div>
             </div>
           )}
