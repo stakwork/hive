@@ -363,8 +363,9 @@ var userBehaviour = (() => {
   function extractReactDebugSource(element) {
     var _a, _b;
     try {
-      // Primary method: jsx-dev-runtime extraction (enhanced)
-      // This is our main source location detection method for Next.js 15 + Turbopack
+      // NOTE: React 19 removed _debugSource from fiber nodes (GitHub issues #29092, #31981)
+      // jsx-dev-runtime is active but source location data is no longer accessible via fibers
+      // This function returns null in React 19 but is kept for React 18 compatibility
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
       );
@@ -1016,15 +1017,16 @@ var userBehaviour = (() => {
   };
   // Function to detect and expose React globally
   var detectAndExposeReact = () => {
-    // Method 1: Check if React is already global
+    // NOTE: React 19 + Turbopack investigation complete (2025-08-25)
+    // - React is not exposed globally in Turbopack iframe context
+    // - window.TURBOPACK exists but only provides chunk loading, not module access
+    // - React DevTools hook has renderers but no React constructor access
+    // - jsx-dev-runtime is active (evidenced by stack traces) but inaccessible
+    // See .projects/dom-inspector-comparison.md for detailed findings
+    
     if (window.React) {
       return window.React;
     }
-    
-    // Method 2: React.captureOwnerStack is not accessible in Next.js 15 + Turbopack
-    // The exploration showed TURBOPACK is only a chunk loader, not a module system
-    // jsx-dev-runtime extraction is our primary method for source location detection
-    
     return null;
   };
 
