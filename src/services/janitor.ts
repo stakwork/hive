@@ -20,6 +20,7 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
 import { config as envConfig } from "@/lib/env";
+import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -700,6 +701,41 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       }
     });
 
+    // Trigger Pusher event for real-time recommendations update
+    const newRecommendationCount = results?.recommendations?.length || 0;
+    if (newRecommendationCount > 0) {
+      try {
+        const channelName = getWorkspaceChannelName(janitorRun.janitorConfig.workspace.slug);
+        
+        // Get total recommendation count for this workspace
+        const totalCount = await db.janitorRecommendation.count({
+          where: {
+            janitorRun: {
+              janitorConfig: {
+                workspaceId: janitorRun.janitorConfig.workspace.id
+              }
+            },
+            status: "PENDING"
+          }
+        });
+
+        const eventPayload = {
+          workspaceSlug: janitorRun.janitorConfig.workspace.slug,
+          newRecommendationCount,
+          totalRecommendationCount: totalCount,
+          timestamp: new Date(),
+        };
+
+        await pusherServer.trigger(
+          channelName,
+          PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
+          eventPayload,
+        );
+      } catch (error) {
+        console.error("Error broadcasting recommendations update to Pusher:", error);
+      }
+    }
+
     return {
       runId: janitorRun.id,
       status: "COMPLETED" as JanitorStatus,
@@ -729,6 +765,18 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         stakworkProjectId: projectId,
         status: "FAILED"
       },
+      include: {
+        janitorConfig: {
+          include: {
+            workspace: {
+              select: {
+                id: true,
+                slug: true,
+              }
+            }
+          }
+        }
+      },
       orderBy: { updatedAt: "desc" }
     });
 
@@ -744,6 +792,8 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           }
         }
       });
+
+      // No Pusher event needed for failed janitors since no new recommendations were created
     }
 
     return {

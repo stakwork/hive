@@ -12,6 +12,7 @@ interface Recommendation {
   };
 }
 
+
 const initialState = {
   recommendations: [],
   janitorConfig: null,
