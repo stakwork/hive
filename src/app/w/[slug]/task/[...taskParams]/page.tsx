@@ -192,10 +192,10 @@ export default function TaskChatPage() {
       window.history.replaceState({}, "", newUrl);
 
       setStarted(true);
-      await sendMessage(msg, undefined, { taskId: newTaskId });
+      await sendMessage(msg, { taskId: newTaskId });
     } else {
       setStarted(true);
-      await sendMessage(msg, undefined);
+      await sendMessage(msg);
     }
   };
 
@@ -206,21 +206,20 @@ export default function TaskChatPage() {
     // For artifact-only messages, provide a default message
     const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
     
-    await sendMessage(
-      messageText,
-      pendingDebugAttachment || undefined,
-      chatWebhook ? { webhook: chatWebhook } : undefined,
-    );
+    await sendMessage(messageText, {
+      ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
+      ...(chatWebhook && { webhook: chatWebhook }),
+    });
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
 
   const sendMessage = async (
     messageText: string,
-    artifact?: Artifact,
     options?: {
       taskId?: string;
       replyId?: string;
       webhook?: string;
+      artifact?: Artifact;
     },
   ) => {
     if (isLoading) return;
@@ -231,7 +230,7 @@ export default function TaskChatPage() {
       role: ChatRole.USER,
       status: ChatStatus.SENDING,
       replyId: options?.replyId,
-      artifacts: artifact ? [artifact] : [],
+      artifacts: options?.artifact ? [options.artifact] : [],
     });
 
     setMessages((msgs) => [...msgs, newMessage]);
@@ -247,7 +246,7 @@ export default function TaskChatPage() {
         mode: taskMode,
         ...(options?.replyId && { replyId: options.replyId }),
         ...(options?.webhook && { webhook: options.webhook }),
-        ...(artifact && { artifacts: [artifact] }),
+        ...(options?.artifact && { artifacts: [options.artifact] }),
       };
       const response = await fetch("/api/chat/message", {
         method: "POST",
@@ -313,7 +312,7 @@ export default function TaskChatPage() {
     if (originalMessage) {
       setIsChainVisible(true);
       // Send the artifact action response to the backend
-      await sendMessage(action.optionResponse, undefined, {
+      await sendMessage(action.optionResponse, {
         replyId: originalMessage.id,
         webhook: webhook,
       });

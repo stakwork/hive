@@ -58,6 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `stakgraph/` - Components for stakgraph integration and forms
 - `roadmap/` - Product roadmap management components
 - `onboarding/` - User onboarding components
+- Any time you create a react component, create a directory always call the file index.ts
 
 #### `/src/lib` - Core Utilities
 - `auth/` - NextAuth.js configuration and workspace resolution
@@ -156,6 +157,10 @@ Required environment variables:
 - Tailwind CSS for styling
 - TypeScript strict mode enabled
 - Prettier for code formatting
+- Use comments sparingly
+- Components should own their data and handlers (avoid prop drilling)
+- Move static functions/configs outside components to prevent recreations
+- Avoid setTimeout for delays - use proper async/loading states instead
 
 ### Feature Flags
 The application uses environment-based feature flags with role-based access control. See `/docs/feature-flags.md` for complete documentation.
@@ -170,3 +175,11 @@ NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION=true
 ```
 
 **Important:** Next.js client-side feature flags require `NEXT_PUBLIC_` prefix and explicit environment variable references due to build-time optimization. When adding new features, update the switch statement in `/src/lib/feature-flags.ts`.
+
+### Janitor Cron Jobs
+Automated janitor runs via Vercel cron jobs. Configure with:
+- `JANITOR_CRON_ENABLED=true` - Enable automation
+- `CRON_SECRET="token"` - Endpoint security
+- Schedule configured in `vercel.json` (currently every 6 hours: `"0 */6 * * *"`)
+
+Endpoint: `/api/cron/janitors` (processes all enabled workspaces)

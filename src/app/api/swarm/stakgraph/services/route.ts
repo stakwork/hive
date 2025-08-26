@@ -23,7 +23,11 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+    const clone = searchParams.get("clone");
+
     const swarmId = searchParams.get("swarmId");
+    const repo_url = searchParams.get("repo_url");
+
     if (!workspaceId || !swarmId) {
       return NextResponse.json(
         {
@@ -52,11 +56,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+
+
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequestAuth({
       swarmUrl: `https://${getSwarmVanityAddress(swarm.name)}:3355`,
       endpoint: "/services",
       method: "GET",
+      params: { ...(clone === 'true' ? { clone } : {}), ...(repo_url ? { repo_url } : {}) },
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 

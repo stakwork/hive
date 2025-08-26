@@ -22,20 +22,23 @@ export async function triggerSync(
   });
 }
 
+//
 export async function triggerAsyncSync(
-  swarmName: string,
+  swarmHost: string,
   apiKey: string,
   repoUrl: string,
   creds?: Creds,
+  callbackUrl?: string,
 ) {
   console.log("===Trigger AsyncSync was hit");
-  const stakgraphUrl = `https://${swarmName}:7799`;
+  const stakgraphUrl = `https://${swarmHost}:7799`;
   const data: Record<string, string> = { repo_url: repoUrl };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
+  if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
-    endpoint: "/async_sync",
+    endpoint: "/sync_async",
     method: "POST",
     apiKey,
     data,
@@ -47,10 +50,16 @@ export async function triggerIngestAsync(
   apiKey: string,
   repoUrl: string,
   creds: { username: string; pat: string },
+  callbackUrl?: string,
 ) {
   console.log("===Trigger IngestAsync was hit");
   const stakgraphUrl = `https://${swarmName}:7799`;
-  const data = { repo_url: repoUrl, username: creds.username, pat: creds.pat };
+  const data: Record<string, string> = {
+    repo_url: repoUrl,
+    username: creds.username,
+    pat: creds.pat,
+  };
+  if (callbackUrl) data.callback_url = callbackUrl;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/ingest_async",

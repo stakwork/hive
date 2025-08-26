@@ -10,6 +10,7 @@ import {
 export interface JanitorConfigUpdate {
   unitTestsEnabled?: boolean;
   integrationTestsEnabled?: boolean;
+  e2eTestsEnabled?: boolean;
 }
 
 export interface AcceptRecommendationRequest {
@@ -51,6 +52,26 @@ export interface JanitorRecommendationFilters {
   priority?: Priority;
   limit?: number;
   page?: number;
+}
+
+export interface CronExecutionResult {
+  success: boolean;
+  workspacesProcessed: number;
+  runsCreated: number;
+  errorCount: number;
+  errors: Array<{
+    workspaceSlug: string;
+    janitorType: JanitorType;
+    error: string;
+  }>;
+  timestamp: string;
+}
+
+export interface CronHealthCheck {
+  enabled: boolean;
+  schedule: string;
+  scheduleSource: string;
+  timestamp: string;
 }
 
 export { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus };

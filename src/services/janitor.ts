@@ -15,10 +15,11 @@ import {
   JanitorRunFilters,
   JanitorRecommendationFilters,
 } from "@/types/janitor";
-import { JANITOR_ERRORS } from "@/lib/constants/janitor";
+import { JANITOR_ERRORS, getEnabledFieldName } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
+import { stakworkService } from "@/lib/service-factory";
+import { config as envConfig } from "@/lib/env";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -89,7 +90,7 @@ export async function createJanitorRun(
 
   // Parse janitor type
   const janitorTypeUpper = janitorTypeString.toUpperCase();
-  if (!["UNIT_TESTS", "INTEGRATION_TESTS"].includes(janitorTypeUpper)) {
+  if (!Object.values(JanitorType).includes(janitorTypeUpper as JanitorType)) {
     throw new Error(`Invalid janitor type: ${janitorTypeString}`);
   }
   const janitorType = janitorTypeUpper as JanitorType;
@@ -106,29 +107,17 @@ export async function createJanitorRun(
   }
 
   // Check if janitor is enabled
-  const enabledField = janitorType === "UNIT_TESTS" 
-    ? "unitTestsEnabled" 
-    : "integrationTestsEnabled";
+  const enabledField = getEnabledFieldName(janitorType);
   
   if (!config[enabledField]) {
     throw new Error(JANITOR_ERRORS.JANITOR_DISABLED);
   }
 
-  // Check for existing run in progress
-  const existingRun = await db.janitorRun.findFirst({
-    where: {
-      janitorConfigId: config.id,
-      janitorType,
-      status: { in: ["PENDING", "RUNNING"] }
-    }
-  });
+  // Allow multiple manual runs - concurrent check removed for manual triggers
+  // This will be replaced by cron scheduling in the future
 
-  if (existingRun) {
-    throw new Error(JANITOR_ERRORS.RUN_IN_PROGRESS);
-  }
-
-  // Create new run
-  return await db.janitorRun.create({
+  // First create the database record without stakwork project ID
+  let janitorRun = await db.janitorRun.create({
     data: {
       janitorConfigId: config.id,
       janitorType,
@@ -138,9 +127,134 @@ export async function createJanitorRun(
         triggeredByUserId: userId,
         workspaceId,
       }
+    },
+    include: {
+      janitorConfig: {
+        include: {
+          workspace: {
+            include: {
+              swarm: {
+                select: {
+                  swarmUrl: true,
+                  swarmSecretAlias: true,
+                  poolName: true,
+                  name: true,
+                  id: true,
+                }
+              }
+            }
+          }
+        }
+      }
     }
   });
+
+  try {
+    // Check if Stakwork is configured for janitors
+    if (!envConfig.STAKWORK_API_KEY) {
+      throw new Error("STAKWORK_API_KEY is required for janitor runs");
+    }
+    if (!envConfig.STAKWORK_JANITOR_WORKFLOW_ID) {
+      throw new Error("STAKWORK_JANITOR_WORKFLOW_ID is required for janitor runs");
+    }
+
+    // Get workflow ID - single workflow for janitors
+    const workflowId = envConfig.STAKWORK_JANITOR_WORKFLOW_ID;
+
+    // Build webhook URL for janitor completion (recommendations endpoint)
+    const baseUrl = envConfig.STAKWORK_BASE_URL;
+    const webhookUrl = `${baseUrl.replace('/api/v1', '')}/api/janitors/webhook`;
+
+    // Get swarm data from workspace
+    const swarm = janitorRun.janitorConfig.workspace.swarm;
+    const swarmUrl = swarm?.swarmUrl || "";
+    const swarmSecretAlias = swarm?.swarmSecretAlias || "";
+
+    // Prepare variables - include janitorType, webhookUrl, swarmUrl, and swarmSecretAlias
+    const vars = {
+      janitorType: janitorType,
+      webhookUrl: webhookUrl,
+      swarmUrl: swarmUrl,
+      swarmSecretAlias: swarmSecretAlias,
+    };
+
+    // Create Stakwork project using the stakworkRequest method (following existing pattern)
+    const stakworkPayload = {
+      name: `janitor-${janitorType.toLowerCase()}-${Date.now()}`,
+      workflow_id: parseInt(workflowId),
+      workflow_params: {
+        set_var: {
+          attributes: {
+            vars
+          }
+        }
+      }
+    };
+
+    const stakworkProject = await stakworkService().stakworkRequest(
+      "/projects",
+      stakworkPayload
+    );
+
+    // Extract project ID from Stakwork response
+    const projectId = (stakworkProject as any)?.data?.project_id;
+
+    if (!projectId) {
+      console.error("No project_id found in Stakwork response:", stakworkProject);
+      throw new Error("No project ID returned from Stakwork");
+    }
+
+
+    // Update the run with the Stakwork project ID
+    janitorRun = await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        stakworkProjectId: projectId,
+        status: "RUNNING",
+        startedAt: new Date(),
+      },
+      include: {
+        janitorConfig: {
+          include: {
+            workspace: {
+              include: {
+                swarm: {
+                  select: {
+                    swarmUrl: true,
+                    swarmSecretAlias: true,
+                    poolName: true,
+                    name: true,
+                    id: true,
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return janitorRun;
+
+  } catch (stakworkError) {
+    console.error("Failed to create Stakwork project for janitor run:", stakworkError);
+    
+    // Update the run status to failed
+    await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        error: `Failed to initialize Stakwork project: ${stakworkError instanceof Error ? stakworkError.message : 'Unknown error'}`
+      }
+    });
+
+    // Throw error to be handled by the API route
+    throw new Error(`Failed to start janitor run: ${stakworkError instanceof Error ? stakworkError.message : 'Stakwork integration failed'}`);
+  }
 }
+
+
 
 /**
  * Get janitor runs with filters
@@ -253,8 +367,11 @@ export async function getJanitorRecommendations(
     }
   };
 
+  // Default to PENDING status if no status filter is provided
   if (status) {
     where.status = status;
+  } else {
+    where.status = "PENDING";
   }
 
   if (priority) {
@@ -339,11 +456,11 @@ export async function acceptJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND);
   }
 
-  // Verify user has permission - check if user can write to workspace
-  const workspaceId = recommendation.janitorRun.janitorConfig.workspace.id;
-  const member = await findActiveMember(workspaceId, userId);
+  // Verify user has permission - use proper workspace validation
+  const workspaceSlug = recommendation.janitorRun.janitorConfig.workspace.slug;
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   
-  if (!member || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(member.role)) {
+  if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
@@ -395,7 +512,7 @@ export async function acceptJanitorRecommendation(
   });
 
   // Create task and trigger Stakwork workflow using shared service
-  const message = `Task: ${recommendation.title}\n\nDescription: ${recommendation.description}\n\nThis task was created from a janitor recommendation. Please implement the requested changes.`;
+  const message = `${recommendation.title}\n\n${recommendation.description}\n\n`;
   
   const taskResult = await createTaskWithStakworkWorkflow({
     title: recommendation.title,
@@ -406,7 +523,8 @@ export async function acceptJanitorRecommendation(
     priority: recommendation.priority,
     sourceType: "JANITOR",
     userId: userId,
-    initialMessage: message
+    initialMessage: message,
+    mode: "live"  // Use production workflow for janitor-created tasks
   });
 
   return { 
@@ -443,11 +561,11 @@ export async function dismissJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND);
   }
 
-  // Verify user has permission - check if user can write to workspace
-  const workspaceId = recommendation.janitorRun.janitorConfig.workspace.id;
-  const member = await findActiveMember(workspaceId, userId);
+  // Verify user has permission - use proper workspace validation
+  const workspaceSlug = recommendation.janitorRun.janitorConfig.workspace.slug;
+  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   
-  if (!member || !["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(member.role)) {
+  if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
@@ -513,7 +631,19 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       include: {
         janitorConfig: {
           include: {
-            workspace: true
+            workspace: {
+              include: {
+                swarm: {
+                  select: {
+                    swarmUrl: true,
+                    swarmSecretAlias: true,
+                    poolName: true,
+                    name: true,
+                    id: true,
+                  }
+                }
+              }
+            }
           }
         }
       },

@@ -10,13 +10,31 @@ import { POST as DismissRecommendation } from "@/app/api/janitors/recommendation
 import { POST as WebhookHandler } from "@/app/api/janitors/webhook/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
+import { stakworkService } from "@/lib/service-factory";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+// Mock Stakwork service
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: vi.fn(() => ({
+    stakworkRequest: vi.fn(),
+  })),
+}));
+
+// Mock environment config
+vi.mock("@/lib/env", () => ({
+  config: {
+    STAKWORK_API_KEY: "test-api-key",
+    STAKWORK_JANITOR_WORKFLOW_ID: "123",
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+  },
+}));
+
 const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
+const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
 describe("Janitor API Integration Tests", () => {
   async function createTestWorkspaceWithUser(role: WorkspaceRole = "OWNER") {
@@ -92,6 +110,20 @@ describe("Janitor API Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Set up required environment variables for tests
+    process.env.STAKWORK_API_KEY = "test-api-key";
+    process.env.STAKWORK_JANITOR_WORKFLOW_ID = "123";
+    
+    // Set up default Stakwork service mock
+    const mockStakworkRequest = vi.fn().mockResolvedValue({
+      success: true,
+      data: { project_id: 123 }
+    });
+    
+    mockStakworkService.mockReturnValue({
+      stakworkRequest: mockStakworkRequest
+    } as any);
   });
 
   describe("Janitor Configuration", () => {
@@ -217,7 +249,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.success).toBe(true);
       expect(responseData.run).toMatchObject({
         janitorType: "UNIT_TESTS",
-        status: "PENDING",
+        status: "RUNNING",
         triggeredBy: "MANUAL",
       });
 
@@ -279,7 +311,7 @@ describe("Janitor API Integration Tests", () => {
       expect(responseData.error).toContain("Invalid janitor type");
     });
 
-    test("POST /api/workspaces/[slug]/janitors/[type]/run - should prevent concurrent runs", async () => {
+    test("POST /api/workspaces/[slug]/janitors/[type]/run - should allow concurrent runs", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
       // Enable unit tests and create existing run
@@ -314,9 +346,10 @@ describe("Janitor API Integration Tests", () => {
         }),
       });
 
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(200);
       const responseData = await response.json();
-      expect(responseData.error).toContain("already in progress");
+      expect(responseData.success).toBe(true);
+      expect(responseData.run.janitorType).toBe("UNIT_TESTS");
     });
   });
 
@@ -602,31 +635,20 @@ describe("Janitor API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(responseData).toHaveProperty("recommendations");
       expect(responseData).toHaveProperty("pagination");
-      expect(responseData.recommendations).toHaveLength(2);
+      expect(responseData.recommendations).toHaveLength(1);
       expect(responseData.pagination).toMatchObject({
         page: 1,
         limit: 10,
-        total: 2,
+        total: 1,
       });
 
       // Verify recommendation data structure
       const pendingRec = responseData.recommendations.find((r: any) => r.status === "PENDING");
-      const acceptedRec = responseData.recommendations.find((r: any) => r.status === "ACCEPTED");
       
       expect(pendingRec).toMatchObject({
         title: "Add unit tests for UserService",
         priority: "HIGH",
         status: "PENDING",
-      });
-
-      expect(acceptedRec).toMatchObject({
-        title: "Add integration tests",
-        priority: "MEDIUM", 
-        status: "ACCEPTED",
-        acceptedBy: {
-          id: user.id,
-          email: user.email,
-        },
       });
     });
 

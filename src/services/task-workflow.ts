@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { Priority, TaskStatus, TaskSourceType } from "@prisma/client";
 import { config } from "@/lib/env";
 import { EncryptionService } from "@/lib/encryption";
+import { getBaseUrl } from "@/lib/utils";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -21,6 +22,7 @@ export async function createTaskWithStakworkWorkflow(params: {
   userId: string;
   initialMessage: string;
   status?: TaskStatus;
+  mode?: string;
 }) {
   const { 
     title, 
@@ -32,7 +34,8 @@ export async function createTaskWithStakworkWorkflow(params: {
     sourceType = "USER", 
     userId, 
     initialMessage,
-    status = "TODO"
+    status = "TODO",
+    mode = "default"
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -102,6 +105,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     message: initialMessage,
     userId: userId,
     task: task,
+    mode: mode,
   });
 
   return {
@@ -172,8 +176,9 @@ async function createChatMessageAndTriggerStakwork(params: {
   task: any; // Task with workspace and swarm details
   contextTags?: any[];
   attachments?: string[];
+  mode?: string;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [] } = params;
+  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default" } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -252,6 +257,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         poolName,
         repo2GraphUrl,
         attachments,
+        mode,
       });
 
       if (stakworkData.success) {
@@ -260,8 +266,11 @@ async function createChatMessageAndTriggerStakwork(params: {
           workflowStartedAt: new Date(),
         };
 
+        // Extract project ID from Stakwork response
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
+        } else {
+          console.warn("No project_id found in Stakwork response:", stakworkData);
         }
 
         await db.task.update({
@@ -324,9 +333,9 @@ async function callStakworkAPI(params: {
   }
 
   // Build webhook URLs (replicating the webhook URL logic)
-  const baseUrl = config.STAKWORK_BASE_URL;
-  const webhookUrl = `${baseUrl}/api/chat/response`;
-  const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
+  const appBaseUrl = getBaseUrl();
+  const webhookUrl = `${appBaseUrl}/api/chat/response`;
+  const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
   // Build vars object (replicating the vars structure from chat/message route)
   const vars = {
@@ -389,5 +398,5 @@ async function callStakworkAPI(params: {
   }
 
   const result = await response.json();
-  return { success: true, data: result };
+  return result; // Return Stakwork response directly, don't double-wrap
 }
