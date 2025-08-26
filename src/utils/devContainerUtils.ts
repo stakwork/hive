@@ -170,7 +170,6 @@ export function devcontainerJsonContent(repoName: string) {
 
 export function dockerComposeContent() {
   return `version: '3.8'
-volumes:
 networks:
   app_network:
     driver: bridge
