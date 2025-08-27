@@ -34,6 +34,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
     email: string | null;
   };
   isCodeGraphSetup: boolean;
+  swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
 }
 
 export interface WorkspaceAccessValidation {
