@@ -34,7 +34,7 @@ export function VMConfigSection() {
             icon: CheckCircle,
             className: "bg-green-100 text-green-800 border-green-200"
           },
-          description: "Your VMs are running. Configure environment variables and services anytime."
+          description: "Your VMs are running. Manage environment variables and services any time."
         };
       case "PENDING":
         return {
@@ -106,7 +106,7 @@ export function VMConfigSection() {
                      "Set up VM"}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {swarmStatus === "ACTIVE" ? "Running smoothly" :
+                    {swarmStatus === "ACTIVE" ? "Infrastructure is ready" :
                      swarmStatus === "PENDING" ? "Please wait..." :
                      "Ingest your codebase"}
                   </span>
