@@ -14,7 +14,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { AnimatePresence, motion } from "framer-motion";
 import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
@@ -139,30 +138,6 @@ export default function StakgraphPage() {
         title="VM Configuration"
         description="Configure your virtual machine settings for development environment"
       />
-
-      {/* Subtle: Create Stakgraph section (only if all fields are empty, with smooth animation) */}
-      <AnimatePresence>
-        {/* FIXME: CHECK FOR WIZARD STATE IF COMPLETED OR NOT */}
-        {
-          <motion.div
-            key="create-stakgraph-prompt"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25 }}
-            className="max-w-2xl bg-muted/40 rounded-md px-4 py-2 mb-2 flex items-center gap-3"
-          >
-            <span className="text-sm text-muted-foreground">
-              Don&apos;t have a VM?&nbsp;
-            </span>
-            <Button asChild variant="ghost" size="sm" className="px-2 h-7">
-              <Link href={slug ? `/w/${slug}/code-graph` : "#"}>
-                Create VM
-              </Link>
-            </Button>
-          </motion.div>
-        }
-      </AnimatePresence>
 
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
