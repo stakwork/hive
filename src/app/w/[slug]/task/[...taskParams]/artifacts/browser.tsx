@@ -13,12 +13,7 @@ import {
   FlaskConical,
   Bug,
 } from "lucide-react";
-import {
-  Artifact,
-  BrowserContent,
-  BugReportContent,
-  ArtifactType,
-} from "@/lib/chat";
+import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import {
   Dialog,
@@ -109,15 +104,16 @@ function PlaywrightTestModal({
   );
 }
 
-
 export function BrowserArtifactPanel({
   artifacts,
   ide,
   onDebugMessage,
+  userJourney,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
+  userJourney?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -141,7 +137,7 @@ export function BrowserArtifactPanel({
     generatedPlaywrightTest,
     closePlaywrightModal,
   } = useStaktrak(activeContent?.url);
-  
+
   // Use debug selection hook with iframeRef from staktrak
   const {
     debugMode,
@@ -294,37 +290,43 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsTestModalOpen(true)}
-                            className="h-8 w-8 p-0"
-                          >
-                            <FlaskConical className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Tests</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={debugMode ? "default" : "ghost"}
-                            size="sm"
-                            onClick={handleDebugElement}
-                            className="h-8 w-8 p-0"
-                            title="Debug Element"
-                          >
-                            <Bug className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Debug Element</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    {!userJourney && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIsTestModalOpen(true)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <FlaskConical className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Tests</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {!userJourney && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={debugMode ? "default" : "ghost"}
+                              size="sm"
+                              onClick={handleDebugElement}
+                              className="h-8 w-8 p-0"
+                              title="Debug Element"
+                            >
+                              <Bug className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            Debug Element
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>

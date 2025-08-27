@@ -11,6 +11,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle, Clock, Users, Target } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useState } from "react";
+import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
+import { Artifact, BrowserContent } from "@/lib/chat";
 
 const mockUserJourneys = [
   {
@@ -50,17 +53,19 @@ const mockUserJourneys = [
 
 export default function UserJourneys() {
   const { id } = useWorkspace();
+  const [isLoading, setIsLoading] = useState(false);
+  const [frontend, setFrontend] = useState<string | null>(null);
 
   const handleCreateUserJourney = async () => {
     try {
-      console.log("Create user journey clicked");
-
+      setIsLoading(true);
       const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
       });
+      setIsLoading(false);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -71,12 +76,30 @@ export default function UserJourneys() {
 
       const data = await response.json();
       console.log("Pod claimed successfully:", data);
+      if (data.frontend) {
+        setFrontend(data.frontend);
+      }
       // You can add success handling UI here
     } catch (error) {
       console.error("Error claiming pod:", error);
       // You can add error handling UI here
     }
   };
+
+  // Create artifacts array for BrowserArtifactPanel when frontend is defined
+  const browserArtifacts: Artifact[] = frontend
+    ? [
+        {
+          id: "frontend-preview",
+          messageId: "",
+          type: "BROWSER",
+          content: { url: frontend } as BrowserContent,
+          icon: "Code",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]
+    : [];
 
   return (
     <div className="p-6 space-y-6">
@@ -87,79 +110,101 @@ export default function UserJourneys() {
             Track and optimize user experiences through your product
           </p>
         </div>
-        <Button
-          className="flex items-center gap-2"
-          onClick={handleCreateUserJourney}
-        >
-          <Plus className="w-4 h-4" />
-          Create User Journey
-        </Button>
+        {frontend ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setFrontend(null)}
+            className="h-8 w-8 p-0"
+          >
+            ✕
+          </Button>
+        ) : (
+          <Button
+            className="flex items-center gap-2"
+            onClick={handleCreateUserJourney}
+            disabled={isLoading}
+          >
+            <Plus className="w-4 h-4" />
+            Create User Journey
+          </Button>
+        )}
       </div>
 
-      <div className="grid gap-6">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-semibold">Completed Journeys</h2>
-          <Badge variant="secondary" className="text-sm">
-            {mockUserJourneys.length} completed
-          </Badge>
+      {frontend ? (
+        <div className="h-[600px] border rounded-lg overflow-hidden">
+          <BrowserArtifactPanel
+            artifacts={browserArtifacts}
+            ide={false}
+            userJourney={true}
+          />
         </div>
+      ) : (
+        <div className="grid gap-6">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-semibold">Completed Journeys</h2>
+            <Badge variant="secondary" className="text-sm">
+              {mockUserJourneys.length} completed
+            </Badge>
+          </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {mockUserJourneys.map((journey) => (
-            <Card
-              key={journey.id}
-              className="hover:shadow-md transition-shadow"
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg">{journey.title}</CardTitle>
-                    <CardDescription className="mt-2">
-                      {journey.description}
-                    </CardDescription>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {mockUserJourneys.map((journey) => (
+              <Card
+                key={journey.id}
+                className="hover:shadow-md transition-shadow"
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg">{journey.title}</CardTitle>
+                      <CardDescription className="mt-2">
+                        {journey.description}
+                      </CardDescription>
+                    </div>
+                    <CheckCircle className="w-5 h-5 text-green-500 mt-1" />
                   </div>
-                  <CheckCircle className="w-5 h-5 text-green-500 mt-1" />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-medium">
-                    {journey.completedSteps}/{journey.steps} steps
-                  </span>
-                </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-medium">
+                      {journey.completedSteps}/{journey.steps} steps
+                    </span>
+                  </div>
 
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-500 h-2 rounded-full"
-                    style={{
-                      width: `${(journey.completedSteps / journey.steps) * 100}%`,
-                    }}
-                  />
-                </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-500 h-2 rounded-full"
+                      style={{
+                        width: `${(journey.completedSteps / journey.steps) * 100}%`,
+                      }}
+                    />
+                  </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span>{journey.users} users</span>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span>{journey.users} users</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Target className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Target met</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Target met</span>
-                  </div>
-                </div>
 
-                <div className="pt-2 border-t">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3" />
-                    Completed {journey.completedAt}
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      Completed {journey.completedAt}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
