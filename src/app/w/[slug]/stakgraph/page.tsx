@@ -15,12 +15,14 @@ import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { AnimatePresence, motion } from "framer-motion";
-import { Webhook, Loader2, Save } from "lucide-react";
+import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
+  const router = useRouter();
   const {
     formData,
     errors,
@@ -122,9 +124,20 @@ export default function StakgraphPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(`/w/${slug}/settings`)}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Settings
+        </Button>
+      </div>
       <PageHeader 
-        title="Stakgraph Configuration"
-        description="Configure your settings for Stakgraph integration"
+        title="VM Configuration"
+        description="Configure your virtual machine settings for development environment"
       />
 
       {/* Subtle: Create Stakgraph section (only if all fields are empty, with smooth animation) */}
@@ -140,11 +153,11 @@ export default function StakgraphPage() {
             className="max-w-2xl bg-muted/40 rounded-md px-4 py-2 mb-2 flex items-center gap-3"
           >
             <span className="text-sm text-muted-foreground">
-              Don&apos;t have a Stakgraph configuration?&nbsp;
+              Don&apos;t have a VM?&nbsp;
             </span>
             <Button asChild variant="ghost" size="sm" className="px-2 h-7">
               <Link href={slug ? `/w/${slug}/code-graph` : "#"}>
-                Create Stakgraph
+                Create VM
               </Link>
             </Button>
           </motion.div>
@@ -153,7 +166,7 @@ export default function StakgraphPage() {
 
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Stakgraph Settings</CardTitle>
+          <CardTitle>VM Settings</CardTitle>
           {!formData.webhookEnsured && formData.repositoryUrl ? (
             <Button
               type="button"

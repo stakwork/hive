@@ -122,7 +122,7 @@ export function NavUser({
             <DropdownMenuItem asChild>
               <a href="/settings">
                 <Settings />
-                Settings
+                Account Settings
               </a>
             </DropdownMenuItem>
             <DropdownMenuItem

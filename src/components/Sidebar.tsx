@@ -30,7 +30,6 @@ const baseNavigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
-  { icon: Network, label: "Stakgraph", href: "/stakgraph" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
 ];
 
