@@ -118,7 +118,7 @@ export function VMConfigSection() {
                   <Zap className="w-6 h-6" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">Ready to Setup</span>
+                  <span className="text-sm font-medium">Set up VMs</span>
                   <span className="text-xs text-muted-foreground">Get started now</span>
                 </div>
               </div>
