@@ -144,7 +144,6 @@ export function WorkspaceSwitcher({
             <div className="w-2 h-2 rounded-full bg-primary" />
           </DropdownMenuItem>
 
-
           {/* Other Workspaces */}
           {workspaces.filter((ws) => ws.id !== activeWorkspace.id).length >
             0 && (
@@ -186,7 +185,6 @@ export function WorkspaceSwitcher({
               Create new workspace
             </div>
           </DropdownMenuItem>
-
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
