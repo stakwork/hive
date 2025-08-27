@@ -32,7 +32,6 @@ const baseNavigationItems = [
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: Network, label: "Stakgraph", href: "/stakgraph" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
-  { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
 export function Sidebar({ user }: SidebarProps) {
@@ -70,8 +69,8 @@ export function Sidebar({ user }: SidebarProps) {
       <WorkspaceSwitcher
         onWorkspaceChange={() => null}
       />
-      {/* Navigation */}
-      <nav className="flex-1 p-4">
+      {/* Main Navigation */}
+      <nav className="p-4">
         <ul className="space-y-2">
           {navigationItems.map((item) => (
             <li key={item.href}>
@@ -87,6 +86,19 @@ export function Sidebar({ user }: SidebarProps) {
           ))}
         </ul>
       </nav>
+      {/* Spacer to push bottom content down */}
+      <div className="flex-1" />
+      {/* Settings */}
+      <div className="p-4 pb-2">
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => handleNavigate("/settings")}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Settings
+        </Button>
+      </div>
       <Separator />
       {/* User Popover */}
       <div className="p-4">
