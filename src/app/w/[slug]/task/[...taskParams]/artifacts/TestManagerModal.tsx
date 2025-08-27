@@ -44,6 +44,7 @@ interface TestManagerModalProps {
   onClose: () => void;
   generatedCode?: string;
   initialTab?: "generated" | "saved";
+  onUserJourneySave?: (filename: string, generatedCode: string) => void;
 }
 
 export function TestManagerModal({
@@ -51,6 +52,7 @@ export function TestManagerModal({
   onClose,
   generatedCode = "",
   initialTab,
+  onUserJourneySave,
 }: TestManagerModalProps) {
   const {
     baseUrl,
@@ -113,6 +115,11 @@ export function TestManagerModal({
   }, [isOpen, generatedCode]);
 
   const handleSave = async () => {
+    if (onUserJourneySave) {
+      onUserJourneySave(filename.trim(), generatedCode);
+      onClose();
+      return;
+    }
     if (!baseUrl) return;
     setSaving(true);
     const result = await saveTest(filename.trim(), generatedCode);
@@ -180,12 +187,14 @@ export function TestManagerModal({
           onValueChange={setActiveTab}
           className="flex-1 flex min-h-0 flex-col"
         >
-          <TabsList>
-            <TabsTrigger value="generated" disabled={!generatedCode}>
-              Generated
-            </TabsTrigger>
-            <TabsTrigger value="saved">Saved</TabsTrigger>
-          </TabsList>
+          {!onUserJourneySave && (
+            <TabsList>
+              <TabsTrigger value="generated" disabled={!generatedCode}>
+                Generated
+              </TabsTrigger>
+              <TabsTrigger value="saved">Saved</TabsTrigger>
+            </TabsList>
+          )}
 
           <TabsContent value="generated" className="flex-1 min-h-0 mt-2">
             {cfgLoading && (

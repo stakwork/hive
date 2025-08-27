@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   Monitor,
   RefreshCw,
@@ -9,21 +9,11 @@ import {
   Circle,
   Square,
   Target,
-  Copy,
   FlaskConical,
   Bug,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import Prism from "prismjs";
-import "prismjs/components/prism-javascript";
-import "./prism-dark-plus.css";
 import { TestManagerModal } from "./TestManagerModal";
 import {
   TooltipProvider,
@@ -34,86 +24,16 @@ import {
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 
-interface PlaywrightTestModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  playwrightTest: string;
-}
-
-function PlaywrightTestModal({
-  isOpen,
-  onClose,
-  playwrightTest,
-}: PlaywrightTestModalProps) {
-  const [copied, setCopied] = useState(false);
-  const codeRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (isOpen && playwrightTest) {
-      // Wait for the DOM element to be rendered
-      const timeoutId = setTimeout(() => {
-        if (codeRef.current) {
-          Prism.highlightElement(codeRef.current);
-        }
-      }, 50);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [playwrightTest, isOpen]);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(playwrightTest);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Failed to copy to clipboard:", error);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent
-        className="w-[98vw] h-[70vh] flex flex-col"
-        style={{ width: "94vw", maxWidth: "1200px" }}
-      >
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center justify-between">
-            Generated Playwright Test
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopy}
-              className="flex items-center gap-2 mr-6"
-            >
-              <Copy className="w-4 h-4" />
-              {copied ? "Copied!" : "Copy Test"}
-            </Button>
-          </DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex-1 min-h-0 overflow-auto">
-            <pre className="text-sm bg-background/50 p-4 rounded border">
-              <code ref={codeRef} className="language-javascript">
-                {playwrightTest}
-              </code>
-            </pre>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function BrowserArtifactPanel({
   artifacts,
   ide,
   onDebugMessage,
-  userJourney,
+  onUserJourneySave,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
-  userJourney?: boolean;
+  onUserJourneySave?: (filename: string, generatedCode: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -290,7 +210,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {!userJourney && (
+                    {!onUserJourneySave && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -307,7 +227,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {!userJourney && (
+                    {!onUserJourneySave && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -384,12 +304,6 @@ export function BrowserArtifactPanel({
         })}
       </div>
 
-      <PlaywrightTestModal
-        isOpen={showPlaywrightModal}
-        onClose={closePlaywrightModal}
-        playwrightTest={generatedPlaywrightTest}
-      />
-
       <TestManagerModal
         isOpen={isTestModalOpen || showPlaywrightModal}
         onClose={() => {
@@ -398,6 +312,7 @@ export function BrowserArtifactPanel({
         }}
         generatedCode={generatedPlaywrightTest}
         initialTab={showPlaywrightModal ? "generated" : "saved"}
+        onUserJourneySave={onUserJourneySave}
       />
     </div>
   );

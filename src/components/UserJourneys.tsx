@@ -86,6 +86,10 @@ export default function UserJourneys() {
     }
   };
 
+  const saveUserJourneyTest = (filename: string, generatedCode: string) => {
+    console.log("Saving user journey:", filename, generatedCode);
+  };
+
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
   const browserArtifacts: Artifact[] = frontend
     ? [
@@ -136,7 +140,7 @@ export default function UserJourneys() {
           <BrowserArtifactPanel
             artifacts={browserArtifacts}
             ide={false}
-            userJourney={true}
+            onUserJourneySave={saveUserJourneyTest}
           />
         </div>
       ) : (
