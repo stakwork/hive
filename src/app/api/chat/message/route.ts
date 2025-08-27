@@ -35,7 +35,7 @@ interface AttachmentRequest {
   size: number;
 }
 
-interface StakworkWorkflowPayload {
+export interface StakworkWorkflowPayload {
   name: string;
   workflow_id: number;
   webhook_url?: string; // New webhook URL for workflow status updates
@@ -48,6 +48,15 @@ interface StakworkWorkflowPayload {
   };
 }
 
+export function transformSwarmUrlToRepo2Graph(
+  swarmUrl: string | null | undefined,
+): string {
+  if (!swarmUrl) return "";
+
+  return swarmUrl.endsWith("/api")
+    ? swarmUrl.replace("/api", ":3355")
+    : swarmUrl + ":3355";
+}
 
 async function callMock(
   taskId: string,
@@ -121,12 +130,14 @@ async function callStakwork(
 
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
-    
+
     // Generate presigned URLs for attachments
     const attachmentUrls = await Promise.all(
-      attachmentPaths.map(path => getS3Service().generatePresignedDownloadUrl(path))
+      attachmentPaths.map((path) =>
+        getS3Service().generatePresignedDownloadUrl(path),
+      ),
     );
-    
+
     // stakwork workflow vars
     const vars = {
       taskId,
@@ -387,16 +398,15 @@ export async function POST(request: NextRequest) {
 
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.id || null;
-    const repo2GraphUrl = swarm?.swarmUrl
-      ? swarm.swarmUrl.replace("/api", ":3355")
-      : "";
+    const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
     let stakworkData = null;
 
     if (useStakwork) {
       // Extract attachment paths for Stakwork
-      const attachmentPaths = chatMessage.attachments?.map(att => att.path) || [];
-      
+      const attachmentPaths =
+        chatMessage.attachments?.map((att) => att.path) || [];
+
       stakworkData = await callStakwork(
         taskId,
         message,
@@ -441,7 +451,13 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      stakworkData = await callMock(taskId, message, userId, artifacts, request);
+      stakworkData = await callMock(
+        taskId,
+        message,
+        userId,
+        artifacts,
+        request,
+      );
     }
 
     return NextResponse.json(

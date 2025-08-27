@@ -86,8 +86,38 @@ export default function UserJourneys() {
     }
   };
 
-  const saveUserJourneyTest = (filename: string, generatedCode: string) => {
-    console.log("Saving user journey:", filename, generatedCode);
+  const saveUserJourneyTest = async (
+    filename: string,
+    generatedCode: string,
+  ) => {
+    try {
+      console.log("Saving user journey:", filename, generatedCode);
+
+      const response = await fetch("/api/stakwork/user-journey", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: generatedCode,
+          workspaceId: id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to save user journey:", errorData);
+        return;
+      }
+
+      const data = await response.json();
+      console.log("User journey saved successfully:", data);
+
+      // You can add success handling UI here, such as showing a toast notification
+    } catch (error) {
+      console.error("Error saving user journey:", error);
+      // You can add error handling UI here
+    }
   };
 
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
