@@ -49,13 +49,13 @@ export function TestCoverageCard() {
   const getPercentageColor = (percent: number) => {
     if (percent >= 80) return "text-green-600 border-green-200 bg-green-50";
     if (percent >= 60) return "text-yellow-600 border-yellow-200 bg-yellow-50";
-    return "text-red-600 border-red-200 bg-red-50";
+    return "text-purple-600 border-purple-200 bg-purple-50";
   };
 
   const getProgressColor = (percent: number) => {
     if (percent >= 80) return "bg-green-500";
     if (percent >= 60) return "bg-yellow-500";
-    return "bg-red-500";
+    return "bg-purple-500";
   };
 
   if (isLoading) {
