@@ -10,8 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle, Clock, Users, Target } from "lucide-react";
-import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { useEffect } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const mockUserJourneys = [
@@ -51,18 +49,33 @@ const mockUserJourneys = [
 ];
 
 export default function UserJourneys() {
-  const { loadSettings, formData } = useStakgraphStore();
-  const { slug } = useWorkspace();
+  const { id } = useWorkspace();
 
-  useEffect(() => {
-    loadSettings(slug);
-  }, [loadSettings, slug]);
+  const handleCreateUserJourney = async () => {
+    try {
+      console.log("Create user journey clicked");
 
-  const handleCreateUserJourney = () => {
-    // TODO: Implement user journey creation logic
-    console.log("Create user journey clicked");
-    console.log("Stakgraph store state:", formData);
-    // You can now access any variables from the stakgraph store here
+      const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to claim pod:", errorData);
+        // You can add error handling UI here
+        return;
+      }
+
+      const data = await response.json();
+      console.log("Pod claimed successfully:", data);
+      // You can add success handling UI here
+    } catch (error) {
+      console.error("Error claiming pod:", error);
+      // You can add error handling UI here
+    }
   };
 
   return (

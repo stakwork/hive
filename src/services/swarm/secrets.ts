@@ -8,26 +8,20 @@ import { PoolManagerService } from "../pool-manager";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // TO-DO add role check
-export async function getSwarmPoolApiKeyFor(
-  id: string,
-): Promise<string> {
-
+export async function getSwarmPoolApiKeyFor(id: string): Promise<string> {
   const swarm = await db.swarm.findFirst({
     where: { id },
-    select: { id: true, poolApiKey: true } as { id: true, poolApiKey: true },
+    select: { id: true, poolApiKey: true } as { id: true; poolApiKey: true },
   });
 
   if (!swarm?.poolApiKey) {
-    return ""
-  };
+    return "";
+  }
 
   return swarm.poolApiKey;
 }
 
-export async function updateSwarmPoolApiKeyFor(
-  id: string,
-) {
-
+export async function updateSwarmPoolApiKeyFor(id: string) {
   const loginResponse = await fetch(
     "https://workspaces.sphinx.chat/api/auth/login",
     {
@@ -46,6 +40,7 @@ export async function updateSwarmPoolApiKeyFor(
     where: { id },
     select: { swarmId: true } as { swarmId: true },
   });
+  console.log(">>>> swarm", swarm);
 
   const loginData = await loginResponse.json();
 
@@ -59,8 +54,8 @@ export async function updateSwarmPoolApiKeyFor(
     },
   });
 
-
   if (!swarm?.swarmId) {
+    console.log("swarm.swarmId not found");
     return;
   }
 
@@ -85,9 +80,9 @@ export async function updateSwarmPoolApiKeyFor(
       data: { poolApiKey },
     });
   } catch (error) {
-    console.log('updateSwarmPoolApiKeyFor')
-    console.log(error)
-    console.log('updateSwarmPoolApiKeyFor')
+    console.log("updateSwarmPoolApiKeyFor");
+    console.log(error);
+    console.log("updateSwarmPoolApiKeyFor");
     console.error(error);
   }
 }
