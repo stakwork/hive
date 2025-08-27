@@ -63,6 +63,7 @@ const stakgraphSettingsSchema = z.object({
           e2eTest: z.string().optional(),
           preStart: z.string().optional(),
           postStart: z.string().optional(),
+          rebuild: z.string().optional(),
         }),
         dev: z.boolean().optional(),
         env: z.record(z.string()).optional(),
