@@ -59,9 +59,11 @@ export function WorkspaceProvider({
   // State management
   const [workspace, setWorkspace] = useState<WorkspaceWithAccess | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Always start with loading true to prevent error flash
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentLoadedSlug, setCurrentLoadedSlug] = useState<string>(""); // Track currently loaded workspace slug
+  // Don't persist the loaded slug - start fresh on each mount
+  const [currentLoadedSlug, setCurrentLoadedSlug] = useState<string>("");
 
   // Fetch user's workspaces
   const fetchWorkspaces = useCallback(async (): Promise<
@@ -133,16 +135,27 @@ export function WorkspaceProvider({
     }
   }, [status, refreshWorkspaces]);
 
-  // Load current workspace when URL slug changes - FIXED to prevent loops
+  // Load current workspace when URL slug changes
   useEffect(() => {
     // Extract slug directly from pathname
     const matches = pathname.match(/^\/w\/([^\/]+)/);
     const currentSlug = matches?.[1] || initialSlug || "";
 
-    // Only fetch if we have a slug and are authenticated
-    if (currentSlug && status === "authenticated") {
-      // Only fetch if we haven't already loaded this workspace
-      if (currentSlug !== currentLoadedSlug) {
+    // If no slug and authenticated, clear everything
+    if (!currentSlug && status === "authenticated") {
+      setWorkspace(null);
+      setCurrentLoadedSlug("");
+      setLoading(false);
+      return;
+    }
+
+    // If not authenticated yet, just wait
+    if (status !== "authenticated") {
+      return;
+    }
+
+    // Only fetch if we have a slug and haven't loaded it yet
+    if (currentSlug && currentSlug !== currentLoadedSlug) {
         const fetchCurrentWorkspace = async () => {
           setLoading(true);
           setError(null);
@@ -176,20 +189,18 @@ export function WorkspaceProvider({
         };
 
         fetchCurrentWorkspace();
-      }
-    } else if (!currentSlug && status === "authenticated") {
-      // Clear workspace if no slug
-      setWorkspace(null);
-      setCurrentLoadedSlug("");
     }
-  }, [pathname, status, initialSlug, currentLoadedSlug]); // Include currentLoadedSlug in dependencies
-  // Include all dependencies
+  }, [pathname, status, initialSlug, currentLoadedSlug]); // Remove workspace from dependencies to prevent loops
 
   // Computed values
   const slug = workspace?.slug || "";
   const id = workspace?.id || "";
   const role = workspace?.userRole || null;
-  const hasAccess = !!workspace;
+  
+  // Consider access granted if:
+  // 1. Workspace is loaded, OR
+  // 2. We're still loading (don't show error until load completes)
+  const hasAccess = !!workspace || loading;
 
   // Note: Permission checks have been moved to useWorkspaceAccess hook
 

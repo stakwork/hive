@@ -1,3 +1,4 @@
+import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
 import { HttpClient } from "@/lib/http-client";
 import {
@@ -5,7 +6,6 @@ import {
   CreateSwarmResponse,
   ValidateUriResponse,
 } from "@/types";
-import { EncryptionService } from "@/lib/encryption";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function createSwarmApi(
@@ -123,18 +123,34 @@ export async function swarmApiRequestAuth({
   method = "GET",
   apiKey,
   data,
+  params,
 }: {
   swarmUrl: string;
   endpoint: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
   apiKey: string;
   data?: unknown;
+  params?: Record<string, string | number | boolean | null>; // 👈 added
 }): Promise<{ ok: boolean; data?: unknown; status: number }> {
   try {
-    const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+    // build query string if params provided
+    const queryString = params
+      ? "?" +
+      new URLSearchParams(
+        Object.entries(params).reduce(
+          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
+          {} as Record<string, string>
+        )
+      ).toString()
+      : "";
+
+    const url =
+      `${swarmUrl.replace(/\/$/, "")}` +
+      `${endpoint.startsWith("/") ? "" : "/"}` +
+      `${endpoint}${queryString}`;
 
     const headers: Record<string, string> = {
-      "x-api-token": `${encryptionService.decryptField("swarmApiKey", apiKey)}`,
+      "x-api-token": encryptionService.decryptField("swarmApiKey", apiKey),
       "Content-Type": "application/json",
     };
 
@@ -143,15 +159,18 @@ export async function swarmApiRequestAuth({
       headers,
       ...(data ? { body: JSON.stringify(data) } : {}),
     });
-    let responseData: unknown = undefined;
+
+    let responseData: unknown;
     try {
       responseData = await response.json();
     } catch (error) {
-      console.error("swarmApiRequest error", error);
+      console.error("swarmApiRequest error parsing JSON", error);
     }
+
     return { ok: response.ok, data: responseData, status: response.status };
   } catch (error) {
     console.error("swarmApiRequest", error);
     return { ok: false, status: 500 };
   }
 }
+

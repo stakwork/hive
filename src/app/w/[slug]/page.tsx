@@ -17,21 +17,17 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function DashboardPage() {
   const { workspace, slug } = useWorkspace();
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-2">
-            Welcome to your development workspace.
-          </p>
-        </div>
-      </div>
+      <PageHeader 
+        title="Dashboard"
+        description="Welcome to your development workspace."
+      />
 
       {/* Onboarding Card - Only show if CodeGraph is not set up */}
       {workspace && !workspace.isCodeGraphSetup && (

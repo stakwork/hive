@@ -4,14 +4,10 @@ export interface TestCoverageMetric {
   percent: number;
 }
 
-export interface E2ETestMetric {
-  total: number;
-}
-
 export interface TestCoverageData {
-  functions: TestCoverageMetric;
-  endpoints: TestCoverageMetric;
-  e2e_tests?: E2ETestMetric;
+  unit_tests: TestCoverageMetric;
+  integration_tests: TestCoverageMetric;
+  e2e_tests: TestCoverageMetric;
 }
 
 export interface TestCoverageResponse {

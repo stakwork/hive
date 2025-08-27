@@ -512,7 +512,7 @@ export async function acceptJanitorRecommendation(
   });
 
   // Create task and trigger Stakwork workflow using shared service
-  const message = `Task: ${recommendation.title}\n\nDescription: ${recommendation.description}\n\n. Please implement the requested changes.`;
+  const message = `${recommendation.title}\n\n${recommendation.description}\n\n`;
   
   const taskResult = await createTaskWithStakworkWorkflow({
     title: recommendation.title,
