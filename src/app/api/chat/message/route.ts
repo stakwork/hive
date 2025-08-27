@@ -15,6 +15,7 @@ import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 
 export const runtime = "nodejs";
 
@@ -46,16 +47,6 @@ export interface StakworkWorkflowPayload {
       };
     };
   };
-}
-
-export function transformSwarmUrlToRepo2Graph(
-  swarmUrl: string | null | undefined,
-): string {
-  if (!swarmUrl) return "";
-
-  return swarmUrl.endsWith("/api")
-    ? swarmUrl.replace("/api", ":3355")
-    : swarmUrl + ":3355";
 }
 
 async function callMock(

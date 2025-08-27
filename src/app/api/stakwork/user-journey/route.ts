@@ -4,10 +4,8 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { db } from "@/lib/db";
 import { getWorkspaceById } from "@/services/workspace";
-import {
-  transformSwarmUrlToRepo2Graph,
-  type StakworkWorkflowPayload,
-} from "@/app/api/chat/message/route";
+import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 
 export const runtime = "nodejs";
 
@@ -26,9 +24,9 @@ async function callStakwork(
     if (!config.STAKWORK_API_KEY) {
       throw new Error("STAKWORK_API_KEY is required for Stakwork integration");
     }
-    if (!config.STAKWORK_WORKFLOW_ID) {
+    if (!config.STAKWORK_USER_JOURNEY_WORKFLOW_ID) {
       throw new Error(
-        "STAKWORK_WORKFLOW_ID is required for Stakwork integration",
+        "STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration",
       );
     }
 
