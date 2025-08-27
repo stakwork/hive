@@ -38,7 +38,6 @@ const baseNavigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
-  { icon: Network, label: "Stakgraph", href: "/stakgraph" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
   { icon: Settings, label: "Settings", href: "/settings" },
@@ -94,6 +93,19 @@ export function Sidebar({ user }: SidebarProps) {
           ))}
         </ul>
       </nav>
+      {/* Spacer to push bottom content down */}
+      <div className="flex-1" />
+      {/* Settings */}
+      <div className="p-4 pb-2">
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => handleNavigate("/settings")}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Settings
+        </Button>
+      </div>
       <Separator />
       {/* User Popover */}
       <div className="p-4">
