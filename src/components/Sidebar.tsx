@@ -5,7 +5,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   CheckSquare,
   Menu,
-  Network,
   Settings,
   BarChart3,
   LayoutDashboard,
@@ -40,7 +39,7 @@ const baseNavigationItems = [
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
-  { icon: Settings, label: "Settings", href: "/settings" },
+  // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
 export function Sidebar({ user }: SidebarProps) {
