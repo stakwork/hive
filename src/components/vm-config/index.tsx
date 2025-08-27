@@ -46,7 +46,7 @@ export function VMConfigSection() {
             icon: Clock,
             className: "bg-orange-100 text-orange-800 border-orange-200"
           },
-          description: "Your VM's are being spun up, this may take a few minutes"
+          description: "Your graph infrastructure is being spun up, this may take a few minutes."
         };
       default:
         return {
