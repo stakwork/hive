@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { WorkspaceWithRole } from "@/types/workspace";
-import { Building2, ChevronsUpDown, Plus, Settings } from "lucide-react";
+import { Building2, ChevronsUpDown, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface WorkspaceSwitcherProps {
