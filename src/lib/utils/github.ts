@@ -8,7 +8,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
  */
 export async function getUserAccessToken(userId: string): Promise<string | null> {
   const user = await db.user.findUnique({
-    where: { userId },
+    where: { id: userId },
     select: {
       accounts: {
         select: {
