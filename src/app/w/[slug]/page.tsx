@@ -19,13 +19,40 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId);
+  const [commitCount, setCommitCount] = useState<number | null>(null);
+  const [threeWeeksAgo, setThreeWeeksAgo] = useState<number>(
+    new Date().getDate(),
+  );
 
-  const threeWeeksAgo = new Date();
-  threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+  const getNumberOfCommitsOnDefaultBranch = async () => {
+    try {
+      const res = await fetch("/api/github/repository/branch/numofcommits", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error("Failed to get numofcommits");
+      const result = await res.json();
+      return result.data.number_of_commits;
+    } catch (error) {
+      console.error("could not get number of commits", error);
+    }
+  };
+
+  useEffect(() => {
+    const fetchCommits = async () => {
+      const numberOfCommits = await getNumberOfCommitsOnDefaultBranch();
+      setCommitCount(numberOfCommits);
+    };
+
+    fetchCommits();
+    const today = new Date();
+    setThreeWeeksAgo(today.getDate() - 21);
+  }, []); // Empty dependency array ensures this runs once on mount
 
   return (
     <div className="space-y-6">
@@ -56,9 +83,9 @@ export default function DashboardPage() {
                 tasks.filter(
                   (task) =>
                     task.status === "IN_PROGRESS" &&
-                    new Date(task.createdAt) > threeWeeksAgo,
+                    new Date(task.createdAt).getDate() > threeWeeksAgo,
                 ).length
-              }{" "}
+              }
               from last week
             </p>
           </CardContent>
@@ -70,7 +97,7 @@ export default function DashboardPage() {
             <Github className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">142</div>
+            <div className="text-2xl font-bold">{commitCount}</div>
             <p className="text-xs text-muted-foreground">+12 from last week</p>
           </CardContent>
         </Card>
