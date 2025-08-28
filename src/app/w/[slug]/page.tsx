@@ -27,6 +27,9 @@ export default function DashboardPage() {
   const { tasks, pagination: pagination } = useWorkspaceTasks(workspaceId);
   const { formData, loadSettings } = useStakgraphStore();
   const [commitCount, setCommitCount] = useState<number | null>(null);
+  const [commitCountLastWeek, setCommitCountLastWeek] = useState<number | null>(
+    null,
+  );
   const [threeWeeksAgo, setThreeWeeksAgo] = useState<number>(
     new Date().getDate(),
   );
@@ -46,7 +49,7 @@ export default function DashboardPage() {
       );
       if (!res.ok) throw new Error("Failed to get numofcommits");
       const result = await res.json();
-      return result.data.number_of_commits;
+      return result.data;
     } catch (error) {
       console.error("could not get number of commits", error);
     }
@@ -54,8 +57,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchCommits = async () => {
-      const numberOfCommits = await getNumberOfCommitsOnDefaultBranch();
-      setCommitCount(numberOfCommits);
+      const commitNumber = await getNumberOfCommitsOnDefaultBranch();
+      setCommitCount(commitNumber.numberOfCommits);
+      setCommitCountLastWeek(commitNumber.commitsFromLastWeek);
     };
 
     if (slug) {
@@ -108,9 +112,12 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {commitCount == null ? "Loading number of commits" : commitCount}
+              {commitCount == null ? "..." : commitCount}
             </div>
-            <p className="text-xs text-muted-foreground">+12 from last week</p>
+            <p className="text-xs text-muted-foreground">
+              +{commitCountLastWeek == null ? "..." : commitCountLastWeek} from
+              last week
+            </p>
           </CardContent>
         </Card>
 

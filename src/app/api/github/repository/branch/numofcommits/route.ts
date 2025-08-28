@@ -79,12 +79,44 @@ export async function GET(request: Request) {
         totalCommits = parseInt(lastPageMatch[1], 10);
       }
     } else {
-      // If no Link header, there’s only one page, so the number of commits is the length of the response data
       totalCommits = commitNumberRes.data.length;
     }
 
+    // Calculate date for one week ago
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const sinceDate = oneWeekAgo.toISOString();
+
+    // Fetch commits from the last week
+    const lastWeekCommitsRes = await axios.get(
+      `https://api.github.com/repos/${owner}/${repo}/commits`,
+      {
+        headers: {
+          Authorization: `token ${githubProfile.pat}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+        params: {
+          sha: default_branch,
+          since: sinceDate,
+          per_page: 100, // Adjust per_page as needed (GitHub API max is 100)
+        },
+      },
+    );
+
+    // Count commits from last week
+    let commitsFromLastWeek = lastWeekCommitsRes.data.length;
+    // Handle pagination if more than 100 commits in the last week
+    const lastWeekLinkHeader = lastWeekCommitsRes.headers.link;
+    if (lastWeekLinkHeader) {
+      const lastPageMatch = lastWeekLinkHeader.match(/page=(\d+)>; rel="last"/);
+      if (lastPageMatch) {
+        commitsFromLastWeek = parseInt(lastPageMatch[1], 10) * 100;
+      }
+    }
+
     const data = {
-      number_of_commits: totalCommits,
+      numberOfCommits: totalCommits,
+      commitsFromLastWeek: commitsFromLastWeek,
     };
 
     return NextResponse.json({
