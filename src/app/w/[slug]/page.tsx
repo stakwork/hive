@@ -33,6 +33,10 @@ export default function DashboardPage() {
 
   const getNumberOfCommitsOnDefaultBranch = async () => {
     try {
+      if (!formData?.repositoryUrl) {
+        console.error("Repository URL is missing in formData");
+        return null;
+      }
       const res = await fetch(
         `/api/github/repository/branch/numofcommits?repoUrl=${formData.repositoryUrl}`,
         {
@@ -57,7 +61,7 @@ export default function DashboardPage() {
     fetchCommits();
     const today = new Date();
     setThreeWeeksAgo(today.getDate() - 21);
-  }, []); // Empty dependency array ensures this runs once on mount
+  }, [formData?.repositoryUrl]); // Empty dependency array ensures this runs once on mount
 
   return (
     <div className="space-y-6">
@@ -102,7 +106,9 @@ export default function DashboardPage() {
             <Github className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{commitCount}</div>
+            <div className="text-2xl font-bold">
+              {commitCount == null ? "Loading number of commits" : commitCount}
+            </div>
             <p className="text-xs text-muted-foreground">+12 from last week</p>
           </CardContent>
         </Card>
