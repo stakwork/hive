@@ -360,6 +360,85 @@ var userBehaviour = (() => {
     }
   }
 
+  // Extract React component name from a fiber node
+  function getComponentNameFromFiber(element) {
+    try {
+      const fiberKey = Object.keys(element).find(
+        (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
+      );
+      
+      if (!fiberKey) {
+        console.log("🔍 StakTrak: No React fiber found on element");
+        return null;
+      }
+      
+      let fiber = element[fiberKey];
+      let level = 0;
+      const maxTraversalDepth = 10;
+      
+      while (fiber && level < maxTraversalDepth) {
+        // Skip host components (DOM elements like div, span, etc.)
+        if (typeof fiber.type === 'string') {
+          fiber = fiber.return;
+          level++;
+          continue;
+        }
+        
+        // Extract component name from various React patterns
+        if (fiber.type) {
+          let componentName = null;
+          
+          // Standard function/class components
+          if (fiber.type.displayName) {
+            componentName = fiber.type.displayName;
+          } else if (fiber.type.name) {
+            componentName = fiber.type.name;
+          }
+          // React.forwardRef components
+          else if (fiber.type.render) {
+            componentName = fiber.type.render.displayName || fiber.type.render.name || 'ForwardRef';
+          }
+          // React.memo components
+          else if (fiber.type.type) {
+            componentName = fiber.type.type.displayName || fiber.type.type.name || 'Memo';
+          }
+          // React.lazy components
+          else if (fiber.type._payload && fiber.type._payload._result) {
+            componentName = fiber.type._payload._result.name || 'LazyComponent';
+          }
+          // Context consumers/providers
+          else if (fiber.type._context) {
+            componentName = fiber.type._context.displayName || 'Context';
+          }
+          // Handle Fragment
+          else if (fiber.type === Symbol.for('react.fragment')) {
+            fiber = fiber.return;
+            level++;
+            continue;
+          }
+          
+          if (componentName) {
+            console.log(`🎯 StakTrak: Found component name: ${componentName} at fiber level ${level}`);
+            return {
+              name: componentName,
+              level: level,
+              type: typeof fiber.type === 'function' ? 'function' : 'class'
+            };
+          }
+        }
+        
+        fiber = fiber.return;
+        level++;
+      }
+      
+      console.log(`⚠️ StakTrak: No named component found after traversing ${level} fiber levels`);
+      return null;
+    } catch (error) {
+      console.error("❌ StakTrak: Error extracting component name:", error);
+      return null;
+    }
+  }
+
   function extractReactDebugSource(element) {
     var _a, _b;
     try {
@@ -433,7 +512,26 @@ var userBehaviour = (() => {
           );
         });
       }
+      // Track component names found
+      const componentNames = [];
+      const processedComponents = new Set();
+      
+      console.log(`📊 StakTrak: Processing ${elementsToProcess.length} elements for debug info`);
+      
       for (const element of elementsToProcess) {
+        // First try to extract React component name
+        const componentInfo = getComponentNameFromFiber(element);
+        if (componentInfo && !processedComponents.has(componentInfo.name)) {
+          processedComponents.add(componentInfo.name);
+          componentNames.push({
+            name: componentInfo.name,
+            level: componentInfo.level,
+            type: componentInfo.type,
+            element: element.tagName.toLowerCase()
+          });
+        }
+        
+        // Then check for data attributes (legacy support)
         const dataSource = element.getAttribute("data-source") || element.getAttribute("data-inspector-relative-path");
         const dataLine = element.getAttribute("data-line") || element.getAttribute("data-inspector-line");
         if (dataSource && dataLine) {
@@ -449,8 +547,13 @@ var userBehaviour = (() => {
               sourceFiles.push(fileEntry);
             }
             fileEntry.lines.push(lineNum);
+            // Add component name if available
+            if (componentInfo) {
+              fileEntry.componentName = componentInfo.name;
+            }
           }
         } else {
+          // Try React 18 compatibility mode (won't work in React 19)
           const debugSource = extractReactDebugSource(element);
           if (debugSource && debugSource.fileName && debugSource.lineNumber) {
             const fileName = debugSource.fileName;
@@ -474,6 +577,11 @@ var userBehaviour = (() => {
               const className = element.className ? `.${element.className.split(" ")[0]}` : "";
               fileEntry.context = `${tagName}${className}`;
               
+              // Add component name if available
+              if (componentInfo) {
+                fileEntry.componentName = componentInfo.name;
+              }
+              
               // Add column information if available
               if (debugSource.columnNumber) {
                 fileEntry.columnNumber = debugSource.columnNumber;
@@ -482,17 +590,47 @@ var userBehaviour = (() => {
           }
         }
       }
+      
       sourceFiles.forEach((file) => {
         file.lines.sort((a, b) => a - b);
       });
       
-      // Add graceful fallback if no source files were found
+      // Log component names found for debugging
+      if (componentNames.length > 0) {
+        console.log("✅ StakTrak: Found React components:", componentNames);
+      } else {
+        console.log("⚠️ StakTrak: No React components found in selected elements");
+      }
+      
+      // Enhanced fallback with component information
       if (sourceFiles.length === 0) {
-        sourceFiles.push({
-          file: "Could not find filename or line number",
-          lines: [],
-          context: "Debug info not available - this can happen when components don't have source mapping or when React dev tools are not active",
-          method: "fallback"
+        if (componentNames.length > 0) {
+          // We found components but no source mapping
+          const componentList = componentNames.map(c => c.name).join(", ");
+          sourceFiles.push({
+            file: "React component detected",
+            lines: [],
+            context: `Components found: ${componentList}`,
+            componentNames: componentNames,
+            method: "component-only",
+            message: "Source mapping unavailable in React 19. Component names extracted successfully."
+          });
+        } else {
+          // No components or source mapping found
+          sourceFiles.push({
+            file: "No React components detected",
+            lines: [],
+            context: "The selected element may not be a React component or may be a native DOM element",
+            method: "fallback",
+            message: "Try selecting an interactive element like a button or link"
+          });
+        }
+      } else {
+        // Add component names to existing source files
+        sourceFiles.forEach(file => {
+          if (!file.componentNames && componentNames.length > 0) {
+            file.componentNames = componentNames;
+          }
         });
       }
       
