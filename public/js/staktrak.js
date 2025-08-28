@@ -300,65 +300,6 @@ var userBehaviour = (() => {
       return false;
     }
   }
-  function parseOwnerStack(ownerStack) {
-    try {
-      if (!ownerStack || typeof ownerStack !== 'string') {
-        return null;
-      }
-
-      // Parse React 19 captureOwnerStack format
-      // Example format: "    at ComponentName (/path/to/file.tsx:42:13)"
-      const lines = ownerStack.split('\n');
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-
-        // Look for lines with file paths
-        const match = trimmed.match(/at\s+.*?\s+\(([^:]+):(\d+):(\d+)\)/);
-        if (match) {
-          const [, fileName, lineNumber, columnNumber] = match;
-
-          // Skip node_modules and internal React files
-          if (fileName.includes('node_modules') ||
-              fileName.includes('react-dom') ||
-              fileName.includes('react/') ||
-              fileName.includes('scheduler/')) {
-            continue;
-          }
-
-          return {
-            fileName: fileName,
-            lineNumber: parseInt(lineNumber, 10),
-            columnNumber: parseInt(columnNumber, 10)
-          };
-        }
-
-        // Alternative format: "ComponentName@/path/to/file.tsx:42:13"
-        const altMatch = trimmed.match(/([^@]+)@([^:]+):(\d+):(\d+)/);
-        if (altMatch) {
-          const [, , fileName, lineNumber, columnNumber] = altMatch;
-
-          if (fileName.includes('node_modules') ||
-              fileName.includes('react-dom') ||
-              fileName.includes('react/') ||
-              fileName.includes('scheduler/')) {
-            continue;
-          }
-
-          return {
-            fileName: fileName,
-            lineNumber: parseInt(lineNumber, 10),
-            columnNumber: parseInt(columnNumber, 10)
-          };
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error parsing owner stack:', error);
-      return null;
-    }
-  }
 
   // Extract React component name from a fiber node
   function getComponentNameFromFiber(element) {
@@ -368,7 +309,7 @@ var userBehaviour = (() => {
       );
 
       if (!fiberKey) {
-        console.log("🔍 StakTrak: No React fiber found on element");
+        // No React fiber found on element
         return null;
       }
 
@@ -418,7 +359,6 @@ var userBehaviour = (() => {
           }
 
           if (componentName) {
-            console.log(`🎯 StakTrak: Found component name: ${componentName} at fiber level ${level}`);
             return {
               name: componentName,
               level: level,
@@ -431,10 +371,9 @@ var userBehaviour = (() => {
         level++;
       }
 
-      console.log(`⚠️ StakTrak: No named component found after traversing ${level} fiber levels`);
       return null;
     } catch (error) {
-      console.error("❌ StakTrak: Error extracting component name:", error);
+      console.error("Error extracting component name:", error);
       return null;
     }
   }
@@ -516,12 +455,10 @@ var userBehaviour = (() => {
       const componentNames = [];
       const processedComponents = new Set();
 
-      console.log(`📊 StakTrak: Processing ${elementsToProcess.length} elements for debug info`);
 
       for (const element of elementsToProcess) {
         // First try to extract React component name
         const componentInfo = getComponentNameFromFiber(element);
-        console.log("Component info from fiber:", componentInfo);
         if (componentInfo && !processedComponents.has(componentInfo.name)) {
           processedComponents.add(componentInfo.name);
           componentNames.push({
@@ -530,7 +467,6 @@ var userBehaviour = (() => {
             type: componentInfo.type,
             element: element.tagName.toLowerCase()
           });
-          console.log("Added to componentNames:", componentNames[componentNames.length - 1]);
         }
 
         // Then check for data attributes (legacy support)
@@ -597,16 +533,9 @@ var userBehaviour = (() => {
         file.lines.sort((a, b) => a - b);
       });
 
-      // Log component names found for debugging
-      if (componentNames.length > 0) {
-        console.log("✅ StakTrak: Found React components:", componentNames);
-      } else {
-        console.log("⚠️ StakTrak: No React components found in selected elements");
-      }
 
       // Helper function to format components for chat display
       const formatComponentsForChat = (components) => {
-        console.log("formatComponentsForChat called with:", components);
         if (components.length === 0) return null;
 
         // Sort by level (closest to clicked element first) and take top 3
@@ -614,19 +543,13 @@ var userBehaviour = (() => {
           .sort((a, b) => a.level - b.level)
           .slice(0, 3);
 
-        console.log("sortedComponents:", sortedComponents);
 
         const componentLines = sortedComponents.map(c => {
-          console.log("Processing component:", c);
-          console.log("Component properties:", Object.keys(c));
-          console.log("Component name value:", c.name);
-          console.log("Component name type:", typeof c.name);
           const nameToUse = c.name || 'Unknown';
-          return `&lt;${nameToUse}&gt; (${c.level} level${c.level !== 1 ? 's' : ''} deep)`;
+          return `**&lt;${nameToUse}&gt;** (${c.level} level${c.level !== 1 ? 's' : ''} up)`;
         });
 
         const result = "React Components Found:\n" + componentLines.join("\n");
-        console.log("formatComponentsForChat result:", result);
         return result;
       };
 
@@ -667,7 +590,6 @@ var userBehaviour = (() => {
         });
       }
 
-      console.log("📤 StakTrak: Final sourceFiles before sending:", JSON.stringify(sourceFiles, null, 2));
 
       window.parent.postMessage(
         {
@@ -1228,7 +1150,6 @@ var userBehaviour = (() => {
 
   var userBehaviour = new UserBehaviorTracker();
   var initializeStakTrak = () => {
-    console.log('🚀 StakTrak: Initialized in', window.parent !== window ? 'iframe' : 'main window');
 
     // Try to detect React immediately
     const reactFound = detectAndExposeReact();

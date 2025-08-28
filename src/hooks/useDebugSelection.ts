@@ -134,8 +134,6 @@ export function useDebugSelection(
       if (onDebugMessage) {
         // Use the formatted component message from StakTrak
         const componentMessage = bugReportContent.sourceFiles.find(f => f.message)?.message || "Element analyzed";
-        console.log("🎯 Debug message being sent to chat:", componentMessage);
-        console.log("🎯 Source files:", bugReportContent.sourceFiles);
         await onDebugMessage(componentMessage, debugArtifact);
       }
 
