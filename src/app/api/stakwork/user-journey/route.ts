@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
-import { getOAuthProfile } from "@/lib/auth/utils";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 export const runtime = "nodejs";
 
@@ -132,7 +132,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's GitHub profile (access token and username)
-    const { accessToken, username } = await getOAuthProfile(userId, "github");
+    const githubProfile = await getGithubUsernameAndPAT(userId);
+    const accessToken = githubProfile?.pat || null;
+    const username = githubProfile?.username || null;
 
     // Find the swarm associated with this workspace
     const swarm = await db.swarm.findUnique({
