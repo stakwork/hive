@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
-import { getGitHubAccessToken } from "@/lib/auth/utils";
+import { getOAuthProfile } from "@/lib/auth/utils";
 
 export const runtime = "nodejs";
 
@@ -20,6 +20,7 @@ async function callStakwork(
   poolName: string | null,
   repo2GraphUrl: string,
   accessToken: string | null,
+  username: string | null,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -36,6 +37,7 @@ async function callStakwork(
     const vars = {
       message,
       accessToken,
+      username,
       swarmUrl,
       swarmSecretAlias,
       poolName,
@@ -129,8 +131,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's GitHub access token
-    const accessToken = await getGitHubAccessToken(userId);
+    // Get user's GitHub profile (access token and username)
+    const { accessToken, username } = await getOAuthProfile(userId, "github");
 
     // Find the swarm associated with this workspace
     const swarm = await db.swarm.findUnique({
@@ -167,6 +169,7 @@ export async function POST(request: NextRequest) {
       poolName,
       repo2GraphUrl,
       accessToken,
+      username,
     );
 
     return NextResponse.json(
