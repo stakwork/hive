@@ -32,6 +32,7 @@ export const getPusherClient = (): PusherClient => {
 // Channel naming helpers
 export const getTaskChannelName = (taskId: string) => `task-${taskId}`;
 export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${workspaceSlug}`;
+export const getProjectUpdatesChannelName = (workspaceId: string) => `project-updates-${workspaceId}`;
 
 // Event names
 export const PUSHER_EVENTS = {
@@ -39,4 +40,5 @@ export const PUSHER_EVENTS = {
   CONNECTION_COUNT: "connection-count",
   WORKFLOW_STATUS_UPDATE: "workflow-status-update",
   RECOMMENDATIONS_UPDATED: "recommendations-updated",
+  PROJECT_UPDATE: "project-update",
 } as const;

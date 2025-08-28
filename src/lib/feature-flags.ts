@@ -3,6 +3,7 @@ import { WorkspaceRole } from '@prisma/client';
 // Type-safe feature flag constants
 export const FEATURE_FLAGS = {
   CODEBASE_RECOMMENDATION: 'CODEBASE_RECOMMENDATION',
+  PROJECT_UPDATES: 'PROJECT_UPDATES',
 } as const;
 
 export type FeatureFlag = typeof FEATURE_FLAGS[keyof typeof FEATURE_FLAGS];
@@ -16,6 +17,9 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     case FEATURE_FLAGS.CODEBASE_RECOMMENDATION:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION === 'true';
       break;
+    case FEATURE_FLAGS.PROJECT_UPDATES:
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_PROJECT_UPDATES === 'true';
+      break;
     default:
       isEnabled = false;
   }
@@ -24,6 +28,7 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
 
   const roleRequirements: Record<FeatureFlag, WorkspaceRole[]> = {
     [FEATURE_FLAGS.CODEBASE_RECOMMENDATION]: [], // No role restriction - available to all when enabled
+    [FEATURE_FLAGS.PROJECT_UPDATES]: [], // No role restriction - available to all when enabled
   };
 
   const allowedRoles = roleRequirements[feature];
@@ -41,6 +46,9 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
     case FEATURE_FLAGS.CODEBASE_RECOMMENDATION:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION === 'true';
       break;
+    case FEATURE_FLAGS.PROJECT_UPDATES:
+      isEnabled = process.env.NEXT_PUBLIC_FEATURE_PROJECT_UPDATES === 'true';
+      break;
     default:
       isEnabled = false;
   }
@@ -49,6 +57,7 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
 
   const roleRequirements: Record<FeatureFlag, WorkspaceRole[]> = {
     [FEATURE_FLAGS.CODEBASE_RECOMMENDATION]: [], // No role restriction - available to all when enabled
+    [FEATURE_FLAGS.PROJECT_UPDATES]: [], // No role restriction - available to all when enabled
   };
 
   const allowedRoles = roleRequirements[feature];

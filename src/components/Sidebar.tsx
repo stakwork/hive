@@ -9,6 +9,7 @@ import {
   BarChart3,
   LayoutDashboard,
   Users,
+  MessageSquare
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -39,6 +40,7 @@ const baseNavigationItems = [
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
+  { icon: MessageSquare, label: "Project Updates", href: "/project-updates" }
   // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
@@ -48,9 +50,11 @@ export function Sidebar({ user }: SidebarProps) {
   const canAccessInsights = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
   );
+  const canAccessPRD = useFeatureFlag(FEATURE_FLAGS.PROJECT_UPDATES);
 
   const excludeLabels: string[] = [];
   if (!canAccessInsights) excludeLabels.push("Insights");
+  if (!canAccessPRD) excludeLabels.push("Project Updates");
 
   const navigationItems = baseNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),
