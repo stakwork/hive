@@ -55,8 +55,15 @@ export default function UserJourneys() {
   const { id } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
 
-  const handleCreateUserJourney = async () => {
+  const handleCreateUserJourney = async (e?: React.MouseEvent) => {
+    // Dev mode: automatically use mock in development
+    if (process.env.NODE_ENV === 'development') {
+      setFrontend("https://www.hive.sphinx.chat");
+      return;
+    }
+
     try {
       setIsLoading(true);
       const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
@@ -135,6 +142,61 @@ export default function UserJourneys() {
       ]
     : [];
 
+  // Full screen layout when recording is active
+  if (frontend) {
+    const handleClose = () => {
+      console.log("Closing user journey recording");
+      setIsClosing(true);
+      // Delay the actual state change to allow exit animation
+      setTimeout(() => {
+        setFrontend(null);
+        setIsClosing(false);
+      }, 400);
+    };
+
+    return (
+      <div className={`fixed inset-0 z-50 bg-background flex flex-col ${
+        isClosing 
+          ? 'animate-out fade-out-0 slide-out-to-bottom-6 duration-400' 
+          : 'animate-in fade-in-0 slide-in-from-top-6 duration-400'
+      }`}>
+        <div className={`flex items-center justify-between p-4 border-b ${
+          isClosing
+            ? 'animate-out slide-out-to-top-4 duration-300'
+            : 'animate-in slide-in-from-bottom-4 duration-300'
+        }`}>
+          <div>
+            <h1 className="text-2xl font-bold">Recording User Journey</h1>
+            <p className="text-muted-foreground text-sm">
+              Track and optimize user experiences through your product
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClose}
+            className="flex items-center gap-2"
+            disabled={isClosing}
+          >
+            <span>✕</span>
+            Close
+          </Button>
+        </div>
+        <div className={`flex-1 overflow-hidden ${
+          isClosing
+            ? 'animate-out fade-out-0 duration-300'
+            : 'animate-in fade-in-0 duration-300'
+        }`}>
+          <BrowserArtifactPanel
+            artifacts={browserArtifacts}
+            ide={false}
+            onUserJourneySave={saveUserJourneyTest}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -144,37 +206,17 @@ export default function UserJourneys() {
             Track and optimize user experiences through your product
           </p>
         </div>
-        {frontend ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setFrontend(null)}
-            className="h-8 w-8 p-0"
-          >
-            ✕
-          </Button>
-        ) : (
-          <Button
-            className="flex items-center gap-2"
-            onClick={handleCreateUserJourney}
-            disabled={isLoading}
-          >
-            <Plus className="w-4 h-4" />
-            Create User Journey
-          </Button>
-        )}
+        <Button
+          className="flex items-center gap-2"
+          onClick={handleCreateUserJourney}
+          disabled={isLoading}
+        >
+          <Plus className={`w-4 h-4 transition-transform duration-200 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? 'Loading...' : 'Create User Journey'}
+        </Button>
       </div>
 
-      {frontend ? (
-        <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel
-            artifacts={browserArtifacts}
-            ide={false}
-            onUserJourneySave={saveUserJourneyTest}
-          />
-        </div>
-      ) : (
-        <div className="grid gap-6">
+      <div className="grid gap-6">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-semibold">Completed Journeys</h2>
             <Badge variant="secondary" className="text-sm">
@@ -238,7 +280,6 @@ export default function UserJourneys() {
             ))}
           </div>
         </div>
-      )}
     </div>
   );
 }
