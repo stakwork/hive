@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import {
@@ -272,19 +272,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get user details including name and accounts
+    // Get user details
     const user = await db.user.findUnique({
       where: {
         id: userId,
       },
       select: {
         name: true,
-        accounts: {
-          select: {
-            access_token: true,
-            provider: true,
-          },
-        },
       },
     });
 
@@ -356,32 +350,14 @@ export async function POST(request: NextRequest) {
 
     console.log("clientMessage", clientMessage);
 
-    const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
-
     const useStakwork =
       config.STAKWORK_API_KEY &&
       config.STAKWORK_BASE_URL &&
       config.STAKWORK_WORKFLOW_ID;
 
-    const userName = githubAuth?.githubUsername || null;
-    let accessToken: string | null = null;
-    try {
-      const accountWithToken = user.accounts.find(
-        (account) => account.access_token,
-      );
-      if (accountWithToken?.access_token) {
-        accessToken = encryptionService.decryptField(
-          "access_token",
-          accountWithToken.access_token,
-        );
-      }
-    } catch (error) {
-      console.error("Failed to decrypt access_token:", error);
-      const accountWithToken = user.accounts.find(
-        (account) => account.access_token,
-      );
-      accessToken = accountWithToken?.access_token || null;
-    }
+    const githubProfile = await getGithubUsernameAndPAT(userId);
+    const userName = githubProfile?.username || null;
+    const accessToken = githubProfile?.pat || null;
     const swarm = task.workspace.swarm;
     const swarmUrl = swarm?.swarmUrl
       ? swarm.swarmUrl.replace("/api", ":8444/api")

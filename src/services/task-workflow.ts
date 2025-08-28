@@ -1,10 +1,8 @@
 import { db } from "@/lib/db";
 import { Priority, TaskStatus, TaskSourceType } from "@prisma/client";
 import { config } from "@/lib/env";
-import { EncryptionService } from "@/lib/encryption";
 import { getBaseUrl } from "@/lib/utils";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 /**
  * Create a task and immediately trigger Stakwork workflow
@@ -204,12 +202,6 @@ async function createChatMessageAndTriggerStakwork(params: {
     where: { id: userId },
     select: {
       name: true,
-      accounts: {
-        select: {
-          access_token: true,
-          provider: true,
-        },
-      },
     },
   });
 
@@ -217,22 +209,9 @@ async function createChatMessageAndTriggerStakwork(params: {
     throw new Error("User not found");
   }
 
-  // Get GitHub auth details
-  const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
-  const userName = githubAuth?.githubUsername || null;
-
-  // Decrypt access token
-  let accessToken: string | null = null;
-  try {
-    const accountWithToken = user.accounts.find((account) => account.access_token);
-    if (accountWithToken?.access_token) {
-      accessToken = encryptionService.decryptField("access_token", accountWithToken.access_token);
-    }
-  } catch (error) {
-    console.error("Failed to decrypt access_token:", error);
-    const accountWithToken = user.accounts.find((account) => account.access_token);
-    accessToken = accountWithToken?.access_token || null;
-  }
+  const githubProfile = await getGithubUsernameAndPAT(userId);
+  const userName = githubProfile?.username || null;
+  const accessToken = githubProfile?.pat || null;
 
   // Prepare Stakwork integration (replicating callStakwork logic)
   const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
