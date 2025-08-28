@@ -18,13 +18,18 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
+import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 
 export default function DashboardPage() {
-  const { workspace, slug } = useWorkspace();
+  const { workspace, slug, id: workspaceId } = useWorkspace();
+  const { tasks } = useWorkspaceTasks(workspaceId);
+
+  const threeWeeksAgo = new Date();
+  threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
 
   return (
     <div className="space-y-6">
-      <PageHeader 
+      <PageHeader
         title="Dashboard"
         description="Welcome to your development workspace."
       />
@@ -42,8 +47,20 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-muted-foreground">+3 from last week</p>
+            <div className="text-2xl font-bold">
+              {tasks.filter((task) => task.status === "IN_PROGRESS").length}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              +
+              {
+                tasks.filter(
+                  (task) =>
+                    task.status === "IN_PROGRESS" &&
+                    new Date(task.createdAt) > threeWeeksAgo,
+                ).length
+              }{" "}
+              from last week
+            </p>
           </CardContent>
         </Card>
 
