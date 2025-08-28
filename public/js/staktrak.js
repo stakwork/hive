@@ -309,42 +309,42 @@ var userBehaviour = (() => {
       // Parse React 19 captureOwnerStack format
       // Example format: "    at ComponentName (/path/to/file.tsx:42:13)"
       const lines = ownerStack.split('\n');
-      
+
       for (const line of lines) {
         const trimmed = line.trim();
-        
+
         // Look for lines with file paths
         const match = trimmed.match(/at\s+.*?\s+\(([^:]+):(\d+):(\d+)\)/);
         if (match) {
           const [, fileName, lineNumber, columnNumber] = match;
-          
+
           // Skip node_modules and internal React files
-          if (fileName.includes('node_modules') || 
-              fileName.includes('react-dom') || 
+          if (fileName.includes('node_modules') ||
+              fileName.includes('react-dom') ||
               fileName.includes('react/') ||
               fileName.includes('scheduler/')) {
             continue;
           }
-          
+
           return {
             fileName: fileName,
             lineNumber: parseInt(lineNumber, 10),
             columnNumber: parseInt(columnNumber, 10)
           };
         }
-        
+
         // Alternative format: "ComponentName@/path/to/file.tsx:42:13"
         const altMatch = trimmed.match(/([^@]+)@([^:]+):(\d+):(\d+)/);
         if (altMatch) {
           const [, , fileName, lineNumber, columnNumber] = altMatch;
-          
-          if (fileName.includes('node_modules') || 
-              fileName.includes('react-dom') || 
+
+          if (fileName.includes('node_modules') ||
+              fileName.includes('react-dom') ||
               fileName.includes('react/') ||
               fileName.includes('scheduler/')) {
             continue;
           }
-          
+
           return {
             fileName: fileName,
             lineNumber: parseInt(lineNumber, 10),
@@ -352,7 +352,7 @@ var userBehaviour = (() => {
           };
         }
       }
-      
+
       return null;
     } catch (error) {
       console.error('Error parsing owner stack:', error);
@@ -366,16 +366,16 @@ var userBehaviour = (() => {
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
       );
-      
+
       if (!fiberKey) {
         console.log("🔍 StakTrak: No React fiber found on element");
         return null;
       }
-      
+
       let fiber = element[fiberKey];
       let level = 0;
       const maxTraversalDepth = 10;
-      
+
       while (fiber && level < maxTraversalDepth) {
         // Skip host components (DOM elements like div, span, etc.)
         if (typeof fiber.type === 'string') {
@@ -383,11 +383,11 @@ var userBehaviour = (() => {
           level++;
           continue;
         }
-        
+
         // Extract component name from various React patterns
         if (fiber.type) {
           let componentName = null;
-          
+
           // Standard function/class components
           if (fiber.type.displayName) {
             componentName = fiber.type.displayName;
@@ -416,7 +416,7 @@ var userBehaviour = (() => {
             level++;
             continue;
           }
-          
+
           if (componentName) {
             console.log(`🎯 StakTrak: Found component name: ${componentName} at fiber level ${level}`);
             return {
@@ -426,11 +426,11 @@ var userBehaviour = (() => {
             };
           }
         }
-        
+
         fiber = fiber.return;
         level++;
       }
-      
+
       console.log(`⚠️ StakTrak: No named component found after traversing ${level} fiber levels`);
       return null;
     } catch (error) {
@@ -448,11 +448,11 @@ var userBehaviour = (() => {
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
       );
-      
+
       if (!fiberKey) {
         return null;
       }
-      
+
       let fiber = element[fiberKey];
       let level = 0;
       const maxTraversalDepth = Number((_a = window.STAKTRAK_CONFIG) == null ? void 0 : _a.maxTraversalDepth) || 10;
@@ -473,7 +473,7 @@ var userBehaviour = (() => {
         fiber = fiber.return;
         level++;
       }
-      
+
       return null;
     } catch (error) {
       console.error("Error extracting React debug source:", error);
@@ -515,12 +515,13 @@ var userBehaviour = (() => {
       // Track component names found
       const componentNames = [];
       const processedComponents = new Set();
-      
+
       console.log(`📊 StakTrak: Processing ${elementsToProcess.length} elements for debug info`);
-      
+
       for (const element of elementsToProcess) {
         // First try to extract React component name
         const componentInfo = getComponentNameFromFiber(element);
+        console.log("Component info from fiber:", componentInfo);
         if (componentInfo && !processedComponents.has(componentInfo.name)) {
           processedComponents.add(componentInfo.name);
           componentNames.push({
@@ -529,8 +530,9 @@ var userBehaviour = (() => {
             type: componentInfo.type,
             element: element.tagName.toLowerCase()
           });
+          console.log("Added to componentNames:", componentNames[componentNames.length - 1]);
         }
-        
+
         // Then check for data attributes (legacy support)
         const dataSource = element.getAttribute("data-source") || element.getAttribute("data-inspector-relative-path");
         const dataLine = element.getAttribute("data-line") || element.getAttribute("data-inspector-line");
@@ -565,8 +567,8 @@ var userBehaviour = (() => {
               processedFiles.get(fileName).add(lineNum);
               let fileEntry = sourceFiles.find((f) => f.file === fileName);
               if (!fileEntry) {
-                fileEntry = { 
-                  file: fileName, 
+                fileEntry = {
+                  file: fileName,
                   lines: [],
                   method: 'jsx-dev-runtime'
                 };
@@ -576,12 +578,12 @@ var userBehaviour = (() => {
               const tagName = element.tagName.toLowerCase();
               const className = element.className ? `.${element.className.split(" ")[0]}` : "";
               fileEntry.context = `${tagName}${className}`;
-              
+
               // Add component name if available
               if (componentInfo) {
                 fileEntry.componentName = componentInfo.name;
               }
-              
+
               // Add column information if available
               if (debugSource.columnNumber) {
                 fileEntry.columnNumber = debugSource.columnNumber;
@@ -590,30 +592,56 @@ var userBehaviour = (() => {
           }
         }
       }
-      
+
       sourceFiles.forEach((file) => {
         file.lines.sort((a, b) => a - b);
       });
-      
+
       // Log component names found for debugging
       if (componentNames.length > 0) {
         console.log("✅ StakTrak: Found React components:", componentNames);
       } else {
         console.log("⚠️ StakTrak: No React components found in selected elements");
       }
-      
+
+      // Helper function to format components for chat display
+      const formatComponentsForChat = (components) => {
+        console.log("formatComponentsForChat called with:", components);
+        if (components.length === 0) return null;
+
+        // Sort by level (closest to clicked element first) and take top 3
+        const sortedComponents = components
+          .sort((a, b) => a.level - b.level)
+          .slice(0, 3);
+
+        console.log("sortedComponents:", sortedComponents);
+
+        const componentLines = sortedComponents.map(c => {
+          console.log("Processing component:", c);
+          console.log("Component properties:", Object.keys(c));
+          console.log("Component name value:", c.name);
+          console.log("Component name type:", typeof c.name);
+          const nameToUse = c.name || 'Unknown';
+          return `&lt;${nameToUse}&gt; (${c.level} level${c.level !== 1 ? 's' : ''} deep)`;
+        });
+
+        const result = "React Components Found:\n" + componentLines.join("\n");
+        console.log("formatComponentsForChat result:", result);
+        return result;
+      };
+
       // Enhanced fallback with component information
       if (sourceFiles.length === 0) {
         if (componentNames.length > 0) {
           // We found components but no source mapping
-          const componentList = componentNames.map(c => c.name).join(", ");
+          const formattedMessage = formatComponentsForChat(componentNames);
           sourceFiles.push({
             file: "React component detected",
             lines: [],
-            context: `Components found: ${componentList}`,
-            componentNames: componentNames,
-            method: "component-only",
-            message: "Source mapping unavailable in React 19. Component names extracted successfully."
+              context: `Components found: ${componentNames.map(c => c.name).join(", ")}`,
+              componentNames: componentNames,
+              method: "component-only",
+              message: formattedMessage
           });
         } else {
           // No components or source mapping found
@@ -630,10 +658,17 @@ var userBehaviour = (() => {
         sourceFiles.forEach(file => {
           if (!file.componentNames && componentNames.length > 0) {
             file.componentNames = componentNames;
+            // Add formatted message to existing files too
+            const formattedMessage = formatComponentsForChat(componentNames);
+            if (formattedMessage) {
+              file.message = formattedMessage;
+            }
           }
         });
       }
-      
+
+      console.log("📤 StakTrak: Final sourceFiles before sending:", JSON.stringify(sourceFiles, null, 2));
+
       window.parent.postMessage(
         {
           type: "staktrak-debug-response",
@@ -1161,7 +1196,7 @@ var userBehaviour = (() => {
     // - React DevTools hook has renderers but no React constructor access
     // - jsx-dev-runtime is active (evidenced by stack traces) but inaccessible
     // See .projects/dom-inspector-comparison.md for detailed findings
-    
+
     if (window.React) {
       return window.React;
     }
@@ -1171,12 +1206,12 @@ var userBehaviour = (() => {
   // Function to wait for Next.js context to be available
   var waitForNextJS = (callback, maxRetries = 50) => {
     let retries = 0;
-    
+
     const checkNextJS = () => {
       const hasTurbopack = !!window.TURBOPACK;
       const hasNext = !!window.__NEXT_DATA__;
       const isReady = hasTurbopack || hasNext;
-      
+
       if (isReady) {
         callback();
       } else if (retries < maxRetries) {
@@ -1187,24 +1222,24 @@ var userBehaviour = (() => {
         callback();
       }
     };
-    
+
     checkNextJS();
   };
 
   var userBehaviour = new UserBehaviorTracker();
   var initializeStakTrak = () => {
     console.log('🚀 StakTrak: Initialized in', window.parent !== window ? 'iframe' : 'main window');
-    
+
     // Try to detect React immediately
     const reactFound = detectAndExposeReact();
-    
+
     // Wait for Next.js context before starting behavior tracking
     waitForNextJS(() => {
       // Try React detection again if it failed earlier
       if (!reactFound) {
         detectAndExposeReact();
       }
-      
+
       // Then start normal staktrak
       userBehaviour.makeConfig({
         processData: (results) => console.log("StakTrak recording processed:", results)

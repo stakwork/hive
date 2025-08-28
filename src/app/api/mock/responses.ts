@@ -144,7 +144,27 @@ export function generateBugReportResponse(artifacts: { type: string; content: un
     return makeRes("No debug information found in the request.");
   }
 
-  return makeRes("Debug artifact received. A proper response will be returned once the source mapping feature is complete.");
+  // Extract the staktrak data from the first bug report
+  const bugReport = bugReportArtifacts[0];
+  const content = bugReport.content as any;
+  
+  // Check if we have source files with formatted message from staktrak
+  if (content?.sourceFiles && content.sourceFiles.length > 0) {
+    const sourceFile = content.sourceFiles[0];
+    
+    // If we have a formatted message from staktrak, use it
+    if (sourceFile.message) {
+      return makeRes(sourceFile.message);
+    }
+    
+    // Fallback: if no formatted message but we have source files
+    if (sourceFile.file && sourceFile.file !== "Source mapping will be available in future update") {
+      return makeRes(`🐛 Debug info: ${sourceFile.file}${sourceFile.context ? ` - ${sourceFile.context}` : ''}`);
+    }
+  }
+
+  // Final fallback for old format or missing data
+  return makeRes("Debug artifact received. Component analysis in progress...");
 }
 
 export function generateResponseBasedOnMessage(
