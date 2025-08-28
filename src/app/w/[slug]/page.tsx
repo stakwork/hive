@@ -19,11 +19,13 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId);
+  const { formData } = useStakgraphStore();
   const [commitCount, setCommitCount] = useState<number | null>(null);
   const [threeWeeksAgo, setThreeWeeksAgo] = useState<number>(
     new Date().getDate(),
@@ -31,10 +33,13 @@ export default function DashboardPage() {
 
   const getNumberOfCommitsOnDefaultBranch = async () => {
     try {
-      const res = await fetch("/api/github/repository/branch/numofcommits", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await fetch(
+        `/api/github/repository/branch/numofcommits?repoUrl=${formData.repositoryUrl}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
       if (!res.ok) throw new Error("Failed to get numofcommits");
       const result = await res.json();
       return result.data.number_of_commits;
@@ -85,7 +90,7 @@ export default function DashboardPage() {
                     task.status === "IN_PROGRESS" &&
                     new Date(task.createdAt).getDate() > threeWeeksAgo,
                 ).length
-              }
+              }{" "}
               from last week
             </p>
           </CardContent>
