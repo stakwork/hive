@@ -24,8 +24,8 @@ import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
-  const { tasks } = useWorkspaceTasks(workspaceId);
-  const { formData } = useStakgraphStore();
+  const { tasks, pagination: pagination } = useWorkspaceTasks(workspaceId);
+  const { formData, loadSettings } = useStakgraphStore();
   const [commitCount, setCommitCount] = useState<number | null>(null);
   const [threeWeeksAgo, setThreeWeeksAgo] = useState<number>(
     new Date().getDate(),
@@ -58,10 +58,13 @@ export default function DashboardPage() {
       setCommitCount(numberOfCommits);
     };
 
+    if (slug) {
+      loadSettings(slug);
+    }
     fetchCommits();
     const today = new Date();
     setThreeWeeksAgo(today.getDate() - 21);
-  }, [formData?.repositoryUrl]); // Empty dependency array ensures this runs once on mount
+  }, [formData?.repositoryUrl, slug, loadSettings]); // Empty dependency array ensures this runs once on mount
 
   return (
     <div className="space-y-6">
@@ -83,9 +86,7 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {tasks.filter((task) => task.status === "IN_PROGRESS").length}
-            </div>
+            <div className="text-2xl font-bold">{pagination?.totalCount}</div>
             <p className="text-xs text-muted-foreground">
               +
               {

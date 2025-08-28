@@ -84,7 +84,7 @@ export async function GET(request: Request) {
     }
 
     const data = {
-      number_of_commits: commitNumberRes,
+      number_of_commits: totalCommits,
     };
 
     return NextResponse.json({
