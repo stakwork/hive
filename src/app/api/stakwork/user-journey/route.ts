@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
-import { getUserAccessToken } from "@/lib/utils/github";
+import { getGitHubAccessToken } from "@/lib/auth/utils";
 
 export const runtime = "nodejs";
 
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's GitHub access token
-    const accessToken = await getUserAccessToken(userId);
+    const accessToken = await getGitHubAccessToken(userId);
 
     // Find the swarm associated with this workspace
     const swarm = await db.swarm.findUnique({
