@@ -6,11 +6,14 @@ import { db } from "@/lib/db";
 import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
+
+const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 async function callStakwork(
   message: string,
@@ -18,6 +21,7 @@ async function callStakwork(
   swarmSecretAlias: string | null,
   poolName: string | null,
   repo2GraphUrl: string,
+  accessToken: string | null,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -33,6 +37,7 @@ async function callStakwork(
     // stakwork workflow vars
     const vars = {
       message,
+      accessToken,
       swarmUrl,
       swarmSecretAlias,
       poolName,
@@ -126,6 +131,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user's access token
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        accounts: {
+          select: {
+            access_token: true,
+          },
+        },
+      },
+    });
+
+    // Decrypt access token
+    let accessToken: string | null = null;
+    if (user) {
+      try {
+        const accountWithToken = user.accounts.find(
+          (account) => account.access_token,
+        );
+        if (accountWithToken?.access_token) {
+          accessToken = encryptionService.decryptField(
+            "access_token",
+            accountWithToken.access_token,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to decrypt access_token:", error);
+        const accountWithToken = user.accounts.find(
+          (account) => account.access_token,
+        );
+        accessToken = accountWithToken?.access_token || null;
+      }
+    }
+
     // Find the swarm associated with this workspace
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
@@ -160,6 +199,7 @@ export async function POST(request: NextRequest) {
       swarmSecretAlias,
       poolName,
       repo2GraphUrl,
+      accessToken,
     );
 
     return NextResponse.json(
