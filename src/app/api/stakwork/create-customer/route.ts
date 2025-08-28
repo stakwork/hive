@@ -92,6 +92,12 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ token }, { status: 201 });
     }
+    
+    // If we don't have a valid token in the response
+    return NextResponse.json(
+      { error: "Invalid response from Stakwork API" },
+      { status: 500 }
+    );
   } catch (error) {
     console.error("Error creating Stakwork customer:", error);
 

@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
+import { VMConfigSection } from "@/components/vm-config";
 import { PageHeader } from "@/components/ui/page-header";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { notFound } from "next/navigation";
@@ -30,7 +31,6 @@ export default async function SettingsPage({
     notFound();
   }
 
-
   return (
     <div className="space-y-6">
       <PageHeader 
@@ -41,6 +41,8 @@ export default async function SettingsPage({
       <div className="max-w-2xl">
         <div className="space-y-6">
           <WorkspaceSettings />
+
+          <VMConfigSection />
 
           <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
 

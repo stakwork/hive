@@ -116,14 +116,11 @@ export function WorkspaceSettings() {
                   <FormLabel>Workspace Name</FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="My Awesome Workspace" 
+                      placeholder="The display name for your workspace" 
                       {...field} 
                       disabled={isSubmitting}
                     />
                   </FormControl>
-                  <FormDescription>
-                    The display name for your workspace
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -141,15 +138,12 @@ export function WorkspaceSettings() {
                         /w/
                       </span>
                       <Input 
-                        placeholder="my-workspace" 
+                        placeholder="lowercase, use hyphens for spaces" 
                         {...field} 
                         disabled={isSubmitting}
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    The unique URL for your workspace. Must be lowercase, use hyphens for spaces.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -163,15 +157,12 @@ export function WorkspaceSettings() {
                   <FormLabel>Description (Optional)</FormLabel>
                   <FormControl>
                     <Textarea 
-                      placeholder="What is this workspace about?"
+                      placeholder="A brief description of your workspace"
                       className="resize-none"
                       {...field} 
                       disabled={isSubmitting}
                     />
                   </FormControl>
-                  <FormDescription>
-                    A brief description of your workspace
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

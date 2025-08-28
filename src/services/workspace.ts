@@ -142,6 +142,7 @@ export async function getWorkspaceById(
       owner: workspace.owner,
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      swarmStatus: workspace.swarm?.status || null,
     };
   }
 
@@ -174,6 +175,7 @@ export async function getWorkspaceById(
     ),
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    swarmStatus: workspace.swarm?.status || null,
   };
 }
 
@@ -222,6 +224,7 @@ export async function getWorkspaceBySlug(
       owner: workspace.owner,
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      swarmStatus: workspace.swarm?.status || null,
     };
   }
 
@@ -254,6 +257,7 @@ export async function getWorkspaceBySlug(
     ),
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    swarmStatus: workspace.swarm?.status || null,
   };
 }
 

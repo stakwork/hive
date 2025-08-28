@@ -322,6 +322,7 @@ describe("Workspace Service - Unit Tests", () => {
         userRole: "OWNER",
         owner: mockWorkspace.owner,
         isCodeGraphSetup: true,
+        swarmStatus: "ACTIVE",
       });
     });
 

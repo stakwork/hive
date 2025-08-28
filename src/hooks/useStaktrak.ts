@@ -159,6 +159,20 @@ export const useStaktrak = (initialUrl?: string) => {
     setGeneratedPlaywrightTest("");
   };
 
+  function cleanInitialUrl(url: string) {
+    // Handle URLs like @https://fq5n7qeb-3000.workspaces.sphinx.chat
+    // Extract port number and convert to localhost
+    const workspaceMatch = url.match(
+      /@?https?:\/\/[^-]+-(\d+)\.workspaces\.sphinx\.chat/,
+    );
+    if (workspaceMatch) {
+      const port = workspaceMatch[1];
+      return `http://localhost:${port}`;
+    }
+
+    return url;
+  }
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // console.log("****** message received:", event.data);
@@ -177,7 +191,7 @@ export const useStaktrak = (initialUrl?: string) => {
               try {
                 const playwrightTest =
                   window.PlaywrightGenerator.generatePlaywrightTest(
-                    initialUrl,
+                    cleanInitialUrl(initialUrl),
                     staktrakEvent.data.data as PlaywrightTrackingData,
                   );
                 setGeneratedPlaywrightTest(playwrightTest);
