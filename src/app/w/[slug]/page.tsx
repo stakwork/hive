@@ -7,68 +7,72 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
-  Github,
-  Calendar,
-  Activity,
-  Code,
-  BarChart3,
+  Server,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  GitBranch,
+  RefreshCw,
   Settings,
+  TestTube,
+  Github,
 } from "lucide-react";
+import Link from "next/link";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
-import { useStakgraphStore } from "@/stores/useStakgraphStore";
+import { TaskCard, EmptyState } from "@/components/tasks";
+import { VMConfigSection } from "@/components/vm-config";
 import { useEffect, useState } from "react";
+import { formatRelativeTime } from "@/lib/utils";
+import { TestCoverageData } from "@/types";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
-  const { tasks, pagination: pagination } = useWorkspaceTasks(workspaceId);
-  const { formData, loadSettings } = useStakgraphStore();
-  const [commitCount, setCommitCount] = useState<number | null>(null);
-  const [commitCountLastWeek, setCommitCountLastWeek] = useState<number | null>(
-    null,
-  );
-  const [threeWeeksAgo, setThreeWeeksAgo] = useState<number>(
-    new Date().getDate(),
-  );
+  const { tasks } = useWorkspaceTasks(workspaceId);
+  const [testCoverage, setTestCoverage] = useState<TestCoverageData | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
 
-  const getNumberOfCommitsOnDefaultBranch = async () => {
-    try {
-      if (!formData?.repositoryUrl) {
-        console.error("Repository URL is missing in formData");
-        return null;
-      }
-      const res = await fetch(
-        `/api/github/repository/branch/numofcommits?repoUrl=${formData.repositoryUrl}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-      if (!res.ok) throw new Error("Failed to get numofcommits");
-      const result = await res.json();
-      return result.data;
-    } catch (error) {
-      console.error("could not get number of commits", error);
-    }
-  };
+  // Get the 3 most recent tasks
+  const recentTasks = tasks.slice(0, 3);
 
+  // Fetch test coverage if workspace has a swarm
   useEffect(() => {
-    const fetchCommits = async () => {
-      const commitNumber = await getNumberOfCommitsOnDefaultBranch();
-      setCommitCount(commitNumber.numberOfCommits);
-      setCommitCountLastWeek(commitNumber.commitsFromLastWeek);
+    const fetchCoverage = async () => {
+      if (!workspace?.swarmStatus || workspace.swarmStatus !== "ACTIVE") return;
+      
+      setCoverageLoading(true);
+      try {
+        const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            setTestCoverage(result.data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch test coverage:", error);
+      } finally {
+        setCoverageLoading(false);
+      }
     };
 
-    if (slug) {
-      loadSettings(slug);
+    if (workspaceId) {
+      fetchCoverage();
     }
-    fetchCommits();
-    const today = new Date();
-    setThreeWeeksAgo(today.getDate() - 21);
-  }, [formData?.repositoryUrl, slug, loadSettings]); // Empty dependency array ensures this runs once on mount
+  }, [workspaceId, workspace?.swarmStatus]);
+
+  // Debug: Log workspace data to see if repositories are included
+  useEffect(() => {
+    if (workspace) {
+      console.log("Workspace data:", workspace);
+      console.log("Repositories:", workspace.repositories);
+    }
+  }, [workspace]);
 
   return (
     <div className="space-y-6">
@@ -77,140 +81,128 @@ export default function DashboardPage() {
         description="Welcome to your development workspace."
       />
 
-      {/* Onboarding Card - Only show if CodeGraph is not set up */}
+      {/* Show onboarding if needed */}
       {workspace && !workspace.isCodeGraphSetup && (
         <ConnectRepository workspaceSlug={slug} />
       )}
 
-      {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pagination?.totalCount}</div>
-            <p className="text-xs text-muted-foreground">
-              +
-              {
-                tasks.filter(
-                  (task) =>
-                    task.status === "IN_PROGRESS" &&
-                    new Date(task.createdAt).getDate() > threeWeeksAgo,
-                ).length
-              }{" "}
-              from last week
-            </p>
-          </CardContent>
-        </Card>
+      {/* Info Cards Grid - All horizontal */}
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
+        {/* VM Configuration */}
+        <VMConfigSection />
 
+        {/* Repository Information Card */}
+        {workspace?.repositories && workspace.repositories.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <GitBranch className="w-4 h-4" />
+                  Graph Database
+                </CardTitle>
+                <Badge variant="outline" className="text-xs flex items-center gap-1">
+                  <Github className="w-3 h-3" />
+                  GitHub
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="text-sm font-medium truncate">
+                  {workspace.repositories[0].name}
+                </div>
+                <div className="flex items-center justify-between text-xs mt-auto">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        workspace.repositories[0].status === "SYNCED"
+                          ? "default"
+                          : workspace.repositories[0].status === "PENDING"
+                          ? "secondary"
+                          : "destructive"
+                      }
+                      className="text-xs"
+                    >
+                      {workspace.repositories[0].status}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {workspace.repositories[0].branch}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <RefreshCw className="w-3 h-3" />
+                    {formatRelativeTime(workspace.repositories[0].updatedAt)}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Test Coverage Card */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Code Commits</CardTitle>
-            <Github className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {commitCount == null ? "..." : commitCount}
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <TestTube className="w-4 h-4" />
+                Test Coverage
+              </CardTitle>
             </div>
-            <p className="text-xs text-muted-foreground">
-              +{commitCountLastWeek == null ? "..." : commitCountLastWeek} from
-              last week
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Sprint Progress
-            </CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">73%</div>
-            <p className="text-xs text-muted-foreground">+5% from yesterday</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
-            <Code className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">89</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
+            {coverageLoading ? (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Loading...</span>
+              </div>
+            ) : testCoverage ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Unit</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage.unit_tests.percent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Integration</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage.integration_tests.percent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">E2E</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage.e2e_tests.percent.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">No coverage data</span>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent Activity */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Tasks</CardTitle>
-            <CardDescription>Your most recently updated tasks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    Update user authentication
-                  </p>
-                  <p className="text-xs text-muted-foreground">2 hours ago</p>
-                </div>
+      {/* Recent Tasks Section */}
+      {workspace && workspace.isCodeGraphSetup && (
+        recentTasks.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Tasks</CardTitle>
+              <CardDescription>Your most recently created tasks</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {recentTasks.map((task) => (
+                  <TaskCard key={task.id} task={task} workspaceSlug={slug} />
+                ))}
               </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Fix sidebar navigation</p>
-                  <p className="text-xs text-muted-foreground">4 hours ago</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    Optimize database queries
-                  </p>
-                  <p className="text-xs text-muted-foreground">1 day ago</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common tasks and shortcuts</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Activity className="h-4 w-4 mr-2" />
-                Create new task
-              </button>
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Github className="h-4 w-4 mr-2" />
-                Connect repository
-              </button>
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Calendar className="h-4 w-4 mr-2" />
-                Schedule meeting
-              </button>
-              <button className="w-full text-left p-2 hover:bg-muted rounded-lg flex items-center">
-                <Settings className="h-4 w-4 mr-2" />
-                Project settings
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <EmptyState workspaceSlug={slug} />
+        )
+      )}
     </div>
   );
 }
