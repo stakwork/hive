@@ -88,6 +88,24 @@ export async function POST(request: NextRequest) {
         console.error("Failed to store ingestRefId for sync", err);
       }
     }
+    if (!apiResult.ok || !requestId) {
+      try {
+        await db.repository.update({
+          where: {
+            repositoryUrl_workspaceId: {
+              repositoryUrl: swarm.repositoryUrl,
+              workspaceId: swarm.workspaceId,
+            },
+          },
+          data: { status: RepositoryStatus.FAILED },
+        });
+      } catch (e) {
+        console.error(
+          "Failed to mark repository FAILED after sync start error",
+          e,
+        );
+      }
+    }
 
     return NextResponse.json(
       { success: apiResult.ok, status: apiResult.status, requestId },
