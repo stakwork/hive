@@ -5,6 +5,7 @@ import type { DeleteWebhookParams } from "@/types";
 import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -225,14 +226,11 @@ export class WebhookService extends BaseServiceClass {
   }
 
   private async getUserGithubAccessToken(userId: string): Promise<string> {
-    const account = await db.account.findFirst({
-      where: { userId, provider: "github" },
-      select: { access_token: true },
-    });
-    if (!account?.access_token) {
+    const githubProfile = await getGithubUsernameAndPAT(userId);
+    if (!githubProfile?.pat) {
       throw new Error("GitHub access token not found for user");
     }
-    return encryptionService.decryptField("access_token", account.access_token);
+    return githubProfile.pat;
   }
 
   private async listHooks(

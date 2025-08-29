@@ -45,7 +45,21 @@ describe("GitHub Users Search API Integration Tests", () => {
         },
       });
 
-      return { testUser, testAccount };
+      const testGitHubAuth = await tx.gitHubAuth.create({
+        data: {
+          userId: testUser.id,
+          githubUserId: "123456",
+          githubUsername: "testuser",
+          githubNodeId: "U_test123",
+          name: "Test User",
+          publicRepos: 5,
+          followers: 10,
+          following: 5,
+          accountType: "User",
+        },
+      });
+
+      return { testUser, testAccount, testGitHubAuth };
     });
   }
 

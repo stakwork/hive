@@ -18,13 +18,61 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
+import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useStakgraphStore } from "@/stores/useStakgraphStore";
+import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
-  const { workspace, slug } = useWorkspace();
+  const { workspace, slug, id: workspaceId } = useWorkspace();
+  const { tasks, pagination: pagination } = useWorkspaceTasks(workspaceId);
+  const { formData, loadSettings } = useStakgraphStore();
+  const [commitCount, setCommitCount] = useState<number | null>(null);
+  const [commitCountLastWeek, setCommitCountLastWeek] = useState<number | null>(
+    null,
+  );
+  const [threeWeeksAgo, setThreeWeeksAgo] = useState<number>(
+    new Date().getDate(),
+  );
+
+  const getNumberOfCommitsOnDefaultBranch = async () => {
+    try {
+      if (!formData?.repositoryUrl) {
+        console.error("Repository URL is missing in formData");
+        return null;
+      }
+      const res = await fetch(
+        `/api/github/repository/branch/numofcommits?repoUrl=${formData.repositoryUrl}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      if (!res.ok) throw new Error("Failed to get numofcommits");
+      const result = await res.json();
+      return result.data;
+    } catch (error) {
+      console.error("could not get number of commits", error);
+    }
+  };
+
+  useEffect(() => {
+    const fetchCommits = async () => {
+      const commitNumber = await getNumberOfCommitsOnDefaultBranch();
+      setCommitCount(commitNumber.numberOfCommits);
+      setCommitCountLastWeek(commitNumber.commitsFromLastWeek);
+    };
+
+    if (slug) {
+      loadSettings(slug);
+    }
+    fetchCommits();
+    const today = new Date();
+    setThreeWeeksAgo(today.getDate() - 21);
+  }, [formData?.repositoryUrl, slug, loadSettings]); // Empty dependency array ensures this runs once on mount
 
   return (
     <div className="space-y-6">
-      <PageHeader 
+      <PageHeader
         title="Dashboard"
         description="Welcome to your development workspace."
       />
@@ -42,8 +90,18 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-muted-foreground">+3 from last week</p>
+            <div className="text-2xl font-bold">{pagination?.totalCount}</div>
+            <p className="text-xs text-muted-foreground">
+              +
+              {
+                tasks.filter(
+                  (task) =>
+                    task.status === "IN_PROGRESS" &&
+                    new Date(task.createdAt).getDate() > threeWeeksAgo,
+                ).length
+              }{" "}
+              from last week
+            </p>
           </CardContent>
         </Card>
 
@@ -53,8 +111,13 @@ export default function DashboardPage() {
             <Github className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">142</div>
-            <p className="text-xs text-muted-foreground">+12 from last week</p>
+            <div className="text-2xl font-bold">
+              {commitCount == null ? "..." : commitCount}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              +{commitCountLastWeek == null ? "..." : commitCountLastWeek} from
+              last week
+            </p>
           </CardContent>
         </Card>
 
