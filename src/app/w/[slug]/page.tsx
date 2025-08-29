@@ -106,12 +106,13 @@ export default function DashboardPage() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col h-full">
+              <div className="flex-1"></div>
               <div className="space-y-3">
                 <div className="text-sm font-medium truncate">
                   {workspace.repositories[0].name}
                 </div>
-                <div className="flex items-center justify-between text-xs mt-auto">
+                <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <Badge
                       variant={
