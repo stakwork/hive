@@ -2,6 +2,12 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 
 type Creds = { username?: string; pat?: string };
 
+export interface AsyncSyncResult {
+  ok: boolean;
+  status: number;
+  data?: { request_id?: string; [k: string]: unknown };
+}
+
 export async function triggerSync(
   swarmName: string,
   apiKey: string,
