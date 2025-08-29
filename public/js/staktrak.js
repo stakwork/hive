@@ -378,46 +378,11 @@ var userBehaviour = (() => {
     }
   }
 
-  function extractReactDebugSource(element) {
-    var _a, _b;
-    try {
-      // NOTE: React 19 removed _debugSource from fiber nodes (GitHub issues #29092, #31981)
-      // jsx-dev-runtime is active but source location data is no longer accessible via fibers
-      // This function returns null in React 19 but is kept for React 18 compatibility
-      const fiberKey = Object.keys(element).find(
-        (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
-      );
-
-      if (!fiberKey) {
-        return null;
-      }
-
-      let fiber = element[fiberKey];
-      let level = 0;
-      const maxTraversalDepth = Number((_a = window.STAKTRAK_CONFIG) == null ? void 0 : _a.maxTraversalDepth) || 10;
-      const extractSource = (source) => {
-        if (!source)
-          return null;
-        return {
-          fileName: source.fileName,
-          lineNumber: source.lineNumber,
-          columnNumber: source.columnNumber
-        };
-      };
-      while (fiber && level < maxTraversalDepth) {
-        const source = fiber._debugSource || ((_a = fiber.memoizedProps) == null ? void 0 : _a.__source) || ((_b = fiber.pendingProps) == null ? void 0 : _b.__source);
-        if (source) {
-          return extractSource(source);
-        }
-        fiber = fiber.return;
-        level++;
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Error extracting React debug source:", error);
-      return null;
-    }
+  function extractReactDebugSource() {
+    // NOTE: React 19 removed _debugSource from fiber nodes (GitHub issues #29092, #31981)
+    // jsx-dev-runtime is active but source location data is no longer accessible via browser APIs
+    // This function always returns null in React 19+ environments
+    return null;
   }
   function debugMsg(data) {
     var _a, _b;
@@ -1110,62 +1075,13 @@ var userBehaviour = (() => {
       });
     }
   };
-  // Function to detect and expose React globally
-  var detectAndExposeReact = () => {
-    // NOTE: React 19 + Turbopack investigation complete (2025-08-25)
-    // - React is not exposed globally in Turbopack iframe context
-    // - window.TURBOPACK exists but only provides chunk loading, not module access
-    // - React DevTools hook has renderers but no React constructor access
-    // - jsx-dev-runtime is active (evidenced by stack traces) but inaccessible
-    // See .projects/dom-inspector-comparison.md for detailed findings
 
-    if (window.React) {
-      return window.React;
-    }
-    return null;
-  };
-
-  // Function to wait for Next.js context to be available
-  var waitForNextJS = (callback, maxRetries = 50) => {
-    let retries = 0;
-
-    const checkNextJS = () => {
-      const hasTurbopack = !!window.TURBOPACK;
-      const hasNext = !!window.__NEXT_DATA__;
-      const isReady = hasTurbopack || hasNext;
-
-      if (isReady) {
-        callback();
-      } else if (retries < maxRetries) {
-        retries++;
-        setTimeout(checkNextJS, 100); // Check every 100ms
-      } else {
-        // Next.js context not found after timeout, proceeding anyway
-        callback();
-      }
-    };
-
-    checkNextJS();
-  };
 
   var userBehaviour = new UserBehaviorTracker();
   var initializeStakTrak = () => {
-
-    // Try to detect React immediately
-    const reactFound = detectAndExposeReact();
-
-    // Wait for Next.js context before starting behavior tracking
-    waitForNextJS(() => {
-      // Try React detection again if it failed earlier
-      if (!reactFound) {
-        detectAndExposeReact();
-      }
-
-      // Then start normal staktrak
-      userBehaviour.makeConfig({
-        processData: (results) => console.log("StakTrak recording processed:", results)
-      }).listen();
-    });
+    userBehaviour.makeConfig({
+      processData: (results) => console.log("StakTrak recording processed:", results)
+    }).listen();
   };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initializeStakTrak);
