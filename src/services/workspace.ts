@@ -104,7 +104,7 @@ export async function getWorkspaceById(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceWithAccess | null> {
-  // Get the workspace with owner info and swarm status
+  // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
     where: {
       id: workspaceId,
@@ -117,6 +117,16 @@ export async function getWorkspaceById(
       swarm: {
         select: { id: true, status: true },
       },
+      repositories: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+          status: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 
@@ -143,6 +153,14 @@ export async function getWorkspaceById(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
+      repositories: workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
     };
   }
 
@@ -176,6 +194,10 @@ export async function getWorkspaceById(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
   };
 }
 
@@ -186,7 +208,7 @@ export async function getWorkspaceBySlug(
   slug: string,
   userId: string,
 ): Promise<WorkspaceWithAccess | null> {
-  // Get the workspace with owner info and swarm status
+  // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
     where: {
       slug,
@@ -199,6 +221,16 @@ export async function getWorkspaceBySlug(
       swarm: {
         select: { id: true, status: true },
       },
+      repositories: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+          status: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 
@@ -225,6 +257,14 @@ export async function getWorkspaceBySlug(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
+      repositories: workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
     };
   }
 
@@ -258,6 +298,10 @@ export async function getWorkspaceBySlug(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
   };
 }
 
