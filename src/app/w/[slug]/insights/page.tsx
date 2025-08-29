@@ -3,6 +3,7 @@
 import { JanitorItem, JanitorSection } from "@/components/insights/JanitorSection";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
+import { TechnicalDebtCard } from "@/components/insights/TechnicalDebtCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -91,6 +92,8 @@ export default function InsightsPage() {
         janitors={securityJanitors}
         comingSoon={true}
       />
+
+      <TechnicalDebtCard />
       </div>{/* End content container */}
     </div>
   );
