@@ -66,13 +66,6 @@ export default function DashboardPage() {
     }
   }, [workspaceId, workspace?.swarmStatus]);
 
-  // Debug: Log workspace data to see if repositories are included
-  useEffect(() => {
-    if (workspace) {
-      console.log("Workspace data:", workspace);
-      console.log("Repositories:", workspace.repositories);
-    }
-  }, [workspace]);
 
   return (
     <div className="space-y-6">

@@ -3,7 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Server, CheckCircle, Clock, Zap, Activity } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Settings, Server, CheckCircle, Clock, Zap, Activity, MoreHorizontal } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,26 @@ export function VMConfigSection() {
   const vmState = getVMState();
 
   return (
-    <Card>
+    <Card className="relative">
+      {swarmStatus === "ACTIVE" && (
+        <div className="absolute top-4 right-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/w/${slug}/stakgraph`} className="cursor-pointer">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Edit Configuration
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Server className="w-5 h-5" />
@@ -126,18 +146,18 @@ export function VMConfigSection() {
           </div>
 
           {/* Right side - Action button */}
-          <Button asChild>
-            <Link href={slug ? vmState.buttonHref : "#"}>
-              {swarmStatus === "PENDING" ? (
-                <Clock className="w-4 h-4 mr-2" />
-              ) : swarmStatus === "ACTIVE" ? (
-                <Settings className="w-4 h-4 mr-2" />
-              ) : (
-                <Zap className="w-4 h-4 mr-2" />
-              )}
-              {vmState.buttonText}
-            </Link>
-          </Button>
+          {swarmStatus !== "ACTIVE" && (
+            <Button asChild>
+              <Link href={slug ? vmState.buttonHref : "#"}>
+                {swarmStatus === "PENDING" ? (
+                  <Clock className="w-4 h-4 mr-2" />
+                ) : (
+                  <Zap className="w-4 h-4 mr-2" />
+                )}
+                {vmState.buttonText}
+              </Link>
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

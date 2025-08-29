@@ -153,10 +153,6 @@ export async function getWorkspaceById(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
-    repositories: workspace.repositories?.map((repo) => ({
-      ...repo,
-      updatedAt: repo.updatedAt.toISOString(),
-    })) || [],
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -257,10 +253,6 @@ export async function getWorkspaceBySlug(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
-    repositories: workspace.repositories?.map((repo) => ({
-      ...repo,
-      updatedAt: repo.updatedAt.toISOString(),
-    })) || [],
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
