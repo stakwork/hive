@@ -2,6 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
+/*
+const { sendMessage, isConnected, messages } = useGooseChat(
+  "https://your-goose-server.com",
+  (completeMessage) => {
+    // This callback is called when a message is complete
+    console.log("Message complete:", completeMessage);
+
+    // Store the complete message in your database
+    saveMessageToDatabase(completeMessage);
+  }
+);
+*/
+
 // Types for Goose server messages
 export interface GooseMessage {
   type:
@@ -20,9 +33,9 @@ export interface GooseMessage {
   session_id?: string;
   id?: string;
   tool_name?: string;
-  arguments?: Record<string, any>;
+  arguments?: Record<string, unknown>;
   is_error?: boolean;
-  result?: any;
+  result?: unknown;
   message?: string;
 }
 
@@ -41,7 +54,10 @@ export interface UseGooseChatReturn extends GooseChatState {
   clearMessages: () => void;
 }
 
-export function useGooseChat(baseUrl: string): UseGooseChatReturn {
+export function useGooseChat(
+  baseUrl: string,
+  onMessageComplete?: (message: GooseMessage) => void,
+): UseGooseChatReturn {
   const [state, setState] = useState<GooseChatState>({
     isConnected: false,
     isProcessing: false,
@@ -52,6 +68,7 @@ export function useGooseChat(baseUrl: string): UseGooseChatReturn {
   const socketRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string>("");
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const streamingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Generate session ID using timestamp format (yyyymmdd_hhmmss)
   const generateSessionId = useCallback(() => {
@@ -92,10 +109,35 @@ export function useGooseChat(baseUrl: string): UseGooseChatReturn {
     (data: GooseMessage) => {
       switch (data.type) {
         case "response":
-          // Handle streaming responses
+          // Handle streaming responses - accumulate content into currentStreamingMessage
           setState((prev) => {
             if (!prev.currentStreamingMessage) {
               // Create new streaming message
+              // Set a timeout to detect when streaming is complete
+              if (streamingTimeoutRef.current) {
+                clearTimeout(streamingTimeoutRef.current);
+              }
+              streamingTimeoutRef.current = setTimeout(() => {
+                // If no new content for 3 seconds, consider the message complete
+                setState((currentPrev) => {
+                  if (
+                    currentPrev.currentStreamingMessage &&
+                    onMessageComplete
+                  ) {
+                    const completeMessage: GooseMessage = {
+                      ...currentPrev.currentStreamingMessage,
+                      type: "response",
+                      role: "assistant",
+                    };
+                    onMessageComplete(completeMessage);
+                  }
+                  return {
+                    ...currentPrev,
+                    currentStreamingMessage: null,
+                  };
+                });
+              }, 3000);
+
               return {
                 ...prev,
                 currentStreamingMessage: data,
@@ -109,6 +151,31 @@ export function useGooseChat(baseUrl: string): UseGooseChatReturn {
                   (prev.currentStreamingMessage.content || "") +
                   (data.content || ""),
               };
+
+              // Reset the streaming timeout
+              if (streamingTimeoutRef.current) {
+                clearTimeout(streamingTimeoutRef.current);
+              }
+              streamingTimeoutRef.current = setTimeout(() => {
+                // If no new content for 2 seconds, consider the message complete
+                setState((currentPrev) => {
+                  if (
+                    currentPrev.currentStreamingMessage &&
+                    onMessageComplete
+                  ) {
+                    const completeMessage: GooseMessage = {
+                      ...currentPrev.currentStreamingMessage,
+                      type: "response",
+                      role: "user",
+                    };
+                    onMessageComplete(completeMessage);
+                  }
+                  return {
+                    ...currentPrev,
+                    currentStreamingMessage: null,
+                  };
+                });
+              }, 2000);
 
               // Update the message in the messages array
               const updatedMessages = prev.messages.map((msg) =>
@@ -168,11 +235,24 @@ export function useGooseChat(baseUrl: string): UseGooseChatReturn {
 
         case "complete":
           removeThinkingIndicator();
-          setState((prev) => ({
-            ...prev,
-            isProcessing: false,
-            currentStreamingMessage: null,
-          }));
+          setState((prev) => {
+            // If we have a completed streaming message, call the callback
+            if (prev.currentStreamingMessage && onMessageComplete) {
+              // Create the final complete message
+              const completeMessage: GooseMessage = {
+                ...prev.currentStreamingMessage,
+                type: "response", // Ensure it's marked as a response
+                role: "assistant",
+              };
+              onMessageComplete(completeMessage);
+            }
+
+            return {
+              ...prev,
+              isProcessing: false,
+              currentStreamingMessage: null,
+            };
+          });
           break;
 
         case "error":
@@ -243,6 +323,11 @@ export function useGooseChat(baseUrl: string): UseGooseChatReturn {
       reconnectTimeoutRef.current = null;
     }
 
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = null;
+    }
+
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
@@ -303,6 +388,11 @@ export function useGooseChat(baseUrl: string): UseGooseChatReturn {
 
   // Clear messages
   const clearMessages = useCallback(() => {
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = null;
+    }
+
     setState((prev) => ({
       ...prev,
       messages: [],
