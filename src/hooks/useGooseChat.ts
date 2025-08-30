@@ -201,6 +201,10 @@ export function useGooseChat(
             currentStreamingMessage: null, // Reset streaming for tool
           }));
           addMessage(data);
+          // Tool requests are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         case "tool_response":
@@ -209,19 +213,35 @@ export function useGooseChat(
             ...prev,
             currentStreamingMessage: null, // Reset streaming for next response
           }));
+          // Tool responses are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         case "tool_confirmation":
           addMessage(data);
+          // Tool confirmations are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         case "thinking":
           // Add thinking indicator
           addMessage(data);
+          // Thinking messages are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         case "context_exceeded":
           addMessage(data);
+          // Context exceeded messages are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         case "cancelled":
@@ -231,6 +251,10 @@ export function useGooseChat(
             isProcessing: false,
           }));
           addMessage(data);
+          // Cancelled messages are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         case "complete":
@@ -262,13 +286,17 @@ export function useGooseChat(
             isProcessing: false,
           }));
           addMessage(data);
+          // Error messages are complete when they arrive
+          if (onMessageComplete) {
+            onMessageComplete(data);
+          }
           break;
 
         default:
           console.log("Unknown message type:", data.type);
       }
     },
-    [addMessage, removeThinkingIndicator],
+    [addMessage, removeThinkingIndicator, onMessageComplete],
   );
 
   // Connect to WebSocket
