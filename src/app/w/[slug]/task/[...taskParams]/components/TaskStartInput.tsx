@@ -13,10 +13,14 @@ interface TaskStartInputProps {
   onModeChange: (mode: string) => void;
 }
 
-export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInputProps) {
+export function TaskStartInput({
+  onStart,
+  taskMode,
+  onModeChange,
+}: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  
+
   const devMode = isDevelopmentMode();
 
   useEffect(() => {
@@ -99,6 +103,20 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
                 className="accent-primary"
               />
               <span className="text-sm text-foreground">Test</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="mode"
+                value="goose"
+                style={{
+                  accentColor: "var(--color-green-500)",
+                }}
+                checked={taskMode === "goose"}
+                onChange={() => onModeChange("goose")}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Goose</span>
             </label>
           </fieldset>
         </div>

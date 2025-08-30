@@ -52,19 +52,22 @@ const mockUserJourneys = [
 ];
 
 export default function UserJourneys() {
-  const { id } = useWorkspace();
+  const { id: workspaceId } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
 
   const handleCreateUserJourney = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `/api/pool-manager/claim-pod/${workspaceId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
+      );
       setIsLoading(false);
 
       if (!response.ok) {
