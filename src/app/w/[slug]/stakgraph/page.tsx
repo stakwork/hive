@@ -75,7 +75,28 @@ export default function StakgraphPage() {
           repositoryUrl: formData.repositoryUrl,
         }),
       });
-      if (!res.ok) throw new Error("Failed to ensure webhooks");
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === "INSUFFICIENT_PERMISSIONS") {
+          toast({
+            title: "Permission Required",
+            description:
+              data.message ||
+              "Admin access required to manage webhooks on this repository",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: data.message || "Failed to add webhooks",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
       toast({
         title: "Webhooks added",
         description: "GitHub webhooks have been ensured",

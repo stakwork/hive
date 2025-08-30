@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
+import { RepositoryStatus } from "@prisma/client";
+import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 
 //
 export async function POST(request: NextRequest) {
@@ -166,13 +168,37 @@ export async function POST(request: NextRequest) {
       swarmHost,
       decryptedSwarmApiKey.slice(0, 2) + "...",
     );
-    const apiResult = await triggerAsyncSync(
+    try {
+      await db.repository.update({
+        where: { id: repository.id },
+        data: { status: RepositoryStatus.PENDING },
+      });
+    } catch (err) {
+      console.error("Failed to set repository to PENDING", err);
+    }
+
+    const callbackUrl = getStakgraphWebhookCallbackUrl(request);
+  const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarmHost,
       decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && pat ? { username, pat } : undefined,
+      callbackUrl,
     );
 
+    try {
+      const reqId = apiResult.data?.request_id;
+      if (reqId) {
+        await db.swarm.update({
+          where: { id: swarm.id },
+          data: { ingestRefId: reqId },
+        });
+      }
+    } catch (e) {
+      console.error("Failed to persist ingestRefId from async sync", e);
+    }
+
+    // Webhook will update status to SYNCED / FAILED when complete
     return NextResponse.json(
       { success: apiResult.ok, delivery },
       { status: 202 },

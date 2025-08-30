@@ -3,6 +3,7 @@ import { ChatMessage, WorkflowStatus } from "@/lib/chat";
 import {
   getPusherClient,
   getTaskChannelName,
+  getWorkspaceChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
@@ -15,18 +16,27 @@ export interface WorkflowStatusUpdate {
   timestamp: Date;
 }
 
+export interface RecommendationsUpdatedEvent {
+  workspaceSlug: string;
+  newRecommendationCount: number;
+  totalRecommendationCount: number;
+  timestamp: Date;
+}
+
 interface UsePusherConnectionOptions {
-  taskId: string | null;
+  taskId?: string | null;
+  workspaceSlug?: string | null;
   enabled?: boolean;
   onMessage?: (message: ChatMessage) => void;
   onWorkflowStatusUpdate?: (update: WorkflowStatusUpdate) => void;
+  onRecommendationsUpdated?: (update: RecommendationsUpdatedEvent) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
 interface UsePusherConnectionReturn {
   isConnected: boolean;
   connectionId: string | null;
-  connect: (taskId: string) => void;
+  connect: (id: string, type: 'task' | 'workspace') => void;
   disconnect: () => void;
   error: string | null;
 }
@@ -35,9 +45,11 @@ const LOGS = false;
 
 export function usePusherConnection({
   taskId,
+  workspaceSlug,
   enabled = true,
   onMessage,
   onWorkflowStatusUpdate,
+  onRecommendationsUpdated,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -48,31 +60,34 @@ export function usePusherConnection({
   const channelRef = useRef<Channel | null>(null);
   const onMessageRef = useRef(onMessage);
   const onWorkflowStatusUpdateRef = useRef(onWorkflowStatusUpdate);
-  const currentTaskIdRef = useRef<string | null>(null);
+  const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
+  const currentChannelIdRef = useRef<string | null>(null);
+  const currentChannelTypeRef = useRef<'task' | 'workspace' | null>(null);
 
   onMessageRef.current = onMessage;
   onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
+  onRecommendationsUpdatedRef.current = onRecommendationsUpdated;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
-    if (channelRef.current && currentTaskIdRef.current) {
+    if (channelRef.current && currentChannelIdRef.current && currentChannelTypeRef.current) {
+      const channelName = currentChannelTypeRef.current === 'task' 
+        ? getTaskChannelName(currentChannelIdRef.current)
+        : getWorkspaceChannelName(currentChannelIdRef.current);
+
       if (LOGS) {
-        console.log(
-          "Unsubscribing from Pusher channel:",
-          getTaskChannelName(currentTaskIdRef.current),
-        );
+        console.log("Unsubscribing from Pusher channel:", channelName);
       }
 
       // Unbind all events
       channelRef.current.unbind_all();
 
       // Unsubscribe from the channel
-      getPusherClient().unsubscribe(
-        getTaskChannelName(currentTaskIdRef.current),
-      );
+      getPusherClient().unsubscribe(channelName);
 
       channelRef.current = null;
-      currentTaskIdRef.current = null;
+      currentChannelIdRef.current = null;
+      currentChannelTypeRef.current = null;
       setIsConnected(false);
       setConnectionId(null);
       setError(null);
@@ -81,85 +96,107 @@ export function usePusherConnection({
 
   // Stable connect function
   const connect = useCallback(
-    (targetTaskId: string) => {
+    (targetId: string, type: 'task' | 'workspace') => {
       // Disconnect from any existing channel
       disconnect();
 
       if (LOGS) {
-        console.log("Subscribing to Pusher channel for task:", targetTaskId);
+        console.log(`Subscribing to Pusher channel for ${type}:`, targetId);
       }
 
       try {
-        const channelName = getTaskChannelName(targetTaskId);
+        const channelName = type === 'task' 
+          ? getTaskChannelName(targetId)
+          : getWorkspaceChannelName(targetId);
         const channel = getPusherClient().subscribe(channelName);
 
         // Set up event handlers
         channel.bind("pusher:subscription_succeeded", () => {
           if (LOGS) {
-            console.log(
-              "Successfully subscribed to Pusher channel:",
-              channelName,
-            );
+            console.log("Successfully subscribed to Pusher channel:", channelName);
           }
 
           // Add a small delay to ensure Pusher is fully ready to receive messages
-          // This prevents race conditions where the first message response might be lost
           setTimeout(() => {
             setIsConnected(true);
             setError(null);
-            // Generate a connection ID for compatibility
-            setConnectionId(`pusher_${targetTaskId}_${Date.now()}`);
+            setConnectionId(`pusher_${type}_${targetId}_${Date.now()}`);
           }, connectionReadyDelay);
         });
 
         channel.bind("pusher:subscription_error", (error: unknown) => {
           console.error("Pusher subscription error:", error);
-          setError("Failed to connect to real-time messaging");
+          setError(`Failed to connect to ${type} real-time updates`);
           setIsConnected(false);
         });
-        //payload is messageId
-        channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
-          try {
-            if (typeof payload === "string") {
-              const res = await fetch(`/api/chat/messages/${payload}`);
-              if (res.ok) {
-                const data = await res.json();
-                const full: ChatMessage = data.data;
-                if (onMessageRef.current) onMessageRef.current(full);
-                return;
-              } else {
-                console.error("Failed to fetch message by id", payload);
-                return;
-              }
-            }
-          } catch (err) {
-            console.error("Error handling NEW_MESSAGE event:", err);
-            return;
-          }
-        });
 
-        // Bind to workflow status update events
-        channel.bind(
-          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-          (update: WorkflowStatusUpdate) => {
-            if (LOGS) {
-              console.log("Received workflow status update:", {
-                taskId: update.taskId,
-                workflowStatus: update.workflowStatus,
-                channelName,
-              });
+        // Task-specific events
+        if (type === 'task') {
+          // Message events (payload is messageId)
+          channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
+            try {
+              if (typeof payload === "string") {
+                const res = await fetch(`/api/chat/messages/${payload}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  const full: ChatMessage = data.data;
+                  if (onMessageRef.current) onMessageRef.current(full);
+                  return;
+                } else {
+                  console.error("Failed to fetch message by id", payload);
+                  return;
+                }
+              }
+            } catch (err) {
+              console.error("Error handling NEW_MESSAGE event:", err);
+              return;
             }
-            if (onWorkflowStatusUpdateRef.current) {
-              onWorkflowStatusUpdateRef.current(update);
-            }
-          },
-        );
+          });
+
+          // Workflow status update events
+          channel.bind(
+            PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+            (update: WorkflowStatusUpdate) => {
+              if (LOGS) {
+                console.log("Received workflow status update:", {
+                  taskId: update.taskId,
+                  workflowStatus: update.workflowStatus,
+                  channelName,
+                });
+              }
+              if (onWorkflowStatusUpdateRef.current) {
+                onWorkflowStatusUpdateRef.current(update);
+              }
+            },
+          );
+        }
+
+        // Workspace-specific events
+        if (type === 'workspace') {
+          channel.bind(
+            PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
+            (update: RecommendationsUpdatedEvent) => {
+              if (LOGS) {
+                console.log("Received recommendations update:", {
+                  workspaceSlug: update.workspaceSlug,
+                  newRecommendationCount: update.newRecommendationCount,
+                  totalRecommendationCount: update.totalRecommendationCount,
+                  channelName,
+                });
+              }
+              if (onRecommendationsUpdatedRef.current) {
+                onRecommendationsUpdatedRef.current(update);
+              }
+            },
+          );
+        }
 
         channelRef.current = channel;
-        currentTaskIdRef.current = targetTaskId;
+        currentChannelIdRef.current = targetId;
+        currentChannelTypeRef.current = type;
       } catch (error) {
         console.error("Error setting up Pusher connection:", error);
-        setError("Failed to setup real-time connection");
+        setError(`Failed to setup ${type} real-time connection`);
         setIsConnected(false);
       }
     },
@@ -168,21 +205,28 @@ export function usePusherConnection({
 
   // Connection management effect
   useEffect(() => {
-    if (!taskId || !enabled) {
+    if (!enabled) {
       disconnect();
       return;
     }
 
-    // Only connect if we don't already have a connection for this task
-    if (currentTaskIdRef.current !== taskId) {
+    // Determine which connection to make
+    if (taskId && taskId !== currentChannelIdRef.current) {
       if (LOGS) {
         console.log("Connecting to Pusher channel for task:", taskId);
       }
-      connect(taskId);
+      connect(taskId, 'task');
+    } else if (workspaceSlug && workspaceSlug !== currentChannelIdRef.current) {
+      if (LOGS) {
+        console.log("Connecting to Pusher channel for workspace:", workspaceSlug);
+      }
+      connect(workspaceSlug, 'workspace');
+    } else if (!taskId && !workspaceSlug) {
+      disconnect();
     }
 
     return disconnect;
-  }, [taskId, enabled, connect, disconnect]);
+  }, [taskId, workspaceSlug, enabled, connect, disconnect]);
 
   // Cleanup on unmount
   useEffect(() => {
