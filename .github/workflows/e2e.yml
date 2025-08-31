@@ -1,0 +1,111 @@
+name: Playwright Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: hive_user
+          POSTGRES_PASSWORD: hive_password
+          POSTGRES_DB: hive_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+        run: npx prisma generate
+
+      - name: Run Prisma migrations
+        env:
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+        run: npx prisma migrate dev --name init
+
+      - name: Build application
+        env:
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: fake_secret
+          JWT_SECRET: fake_secret
+          GITHUB_CLIENT_ID: fake_secret
+          GITHUB_CLIENT_SECRET: fake_secret
+          TOKEN_ENCRYPTION_KEY: fake_secret
+          STAKWORK_API_KEY: fake_secret
+          STAKWORK_BASE_URL: https://jobs.stakwork.com/api/v1
+          STAKWORK_CUSTOMERS_EMAIL: fake_secret
+          STAKWORK_CUSTOMERS_PASSWORD: fake_secret
+          POOL_MANAGER_API_KEY: fake_secret
+          POOL_MANAGER_BASE_URL: https://workspaces.sphinx.chat/api
+          SWARM_SUPERADMIN_API_KEY: fake_secret
+          POOL_MANAGER_API_USERNAME: fake_secret
+          POOL_MANAGER_API_PASSWORD: fake_secret
+          SWARM_SUPER_ADMIN_URL: placeholder
+          POD_URL: http://localhost:3000
+        run: npm run build
+
+      - name: Start application
+        env:
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: fake_secret
+          JWT_SECRET: fake_secret
+          GITHUB_CLIENT_ID: fake_secret
+          GITHUB_CLIENT_SECRET: fake_secret
+          TOKEN_ENCRYPTION_KEY: fake_secret
+          STAKWORK_API_KEY: fake_secret
+          STAKWORK_BASE_URL: https://jobs.stakwork.com/api/v1
+          STAKWORK_CUSTOMERS_EMAIL: fake_secret
+          STAKWORK_CUSTOMERS_PASSWORD: fake_secret
+          POOL_MANAGER_API_KEY: fake_secret
+          POOL_MANAGER_BASE_URL: https://workspaces.sphinx.chat/api
+          SWARM_SUPERADMIN_API_KEY: fake_secret
+          POOL_MANAGER_API_USERNAME: fake_secret
+          POOL_MANAGER_API_PASSWORD: fake_secret
+          SWARM_SUPER_ADMIN_URL: placeholder
+          POD_URL: http://localhost:3000
+        run: npm start &
+
+      - name: Wait for application to be ready
+        run: npx wait-on http://localhost:3000
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

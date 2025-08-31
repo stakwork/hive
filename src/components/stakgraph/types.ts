@@ -4,11 +4,13 @@ export interface ServiceDataConfig {
   name: string;
   port: number;
   env: Record<string, string>;
+  interpreter?: string;
   scripts: {
     start: string;
     install?: string;
     build?: string;
     test?: string;
+    e2eTest?: string;
     preStart?: string;
     postStart?: string;
     rebuild?: string;
@@ -21,12 +23,14 @@ export interface StakgraphSettings {
   repositoryUrl: string;
   swarmUrl: string;
   swarmSecretAlias: string;
+  swarmApiKey?: string;
   poolName: string;
   environmentVariables: EnvironmentVariable[];
   services: ServiceDataConfig[];
   status?: string;
   lastUpdated?: string;
   containerFiles: Record<string, string>;
+  webhookEnsured?: boolean;
 }
 
 // Form section data types
@@ -42,6 +46,7 @@ export interface RepositoryData {
 export interface SwarmData {
   swarmUrl: string;
   swarmSecretAlias: string;
+  swarmApiKey: string;
 }
 
 export interface EnvironmentData {

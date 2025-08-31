@@ -26,6 +26,7 @@ export const generatePM2Apps = (
           INSTALL_COMMAND: "npm install",
           TEST_COMMAND: "npm test",
           BUILD_COMMAND: "npm run build",
+          E2E_TEST_COMMAND: "npx playwright test",
           PORT: "3000",
         },
       },
@@ -42,6 +43,7 @@ export const generatePM2Apps = (
       watch: false,
       max_memory_restart: "1G",
       env: {} as Record<string, string>,
+      interpreter: service.interpreter?.toString(),
     };
 
     if (service.port) {
@@ -54,6 +56,10 @@ export const generatePM2Apps = (
 
     if (service.scripts?.test) {
       appConfig.env.TEST_COMMAND = service.scripts.test;
+    }
+
+    if (service.scripts?.e2eTest) {
+      appConfig.env.E2E_TEST_COMMAND = service.scripts.e2eTest;
     }
 
     if (service.scripts?.build) {
@@ -85,6 +91,7 @@ export const formatPM2Apps = (
     instances: number;
     autorestart: boolean;
     watch: boolean;
+    interpreter?: string;
     max_memory_restart: string;
     env: Record<string, string>;
   }>,
@@ -94,6 +101,10 @@ export const formatPM2Apps = (
       .map(([key, value]) => `        ${key}: "${value}"`)
       .join(",\n");
 
+    const interpreterLine = app.interpreter
+      ? `      interpreter: "${app.interpreter}",\n`
+      : "";
+
     return `    {
       name: "${app.name}",
       script: "${app.script}",
@@ -101,7 +112,7 @@ export const formatPM2Apps = (
       instances: ${app.instances},
       autorestart: ${app.autorestart},
       watch: ${app.watch},
-      max_memory_restart: "${app.max_memory_restart}",
+${interpreterLine}      max_memory_restart: "${app.max_memory_restart}",
       env: {
 ${envEntries}
       }
@@ -160,7 +171,6 @@ export function devcontainerJsonContent(repoName: string) {
 
 export function dockerComposeContent() {
   return `version: '3.8'
-volumes:
 networks:
   app_network:
     driver: bridge
@@ -181,24 +191,7 @@ services:
 }
 
 export function dockerfileContent() {
-  return `FROM mcr.microsoft.com/devcontainers/universal
-
-# [Optional] Uncomment this section to install additional OS packages.
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \\
-    && apt-get -y install --no-install-recommends wget sed
-
-RUN sudo mkdir -p -m 755 /etc/apt/keyrings \\
-    && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \\
-    && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \\
-    && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \\
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\
-    && sudo apt update -y \\
-    && sudo apt install gh -y
-
-# Install PM2 globally and ensure it's accessible
-RUN npm install -g pm2 && \\
-    ln -sf /usr/local/node/bin/pm2 /usr/local/bin/pm2 && \\
-    pm2 --version
+  return `FROM ghcr.io/stakwork/staklink-js:v0.1.1
 `;
 }
 

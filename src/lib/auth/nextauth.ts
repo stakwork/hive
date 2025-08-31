@@ -5,6 +5,8 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
+import { getDefaultWorkspaceForUser } from "@/services/workspace";
+import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -41,7 +43,8 @@ const getProviders = () => {
         clientSecret: process.env.GITHUB_CLIENT_SECRET!,
         authorization: {
           params: {
-            scope: "read:user user:email read:org repo",
+            scope:
+              "read:user user:email read:org repo admin:repo_hook admin:org_hook",
           },
         },
       }),
@@ -113,6 +116,8 @@ export const authOptions: NextAuthOptions = {
           } else {
             user.id = existingUser.id;
           }
+
+          await ensureMockWorkspaceForUser(user.id as string);
         } catch (error) {
           console.error("Error handling mock authentication:", error);
           return false;
@@ -155,14 +160,25 @@ export const authOptions: NextAuthOptions = {
                   provider: account.provider,
                   providerAccountId: account.providerAccountId,
                   access_token: JSON.stringify(encryptedAccessToken),
-                  refresh_token: account.refresh_token as
-                    | string
-                    | undefined
-                    | null,
+                  refresh_token: account.refresh_token
+                    ? JSON.stringify(
+                        encryptionService.encryptField(
+                          "refresh_token",
+                          account.refresh_token,
+                        ),
+                      )
+                    : (null as unknown as string | undefined | null),
                   expires_at: account.expires_at as number | undefined | null,
                   token_type: account.token_type as string | undefined | null,
                   scope: account.scope,
-                  id_token: account.id_token as string | undefined | null,
+                  id_token: account.id_token
+                    ? JSON.stringify(
+                        encryptionService.encryptField(
+                          "id_token",
+                          account.id_token,
+                        ),
+                      )
+                    : (null as unknown as string | undefined | null),
                   session_state: account.session_state as
                     | string
                     | undefined
@@ -184,6 +200,22 @@ export const authOptions: NextAuthOptions = {
                   data: {
                     access_token: JSON.stringify(encryptedAccessToken),
                     scope: account.scope,
+                    refresh_token: account.refresh_token
+                      ? JSON.stringify(
+                          encryptionService.encryptField(
+                            "refresh_token",
+                            account.refresh_token,
+                          ),
+                        )
+                      : existingAccount.refresh_token,
+                    id_token: account.id_token
+                      ? JSON.stringify(
+                          encryptionService.encryptField(
+                            "id_token",
+                            account.id_token,
+                          ),
+                        )
+                      : existingAccount.id_token,
                   },
                 });
               }
@@ -197,7 +229,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, user, token }) {
       if (session.user) {
-        // For JWT sessions (mock provider), get data from token
+        // For JWT sessions (mock provider), get data from token and attach default workspace
         if (process.env.POD_URL && token) {
           (session.user as { id: string }).id = token.id as string;
           if (token.github) {
@@ -215,6 +247,15 @@ export const authOptions: NextAuthOptions = {
               followers?: number;
             };
           }
+          try {
+            const uid = (session.user as { id: string }).id;
+            const ws = await getDefaultWorkspaceForUser(uid);
+            if (ws?.slug) {
+              (
+                session.user as { defaultWorkspaceSlug?: string }
+              ).defaultWorkspaceSlug = ws.slug;
+            }
+          } catch {}
           return session;
         }
 
@@ -428,11 +469,9 @@ export async function getGithubUsernameAndPAT(
   if (githubAuth?.githubUsername && githubAccount?.access_token) {
     return {
       username: githubAuth.githubUsername,
-      pat: JSON.stringify(
-        encryptionService.decryptField(
-          "access_token",
-          githubAccount.access_token,
-        ),
+      pat: encryptionService.decryptField(
+        "access_token",
+        githubAccount.access_token,
       ),
     };
   }

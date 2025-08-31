@@ -10,11 +10,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
-import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { SwarmVisualization } from "./swarm-visualization";
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function nextIndexedName(base: string, pool: string[]) {
+  const re = new RegExp(`^${escapeRegex(base)}(?:-(\\d+))?$`, "i");
+  let max = -1;
+  for (const name of pool) {
+    const m = name.match(re);
+    if (!m) continue;
+    const idx = m[1] ? Number(m[1]) : 0; // plain "base" => 0
+    if (idx > max) max = idx;
+  }
+  const next = max + 1;
+  return next === 0 ? base : `${base}-${next}`;
+}
 
 
 export function ProjectNameSetupStep() {
@@ -22,43 +37,53 @@ export function ProjectNameSetupStep() {
   const [isLoading, setIsLoading] = useState(false);
   const swarmId = useWizardStore((s) => s.swarmId);
 
+  const newNamesIsSettled = useRef(false);
+
   const router = useRouter();
 
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const swarmIsLoading = useWizardStore((s) => s.swarmIsLoading);
   const repositoryUrlDraft = useWizardStore((s) => s.repositoryUrlDraft);
-  const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
-  const setHasKey = useWizardStore((s) => s.setHasKey);
-  const workspaceSlug = useWizardStore((s) => s.workspaceSlug);
-  const workspaceId = useWizardStore((s) => s.workspaceId);
   const createSwarm = useWizardStore((s) => s.createSwarm);
   const selectedRepo = useWizardStore((s) => s.selectedRepo);
-  const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
   const projectName = useWizardStore((s) => s.projectName);
   const setProjectName = useWizardStore((s) => s.setProjectName);
   const setSelectedRepo = useWizardStore((s) => s.setSelectedRepo);
+  const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
+  const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
+  const setHasKey = useWizardStore((s) => s.setHasKey);
   const resetWizard = useWizardStore((s) => s.resetWizard);
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
-  const { refreshWorkspaces } = useWorkspace();
+  const { refreshWorkspaces, workspaces } = useWorkspace();
   const isPending = currentStepStatus === "PENDING";
 
-  useEffect(() => {
-    if (selectedRepo) {
-      setProjectName(selectedRepo.name);
-    }
-  }, [selectedRepo, setProjectName]);
+  const workspaceSlug = useWizardStore((s) => s.workspaceSlug);
 
-  const handleCreate = async () => {
+
+
+  useEffect(() => {
+    if (!selectedRepo || projectName) return;
+
+    const base = selectedRepo.name.toLowerCase();
+    const pool = workspaces.map(w => w.name.toLowerCase());
+    const nextName = nextIndexedName(base, pool)
+
+    setProjectName(nextName);
+  }, [selectedRepo, workspaces, setProjectName, projectName]);
+
+  const handleCreateWorkspace = async () => {
+
+    setCurrentStepStatus("PENDING");
     try {
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: projectName.trim(),
+          name: projectName.trim().toLowerCase(),
           description: '',
-          slug: projectName.trim(),
+          slug: projectName.trim().toLowerCase(),
         }),
       });
 
@@ -72,7 +97,7 @@ export function ProjectNameSetupStep() {
         setWorkspaceSlug(data.workspace.slug);
         setWorkspaceId(data.workspace.id);
         setHasKey(data.workspace.hasKey);
-        refreshWorkspaces()
+        await refreshWorkspaces()
       }
 
     } catch (error) {
@@ -86,17 +111,20 @@ export function ProjectNameSetupStep() {
     const fetchRepositories = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch("/api/github/repositories");
+        const response = await fetch(`/api/github/repository?repoUrl=${repositoryUrlDraft}`);
+        console.log('response', response)
+        const { data, error } = await response.json();
         if (response.ok) {
-          const data = await response.json();
-          const repo = data.repositories.find((repo: Repository) => repo.html_url === repositoryUrlDraft);
-          if (repo) {
-            setSelectedRepo(repo);
+          if (data) {
+            setSelectedRepo(data);
           }
+        } else {
+          const message = error;
+          const err = new Error(message) as Error
+          throw err;
         }
       } catch (error) {
-        console.error("Failed to fetch repositories:", error);
-        // Fallback to mock data for testing
+        setError(error instanceof Error ? error.message : "Unknown error");
       } finally {
         setIsLoading(false);
       }
@@ -112,7 +140,6 @@ export function ProjectNameSetupStep() {
       const data = await res.json();
       if (data.success) {
         if (data.data.domain_exists || data.data.swarm_name_exist) {
-          console.log("found", data.data);
           setInfoMessage("Looking for available project name...");
           const nameEnding = projectName.split("-").pop() || '';
           const nameHasNumber = /^-?\d+$/.test(nameEnding);
@@ -126,6 +153,7 @@ export function ProjectNameSetupStep() {
 
           setProjectName(newProjectName);
         } else {
+          newNamesIsSettled.current = true;
           setIsLookingForAvailableName(false);
           setInfoMessage("Available name found");
         }
@@ -134,10 +162,10 @@ export function ProjectNameSetupStep() {
       }
     }
 
-    if (selectedRepo && projectName) {
+    if (selectedRepo && projectName && !newNamesIsSettled.current) {
       validateUri();
     }
-  }, [workspaceSlug, workspaceId, selectedRepo, projectName, setProjectName, router]);
+  }, [selectedRepo, projectName, setProjectName, router, newNamesIsSettled]);
 
   useEffect(() => {
 
@@ -153,10 +181,10 @@ export function ProjectNameSetupStep() {
       }
     }
 
-    if (!swarmId && workspaceSlug && workspaceId && projectName) {
+    if (!swarmId && projectName && workspaceSlug) {
       handleCreateSwarm();
     }
-  }, [createSwarm, projectName, router, setCurrentStepStatus, swarmId, workspaceId, workspaceSlug]);
+  }, [createSwarm, projectName, router, setCurrentStepStatus, swarmId, workspaceSlug]);
 
   const resetProgress = () => {
     localStorage.removeItem("repoUrl");
@@ -175,7 +203,6 @@ export function ProjectNameSetupStep() {
   ) : (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
-        {error && <div className="text-red-500">{error}</div>}
         <div className="flex items-center justify-center mx-auto mb-4">
           <svg
             width="64"
@@ -277,68 +304,80 @@ export function ProjectNameSetupStep() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
             >
-              <CardTitle className="text-2xl">Setting up your new Project name</CardTitle>
-              <CardDescription>
-                Your swarm is being set up. This may take a few minutes.
-              </CardDescription>
+              <CardTitle className="text-2xl">{swarmIsLoading ? "Your swarm is being set up. This may take a few minutes." : "Setting up your new Project name"}</CardTitle>
             </motion.div>
           )}
         </AnimatePresence>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        <div>
-          <Label
-            htmlFor="graphDomain"
-            className="text-sm font-medium text-foreground"
-          >
-            Graph Domain
-          </Label>
-          {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
-            {infoMessage}
-            <Loader2 className="w-4 h-4 animate-spin" />
-          </p>}
-          <Input
-            id="graphDomain"
-            placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
-            value={isLookingForAvailableName ? "" : projectName}
-            readOnly
-            tabIndex={-1}
-            className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
-            style={{ pointerEvents: "none" }}
-          />
-        </div>
+      {swarmIsLoading ? <SwarmVisualization /> : (
 
-        <div className="flex justify-between pt-4">
-          {!swarmId ? (
+        <CardContent className="space-y-6">
+          {error ? (
             <>
-
-              <Button variant="outline" type="button" onClick={resetProgress}>
+              <div className="flex justify-center items-center text-red-500">{error}</div>
+              <Button className="mt-2 m-auto px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
                 Reset
-              </Button>
-              <Button
-                disabled={swarmIsLoading}
-                className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                type="button"
-                onClick={handleCreate}
-              >
-                Create
-                <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </>
           ) : (
-            <div className="flex flex-col items-end gap-2 w-full">
-              <Button
-                className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
-                type="button"
-                disabled
-              >
-                Generating Swarm...
-              </Button>
-            </div>
+            <>
+              <div>
+                <Label
+                  htmlFor="graphDomain"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Graph Domain
+                </Label>
+                {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
+                  {infoMessage}
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </p>}
+                <Input
+                  id="graphDomain"
+                  placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
+                  value={isLookingForAvailableName ? "" : projectName}
+                  readOnly
+                  tabIndex={-1}
+                  className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
+                  style={{ pointerEvents: "none" }}
+                />
+              </div>
+
+              <div className="flex justify-between pt-4">
+                {!swarmId ? (
+                  <>
+
+                    <Button variant="outline" type="button" onClick={resetProgress}>
+                      Reset
+                    </Button>
+                    <Button
+                      disabled={swarmIsLoading}
+                      className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                      type="button"
+                      onClick={handleCreateWorkspace}
+                    >
+                      Create
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-end gap-2 w-full">
+                    <Button
+                      className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
+                      type="button"
+                      disabled
+                    >
+                      Generating Swarm...
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
-        </div>
-      </CardContent>
+        </CardContent>
+      )}
+
     </Card>
   );
 }

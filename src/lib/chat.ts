@@ -9,6 +9,7 @@ import {
 import type {
   ChatMessage as PrismaChatMessage,
   Artifact as PrismaArtifact,
+  Attachment as PrismaAttachment,
 } from "@prisma/client";
 
 // Re-export Prisma enums
@@ -50,15 +51,44 @@ export interface LongformContent {
   title?: string;
 }
 
+export interface BugReportContent {
+  bugDescription: string;
+  iframeUrl: string;
+  method: 'click' | 'selection';
+  sourceFiles: Array<{
+    file: string;
+    lines: number[];
+    context?: string;
+    message?: string;
+    componentNames?: Array<{
+      name: string;
+      level: number;
+      type: string;
+      element: string;
+    }>;
+  }>;
+  coordinates?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent;
+}
+
+export interface Attachment extends PrismaAttachment {
+  // No additional fields needed, using Prisma type as-is
 }
 
 export interface ChatMessage
-  extends Omit<PrismaChatMessage, "contextTags" | "artifacts"> {
+  extends Omit<PrismaChatMessage, "contextTags" | "artifacts" | "attachments"> {
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
+  attachments?: Attachment[];
 }
 
 // Helper functions to create client-side types with proper conversions
@@ -71,6 +101,7 @@ export function createChatMessage(data: {
   workflowUrl?: string;
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
+  attachments?: Attachment[];
   sourceWebsocketID?: string;
   replyId?: string;
 }): ChatMessage {
@@ -86,6 +117,7 @@ export function createChatMessage(data: {
     sourceWebsocketID: data.sourceWebsocketID || null,
     replyId: data.replyId || null,
     artifacts: data.artifacts || [],
+    attachments: data.attachments || [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -95,7 +127,7 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent | LongformContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

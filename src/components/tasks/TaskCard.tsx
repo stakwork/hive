@@ -1,10 +1,13 @@
 "use client";
 
-import { Users, Calendar, User } from "lucide-react";
+import { Users, Calendar, User, Sparkles, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { formatRelativeTime } from "@/lib/utils";
 
 interface TaskCardProps {
   task: TaskData;
@@ -29,6 +32,24 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
           {task.title}
         </h4>
         <div className="flex items-center gap-2">
+          {task.sourceType === "JANITOR" && (
+            <Badge variant="secondary" className="gap-1">
+              <Sparkles className="w-3 h-3" />
+              Janitor
+            </Badge>
+          )}
+          {task.stakworkProjectId && (
+            <Link
+              href={`https://jobs.stakwork.com/admin/projects/${task.stakworkProjectId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+            >
+              Project
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          )}
           <div className="px-2 py-1 rounded-full border bg-background text-xs">
             <WorkflowStatusBadge status={task.workflowStatus} />
           </div>
@@ -55,7 +76,7 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
         )}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{new Date(task.createdAt).toLocaleDateString()}</span>
+          <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
       </div>
     </div>

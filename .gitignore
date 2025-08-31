@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+FETCH_HEAD
 
 # debug
 npm-debug.log*
@@ -72,3 +73,8 @@ node_modules/
 # tasks/ 
 
 yarn.lock
+
+# Tests
+mock-tests/
+
+test-results

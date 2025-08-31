@@ -8,24 +8,30 @@ const prisma = new PrismaClient();
 const encryption = EncryptionService.getInstance();
 
 async function logAccounts() {
-  const accounts = await prisma.account.findMany({
-    select: { id: true, userId: true, provider: true, access_token: true },
-  });
+  const accounts = await prisma.account.findMany({});
 
   console.log("\n=== ACCOUNTS (access_token) ===");
   for (const a of accounts) {
     try {
+      console.log(a);
       const token = a.access_token ?? null;
       const decrypted = token
         ? encryption.decryptField("access_token", token)
         : null;
       console.log(
-        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
+        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider} providerAccountId=${a.providerAccountId}`,
       );
+      console.log(`  scope: ${a.scope || "(none)"}`);
       console.log(`  access_token (decrypted): ${decrypted}`);
+      const rt = a.refresh_token ?? null;
+      const rtDec = rt ? encryption.decryptField("refresh_token", rt) : null;
+      console.log(`  refresh_token (decrypted): ${rtDec}`);
+      const idt = a.id_token ?? null;
+      const idtDec = idt ? encryption.decryptField("id_token", idt) : null;
+      console.log(`  id_token (decrypted): ${idtDec}`);
     } catch (err) {
       console.log(
-        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider}`,
+        `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider} providerAccountId=${a.providerAccountId}`,
       );
       console.log(`  error: ${String(err)}`);
     }
@@ -33,30 +39,53 @@ async function logAccounts() {
 }
 
 async function logUsers() {
-  const users = await prisma.user.findMany({
-    select: { id: true, email: true },
-  });
+  const users = await prisma.user.findMany({});
 
   console.log("\n=== USERS ===");
   for (const u of users) {
-    console.log(`[USER] id=${u.id} email=${u.email}`);
+    console.log(`[USER] id=${u.id} email=${u.email} role=${u.role}`);
   }
 }
 
+async function logGitHubAuths() {
+  const auths = await prisma.gitHubAuth.findMany({
+    select: {
+      userId: true,
+      githubUsername: true,
+      scopes: true,
+      organizationsHash: true,
+      updatedAt: true,
+    },
+  });
+  console.log("\n=== GITHUB AUTH ===");
+  for (const a of auths) {
+    console.log(
+      `[GITHUB] userId=${a.userId} username=${a.githubUsername} scopes=${(a.scopes || []).join(",")} organizationsHash=${a.organizationsHash} updatedAt=${a.updatedAt.toISOString()}`,
+    );
+    console.log(a);
+  }
+}
 
 async function logWorkspaces() {
   const workspaces = await prisma.workspace.findMany({
-    select: { id: true, slug: true, stakworkApiKey: true },
+    include: {
+      owner: { select: { id: true, email: true, name: true } },
+      repositories: { select: { id: true } },
+      swarm: { select: { id: true } },
+    },
   });
 
   console.log("\n=== WORKSPACES (stakworkApiKey) ===");
   for (const w of workspaces) {
     try {
+      console.log(w);
       const key = w.stakworkApiKey ?? null;
       const decrypted = key
         ? encryption.decryptField("stakworkApiKey", key)
         : null;
-      console.log(`[WORKSPACE] id=${w.id} slug=${w.slug}`);
+      console.log(
+        `[WORKSPACE] id=${w.id} slug=${w.slug} owner=${w.owner?.email || w.owner?.id} repos=${w.repositories.length} swarm=${w.swarm ? "yes" : "no"}`,
+      );
       console.log(`  stakworkApiKey (decrypted): ${decrypted}`);
     } catch (err) {
       console.log(`[WORKSPACE] id=${w.id} slug=${w.slug}`);
@@ -71,15 +100,27 @@ async function logSwarms() {
       id: true,
       name: true,
       workspaceId: true,
+      status: true,
+      instanceType: true,
+      repositoryName: true,
+      repositoryUrl: true,
+      defaultBranch: true,
+      swarmUrl: true,
+      swarmSecretAlias: true,
+      ingestRefId: true,
+      wizardStep: true,
+      stepStatus: true,
       swarmApiKey: true,
       poolApiKey: true,
       environmentVariables: true,
+      services: true,
     },
   });
 
-  console.log("\n=== SWARMS (swarmApiKey, poolApiKey, environmentVariables) ===");
+  console.log("\n=== SWARMS (keys, env vars, status) ===");
   for (const s of swarms) {
     try {
+      console.log(s);
       const swarmKey = s.swarmApiKey ?? null;
       const decryptedKey = swarmKey
         ? encryption.decryptField("swarmApiKey", swarmKey)
@@ -118,7 +159,13 @@ async function logSwarms() {
       }
 
       console.log(
-        `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId}`,
+        `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId} status=${s.status} instanceType=${s.instanceType}`,
+      );
+      console.log(
+        `  repo: ${s.repositoryName || "(none)"} url=${s.repositoryUrl || "(none)"} branch=${s.defaultBranch || "(none)"}`,
+      );
+      console.log(
+        `  wizard: step=${s.wizardStep} status=${s.stepStatus} swarmUrl=${s.swarmUrl || "(none)"} secretAlias=${s.swarmSecretAlias || "(none)"} ingestRefId=${s.ingestRefId || "(none)"}`,
       );
       console.log(`  swarmApiKey (decrypted): ${decryptedKey}`);
       console.log(`  poolApiKey (decrypted): ${decryptedPoolKey}`);
@@ -130,6 +177,16 @@ async function logSwarms() {
       } else {
         console.log(`  environmentVariables: ${JSON.stringify(envVarsOut)}`);
       }
+
+      if (Array.isArray(s.services)) {
+        console.log(
+          `  services: ${s.services
+            .map((svc: any) => svc?.name || JSON.stringify(svc))
+            .join(", ")}`,
+        );
+      } else {
+        console.log(`  services: ${JSON.stringify(s.services)}`);
+      }
     } catch (err) {
       console.log(`[SWARM] id=${s.id} name=${s.name}`);
       console.log(`  error: ${String(err)}`);
@@ -137,12 +194,49 @@ async function logSwarms() {
   }
 }
 
+async function logRepositories() {
+  const repos = await prisma.repository.findMany({
+    select: {
+      id: true,
+      name: true,
+      repositoryUrl: true,
+      branch: true,
+      status: true,
+      workspaceId: true,
+    },
+  });
+  console.log("\n=== REPOSITORIES ===");
+  for (const r of repos) {
+    console.log(
+      `[REPO] id=${r.id} name=${r.name} url=${r.repositoryUrl} branch=${r.branch} status=${r.status} workspaceId=${r.workspaceId}`,
+    );
+  }
+}
+
+async function logUserWorkspaces() {
+  const userWorkspaces = await prisma.user.findMany({});
+
+  console.log("\n=== USER WORKSPACES ===");
+  for (const uw of userWorkspaces) {
+    console.log(uw);
+  }
+}
+
+async function logSessionDb() {
+  const session = await prisma.session.findMany({});
+  console.log(session);
+}
+
 async function main() {
   await prisma.$connect();
   await logAccounts();
   await logUsers();
+  await logGitHubAuths();
+  await logRepositories();
   await logSwarms();
   await logWorkspaces();
+  await logUserWorkspaces();
+  await logSessionDb();
 }
 
 if (require.main === module) {

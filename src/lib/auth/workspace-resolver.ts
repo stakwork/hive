@@ -19,13 +19,19 @@ export interface WorkspaceResolutionResult {
 export async function resolveUserWorkspaceRedirect(
   session: Session,
 ): Promise<WorkspaceResolutionResult> {
-
-
   const userId = (session.user as { id: string }).id;
 
   try {
     // Get all workspaces the user has access to
     const userWorkspaces = await getUserWorkspaces(userId);
+
+    if (process.env.POD_URL && userWorkspaces.length === 0) {
+      return {
+        shouldRedirect: true,
+        redirectUrl: "/auth/signin",
+        workspaceCount: 0,
+      };
+    }
 
     if (userWorkspaces.length === 0) {
       // User has no workspaces - redirect to onboarding
@@ -83,9 +89,7 @@ export async function resolveUserWorkspaceRedirect(
  * Handles workspace redirection for server components
  * This is a convenience function that calls resolveUserWorkspaceRedirect and performs the redirect
  */
-export async function handleWorkspaceRedirect(
-  session: Session,
-): Promise<void> {
+export async function handleWorkspaceRedirect(session: Session): Promise<void> {
   const result = await resolveUserWorkspaceRedirect(session);
 
   if (result.shouldRedirect && result.redirectUrl) {

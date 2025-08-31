@@ -29,27 +29,35 @@ describe("Workspace Service - Integration Tests", () => {
   let testUser3: User;
 
   beforeEach(async () => {
-    // Create test users
-    testUser1 = await db.user.create({
-      data: {
-        name: "Test User 1",
-        email: `user1_${generateRandomString()}@example.com`,
-      },
-    });
+    // Use transaction to create test users atomically
+    const users = await db.$transaction(async (tx) => {
+      const user1 = await tx.user.create({
+        data: {
+          name: "Test User 1",
+          email: `user1_${generateRandomString()}@example.com`,
+        },
+      });
 
-    testUser2 = await db.user.create({
-      data: {
-        name: "Test User 2", 
-        email: `user2_${generateRandomString()}@example.com`,
-      },
-    });
+      const user2 = await tx.user.create({
+        data: {
+          name: "Test User 2", 
+          email: `user2_${generateRandomString()}@example.com`,
+        },
+      });
 
-    testUser3 = await db.user.create({
-      data: {
-        name: "Test User 3",
-        email: `user3_${generateRandomString()}@example.com`,
-      },
+      const user3 = await tx.user.create({
+        data: {
+          name: "Test User 3",
+          email: `user3_${generateRandomString()}@example.com`,
+        },
+      });
+      
+      return { user1, user2, user3 };
     });
+    
+    testUser1 = users.user1;
+    testUser2 = users.user2;
+    testUser3 = users.user3;
   });
 
   describe("createWorkspace", () => {
@@ -125,30 +133,34 @@ describe("Workspace Service - Integration Tests", () => {
       const slug_value = `workspace-1${generateRandomString()}`
       const slug_value_2 = `workspace-2${generateRandomString()}`
       const other_slug_value = `other-workspace${generateRandomString()}`
-      // Create workspaces for user1
-      await db.workspace.create({
-        data: {
-          name: "Workspace 1",
-          slug: slug_value,
-          ownerId: testUser1.id,
-        },
-      });
+      
+      // Use transaction to create workspaces atomically
+      await db.$transaction(async (tx) => {
+        // Create workspaces for user1
+        await tx.workspace.create({
+          data: {
+            name: "Workspace 1",
+            slug: slug_value,
+            ownerId: testUser1.id,
+          },
+        });
 
-      await db.workspace.create({
-        data: {
-          name: "Workspace 2",
-          slug: slug_value_2, 
-          ownerId: testUser1.id,
-        },
-      });
+        await tx.workspace.create({
+          data: {
+            name: "Workspace 2",
+            slug: slug_value_2, 
+            ownerId: testUser1.id,
+          },
+        });
 
-      // Create workspace for user2 (should not be returned)
-      await db.workspace.create({
-        data: {
-          name: "Other Workspace",
-          slug: other_slug_value,
-          ownerId: testUser2.id,
-        },
+        // Create workspace for user2 (should not be returned)
+        await tx.workspace.create({
+          data: {
+            name: "Other Workspace",
+            slug: other_slug_value,
+            ownerId: testUser2.id,
+          },
+        });
       });
 
       const result = await getWorkspacesByUserId(testUser1.id);
@@ -174,24 +186,32 @@ describe("Workspace Service - Integration Tests", () => {
     beforeEach(async () => {
       slug_value = `test-workspace${generateRandomString()}`
       name_value = `test-swarm${generateRandomString()}`
-      testWorkspace = await db.workspace.create({
-        data: {
-          name: "Test Workspace",
-          description: "Test description",
-          slug: slug_value,
-          ownerId: testUser1.id,
-          stakworkApiKey: "test-api-key",
-        },
-      });
+      
+      const data = await db.$transaction(async (tx) => {
+        const workspace = await tx.workspace.create({
+          data: {
+            name: "Test Workspace",
+            description: "Test description",
+            slug: slug_value,
+            ownerId: testUser1.id,
+            stakworkApiKey: "test-api-key",
+          },
+        });
 
-      testSwarm = await db.swarm.create({
-        data: {
-          name: name_value,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: testWorkspace.id,
-        },
+        const swarm = await tx.swarm.create({
+          data: {
+            name: name_value,
+            status: "ACTIVE",
+            instanceType: "XL",
+            workspaceId: workspace.id,
+          },
+        });
+        
+        return { workspace, swarm };
       });
+      
+      testWorkspace = data.workspace;
+      testSwarm = data.swarm;
     });
 
     test("should return workspace for owner", async () => {

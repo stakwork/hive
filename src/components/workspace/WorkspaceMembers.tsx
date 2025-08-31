@@ -123,6 +123,10 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
         return "outline";
       case "DEVELOPER":
         return "outline";
+      case "STAKEHOLDER":
+        return "outline";
+      case "VIEWER":
+        return "outline";
       default:
         return "outline";
     }
@@ -251,6 +255,11 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                           {member.role !== "ADMIN" && (
                             <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "ADMIN")}>
                               Make Admin
+                            </DropdownMenuItem>
+                          )}
+                          {member.role !== "PM" && (
+                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "PM")}>
+                              Make PM
                             </DropdownMenuItem>
                           )}
                           {member.role !== "DEVELOPER" && (

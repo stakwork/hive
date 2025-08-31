@@ -8,9 +8,10 @@ import { CodeArtifactPanel, BrowserArtifactPanel } from "../artifacts";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
+  onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
 }
 
-export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -40,14 +41,11 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 100, width: 0 }}
-      animate={{ opacity: 1, x: 0, width: "60%" }}
-      exit={{ opacity: 0, x: 100, width: 0 }}
-      transition={{
-        duration: 0.4,
-        ease: [0.4, 0.0, 0.2, 1],
-      }}
-      className="bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.3, ease: [0.4, 0.0, 0.2, 1] }}
+      className="h-full flex-1 min-w-0 min-h-0 bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
     >
       <Tabs
         value={activeTab as string}
@@ -62,7 +60,7 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4 }}
         >
-          <TabsList className={`grid w-full grid-cols-${availableTabs.length}`}>
+          <TabsList className="w-full flex">
             {codeArtifacts.length > 0 && (
               <TabsTrigger className="cursor-pointer" value="CODE">
                 Code / Files
@@ -104,7 +102,7 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
               forceMount
               hidden={activeTab !== "BROWSER"}
             >
-              <BrowserArtifactPanel artifacts={browserArtifacts} />
+              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} />
             </TabsContent>
           )}
           {ideArtifacts.length > 0 && (
@@ -114,7 +112,7 @@ export function ArtifactsPanel({ artifacts }: ArtifactsPanelProps) {
               forceMount
               hidden={activeTab !== "IDE"}
             >
-              <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} />
+              <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} onDebugMessage={onDebugMessage} />
             </TabsContent>
           )}
         </motion.div>

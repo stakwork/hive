@@ -71,6 +71,7 @@ type WizardStore = {
   hasKey: boolean;
   swarmIsLoading: boolean;
   ingestRefId: string;
+  repositoryUrl: string;
 
   swarmId?: string;
   swarmName?: string;
@@ -102,6 +103,7 @@ type WizardStore = {
   setWorkspaceId: (id: string) => void;
   setHasKey: (hasKey: boolean) => void;
   resetWizard: () => void;
+  setRepositoryUrl: (url: string) => void;
   setRepositoryUrlDraft: (url: string) => void;
 };
 
@@ -139,6 +141,8 @@ export const useWizardStore = create<WizardStore>()(
             ingestRefId,
             environmentVariables,
             poolName,
+            repoName,
+            repositoryUrl,
           } = data;
           set({
             envVars: environmentVariables,
@@ -149,6 +153,8 @@ export const useWizardStore = create<WizardStore>()(
             services,
             ingestRefId,
             poolName,
+            repoName,
+            repositoryUrl,
           });
         }
       } catch (err) {

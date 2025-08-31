@@ -34,6 +34,15 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
     email: string | null;
   };
   isCodeGraphSetup: boolean;
+  swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
+  repositories: Array<{
+    id: string;
+    name: string;
+    repositoryUrl: string;
+    branch: string;
+    status: "PENDING" | "SYNCED" | "FAILED";
+    updatedAt: string;
+  }>;
 }
 
 export interface WorkspaceAccessValidation {
@@ -80,6 +89,12 @@ export interface AddWorkspaceMemberRequest {
 
 export interface UpdateMemberRoleRequest {
   role: WorkspaceRole;
+}
+
+export interface UpdateWorkspaceRequest {
+  name: string;
+  slug: string;
+  description?: string;
 }
 
 export interface GitHubUser {

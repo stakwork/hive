@@ -5,6 +5,7 @@ export interface CreateSwarmRequest {
   name: string;
   instance_type: string;
   env?: Record<string, string>;
+  password?: string;
 }
 
 export interface Swarm {
@@ -45,6 +46,7 @@ export interface SwarmSelectResult {
   repositoryDescription: string;
   repositoryUrl: string;
   swarmSecretAlias: string;
+  swarmApiKey: string | null;
   poolName: string;
   environmentVariables: Record<string, string>[];
   services: ServicesConfig[] | string; // string if not parsed yet
@@ -55,6 +57,7 @@ export interface SwarmSelectResult {
 export interface ServicesConfig {
   name: string;
   port: number;
+  interpreter?: string;
   scripts: {
     start: string;
     install?: string;

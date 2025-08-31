@@ -5,5 +5,11 @@
             "master": true,
             "*": false
         }
-    }
+    },
+    "crons": [
+        {
+            "path": "/api/cron/janitors",
+            "schedule": "0 */6 * * *"
+        }
+    ]
 }

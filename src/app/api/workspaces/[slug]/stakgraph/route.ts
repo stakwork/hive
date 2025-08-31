@@ -4,6 +4,10 @@ import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
+import {
+  getSwarmPoolApiKeyFor,
+  updateSwarmPoolApiKeyFor,
+} from "@/services/swarm/secrets";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
@@ -11,6 +15,10 @@ import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { WebhookService } from "@/services/github/WebhookService";
+import { getServiceConfig } from "@/config/services";
+import { getGithubWebhookCallbackUrl } from "@/lib/url";
+
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -23,6 +31,7 @@ const stakgraphSettingsSchema = z.object({
   repositoryUrl: z.string().url("Invalid repository URL"),
   swarmUrl: z.string().url("Invalid swarm URL"),
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
+  swarmApiKey: z.string().optional(),
   poolName: z.string().min(1, "Pool name is required"),
   description: z.string().optional(),
   containerFiles: z.record(z.string()).optional().default({}),
@@ -51,12 +60,15 @@ const stakgraphSettingsSchema = z.object({
           install: z.string().optional(),
           build: z.string().optional(),
           test: z.string().optional(),
+          e2eTest: z.string().optional(),
           preStart: z.string().optional(),
           postStart: z.string().optional(),
+          rebuild: z.string().optional(),
         }),
         dev: z.boolean().optional(),
         env: z.record(z.string()).optional(),
         language: z.string().optional(),
+        interpreter: z.string().optional(),
       }),
     )
     .optional()
@@ -94,7 +106,6 @@ export async function GET(
       );
     }
 
-    // Get workspace and verify access
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json(
@@ -107,7 +118,6 @@ export async function GET(
       );
     }
 
-    // Get the swarm associated with this workspace
     const swarm = (await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
       select: swarmSelect,
@@ -176,6 +186,17 @@ export async function GET(
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
+        webhookEnsured: await (async () => {
+          if (!swarm.repositoryUrl) return false;
+          const repo = await db.repository.findFirst({
+            where: {
+              repositoryUrl: swarm.repositoryUrl,
+              workspaceId: swarm.workspaceId,
+            },
+            select: { githubWebhookId: true, githubWebhookSecret: true },
+          });
+          return Boolean(repo?.githubWebhookId && repo?.githubWebhookSecret);
+        })(),
       },
     });
   } catch (error) {
@@ -251,7 +272,7 @@ export async function PUT(
 
     const settings = validationResult.data;
 
-    const swarm = await saveOrUpdateSwarm({
+    await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       name: settings.name,
       repositoryName: settings.name,
@@ -260,24 +281,69 @@ export async function PUT(
       swarmUrl: settings.swarmUrl,
       status: SwarmStatus.ACTIVE, // auto active
       swarmSecretAlias: settings.swarmSecretAlias,
+      swarmApiKey: settings.swarmApiKey,
       poolName: settings.poolName,
       services: settings.services,
       environmentVariables: settings.environmentVariables,
       containerFiles: settings.containerFiles,
     });
 
+    const swarm = (await db.swarm.findUnique({
+      where: { workspaceId: workspace.id },
+      select: swarmSelect,
+    })) as SwarmSelectResult | null;
+
+    if (!swarm) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Swarm not found",
+          error: "SWARM_NOT_FOUND",
+        },
+        { status: 404 },
+      );
+    }
+
+    let swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    if (!swarmPoolApiKey) {
+      await updateSwarmPoolApiKeyFor(swarm.id);
+      swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    }
+
     // Get pool API key from swarm instead of user
-    const swarmPoolApiKey = swarm?.poolApiKey || "";
     let decryptedPoolApiKey: string;
 
     try {
-      decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField(
-        "poolApiKey",
-        swarmPoolApiKey,
-      ) : "";
+      decryptedPoolApiKey = swarmPoolApiKey
+        ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey)
+        : "";
     } catch (error) {
       console.error("Failed to decrypt poolApiKey:", error);
       decryptedPoolApiKey = swarmPoolApiKey;
+    }
+
+    try {
+      const callbackUrl = getGithubWebhookCallbackUrl(request);
+      const webhookService = new WebhookService(getServiceConfig("github"));
+
+      const { defaultBranch } = await webhookService.setupRepositoryWithWebhook(
+        {
+          userId,
+          workspaceId: workspace.id,
+          repositoryUrl: settings.repositoryUrl,
+          callbackUrl,
+          repositoryName: settings.name,
+        },
+      );
+
+      if (defaultBranch) {
+        await db.swarm.update({
+          where: { id: swarm.id },
+          data: { defaultBranch },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to setup repository with webhook:", err);
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
@@ -331,7 +397,6 @@ export async function PUT(
         repositoryUrl: typedSwarm.repositoryUrl,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
-        poolApiKey: decryptedPoolApiKey,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services:
           typeof typedSwarm.services === "string"
@@ -353,3 +418,5 @@ export async function PUT(
     );
   }
 }
+
+//

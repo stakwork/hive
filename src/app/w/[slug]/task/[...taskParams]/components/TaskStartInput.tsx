@@ -5,34 +5,30 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ArrowUp } from "lucide-react";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 interface TaskStartInputProps {
   onStart: (task: string) => void;
+  taskMode: string;
   onModeChange: (mode: string) => void;
 }
 
-export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
+export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [isLive, setIsLive] = useState(false);
-
-  useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    if (mode === "live") {
-      setIsLive(true);
-    } else {
-      setIsLive(false);
-    }
-  }, []);
+  
+  const devMode = isDevelopmentMode();
 
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && value.trim()) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onStart(value.trim());
+      if (value.trim()) {
+        onStart(value.trim());
+      }
     }
   };
 
@@ -47,7 +43,7 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
       <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
-        What do you want to do?
+        Build Something
       </h1>
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
         <Textarea
@@ -72,53 +68,41 @@ export function TaskStartInput({ onStart, onModeChange }: TaskStartInputProps) {
           <ArrowUp className="w-4 h-4" />
         </Button>
       </Card>
-      <div className="flex justify-center mt-6">
-        <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
-          <legend className="sr-only">Mode</legend>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="live"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={isLive}
-              onChange={() => {
-                setIsLive(true);
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("task_mode", "live");
-                  onModeChange("live");
-                }
-                // Optionally trigger a callback or state update here
-              }}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Live</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="test"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={!isLive}
-              onChange={() => {
-                setIsLive(false);
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("task_mode", "test");
-                  onModeChange("test");
-                }
-                // Optionally trigger a callback or state update here
-              }}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Test</span>
-          </label>
-        </fieldset>
-      </div>
+      {devMode && (
+        <div className="flex justify-center mt-6">
+          <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
+            <legend className="sr-only">Mode</legend>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="mode"
+                value="live"
+                style={{
+                  accentColor: "var(--color-green-500)",
+                }}
+                checked={taskMode === "live"}
+                onChange={() => onModeChange("live")}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Live</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="mode"
+                value="test"
+                style={{
+                  accentColor: "var(--color-green-500)",
+                }}
+                checked={taskMode === "test"}
+                onChange={() => onModeChange("test")}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Artifact Test</span>
+            </label>
+          </fieldset>
+        </div>
+      )}
     </div>
   );
 }

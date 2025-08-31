@@ -11,7 +11,8 @@ import {
   getWorkspaceMembers,
   addWorkspaceMember,
   updateWorkspaceMemberRole,
-  removeWorkspaceMember
+  removeWorkspaceMember,
+  updateWorkspace
 } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { 
@@ -295,6 +296,7 @@ describe("Workspace Service - Unit Tests", () => {
         id: "swarm1",
         status: "ACTIVE",
       },
+      repositories: [],
     };
 
     test("should return workspace with owner access", async () => {
@@ -307,6 +309,7 @@ describe("Workspace Service - Unit Tests", () => {
         include: {
           owner: { select: { id: true, name: true, email: true } },
           swarm: { select: { id: true, status: true } },
+          repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
         },
       });
       expect(result).toEqual({
@@ -321,6 +324,8 @@ describe("Workspace Service - Unit Tests", () => {
         userRole: "OWNER",
         owner: mockWorkspace.owner,
         isCodeGraphSetup: true,
+        swarmStatus: "ACTIVE",
+        repositories: [],
       });
     });
 
@@ -396,10 +401,12 @@ describe("Workspace Service - Unit Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(mockOwnedWorkspaces);
-      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMemberships);
-      (db.workspaceMember.count as Mock)
-        .mockResolvedValueOnce(5) // For owned workspace
-        .mockResolvedValueOnce(3); // For member workspace
+      (db.workspaceMember.findMany as Mock)
+        .mockResolvedValueOnce(mockMemberships) // First call for memberships
+        .mockResolvedValueOnce([ // Second call for member counts
+          { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, // 5 members for ws1
+          { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" } // 3 members for ws2
+        ]);
 
       const result = await getUserWorkspaces("user1");
 
@@ -994,6 +1001,289 @@ describe("Workspace Service - Unit Tests", () => {
 
         await expect(removeWorkspaceMember("workspace1", "user1")).rejects.toThrow("Member not found");
       });
+    });
+  });
+
+  describe("updateWorkspace", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    test("should update workspace successfully", async () => {
+      const mockWorkspace = {
+        id: "workspace1",
+        name: "Original Workspace",
+        slug: "original-workspace", 
+        description: "Original description",
+        userRole: "OWNER",
+        ownerId: "user1",
+        createdAt: "2023-01-01T00:00:00.000Z",
+        updatedAt: "2023-01-01T00:00:00.000Z",
+      };
+
+      const updatedWorkspace = {
+        id: "workspace1",
+        name: "Updated Workspace",
+        slug: "updated-workspace",
+        description: "Updated description", 
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-02T00:00:00.000Z"),
+        ownerId: "user1",
+        stakworkApiKey: null,
+      };
+
+      const updateData = {
+        name: "Updated Workspace",
+        slug: "updated-workspace",
+        description: "Updated description",
+      };
+
+      // Mock getWorkspaceBySlug to return workspace with OWNER role
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce({
+        id: "workspace1",
+        name: "Original Workspace",
+        slug: "original-workspace",
+        description: "Original description",
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "user1",
+        stakworkApiKey: null,
+        owner: { id: "user1", name: "User", email: "user@example.com" },
+        swarm: null,
+      });
+
+      // Mock workspaceMember query for getWorkspaceBySlug
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(null);
+
+      // Mock slug uniqueness check (no existing workspace with new slug)
+      vi.mocked(db.workspace.findUnique).mockResolvedValueOnce(null);
+
+      // Mock update operation
+      vi.mocked(db.workspace.update).mockResolvedValueOnce(updatedWorkspace);
+
+      const result = await updateWorkspace("original-workspace", "user1", updateData);
+
+      expect(result).toEqual({
+        id: "workspace1",
+        name: "Updated Workspace",
+        slug: "updated-workspace", 
+        description: "Updated description",
+        deleted: false,
+        deletedAt: null,
+        ownerId: "user1",
+        stakworkApiKey: null,
+        createdAt: "2023-01-01T00:00:00.000Z",
+        updatedAt: "2023-01-02T00:00:00.000Z",
+      });
+
+      expect(db.workspace.update).toHaveBeenCalledWith({
+        where: { id: "workspace1" },
+        data: {
+          name: "Updated Workspace",
+          slug: "updated-workspace",
+          description: "Updated description",
+          updatedAt: expect.any(Date),
+        },
+      });
+    });
+
+    test("should throw error if workspace not found", async () => {
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce(null);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(null);
+
+      const updateData = {
+        name: "Updated Workspace", 
+        slug: "updated-workspace",
+        description: "Updated description",
+      };
+
+      await expect(updateWorkspace("nonexistent", "user1", updateData)).rejects.toThrow("Workspace not found or access denied");
+    });
+
+    test("should throw error if user is not OWNER or ADMIN", async () => {
+      const mockWorkspace = {
+        id: "workspace1",
+        name: "Test Workspace",
+        slug: "test-workspace",
+        description: "Test description",
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "owner1",
+        stakworkApiKey: null,
+        owner: { id: "owner1", name: "Owner", email: "owner@example.com" },
+        swarm: null,
+      };
+
+      const mockMembership = {
+        id: "member1",
+        workspaceId: "workspace1",
+        userId: "user1", 
+        role: "DEVELOPER" as const,
+        joinedAt: new Date(),
+        leftAt: null,
+      };
+
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce(mockWorkspace);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(mockMembership);
+
+      const updateData = {
+        name: "Updated Workspace",
+        slug: "updated-workspace", 
+        description: "Updated description",
+      };
+
+      await expect(updateWorkspace("test-workspace", "user1", updateData)).rejects.toThrow("Only workspace owners and admins can update workspace settings");
+    });
+
+    test("should validate new slug if slug is changing", async () => {
+      const mockWorkspace = {
+        id: "workspace1",
+        name: "Test Workspace",
+        slug: "original-slug",
+        description: "Test description",
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "user1", 
+        stakworkApiKey: null,
+        owner: { id: "user1", name: "User", email: "user@example.com" },
+        swarm: null,
+      };
+
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce(mockWorkspace);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(null);
+
+      const updateData = {
+        name: "Test Workspace",
+        slug: "api", // reserved slug
+        description: "Test description",
+      };
+
+      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_RESERVED);
+    });
+
+    test("should throw error if new slug already exists", async () => {
+      const mockWorkspace = {
+        id: "workspace1",
+        name: "Test Workspace", 
+        slug: "original-slug",
+        description: "Test description",
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "user1",
+        stakworkApiKey: null,
+        owner: { id: "user1", name: "User", email: "user@example.com" },
+        swarm: null,
+      };
+
+      const existingWorkspace = {
+        id: "workspace2",
+        name: "Existing Workspace",
+        slug: "existing-slug",
+        description: null,
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "user2",
+        stakworkApiKey: null,
+      };
+
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce(mockWorkspace);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(null);
+      vi.mocked(db.workspace.findUnique).mockResolvedValueOnce(existingWorkspace);
+
+      const updateData = {
+        name: "Test Workspace",
+        slug: "existing-slug", 
+        description: "Test description",
+      };
+
+      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+    });
+
+    test("should allow updating same slug (no change)", async () => {
+      const mockWorkspace = {
+        id: "workspace1",
+        name: "Test Workspace",
+        slug: "test-slug",
+        description: "Original description",
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "user1",
+        stakworkApiKey: null,
+        owner: { id: "user1", name: "User", email: "user@example.com" },
+        swarm: null,
+      };
+
+      const updatedWorkspace = {
+        ...mockWorkspace,
+        description: "Updated description",
+        updatedAt: new Date("2023-01-02T00:00:00.000Z"),
+      };
+
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce(mockWorkspace);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(null);
+      vi.mocked(db.workspace.update).mockResolvedValueOnce(updatedWorkspace);
+
+      const updateData = {
+        name: "Test Workspace",
+        slug: "test-slug", // same slug
+        description: "Updated description",
+      };
+
+      const result = await updateWorkspace("test-slug", "user1", updateData);
+
+      expect(result.description).toBe("Updated description");
+      // Should not call findUnique for slug check since slug didn't change
+      expect(db.workspace.findUnique).not.toHaveBeenCalled();
+    });
+
+    test("should handle Prisma unique constraint error", async () => {
+      const mockWorkspace = {
+        id: "workspace1", 
+        name: "Test Workspace",
+        slug: "original-slug",
+        description: "Test description", 
+        deleted: false,
+        deletedAt: null,
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2023-01-01T00:00:00.000Z"),
+        ownerId: "user1",
+        stakworkApiKey: null,
+        owner: { id: "user1", name: "User", email: "user@example.com" },
+        swarm: null,
+      };
+
+      vi.mocked(db.workspace.findFirst).mockResolvedValueOnce(mockWorkspace);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValueOnce(null);
+      vi.mocked(db.workspace.findUnique).mockResolvedValueOnce(null);
+
+      // Mock Prisma unique constraint error
+      const prismaError = {
+        code: "P2002",
+        meta: { target: ["slug"] },
+      };
+      vi.mocked(db.workspace.update).mockRejectedValueOnce(prismaError);
+
+      const updateData = {
+        name: "Test Workspace",
+        slug: "new-slug",
+        description: "Test description",
+      };
+
+      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
     });
   });
 });
