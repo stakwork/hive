@@ -20,35 +20,27 @@ vi.mock("@/lib/auth/nextauth", () => ({
 }));
 
 describe("Workspace API - Integration Tests", () => {
-  const generateRandomString = (length = 8) => {
-    const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    return result;
-  };
-
-  let testUser: User;
-
   beforeEach(async () => {
-    // Create test user
-    testUser = await db.user.create({
-      data: {
-        name: "Test User",
-        email: `user_${generateRandomString()}@example.com`,
-      },
-    });
-
-    // Mock session for authenticated user
-    (getServerSession as vi.Mock).mockResolvedValue({
-      user: { id: testUser.id, email: testUser.email },
-    });
+    vi.clearAllMocks();
   });
 
   describe("POST /api/workspaces", () => {
     test("should create workspace successfully", async () => {
-      const slug = `test-workspace-${generateRandomString()}`;
+      // Create test user with real database operations
+      const testUser = await db.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "Test User",
+        },
+      });
+
+      // Mock session for authenticated user
+      (getServerSession as vi.Mock).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email },
+      });
+
+      const slug = `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
         body: JSON.stringify({
@@ -72,19 +64,33 @@ describe("Workspace API - Integration Tests", () => {
     });
 
     test("should enforce workspace limit", async () => {
+      // Create test user with real database operations
+      const testUser = await db.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "Test User",
+        },
+      });
+
+      // Mock session for authenticated user
+      (getServerSession as vi.Mock).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email },
+      });
+
       // Create max workspaces for the user
       for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
         await db.workspace.create({
           data: {
             name: `Workspace ${i + 1}`,
-            slug: `workspace-${i + 1}-${generateRandomString()}`,
+            slug: `workspace-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
             ownerId: testUser.id,
           },
         });
       }
 
       // Try to create another workspace via API
-      const slug = `extra-workspace-${generateRandomString()}`;
+      const slug = `extra-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
         body: JSON.stringify({
@@ -103,13 +109,27 @@ describe("Workspace API - Integration Tests", () => {
     });
 
     test("should allow creation after workspace deletion", async () => {
+      // Create test user with real database operations
+      const testUser = await db.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "Test User",
+        },
+      });
+
+      // Mock session for authenticated user
+      (getServerSession as vi.Mock).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email },
+      });
+
       // Create max workspaces
       const workspaces = [];
       for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
         const workspace = await db.workspace.create({
           data: {
             name: `Workspace ${i + 1}`,
-            slug: `workspace-${i + 1}-${generateRandomString()}`,
+            slug: `workspace-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
             ownerId: testUser.id,
           },
         });
@@ -123,7 +143,7 @@ describe("Workspace API - Integration Tests", () => {
       });
 
       // Now should be able to create via API
-      const slug = `new-workspace-${generateRandomString()}`;
+      const slug = `new-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
         body: JSON.stringify({
@@ -161,6 +181,19 @@ describe("Workspace API - Integration Tests", () => {
     });
 
     test("should return 400 for missing required fields", async () => {
+      // Create test user and mock session for this test
+      const testUser = await db.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "Test User",
+        },
+      });
+
+      (getServerSession as vi.Mock).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email },
+      });
+
       const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
         body: JSON.stringify({
@@ -177,7 +210,21 @@ describe("Workspace API - Integration Tests", () => {
     });
 
     test("should return 400 for duplicate slug", async () => {
-      const slug = `duplicate-${generateRandomString()}`;
+      // Create test user with real database operations
+      const testUser = await db.user.create({
+        data: {
+          id: `user-${Date.now()}-${Math.random()}`,
+          email: `user-${Date.now()}@example.com`,
+          name: "Test User",
+        },
+      });
+
+      // Mock session for authenticated user
+      (getServerSession as vi.Mock).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email },
+      });
+
+      const slug = `duplicate-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       
       // Create first workspace
       await db.workspace.create({
