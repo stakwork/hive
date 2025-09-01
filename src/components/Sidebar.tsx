@@ -3,22 +3,42 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  BarChart3,
   CheckSquare,
+  LayoutDashboard,
   Menu,
   Settings,
-  BarChart3,
-  LayoutDashboard,
   Users,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+
+
+
+export function scopedPath(pathname: string): string {
+  const m = pathname.match(/^\/w\/[^/]+(\/.*)?$/);
+  return m ? (m[1] || "/") : pathname;
+}
+
+export function isActiveTab(pathname: string, href: string): boolean {
+  const rel = scopedPath(pathname);
+
+  const cleanHref =
+    !href || href === "/" ? "/" : `/${href.replace(/^\/|\/$/g, "")}`;
+  const cleanRel =
+    rel === "/" ? "/" : `/${rel.replace(/^\/|\/$/g, "")}`;
+
+  if (cleanHref === "/") return cleanRel === "/";
+
+  return cleanRel === cleanHref || cleanRel.startsWith(`${cleanHref}/`);
+}
 
 interface SidebarProps {
   user: {
@@ -34,7 +54,7 @@ interface SidebarProps {
 }
 
 const baseNavigationItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "" },
+  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
@@ -80,22 +100,25 @@ export function Sidebar({ user }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
-          {navigationItems.map((item) => (
-            <li key={item.href}>
-              <Button
-                variant={pathname.includes(item.href) ? "secondary" : "ghost"}
-                className={`w-full justify-start ${
-                  pathname.includes(item.href)
+          {navigationItems.map((item) => {
+            const isActive = isActiveTab(pathname, item.href);
+
+            return (
+              <li key={item.href}>
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  className={`w-full justify-start ${isActive
                     ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
                     : "hover:bg-primary/5 dark:hover:bg-primary/10"
-                }`}
-                onClick={() => handleNavigate(item.href)}
-              >
-                <item.icon className="w-4 h-4 mr-2" />
-                {item.label}
-              </Button>
-            </li>
-          ))}
+                    }`}
+                  onClick={() => handleNavigate(item.href)}
+                >
+                  <item.icon className="w-4 h-4 mr-2" />
+                  {item.label}
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       </nav>
       {/* Spacer to push bottom content down */}
