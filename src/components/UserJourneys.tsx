@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle, Clock, Users, Target } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { UserJourneyOnboarding } from "@/components/UserJourneyOnboarding";
@@ -57,7 +57,19 @@ export default function UserJourneys() {
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [scriptNotDetected, setScriptNotDetected] = useState(false);
-  const [retryFunction, setRetryFunction] = useState<(() => void) | null>(null);
+  const retryFunctionRef = useRef<(() => void) | null>(null);
+
+  const handleScriptNotDetected = useCallback((notDetected: boolean, retryFn: () => void) => {
+    setScriptNotDetected(notDetected);
+    retryFunctionRef.current = retryFn;
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    setScriptNotDetected(false);
+    if (retryFunctionRef.current) {
+      retryFunctionRef.current();
+    }
+  }, []);
 
   const handleCreateUserJourney = async () => {
     try {
@@ -171,10 +183,7 @@ export default function UserJourneys() {
       {frontend ? (
         scriptNotDetected ? (
           <UserJourneyOnboarding 
-            onRetry={() => {
-              setScriptNotDetected(false);
-              if (retryFunction) retryFunction();
-            }}
+            onRetry={handleRetry}
             targetUrl={frontend}
           />
         ) : (
@@ -183,10 +192,7 @@ export default function UserJourneys() {
               artifacts={browserArtifacts}
               ide={false}
               onUserJourneySave={saveUserJourneyTest}
-              onScriptNotDetected={(notDetected, retryFn) => {
-                setScriptNotDetected(notDetected);
-                setRetryFunction(() => retryFn);
-              }}
+              onScriptNotDetected={handleScriptNotDetected}
             />
           </div>
         )

@@ -31,22 +31,14 @@ export function UserJourneyOnboarding({
   targetUrl 
 }: UserJourneyOnboardingProps) {
   const [copiedScript, setCopiedScript] = useState(false);
-  const [copiedNpm, setCopiedNpm] = useState(false);
 
   const scriptContent = `<!-- Add this before the closing </body> tag -->
 <script src="https://yourdomain.com/js/staktrak.js"></script>`;
 
-  const npmContent = `npm install @stakwork/staktrak`;
-
-  const handleCopy = (content: string, type: 'script' | 'npm') => {
+  const handleCopy = (content: string) => {
     navigator.clipboard.writeText(content);
-    if (type === 'script') {
-      setCopiedScript(true);
-      setTimeout(() => setCopiedScript(false), 2000);
-    } else {
-      setCopiedNpm(true);
-      setTimeout(() => setCopiedNpm(false), 2000);
-    }
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2000);
   };
 
   return (
@@ -69,14 +61,13 @@ export function UserJourneyOnboarding({
             <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-blue-800 dark:text-blue-200">
               The Staktrak script enables recording user interactions, form inputs, and navigation 
-              patterns to help you understand and test user journeys through your application.
+              patterns to generate E2E tests of your user journeys through your application.
             </AlertDescription>
           </Alert>
 
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <Badge className="px-2 py-1">Option 1</Badge>
+              <h3 className="font-semibold mb-3">
                 Add via HTML Script Tag
               </h3>
               <div className="relative">
@@ -87,7 +78,7 @@ export function UserJourneyOnboarding({
                   size="sm"
                   variant="outline"
                   className="absolute top-2 right-2"
-                  onClick={() => handleCopy(scriptContent, 'script')}
+                  onClick={() => handleCopy(scriptContent)}
                 >
                   {copiedScript ? (
                     <>
@@ -104,26 +95,6 @@ export function UserJourneyOnboarding({
               </div>
             </div>
 
-            <div>
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <Badge className="px-2 py-1">Option 2</Badge>
-                Install via NPM (Coming Soon)
-              </h3>
-              <div className="relative opacity-50">
-                <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm">
-                  <code>{npmContent}</code>
-                </pre>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="absolute top-2 right-2"
-                  disabled
-                >
-                  <Copy className="w-4 h-4 mr-1" />
-                  Copy
-                </Button>
-              </div>
-            </div>
           </div>
 
           <div className="border-t pt-6">
@@ -145,7 +116,7 @@ export function UserJourneyOnboarding({
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold">
                   3
                 </span>
-                <span>Deploy your changes to {targetUrl ? `${targetUrl}` : 'your website'}</span>
+                <span>Deploy your changes</span>
               </li>
               <li className="flex gap-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold">
@@ -156,14 +127,7 @@ export function UserJourneyOnboarding({
             </ol>
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div className="text-sm text-muted-foreground">
-              Need help? Check our{" "}
-              <a href="#" className="text-primary hover:underline">
-                documentation
-              </a>{" "}
-              for detailed setup instructions.
-            </div>
+          <div className="flex justify-end pt-4 border-t">
             <Button onClick={onRetry} className="flex items-center gap-2">
               <RefreshCw className="w-4 h-4" />
               Check Again

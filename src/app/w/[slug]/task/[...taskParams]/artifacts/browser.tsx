@@ -75,10 +75,10 @@ export function BrowserArtifactPanel({
 
   // Notify parent component about script detection status
   useEffect(() => {
-    if (onScriptNotDetected && scriptNotDetected !== undefined) {
+    if (onScriptNotDetected) {
       onScriptNotDetected(scriptNotDetected, retrySetup);
     }
-  }, [scriptNotDetected, onScriptNotDetected, retrySetup]);
+  }, [scriptNotDetected, onScriptNotDetected]);
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;

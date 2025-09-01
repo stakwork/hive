@@ -48,6 +48,18 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Return fake pod for development
+    if (process.env.NODE_ENV === "development") {
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Pod claimed successfully (development mode)",
+          frontend: "https://example.com", // URL without staktrak script for testing
+        },
+        { status: 200 },
+      );
+    }
+
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
       return NextResponse.json(
