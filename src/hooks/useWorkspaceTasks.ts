@@ -11,6 +11,8 @@ export interface TaskData {
   status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
   priority: "LOW" | "MEDIUM" | "HIGH";
   workflowStatus: WorkflowStatus | null;
+  sourceType: "USER" | "JANITOR" | "SYSTEM";
+  stakworkProjectId?: number | null;
   createdAt: string;
   updatedAt: string;
   assignee?: {

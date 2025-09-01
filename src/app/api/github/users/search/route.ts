@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
-import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: Request) {
   try {
@@ -27,15 +23,10 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get the user's GitHub account
-    const account = await db.account.findFirst({
-      where: {
-        userId: (session.user as { id: string }).id,
-        provider: "github",
-      },
-    });
-
-    if (!account?.access_token) {
+    const userId = (session.user as { id: string }).id;
+    
+    const githubProfile = await getGithubUsernameAndPAT(userId);
+    if (!githubProfile?.pat) {
       return NextResponse.json(
         { error: "GitHub access token not found" },
         { status: 400 }
@@ -45,7 +36,7 @@ export async function GET(request: Request) {
     // Search GitHub users
     const response = await axios.get("https://api.github.com/search/users", {
       headers: {
-        Authorization: `token ${encryptionService.decryptField("access_token", account.access_token)}`,
+        Authorization: `token ${githubProfile.pat}`,
         Accept: "application/vnd.github.v3+json",
       },
       params: {

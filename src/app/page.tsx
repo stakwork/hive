@@ -6,11 +6,13 @@ import { redirect } from "next/navigation";
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
 
-
   if (session?.user) {
     await handleWorkspaceRedirect(session);
     return null;
   } else {
+    if (process.env.POD_URL) {
+      redirect("/auth/signin");
+    }
     redirect("/onboarding/workspace");
   }
 }

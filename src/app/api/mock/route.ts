@@ -6,14 +6,14 @@ export const fetchCache = "force-no-store";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, taskId } = await req.json();
+    const { message, taskId, artifacts } = await req.json();
 
     try {
       const host = req.headers.get("host") || "localhost:3000";
       const protocol = host.includes("localhost") ? "http" : "https";
       const baseUrl = `${protocol}://${host}`;
 
-      const mockResponse = generateResponseBasedOnMessage(message, baseUrl);
+      const mockResponse = generateResponseBasedOnMessage(message, baseUrl, artifacts);
 
       const responsePayload = {
         taskId: taskId,

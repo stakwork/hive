@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import {
@@ -14,6 +14,8 @@ import {
 import { WorkflowStatus } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 import { getS3Service } from "@/services/s3";
+import { getBaseUrl } from "@/lib/utils";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 
 export const runtime = "nodejs";
 
@@ -34,7 +36,7 @@ interface AttachmentRequest {
   size: number;
 }
 
-interface StakworkWorkflowPayload {
+export interface StakworkWorkflowPayload {
   name: string;
   workflow_id: number;
   webhook_url?: string; // New webhook URL for workflow status updates
@@ -47,21 +49,14 @@ interface StakworkWorkflowPayload {
   };
 }
 
-function getBaseUrl(request?: NextRequest): string {
-  // Use the request host or fallback to localhost
-  const host = request?.headers.get("host") || "localhost:3000";
-  const protocol = host.includes("localhost") ? "http" : "https";
-  const baseUrl = `${protocol}://${host}`;
-  return baseUrl;
-}
-
 async function callMock(
   taskId: string,
   message: string,
   userId: string,
+  artifacts: ArtifactRequest[],
   request?: NextRequest,
 ) {
-  const baseUrl = getBaseUrl(request);
+  const baseUrl = getBaseUrl(request?.headers.get("host"));
 
   try {
     const response = await fetch(`${baseUrl}/api/mock`, {
@@ -70,6 +65,7 @@ async function callMock(
         taskId,
         message,
         userId,
+        artifacts,
       }),
       headers: {
         "Content-Type": "application/json",
@@ -117,7 +113,7 @@ async function callStakwork(
       );
     }
 
-    const baseUrl = getBaseUrl(request);
+    const baseUrl = getBaseUrl(request?.headers.get("host"));
     let webhookUrl = `${baseUrl}/api/chat/response`;
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
@@ -125,12 +121,14 @@ async function callStakwork(
 
     // New webhook URL for workflow status updates
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
-    
+
     // Generate presigned URLs for attachments
     const attachmentUrls = await Promise.all(
-      attachmentPaths.map(path => getS3Service().generatePresignedDownloadUrl(path))
+      attachmentPaths.map((path) =>
+        getS3Service().generatePresignedDownloadUrl(path),
+      ),
     );
-    
+
     // stakwork workflow vars
     const vars = {
       taskId,
@@ -145,6 +143,7 @@ async function callStakwork(
       poolName,
       repo2graph_url: repo2GraphUrl,
       attachments: attachmentUrls,
+      taskMode: mode,
     };
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -153,6 +152,8 @@ async function callStakwork(
     if (mode === "live") {
       workflowId = stakworkWorkflowIds[0];
     } else if (mode === "unit") {
+      workflowId = stakworkWorkflowIds[2];
+    } else if (mode === "integration") {
       workflowId = stakworkWorkflowIds[2];
     } else {
       workflowId = stakworkWorkflowIds[1]; // default to test mode
@@ -271,19 +272,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get user details including name and accounts
+    // Get user details
     const user = await db.user.findUnique({
       where: {
         id: userId,
       },
       select: {
         name: true,
-        accounts: {
-          select: {
-            access_token: true,
-            provider: true,
-          },
-        },
       },
     });
 
@@ -355,32 +350,14 @@ export async function POST(request: NextRequest) {
 
     console.log("clientMessage", clientMessage);
 
-    const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
-
     const useStakwork =
       config.STAKWORK_API_KEY &&
       config.STAKWORK_BASE_URL &&
       config.STAKWORK_WORKFLOW_ID;
 
-    const userName = githubAuth?.githubUsername || null;
-    let accessToken: string | null = null;
-    try {
-      const accountWithToken = user.accounts.find(
-        (account) => account.access_token,
-      );
-      if (accountWithToken?.access_token) {
-        accessToken = encryptionService.decryptField(
-          "access_token",
-          accountWithToken.access_token,
-        );
-      }
-    } catch (error) {
-      console.error("Failed to decrypt access_token:", error);
-      const accountWithToken = user.accounts.find(
-        (account) => account.access_token,
-      );
-      accessToken = accountWithToken?.access_token || null;
-    }
+    const githubProfile = await getGithubUsernameAndPAT(userId);
+    const userName = githubProfile?.username || null;
+    const accessToken = githubProfile?.pat || null;
     const swarm = task.workspace.swarm;
     const swarmUrl = swarm?.swarmUrl
       ? swarm.swarmUrl.replace("/api", ":8444/api")
@@ -388,16 +365,15 @@ export async function POST(request: NextRequest) {
 
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.id || null;
-    const repo2GraphUrl = swarm?.swarmUrl
-      ? swarm.swarmUrl.replace("/api", ":3355")
-      : "";
+    const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
     let stakworkData = null;
 
     if (useStakwork) {
       // Extract attachment paths for Stakwork
-      const attachmentPaths = chatMessage.attachments?.map(att => att.path) || [];
-      
+      const attachmentPaths =
+        chatMessage.attachments?.map((att) => att.path) || [];
+
       stakworkData = await callStakwork(
         taskId,
         message,
@@ -442,7 +418,13 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      stakworkData = await callMock(taskId, message, userId, request);
+      stakworkData = await callMock(
+        taskId,
+        message,
+        userId,
+        artifacts,
+        request,
+      );
     }
 
     return NextResponse.json(

@@ -8,9 +8,9 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SupportedLanguages } from "@/lib/constants";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { SupportedLanguages } from "@/lib/constants";
 import { useWizardStore } from "@/stores/useWizardStore";
 import {
   AlertCircle,
@@ -133,7 +133,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             <div className="flex justify-center items-center space-x-4">
               {SupportedLanguages.map((language, index) => {
                 const IconComponent = language.icon;
-                
+
                 return (
                   <Tooltip key={index}>
                     <TooltipTrigger asChild>

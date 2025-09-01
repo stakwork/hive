@@ -3,13 +3,16 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { WorkflowStatus } from "@/lib/chat";
+import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
+import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 
 interface ChatInputProps {
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   isLoading?: boolean;
+  pendingDebugAttachment?: Artifact | null;
+  onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
 }
 
@@ -17,6 +20,8 @@ export function ChatInput({
   onSend,
   disabled = false,
   isLoading = false,
+  pendingDebugAttachment = null,
+  onRemoveDebugAttachment,
   workflowStatus,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
@@ -29,7 +34,8 @@ export function ChatInput({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading || disabled) return;
+    // Allow sending if we have either text or a pending debug attachment
+    if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled) return;
 
     const message = input.trim();
     setInput("");
@@ -44,6 +50,16 @@ export function ChatInput({
         <WorkflowStatusBadge status={workflowStatus} />
       </div>
 
+      {/* Debug attachment display */}
+      {pendingDebugAttachment && (
+        <div className="px-6 pt-3">
+          <InputDebugAttachment
+            attachment={pendingDebugAttachment}
+            onRemove={onRemoveDebugAttachment || (() => {})}
+          />
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10"
@@ -56,7 +72,7 @@ export function ChatInput({
           autoFocus
           disabled={disabled}
         />
-        <Button type="submit" disabled={!input.trim() || isLoading || disabled}>
+        <Button type="submit" disabled={(!input.trim() && !pendingDebugAttachment) || isLoading || disabled}>
           {isLoading ? "Sending..." : "Send"}
         </Button>
       </form>

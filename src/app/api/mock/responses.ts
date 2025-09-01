@@ -136,10 +136,47 @@ export function generateLongformResponse() {
   ]);
 }
 
+export function generateBugReportResponse(artifacts: { type: string; content: unknown }[]) {
+  // Find BUG_REPORT artifacts
+  const bugReportArtifacts = artifacts?.filter(artifact => artifact.type === "BUG_REPORT") || [];
+  
+  if (bugReportArtifacts.length === 0) {
+    return makeRes("No debug information found in the request.");
+  }
+
+  // Extract the staktrak data from the first bug report
+  const bugReport = bugReportArtifacts[0];
+  const content = bugReport.content as any;
+  
+  // Check if we have source files with formatted message from staktrak
+  if (content?.sourceFiles && content.sourceFiles.length > 0) {
+    const sourceFile = content.sourceFiles[0];
+    
+    // If we have a formatted message from staktrak, use it
+    if (sourceFile.message) {
+      return makeRes(sourceFile.message);
+    }
+    
+    // Fallback: if no formatted message but we have source files
+    if (sourceFile.file && sourceFile.file !== "Source mapping will be available in future update") {
+      return makeRes(`🐛 Debug info: ${sourceFile.file}${sourceFile.context ? ` - ${sourceFile.context}` : ''}`);
+    }
+  }
+
+  // Final fallback for old format or missing data
+  return makeRes("Debug artifact received. Component analysis in progress...");
+}
+
 export function generateResponseBasedOnMessage(
   message: string,
   mockBrowserUrl: string,
+  artifacts?: { type: string; content: unknown }[]
 ) {
+  // Check for BUG_REPORT artifacts first
+  if (artifacts && artifacts.some(artifact => artifact.type === "BUG_REPORT")) {
+    return generateBugReportResponse(artifacts);
+  }
+
   const messageText = message.toLowerCase();
 
   if (process.env.MOCK_BROWSER_URL) {

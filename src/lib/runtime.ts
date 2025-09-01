@@ -1,8 +1,8 @@
 export function isDevelopmentMode(): boolean {
-  return process.env.DEVELOPMENT === "true";
+  return process.env.NODE_ENV === "development";
 }
 
-// Centralized toggle for Swarm fake mode, controlled solely by DEVELOPMENT
+// Centralized toggle for Swarm fake mode, controlled by NODE_ENV=development
 export function isSwarmFakeModeEnabled(): boolean {
   return isDevelopmentMode();
 }

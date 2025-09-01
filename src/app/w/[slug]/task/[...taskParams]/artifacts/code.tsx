@@ -70,7 +70,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
   if (artifacts.length === 0) return null;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-0 min-w-0 flex flex-col">
       {artifacts.length > 1 && (
         <div className="border-b bg-muted/20">
           <div className="flex overflow-x-auto">
@@ -96,7 +96,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden min-h-0">
+      <div className="flex-1 overflow-hidden min-h-0 min-w-0">
         {artifacts.map((artifact, index) => {
           const content = artifact.content as CodeContent;
           return (
@@ -141,7 +141,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
                 </div>
               )}
 
-              <div className="p-4 pt-1 flex-1 min-h-0 overflow-auto">
+              <div className="p-4 pt-1 flex-1 min-h-0 min-w-0 overflow-auto">
                 <SyntaxHighlighter
                   code={content.content}
                   language={

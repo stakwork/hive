@@ -98,16 +98,16 @@ export async function getWorkspacesByUserId(
 }
 
 /**
- * Gets a workspace by slug if user has access (owner or member)
+ * Gets a workspace by ID if user has access (owner or member)
  */
-export async function getWorkspaceBySlug(
-  slug: string,
+export async function getWorkspaceById(
+  workspaceId: string,
   userId: string,
 ): Promise<WorkspaceWithAccess | null> {
-  // Get the workspace with owner info and swarm status
+  // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
     where: {
-      slug,
+      id: workspaceId,
       deleted: false,
     },
     include: {
@@ -116,6 +116,16 @@ export async function getWorkspaceBySlug(
       },
       swarm: {
         select: { id: true, status: true },
+      },
+      repositories: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+          status: true,
+          updatedAt: true,
+        },
       },
     },
   });
@@ -142,6 +152,11 @@ export async function getWorkspaceBySlug(
       owner: workspace.owner,
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      swarmStatus: workspace.swarm?.status || null,
+      repositories: workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
     };
   }
 
@@ -174,6 +189,111 @@ export async function getWorkspaceBySlug(
     ),
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    swarmStatus: workspace.swarm?.status || null,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
+  };
+}
+
+/**
+ * Gets a workspace by slug if user has access (owner or member)
+ */
+export async function getWorkspaceBySlug(
+  slug: string,
+  userId: string,
+): Promise<WorkspaceWithAccess | null> {
+  // Get the workspace with owner info, swarm status, and repositories
+  const workspace = await db.workspace.findFirst({
+    where: {
+      slug,
+      deleted: false,
+    },
+    include: {
+      owner: {
+        select: { id: true, name: true, email: true },
+      },
+      swarm: {
+        select: { id: true, status: true },
+      },
+      repositories: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+          status: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  // Check if user is owner
+  if (workspace.ownerId === userId) {
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      hasKey: !!encryptionService.decryptField(
+        "stakworkApiKey",
+        workspace.stakworkApiKey || "",
+      ),
+      description: workspace.description,
+      slug: workspace.slug,
+      ownerId: workspace.ownerId,
+      createdAt: workspace.createdAt.toISOString(),
+      updatedAt: workspace.updatedAt.toISOString(),
+      userRole: "OWNER",
+      owner: workspace.owner,
+      isCodeGraphSetup:
+        workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      swarmStatus: workspace.swarm?.status || null,
+      repositories: workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
+    };
+  }
+
+  // Check if user is a member
+  const membership = await db.workspaceMember.findFirst({
+    where: {
+      workspaceId: workspace.id,
+      userId,
+      leftAt: null,
+    },
+  });
+
+  if (!membership) {
+    return null; // User has no access
+  }
+
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    description: workspace.description,
+    slug: workspace.slug,
+    ownerId: workspace.ownerId,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+    userRole: membership.role as WorkspaceRole,
+    owner: workspace.owner,
+    hasKey: !!encryptionService.decryptField(
+      "stakworkApiKey",
+      workspace.stakworkApiKey || "",
+    ),
+    isCodeGraphSetup:
+      workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    swarmStatus: workspace.swarm?.status || null,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
   };
 }
 
@@ -183,22 +303,57 @@ export async function getWorkspaceBySlug(
 export async function getUserWorkspaces(
   userId: string,
 ): Promise<WorkspaceWithRole[]> {
-  const result: WorkspaceWithRole[] = [];
+  // Get all workspaces the user owns or is a member of in a single query
+  const [ownedWorkspaces, memberships] = await Promise.all([
+    db.workspace.findMany({
+      where: {
+        ownerId: userId,
+        deleted: false,
+      },
+    }),
+    db.workspaceMember.findMany({
+      where: {
+        userId,
+        leftAt: null,
+      },
+      include: {
+        workspace: true,
+      },
+    }),
+  ]);
 
-  // Get owned workspaces
-  const ownedWorkspaces = await db.workspace.findMany({
-    where: {
-      ownerId: userId,
-      deleted: false,
-    },
-  });
+  // Get all workspace IDs to batch the member count query
+  const allWorkspaceIds = [
+    ...ownedWorkspaces.map(w => w.id),
+    ...memberships
+      .filter(m => m.workspace && !m.workspace.deleted)
+      .map(m => m.workspace!.id)
+  ];
 
-  // Add owned workspaces with member count
-  for (const workspace of ownedWorkspaces) {
-    const memberCount = await db.workspaceMember.count({
-      where: { workspaceId: workspace.id, leftAt: null },
+  // Get all member counts in a single query if we have workspace IDs
+  const memberCountMap: Record<string, number> = {};
+  if (allWorkspaceIds.length > 0) {
+    const allMembers = await db.workspaceMember.findMany({
+      where: {
+        workspaceId: { in: allWorkspaceIds },
+        leftAt: null,
+      },
+      select: {
+        workspaceId: true,
+      },
     });
 
+    // Count members per workspace
+    for (const member of allMembers) {
+      memberCountMap[member.workspaceId] = (memberCountMap[member.workspaceId] || 0) + 1;
+    }
+  }
+
+  const result: WorkspaceWithRole[] = [];
+
+  // Add owned workspaces
+  for (const workspace of ownedWorkspaces) {
+    const memberCount = memberCountMap[workspace.id] || 0;
     result.push({
       id: workspace.id,
       name: workspace.name,
@@ -212,24 +367,10 @@ export async function getUserWorkspaces(
     });
   }
 
-  // Get member workspaces
-  const memberships = await db.workspaceMember.findMany({
-    where: {
-      userId,
-      leftAt: null,
-    },
-    include: {
-      workspace: true,
-    },
-  });
-
   // Add member workspaces
   for (const membership of memberships) {
     if (membership.workspace && !membership.workspace.deleted) {
-      const memberCount = await db.workspaceMember.count({
-        where: { workspaceId: membership.workspace.id, leftAt: null },
-      });
-
+      const memberCount = memberCountMap[membership.workspace.id] || 0;
       result.push({
         id: membership.workspace.id,
         name: membership.workspace.name,
@@ -256,6 +397,44 @@ export async function validateWorkspaceAccess(
   userId: string,
 ): Promise<WorkspaceAccessValidation> {
   const workspace = await getWorkspaceBySlug(slug, userId);
+
+  if (!workspace) {
+    return {
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    };
+  }
+
+  const roleLevel = WORKSPACE_PERMISSION_LEVELS[workspace.userRole as WorkspaceRole];
+
+  return {
+    hasAccess: true,
+    userRole: workspace.userRole,
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+      description: workspace.description,
+      slug: workspace.slug,
+      ownerId: workspace.ownerId,
+      createdAt: workspace.createdAt,
+      updatedAt: workspace.updatedAt,
+    },
+    canRead: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.VIEWER],
+    canWrite: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
+    canAdmin: roleLevel >= WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
+  };
+}
+
+/**
+ * Validates user access to a workspace by ID and returns permission details
+ */
+export async function validateWorkspaceAccessById(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceAccessValidation> {
+  const workspace = await getWorkspaceById(workspaceId, userId);
 
   if (!workspace) {
     return {

@@ -75,6 +75,8 @@ export type WizardStateData = {
   workspaceName: string;
   ingestRefId?: string;
   poolName?: string;
+  repoName?: string;
+  repositoryUrl?: string;
   services: ServiceDataConfig[];
   user: {
     id: string;

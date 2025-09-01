@@ -143,7 +143,7 @@ async function seedForUser(userId: string) {
 
   // Create Swarm, one-to-one with workspace
   const swarmName = slugify(`${workspaceSlug}-swarm`);
-  const poolApiKey = `pool_key_${workspaceSlug}`;
+  // const poolApiKey = `pool_key_${workspaceSlug}`;
   const swarmApiKey = `swarm_key_${workspaceSlug}`;
 
   const environmentVariables = [
@@ -153,12 +153,17 @@ async function seedForUser(userId: string) {
   ];
 
   const services = [
-    { name: "web", image: "node:18", replicas: 1 },
-    { name: "worker", image: "node:18", replicas: 1 },
+    {
+      name: "web",
+      port: 3000,
+      env: { NODE_ENV: "development" },
+      scripts: { start: "npm run dev", install: "npm install" },
+    },
   ];
 
   const swarm = await prisma.swarm.create({
     data: {
+      swarmId: "swarm-id-123",
       name: swarmName,
       status: SwarmStatus.ACTIVE,
       instanceType: "XL",
@@ -166,7 +171,7 @@ async function seedForUser(userId: string) {
       repositoryUrl: repository.repositoryUrl,
       defaultBranch: repository.branch,
       swarmApiKey,
-      poolApiKey,
+      // poolApiKey,
       environmentVariables,
       services,
       wizardStep: "COMPLETION",

@@ -13,11 +13,11 @@ import { EnvironmentVariable } from "@/types/wizard";
 import { AlertCircle, ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
-  generatePM2Apps,
-  formatPM2Apps,
   devcontainerJsonContent,
   dockerComposeContent,
   dockerfileContent,
+  formatPM2Apps,
+  generatePM2Apps,
 } from "../../../../utils/devContainerUtils";
 
 const getFiles = (
