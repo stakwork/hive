@@ -296,6 +296,7 @@ describe("Workspace Service - Unit Tests", () => {
         id: "swarm1",
         status: "ACTIVE",
       },
+      repositories: [],
     };
 
     test("should return workspace with owner access", async () => {
@@ -308,6 +309,7 @@ describe("Workspace Service - Unit Tests", () => {
         include: {
           owner: { select: { id: true, name: true, email: true } },
           swarm: { select: { id: true, status: true } },
+          repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
         },
       });
       expect(result).toEqual({
@@ -322,6 +324,8 @@ describe("Workspace Service - Unit Tests", () => {
         userRole: "OWNER",
         owner: mockWorkspace.owner,
         isCodeGraphSetup: true,
+        swarmStatus: "ACTIVE",
+        repositories: [],
       });
     });
 

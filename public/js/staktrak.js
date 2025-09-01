@@ -300,8 +300,61 @@ var userBehaviour = (() => {
       return false;
     }
   }
+  function getComponentNameFromFiber(element) {
+    try {
+      const fiberKey = Object.keys(element).find(
+        (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
+      );
+      if (!fiberKey) {
+        return null;
+      }
+      let fiber = element[fiberKey];
+      let level = 0;
+      const maxTraversalDepth = 10;
+      while (fiber && level < maxTraversalDepth) {
+        if (typeof fiber.type === "string") {
+          fiber = fiber.return;
+          level++;
+          continue;
+        }
+        if (fiber.type) {
+          let componentName = null;
+          if (fiber.type.displayName) {
+            componentName = fiber.type.displayName;
+          } else if (fiber.type.name) {
+            componentName = fiber.type.name;
+          } else if (fiber.type.render) {
+            componentName = fiber.type.render.displayName || fiber.type.render.name || "ForwardRef";
+          } else if (fiber.type.type) {
+            componentName = fiber.type.type.displayName || fiber.type.type.name || "Memo";
+          } else if (fiber.type._payload && fiber.type._payload._result) {
+            componentName = fiber.type._payload._result.name || "LazyComponent";
+          } else if (fiber.type._context) {
+            componentName = fiber.type._context.displayName || "Context";
+          } else if (fiber.type === Symbol.for("react.fragment")) {
+            fiber = fiber.return;
+            level++;
+            continue;
+          }
+          if (componentName) {
+            return {
+              name: componentName,
+              level,
+              type: typeof fiber.type === "function" ? "function" : "class"
+            };
+          }
+        }
+        fiber = fiber.return;
+        level++;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error extracting component name:", error);
+      return null;
+    }
+  }
   function extractReactDebugSource(element) {
-    var _a, _b;
+    var _a, _b, _c;
     try {
       const fiberKey = Object.keys(element).find(
         (key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$")
@@ -322,7 +375,7 @@ var userBehaviour = (() => {
         };
       };
       while (fiber && level < maxTraversalDepth) {
-        const source = fiber._debugSource || ((_a = fiber.memoizedProps) == null ? void 0 : _a.__source) || ((_b = fiber.pendingProps) == null ? void 0 : _b.__source);
+        const source = fiber._debugSource || ((_b = fiber.memoizedProps) == null ? void 0 : _b.__source) || ((_c = fiber.pendingProps) == null ? void 0 : _c.__source);
         if (source) {
           return extractSource(source);
         }
@@ -341,6 +394,8 @@ var userBehaviour = (() => {
     try {
       const sourceFiles = [];
       const processedFiles = /* @__PURE__ */ new Map();
+      const componentNames = [];
+      const processedComponents = /* @__PURE__ */ new Set();
       let elementsToProcess = [];
       if (coordinates.width === 0 && coordinates.height === 0) {
         const element = document.elementFromPoint(coordinates.x, coordinates.y);
@@ -368,6 +423,16 @@ var userBehaviour = (() => {
         });
       }
       for (const element of elementsToProcess) {
+        const componentInfo = getComponentNameFromFiber(element);
+        if (componentInfo && !processedComponents.has(componentInfo.name)) {
+          processedComponents.add(componentInfo.name);
+          componentNames.push({
+            name: componentInfo.name,
+            level: componentInfo.level,
+            type: componentInfo.type,
+            element: element.tagName.toLowerCase()
+          });
+        }
         const dataSource = element.getAttribute("data-source") || element.getAttribute("data-inspector-relative-path");
         const dataLine = element.getAttribute("data-line") || element.getAttribute("data-inspector-line");
         if (dataSource && dataLine) {
@@ -410,6 +475,45 @@ var userBehaviour = (() => {
       sourceFiles.forEach((file) => {
         file.lines.sort((a, b) => a - b);
       });
+      const formatComponentsForChat = (components) => {
+        if (components.length === 0)
+          return void 0;
+        const sortedComponents = components.sort((a, b) => a.level - b.level).slice(0, 3);
+        const componentLines = sortedComponents.map((c) => {
+          const nameToUse = c.name || "Unknown";
+          return `&lt;${nameToUse}&gt; (${c.level} level${c.level !== 1 ? "s" : ""} up)`;
+        });
+        return "React Components Found:\n" + componentLines.join("\n");
+      };
+      if (sourceFiles.length === 0) {
+        if (componentNames.length > 0) {
+          const formattedMessage = formatComponentsForChat(componentNames);
+          sourceFiles.push({
+            file: "React component detected",
+            lines: [],
+            context: `Components found: ${componentNames.map((c) => c.name).join(", ")}`,
+            componentNames,
+            message: formattedMessage
+          });
+        } else {
+          sourceFiles.push({
+            file: "No React components detected",
+            lines: [],
+            context: "The selected element may not be a React component or may be a native DOM element",
+            message: "Try selecting an interactive element like a button or link"
+          });
+        }
+      } else {
+        sourceFiles.forEach((file) => {
+          if (!file.componentNames && componentNames.length > 0) {
+            file.componentNames = componentNames;
+            const formattedMessage = formatComponentsForChat(componentNames);
+            if (formattedMessage) {
+              file.message = formattedMessage;
+            }
+          }
+        });
+      }
       window.parent.postMessage(
         {
           type: "staktrak-debug-response",

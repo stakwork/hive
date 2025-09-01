@@ -5,6 +5,7 @@ import type { DeleteWebhookParams } from "@/types";
 import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -102,6 +103,12 @@ export class WebhookService extends BaseServiceClass {
       if (response.ok) {
         const repoInfo = (await response.json()) as { default_branch?: string };
         return repoInfo.default_branch || null;
+      }
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("INSUFFICIENT_PERMISSIONS");
+        }
+        throw new Error("WEBHOOK_CREATION_FAILED");
       }
     } catch (error) {
       console.error("Failed to detect repository default branch:", error);
@@ -225,14 +232,11 @@ export class WebhookService extends BaseServiceClass {
   }
 
   private async getUserGithubAccessToken(userId: string): Promise<string> {
-    const account = await db.account.findFirst({
-      where: { userId, provider: "github" },
-      select: { access_token: true },
-    });
-    if (!account?.access_token) {
+    const githubProfile = await getGithubUsernameAndPAT(userId);
+    if (!githubProfile?.pat) {
       throw new Error("GitHub access token not found for user");
     }
-    return encryptionService.decryptField("access_token", account.access_token);
+    return githubProfile.pat;
   }
 
   private async listHooks(
@@ -250,7 +254,12 @@ export class WebhookService extends BaseServiceClass {
         },
       },
     );
-    if (!res.ok) throw new Error(`Failed to list webhooks: ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 403) {
+        throw new Error("INSUFFICIENT_PERMISSIONS");
+      }
+      throw new Error("WEBHOOK_CREATION_FAILED");
+    }
     return (await res.json()) as Array<{
       id: number;
       config?: { url?: string };
@@ -289,10 +298,12 @@ export class WebhookService extends BaseServiceClass {
       },
     );
     const data = await res.json();
+
     if (!res.ok) {
-      throw new Error(
-        `Failed to create webhook: ${res.status} ${JSON.stringify(data)}`,
-      );
+      if (res.status === 403) {
+        throw new Error("INSUFFICIENT_PERMISSIONS");
+      }
+      throw new Error("WEBHOOK_CREATION_FAILED");
     }
     return { id: data.id as number };
   }
@@ -321,8 +332,10 @@ export class WebhookService extends BaseServiceClass {
       },
     );
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Failed to update webhook: ${res.status} ${err}`);
+      if (res.status === 403) {
+        throw new Error("INSUFFICIENT_PERMISSIONS");
+      }
+      throw new Error("WEBHOOK_CREATION_FAILED");
     }
   }
 
@@ -343,8 +356,10 @@ export class WebhookService extends BaseServiceClass {
       },
     );
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Failed to delete webhook: ${res.status} ${err}`);
+      if (res.status === 403) {
+        throw new Error("INSUFFICIENT_PERMISSIONS");
+      }
+      throw new Error("WEBHOOK_CREATION_FAILED");
     }
   }
 }

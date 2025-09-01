@@ -15,6 +15,7 @@ export interface JanitorItem {
   icon: LucideIcon;
   description: string;
   configKey?: string;
+  comingSoon?: boolean;
 }
 
 export interface JanitorSectionProps {
@@ -25,8 +26,8 @@ export interface JanitorSectionProps {
   comingSoon?: boolean;
 }
 
-const getStatusBadge = (isOn: boolean, comingSoon: boolean) => {
-  if (comingSoon) return <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>;
+const getStatusBadge = (isOn: boolean, itemComingSoon: boolean, sectionComingSoon: boolean) => {
+  if (itemComingSoon || sectionComingSoon) return <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>;
   if (isOn) return <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge>;
   return <Badge variant="outline" className="text-gray-600 border-gray-300">Idle</Badge>;
 };
@@ -59,7 +60,7 @@ export function JanitorSection({
   }, [workspace?.slug, comingSoon, fetchJanitorConfig]);
 
   const getJanitorState = (janitor: JanitorItem): boolean => {
-    if (comingSoon) return false;
+    if (comingSoon || janitor.comingSoon) return false;
     if (janitor.configKey && janitorConfig) {
       return janitorConfig[janitor.configKey] || false;
     }
@@ -71,7 +72,7 @@ export function JanitorSection({
   };
 
   const handleToggle = async (janitor: JanitorItem) => {
-    if (comingSoon || !janitor.configKey || !workspace?.slug) return;
+    if (comingSoon || janitor.comingSoon || !janitor.configKey || !workspace?.slug) return;
     
     try {
       await toggleJanitor(workspace.slug, janitor.configKey);
@@ -85,7 +86,7 @@ export function JanitorSection({
   };
 
   const handleManualRun = async (janitor: JanitorItem) => {
-    if (comingSoon || !workspace?.slug) return;
+    if (comingSoon || janitor.comingSoon || !workspace?.slug) return;
     
     try {
       await runJanitor(workspace.slug, janitor.id);
@@ -117,12 +118,13 @@ export function JanitorSection({
             const Icon = janitor.icon;
             const isOn = getJanitorState(janitor);
             const isRunning = isJanitorRunning(janitor);
+            const isItemComingSoon = janitor.comingSoon || comingSoon;
             
             return (
               <div 
                 key={janitor.id} 
                 className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${
-                  comingSoon ? 'opacity-60' : ''
+                  isItemComingSoon ? 'opacity-60' : ''
                 }`}
               >
                 <div className="flex items-center space-x-3 flex-1">
@@ -141,14 +143,14 @@ export function JanitorSection({
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="font-medium text-sm">{janitor.name}</span>
-                      {getStatusBadge(isOn, comingSoon)}
+                      {getStatusBadge(isOn, janitor.comingSoon || false, comingSoon || false)}
                     </div>
                     <p className="text-xs text-muted-foreground">{janitor.description}</p>
                   </div>
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  {comingSoon ? (
+                  {isItemComingSoon ? (
                     <Clock className="h-4 w-4 text-gray-400" />
                   ) : (
                     isOn && (
@@ -175,10 +177,10 @@ export function JanitorSection({
                     )
                   )}
                   <Switch
-                    checked={comingSoon ? false : isOn}
+                    checked={isItemComingSoon ? false : isOn}
                     onCheckedChange={() => handleToggle(janitor)}
                     className="data-[state=checked]:bg-green-500"
-                    disabled={comingSoon || loading}
+                    disabled={isItemComingSoon || loading}
                   />
                 </div>
               </div>

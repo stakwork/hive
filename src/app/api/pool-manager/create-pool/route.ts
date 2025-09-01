@@ -110,11 +110,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const account = await db.account.findFirst({
-      where: {
-        userId: session?.user.id,
-      },
-    });
 
     const poolManager = new PoolManagerService({
       ...serviceConfigs.poolManager,
@@ -173,12 +168,7 @@ export async function POST(request: NextRequest) {
       minimum_vms: 2,
       repo_name: repository?.repositoryUrl || "",
       branch_name: repository?.branch || "",
-      github_pat: JSON.stringify(
-        encryptionService.decryptField(
-          "access_token",
-          account?.access_token || "",
-        ),
-      ),
+      github_pat: github_pat?.pat || "",
       github_username: github_pat?.username || "",
       env_vars: envVars,
       container_files,

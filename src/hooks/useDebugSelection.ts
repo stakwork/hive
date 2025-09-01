@@ -132,7 +132,9 @@ export function useDebugSelection(
       };
 
       if (onDebugMessage) {
-        await onDebugMessage("", debugArtifact);
+        // Use the formatted component message from StakTrak
+        const componentMessage = bugReportContent.sourceFiles.find(f => f.message)?.message || "Element analyzed";
+        await onDebugMessage(componentMessage, debugArtifact);
       }
 
       setDebugMode(false);

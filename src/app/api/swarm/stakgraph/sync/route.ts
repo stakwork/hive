@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import {
+  triggerAsyncSync,
+  AsyncSyncResult,
+} from "@/services/swarm/stakgraph-actions";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
+import { RepositoryStatus } from "@prisma/client";
+import { saveOrUpdateSwarm } from "@/services/swarm/db";
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,18 +52,63 @@ export async function POST(request: NextRequest) {
       username = creds.username;
       pat = creds.pat;
     }
+    try {
+      await db.repository.update({
+        where: {
+          repositoryUrl_workspaceId: {
+            repositoryUrl: swarm.repositoryUrl,
+            workspaceId: swarm.workspaceId,
+          },
+        },
+        data: { status: RepositoryStatus.PENDING },
+      });
+    } catch (e) {
+      console.error(
+        "Repository not found or failed to set PENDING before sync",
+        e,
+      );
+    }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
-    const apiResult = await triggerAsyncSync(
+    const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarm.name,
       swarm.swarmApiKey,
       swarm.repositoryUrl,
       username && pat ? { username, pat } : undefined,
       callbackUrl,
     );
+    const requestId = apiResult.data?.request_id;
+    if (requestId) {
+      try {
+        await saveOrUpdateSwarm({
+          workspaceId: swarm.workspaceId,
+          ingestRefId: requestId,
+        });
+      } catch (err) {
+        console.error("Failed to store ingestRefId for sync", err);
+      }
+    }
+    if (!apiResult.ok || !requestId) {
+      try {
+        await db.repository.update({
+          where: {
+            repositoryUrl_workspaceId: {
+              repositoryUrl: swarm.repositoryUrl,
+              workspaceId: swarm.workspaceId,
+            },
+          },
+          data: { status: RepositoryStatus.FAILED },
+        });
+      } catch (e) {
+        console.error(
+          "Failed to mark repository FAILED after sync start error",
+          e,
+        );
+      }
+    }
 
     return NextResponse.json(
-      { success: apiResult.ok, status: apiResult.status },
+      { success: apiResult.ok, status: apiResult.status, requestId },
       { status: apiResult.status },
     );
   } catch {

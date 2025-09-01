@@ -80,7 +80,7 @@ export class StakgraphWebhookService {
     });
 
     if (!swarm) {
-      console.error("No swarm found for request_id:", requestId);
+      console.warn("No swarm found for request_id:", requestId);
       return null;
     }
 

@@ -2,7 +2,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { CheckSquare, Menu, Network, Settings, BarChart3, LayoutDashboard } from "lucide-react";
+import {
+  CheckSquare,
+  Menu,
+  Settings,
+  BarChart3,
+  LayoutDashboard,
+  Users,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -30,23 +37,23 @@ const baseNavigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
-  { icon: Network, label: "Stakgraph", href: "/stakgraph" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
-  { icon: Settings, label: "Settings", href: "/settings" },
+  { icon: Users, label: "User Journeys", href: "/user-journeys" },
+  // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const {
-    slug: workspaceSlug,
-  } = useWorkspace();
-  const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
+  const { slug: workspaceSlug } = useWorkspace();
+  const canAccessInsights = useFeatureFlag(
+    FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
+  );
 
   const excludeLabels: string[] = [];
   if (!canAccessInsights) excludeLabels.push("Insights");
 
   const navigationItems = baseNavigationItems.filter(
-    (item) => !excludeLabels.includes(item.label)
+    (item) => !excludeLabels.includes(item.label),
   );
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
@@ -67,9 +74,7 @@ export function Sidebar({ user }: SidebarProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
-      <WorkspaceSwitcher
-        onWorkspaceChange={() => null}
-      />
+      <WorkspaceSwitcher onWorkspaceChange={() => null} />
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
@@ -87,6 +92,19 @@ export function Sidebar({ user }: SidebarProps) {
           ))}
         </ul>
       </nav>
+      {/* Spacer to push bottom content down */}
+      <div className="flex-1" />
+      {/* Settings */}
+      <div className="p-4 pb-2">
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => handleNavigate("/settings")}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Settings
+        </Button>
+      </div>
       <Separator />
       {/* User Popover */}
       <div className="p-4">
@@ -110,7 +128,9 @@ export function Sidebar({ user }: SidebarProps) {
             variant="outline"
             size="icon"
             className={
-              isTaskPage ? "flex items-center justify-center absolute left-3 top-2 z-50" : "md:hidden"
+              isTaskPage
+                ? "flex items-center justify-center absolute left-3 top-2 z-50"
+                : "md:hidden"
             }
           >
             <Menu className="h-4 w-4" />

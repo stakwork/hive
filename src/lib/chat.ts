@@ -59,6 +59,13 @@ export interface BugReportContent {
     file: string;
     lines: number[];
     context?: string;
+    message?: string;
+    componentNames?: Array<{
+      name: string;
+      level: number;
+      type: string;
+      element: string;
+    }>;
   }>;
   coordinates?: {
     x: number;
