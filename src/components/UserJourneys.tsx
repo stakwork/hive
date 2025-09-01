@@ -14,6 +14,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useState } from "react";
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Artifact, BrowserContent } from "@/lib/chat";
+import { UserJourneyOnboarding } from "@/components/UserJourneyOnboarding";
 
 const mockUserJourneys = [
   {
@@ -55,6 +56,8 @@ export default function UserJourneys() {
   const { id } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
+  const [scriptNotDetected, setScriptNotDetected] = useState(false);
+  const [retryFunction, setRetryFunction] = useState<(() => void) | null>(null);
 
   const handleCreateUserJourney = async () => {
     try {
@@ -166,13 +169,27 @@ export default function UserJourneys() {
       </div>
 
       {frontend ? (
-        <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel
-            artifacts={browserArtifacts}
-            ide={false}
-            onUserJourneySave={saveUserJourneyTest}
+        scriptNotDetected ? (
+          <UserJourneyOnboarding 
+            onRetry={() => {
+              setScriptNotDetected(false);
+              if (retryFunction) retryFunction();
+            }}
+            targetUrl={frontend}
           />
-        </div>
+        ) : (
+          <div className="h-[600px] border rounded-lg overflow-hidden">
+            <BrowserArtifactPanel
+              artifacts={browserArtifacts}
+              ide={false}
+              onUserJourneySave={saveUserJourneyTest}
+              onScriptNotDetected={(notDetected, retryFn) => {
+                setScriptNotDetected(notDetected);
+                setRetryFunction(() => retryFn);
+              }}
+            />
+          </div>
+        )
       ) : (
         <div className="grid gap-6">
           <div className="flex items-center gap-4">

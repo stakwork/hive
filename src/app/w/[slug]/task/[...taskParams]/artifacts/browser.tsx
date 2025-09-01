@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
+import { useEffect } from "react";
 import { TestManagerModal } from "./TestManagerModal";
 import {
   TooltipProvider,
@@ -29,11 +30,13 @@ export function BrowserArtifactPanel({
   ide,
   onDebugMessage,
   onUserJourneySave,
+  onScriptNotDetected,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  onScriptNotDetected?: (notDetected: boolean, retryFn: () => void) => void;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -49,6 +52,7 @@ export function BrowserArtifactPanel({
     isSetup,
     isRecording,
     isAssertionMode,
+    scriptNotDetected,
     startRecording,
     stopRecording,
     enableAssertionMode,
@@ -56,6 +60,7 @@ export function BrowserArtifactPanel({
     showPlaywrightModal,
     generatedPlaywrightTest,
     closePlaywrightModal,
+    retrySetup,
   } = useStaktrak(activeContent?.url);
 
   // Use debug selection hook with iframeRef from staktrak
@@ -67,6 +72,13 @@ export function BrowserArtifactPanel({
     handleDebugSelection: handleDebugSelectionHook,
   } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+
+  // Notify parent component about script detection status
+  useEffect(() => {
+    if (onScriptNotDetected && scriptNotDetected !== undefined) {
+      onScriptNotDetected(scriptNotDetected, retrySetup);
+    }
+  }, [scriptNotDetected, onScriptNotDetected, retrySetup]);
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;

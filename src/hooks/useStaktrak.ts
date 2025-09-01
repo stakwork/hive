@@ -129,8 +129,10 @@ export const useStaktrak = (initialUrl?: string) => {
   const [showPlaywrightModal, setShowPlaywrightModal] = useState(false);
   const [generatedPlaywrightTest, setGeneratedPlaywrightTest] =
     useState<string>("");
+  const [scriptNotDetected, setScriptNotDetected] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const setupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // No longer need to inject scripts - staktrak.js handles its own React detection
 
@@ -161,6 +163,22 @@ export const useStaktrak = (initialUrl?: string) => {
     setGeneratedPlaywrightTest("");
   };
 
+  const retrySetup = () => {
+    setScriptNotDetected(false);
+    setIsSetup(false);
+    
+    // Start a new timeout
+    if (setupTimeoutRef.current) {
+      clearTimeout(setupTimeoutRef.current);
+    }
+    
+    setupTimeoutRef.current = setTimeout(() => {
+      if (!isSetup) {
+        setScriptNotDetected(true);
+      }
+    }, 5000);
+  };
+
   function cleanInitialUrl(url: string) {
     // Handle URLs like @https://fq5n7qeb-3000.workspaces.sphinx.chat
     // Extract port number and convert to localhost
@@ -175,6 +193,43 @@ export const useStaktrak = (initialUrl?: string) => {
     return url;
   }
 
+  // Set up detection for missing script after iframe loads
+  useEffect(() => {
+    if (initialUrl && !isSetup && iframeRef.current) {
+      const checkScriptSetup = () => {
+        // Give the script a brief moment to initialize after iframe load
+        setupTimeoutRef.current = setTimeout(() => {
+          if (!isSetup) {
+            setScriptNotDetected(true);
+          }
+        }, 2000); // Reduced timeout since we're checking after load
+      };
+
+      const iframe = iframeRef.current;
+      
+      // Check if iframe is already loaded
+      if (iframe.contentDocument?.readyState === 'complete') {
+        checkScriptSetup();
+      } else {
+        // Wait for iframe to load
+        iframe.addEventListener('load', checkScriptSetup);
+        
+        return () => {
+          iframe.removeEventListener('load', checkScriptSetup);
+          if (setupTimeoutRef.current) {
+            clearTimeout(setupTimeoutRef.current);
+          }
+        };
+      }
+    }
+
+    return () => {
+      if (setupTimeoutRef.current) {
+        clearTimeout(setupTimeoutRef.current);
+      }
+    };
+  }, [initialUrl, isSetup]);
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // console.log("****** message received:", event.data);
@@ -184,6 +239,12 @@ export const useStaktrak = (initialUrl?: string) => {
         switch (staktrakEvent.data.type) {
           case "staktrak-setup":
             setIsSetup(true);
+            setScriptNotDetected(false);
+            // Clear the timeout since setup was successful
+            if (setupTimeoutRef.current) {
+              clearTimeout(setupTimeoutRef.current);
+              setupTimeoutRef.current = null;
+            }
             break;
           case "staktrak-results":
             console.log("Staktrak results:", staktrakEvent.data.data);
@@ -230,6 +291,7 @@ export const useStaktrak = (initialUrl?: string) => {
     isSetup,
     isRecording,
     isAssertionMode,
+    scriptNotDetected,
     iframeRef,
     startRecording,
     stopRecording,
@@ -238,5 +300,6 @@ export const useStaktrak = (initialUrl?: string) => {
     showPlaywrightModal,
     generatedPlaywrightTest,
     closePlaywrightModal,
+    retrySetup,
   };
 };
