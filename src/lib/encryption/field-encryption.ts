@@ -66,10 +66,13 @@ export class FieldEncryptionService {
   private isEncryptableField(fieldName: string): fieldName is EncryptableField {
     const encryptableFields: EncryptableField[] = [
       "access_token",
+      "refresh_token",
+      "id_token",
       "environmentVariables",
       "poolApiKey",
       "swarmApiKey",
       "stakworkApiKey",
+      "githubWebhookSecret",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);

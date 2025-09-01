@@ -25,3 +25,19 @@ export function formatRelativeTime(date: string | Date): string {
     return targetDate.toLocaleDateString();
   }
 }
+
+export function getBaseUrl(hostHeader?: string | null): string {
+  // Use the provided host header, NEXTAUTH_URL, or fallback to localhost
+  if (hostHeader) {
+    const protocol = hostHeader.includes("localhost") ? "http" : "https";
+    return `${protocol}://${hostHeader}`;
+  }
+  
+  // If NEXTAUTH_URL is provided, use it directly
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  
+  // Fallback to localhost
+  return "http://localhost:3000";
+}

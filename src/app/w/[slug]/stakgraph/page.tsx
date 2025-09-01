@@ -11,15 +11,17 @@ import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, Save } from "lucide-react";
+import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function StakgraphPage() {
-  const { slug, refreshCurrentWorkspace } = useWorkspace();
+  const { slug, id, refreshCurrentWorkspace } = useWorkspace();
+  const router = useRouter();
   const {
     formData,
     errors,
@@ -55,6 +57,61 @@ export default function StakgraphPage() {
     refreshCurrentWorkspace();
   };
 
+  const handleEnsureWebhooks = async () => {
+    try {
+      if (!id) {
+        toast({
+          title: "Error",
+          description: "Workspace not ready",
+          variant: "destructive",
+        });
+        return;
+      }
+      const res = await fetch("/api/github/webhook/ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: id,
+          repositoryUrl: formData.repositoryUrl,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === "INSUFFICIENT_PERMISSIONS") {
+          toast({
+            title: "Permission Required",
+            description:
+              data.message ||
+              "Admin access required to manage webhooks on this repository",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: data.message || "Failed to add webhooks",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
+      toast({
+        title: "Webhooks added",
+        description: "GitHub webhooks have been ensured",
+      });
+      await loadSettings(slug!);
+    } catch (error) {
+      console.error("Failed to ensure webhooks", error);
+      toast({
+        title: "Error",
+        description: "Failed to add webhooks",
+        variant: "destructive",
+      });
+    }
+  };
+
   // const allFieldsFilled =
   //   formData.name &&
   //     formData.repositoryUrl &&
@@ -69,15 +126,10 @@ export default function StakgraphPage() {
   if (initialLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          {/* <Network className="w-8 h-8 text-primary" /> */}
-          <div>
-            <h1 className="text-3xl font-bold">Stakgraph Configuration</h1>
-            <p className="text-muted-foreground">
-              Configure your settings for Stakgraph integration
-            </p>
-          </div>
-        </div>
+        <PageHeader 
+          title="Stakgraph Configuration"
+          description="Configure your settings for Stakgraph integration"
+        />
         <Card className="max-w-2xl">
           <CardContent className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2">
@@ -92,44 +144,35 @@ export default function StakgraphPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        {/* <Network className="w-8 h-8 text-primary" /> */}
-        <div>
-          <h1 className="text-3xl font-bold">Stakgraph Configuration</h1>
-          <p className="text-muted-foreground">
-            Configure your settings for Stakgraph integration
-          </p>
-          {/* Removed Swarm Status and Last updated */}
-        </div>
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(`/w/${slug}/settings`)}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Settings
+        </Button>
       </div>
-
-      {/* Subtle: Create Stakgraph section (only if all fields are empty, with smooth animation) */}
-      <AnimatePresence>
-        {/* FIXME: CHECK FOR WIZARD STATE IF COMPLETED OR NOT */}
-        {
-          <motion.div
-            key="create-stakgraph-prompt"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25 }}
-            className="max-w-2xl bg-muted/40 rounded-md px-4 py-2 mb-2 flex items-center gap-3"
-          >
-            <span className="text-sm text-muted-foreground">
-              Don&apos;t have a Stakgraph configuration?&nbsp;
-            </span>
-            <Button asChild variant="ghost" size="sm" className="px-2 h-7">
-              <Link href={slug ? `/w/${slug}/code-graph` : "#"}>
-                Create Stakgraph
-              </Link>
-            </Button>
-          </motion.div>
-        }
-      </AnimatePresence>
+      <PageHeader 
+        title="VM Configuration"
+        description="Configure your virtual machine settings for development environment"
+      />
 
       <Card className="max-w-2xl">
-        <CardHeader>
-          <CardTitle>Stakgraph Settings</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>VM Settings</CardTitle>
+          {!formData.webhookEnsured && formData.repositoryUrl ? (
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleEnsureWebhooks}
+            >
+              <Webhook className="mr-2 h-4 w-4" />
+              Add Github Webhooks
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -168,6 +211,7 @@ export default function StakgraphPage() {
               <SwarmForm
                 data={{
                   swarmUrl: formData.swarmUrl,
+                  swarmApiKey: formData.swarmApiKey || "",
                   swarmSecretAlias: formData.swarmSecretAlias,
                 }}
                 errors={errors}

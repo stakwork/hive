@@ -2,42 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { mapStakworkStatus } from "@/utils/conversions";
+import { StakworkStatusPayload } from "@/types";
 
 export const fetchCache = "force-no-store";
-
-interface StakworkStatusPayload {
-  project_output?: Record<string, unknown>;
-  workflow_id: number;
-  workflow_version_id: number;
-  workflow_version: number;
-  project_status: string;
-  task_id?: string;
-}
-
-const mapStakworkStatus = (status: string): WorkflowStatus | null => {
-  switch (status.toLowerCase()) {
-    case "in_progress":
-    case "running":
-    case "processing":
-      return WorkflowStatus.IN_PROGRESS;
-    case "completed":
-    case "success":
-    case "finished":
-      return WorkflowStatus.COMPLETED;
-    case "error":
-    case "failed":
-      return WorkflowStatus.FAILED;
-    case "halted":
-    case "paused":
-    case "stopped":
-      return WorkflowStatus.HALTED;
-    default:
-      console.warn(
-        `Unknown Stakwork status: ${status}, keeping existing status`,
-      );
-      return null;
-  }
-};
 
 export async function POST(request: NextRequest) {
   try {
@@ -93,7 +61,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       workflowStatus,
       updatedAt: new Date(),
     };

@@ -50,7 +50,7 @@ export default function SignInPage() {
         router.push(`/w/${user.defaultWorkspaceSlug}`);
       } else {
         // User has no workspaces, redirect to onboarding
-        router.push("/");
+        router.push("/onboarding/workspace");
       }
     }
   }, [session, router]);

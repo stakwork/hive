@@ -296,6 +296,7 @@ describe("Workspace Service - Unit Tests", () => {
         id: "swarm1",
         status: "ACTIVE",
       },
+      repositories: [],
     };
 
     test("should return workspace with owner access", async () => {
@@ -308,6 +309,7 @@ describe("Workspace Service - Unit Tests", () => {
         include: {
           owner: { select: { id: true, name: true, email: true } },
           swarm: { select: { id: true, status: true } },
+          repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
         },
       });
       expect(result).toEqual({
@@ -322,6 +324,8 @@ describe("Workspace Service - Unit Tests", () => {
         userRole: "OWNER",
         owner: mockWorkspace.owner,
         isCodeGraphSetup: true,
+        swarmStatus: "ACTIVE",
+        repositories: [],
       });
     });
 
@@ -397,10 +401,12 @@ describe("Workspace Service - Unit Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(mockOwnedWorkspaces);
-      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMemberships);
-      (db.workspaceMember.count as Mock)
-        .mockResolvedValueOnce(5) // For owned workspace
-        .mockResolvedValueOnce(3); // For member workspace
+      (db.workspaceMember.findMany as Mock)
+        .mockResolvedValueOnce(mockMemberships) // First call for memberships
+        .mockResolvedValueOnce([ // Second call for member counts
+          { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, // 5 members for ws1
+          { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" } // 3 members for ws2
+        ]);
 
       const result = await getUserWorkspaces("user1");
 

@@ -3,6 +3,8 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
+import { VMConfigSection } from "@/components/vm-config";
+import { PageHeader } from "@/components/ui/page-header";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { notFound } from "next/navigation";
 
@@ -29,25 +31,28 @@ export default async function SettingsPage({
     notFound();
   }
 
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Workspace Settings</h1>
-        <p className="text-muted-foreground mt-2">
-          Manage workspace configuration, members, and settings.
-        </p>
-      </div>
+      <PageHeader 
+        title="Workspace Settings"
+        description="Manage workspace configuration, members, and settings."
+      />
 
-      <div className="max-w-2xl space-y-6">
-        <WorkspaceSettings />
+      <div className="max-w-2xl">
+        <div className="space-y-6">
+          <WorkspaceSettings />
 
-        <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
+          <VMConfigSection />
 
-        <DeleteWorkspace
-          workspaceSlug={workspace.slug}
-          workspaceName={workspace.name}
-        />
+          <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
+
+          {workspace.userRole === "OWNER" && (
+            <DeleteWorkspace
+              workspaceSlug={workspace.slug}
+              workspaceName={workspace.name}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,16 +1,22 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { WebhookService } from "@/services/github/WebhookService";
+import { getServiceConfig } from "@/config/services";
+import {
+  getGithubWebhookCallbackUrl,
+  getStakgraphWebhookCallbackUrl,
+} from "@/lib/url";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
-
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -31,20 +37,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's GitHub username and PAT using the reusable utility
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id);
-    if (!githubCreds) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "No GitHub credentials found for user",
-        },
-        { status: 400 },
-      );
-    }
-    const { username, pat } = githubCreds;
-
-    // Resolve Swarm
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
@@ -103,15 +95,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const creds = await getGithubUsernameAndPAT(session.user.id);
     const dataApi = {
       repo_url: final_repo_url,
-      username,
-      pat,
+      username: creds?.username,
+      pat: creds?.pat,
+      callback_url: getStakgraphWebhookCallbackUrl(request),
     };
 
-    const stakgraphUrl = `https://${swarm.name}:7799`;
+    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
 
-    // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: "/ingest_async",
@@ -120,7 +113,18 @@ export async function POST(request: NextRequest) {
       data: dataApi,
     });
 
-    // If success, update repository status to SYNCED
+    try {
+      const callbackUrl = getGithubWebhookCallbackUrl(request);
+      const webhookService = new WebhookService(getServiceConfig("github"));
+      await webhookService.ensureRepoWebhook({
+        userId: session.user.id,
+        workspaceId: repoWorkspaceId,
+        repositoryUrl: final_repo_url,
+        callbackUrl,
+      });
+    } catch (error) {
+      console.error(`Error ensuring repo webhook: ${error}`);
+    }
     let finalStatus = repository.status;
     if (
       apiResult.ok &&
@@ -136,7 +140,6 @@ export async function POST(request: NextRequest) {
       finalStatus = RepositoryStatus.SYNCED;
     }
 
-    // ts-expect-error
     if (apiResult?.data?.request_id) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
@@ -155,88 +158,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error ingesting code:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to ingest code" },
-      { status: 500 },
-    );
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get("id");
-  const swarmId = searchParams.get("swarmId");
-  const workspaceId = searchParams.get("workspaceId");
-
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    if (!id) {
-      return NextResponse.json(
-        { success: false, message: "Missing required fields: id" },
-        { status: 400 },
-      );
-    }
-
-    // Get user's GitHub username and PAT using the reusable utility
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id);
-    if (!githubCreds) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "No GitHub credentials found for user",
-        },
-        { status: 400 },
-      );
-    }
-    // const { username, pat } = githubCreds;
-
-    // Resolve Swarm
-    const where: Record<string, string> = {};
-    if (swarmId) {
-      where.swarmId = swarmId;
-    }
-    if (!swarmId && workspaceId) {
-      where.workspaceId = workspaceId;
-    }
-    const swarm = await db.swarm.findFirst({ where });
-
-    if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
-    }
-    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL or API key not set" },
-        { status: 400 },
-      );
-    }
-
-    const stakgraphUrl = `https://${swarm.name}:7799`;
-
-    // Proxy to stakgraph microservice
-    const apiResult = await swarmApiRequest({
-      swarmUrl: stakgraphUrl,
-      endpoint: `/status/${id}`,
-      method: "GET",
-      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
-    });
-
-    return NextResponse.json(
-      {
-        apiResult,
-      },
-      { status: apiResult.status },
-    );
-  } catch {
     return NextResponse.json(
       { success: false, message: "Failed to ingest code" },
       { status: 500 },

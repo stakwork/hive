@@ -12,6 +12,7 @@ import {
   FastForward,
   Rewind,
   RefreshCw,
+  Zap,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -57,6 +58,13 @@ export default function ServicesForm({
       icon: <TestTube className="w-4 h-4 text-muted-foreground" />,
       placeholder: "npm test",
       description: "test command",
+    },
+    e2eTest: {
+      key: "e2eTest",
+      label: "E2E Test Command",
+      icon: <Zap className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npx playwright test",
+      description: "end-to-end test command",
     },
     preStart: {
       key: "preStart",
@@ -131,7 +139,13 @@ export default function ServicesForm({
   ) => {
     const updatedServices = data.map((svc, i) =>
       i === idx
-        ? { ...svc, scripts: { ...svc.scripts, [scriptKey]: value } }
+        ? {
+            ...svc,
+            scripts: {
+              ...(svc.scripts || {}),
+              [scriptKey]: value,
+            } as ServiceDataConfig["scripts"],
+          }
         : svc,
     );
     onChange(updatedServices);
@@ -145,7 +159,10 @@ export default function ServicesForm({
       if (i === idx) {
         return {
           ...svc,
-          scripts: { ...svc.scripts, [scriptKey]: "" },
+          scripts: {
+            ...(svc.scripts || {}),
+            [scriptKey]: "",
+          } as ServiceDataConfig["scripts"],
         };
       }
       return svc;
@@ -159,9 +176,15 @@ export default function ServicesForm({
   ) => {
     const updatedServices = data.map((svc, i) => {
       if (i === idx) {
-        const updatedScripts = { ...svc.scripts };
-        delete updatedScripts[scriptKey];
-        return { ...svc, scripts: updatedScripts };
+        const updatedScripts = { ...(svc.scripts || {}) } as Record<
+          string,
+          string
+        >;
+        delete updatedScripts[scriptKey as string];
+        return {
+          ...svc,
+          scripts: updatedScripts as unknown as ServiceDataConfig["scripts"],
+        };
       }
       return svc;
     });
@@ -284,7 +307,7 @@ export default function ServicesForm({
                   <Input
                     id={`service-${scriptConfigs.start.key}-${idx}`}
                     placeholder={scriptConfigs.start.placeholder}
-                    value={svc.scripts.start}
+                    value={svc.scripts?.start ?? ""}
                     onChange={(e) =>
                       handleServiceScriptChange(idx, "start", e.target.value)
                     }
@@ -293,7 +316,7 @@ export default function ServicesForm({
                     required
                   />
 
-                  {svc.scripts.install !== undefined && (
+                  {svc.scripts?.install !== undefined && (
                     <>
                       <div className="flex items-center gap-2 mt-3 justify-between">
                         <div className="flex items-center gap-2">
@@ -318,7 +341,7 @@ export default function ServicesForm({
                       <Input
                         id={`service-${scriptConfigs.install.key}-${idx}`}
                         placeholder={scriptConfigs.install.placeholder}
-                        value={svc.scripts.install || ""}
+                        value={svc.scripts?.install || ""}
                         onChange={(e) =>
                           handleServiceScriptChange(
                             idx,
@@ -336,7 +359,7 @@ export default function ServicesForm({
                     .filter(([key]) => key !== "start" && key !== "install")
                     .map(([key, config]) => {
                       if (
-                        svc.scripts[
+                        (svc.scripts || {})[
                           key as keyof ServiceDataConfig["scripts"]
                         ] === undefined
                       ) {
@@ -372,7 +395,7 @@ export default function ServicesForm({
                             id={`service-${key}-${idx}`}
                             placeholder={config.placeholder}
                             value={
-                              svc.scripts[
+                              (svc.scripts || {})[
                                 key as keyof ServiceDataConfig["scripts"]
                               ] || ""
                             }
@@ -393,8 +416,9 @@ export default function ServicesForm({
                   {Object.entries(scriptConfigs).some(
                     ([key]) =>
                       key !== "start" &&
-                      svc.scripts[key as keyof ServiceDataConfig["scripts"]] ===
-                        undefined,
+                      (svc.scripts || {})[
+                        key as keyof ServiceDataConfig["scripts"]
+                      ] === undefined,
                   ) && (
                     <div className="mt-4">
                       <DropdownMenu>

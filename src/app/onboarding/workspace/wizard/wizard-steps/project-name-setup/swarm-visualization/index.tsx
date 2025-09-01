@@ -25,21 +25,18 @@ const DELAY_MS = 7000;
 
 // ---------- Data ----------
 const nodes: NodeDef[] = [
-  { id: "redis", name: "Redis", version: "", x: 180, y: 80, icon: "📦" },
-  { id: "neo4j", name: "Neo4j", version: "latest", x: 400, y: 200, icon: "🔵" },
-  { id: "elastic", name: "Elastic", version: "8.11.1", x: 180, y: 320, icon: "🟡" },
-  { id: "boltwall", name: "BoltWall", version: "v0.0.180", x: 620, y: 120, icon: "⚡" },
-  { id: "jarvis", name: "Jarvis", version: "v0.2.67", x: 620, y: 280, icon: "🧠" },
-  { id: "navfiber", name: "NavFiber", version: "v0.1.840", x: 840, y: 200, icon: "🔍" },
+  { id: "neo4j", name: "Neo4j", version: "5.19.0", x: 400, y: 200, icon: "🔵" },
+  { id: "boltwall", name: "BoltWall", version: ":8444", x: 350, y: 50, icon: "⚡" },
+  { id: "jarvis", name: "Jarvis", version: ":6000", x: 150, y: 200, icon: "🧠" },
+  { id: "repo2graph", name: "Repo2Graph", version: ":3355", x: 850, y: 120, icon: "📊" },
+  { id: "stakgraph", name: "StakGraph", version: ":7799", x: 850, y: 280, icon: "📈" },
 ];
 
 const connections: Connection[] = [
-  { from: "redis", to: "neo4j" },
-  { from: "neo4j", to: "elastic" },
-  { from: "neo4j", to: "boltwall" },
-  { from: "neo4j", to: "jarvis" },
-  { from: "jarvis", to: "navfiber" },
+  { from: "jarvis", to: "neo4j" },
   { from: "boltwall", to: "jarvis" },
+  { from: "repo2graph", to: "neo4j" },
+  { from: "stakgraph", to: "neo4j" },
 ];
 
 // ---------- Responsive hook ----------
@@ -64,6 +61,7 @@ function useElementSize<T extends HTMLElement>() {
 }
 
 export const SwarmVisualization = () => {
+  const [visibleNodes, setVisibleNodes] = useState<string[]>([]);
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
   const [nextNode, setNextNode] = useState<string | null>(nodes[0]?.id ?? null);
   const indexRef = useRef<number>(0);
@@ -73,19 +71,28 @@ export const SwarmVisualization = () => {
   const scaleX = boxSize.width > 0 ? boxSize.width / BASE_W : 1;
   const scaleY = (boxSize.width * BASE_H) / BASE_W > 0 ? (boxSize.width * BASE_H) / BASE_W / BASE_H : 1; // same as scaleX; left explicit in case you change aspect rules later
 
-  // Highlight cycle
+  // Node appearance and highlight cycle
   useEffect(() => {
     if (nodes.length === 0) return;
 
     const interval = setInterval(() => {
-      const prevIndex = indexRef.current;
-      const nextIndex = (prevIndex + 1) % nodes.length;
+      const currentIndex = indexRef.current;
+      const currentNodeId = nodes[currentIndex]?.id;
 
-      setHighlightedNodes((prev) => {
-        const id = nodes[prevIndex].id;
-        return prev.includes(id) ? prev : [...prev, id];
-      });
+      if (currentNodeId) {
+        // Make the current node visible
+        setVisibleNodes((prev) => {
+          return prev.includes(currentNodeId) ? prev : [...prev, currentNodeId];
+        });
 
+        // Highlight the current node
+        setHighlightedNodes((prev) => {
+          return prev.includes(currentNodeId) ? prev : [...prev, currentNodeId];
+        });
+      }
+
+      // Set next node for preview
+      const nextIndex = (currentIndex + 1) % nodes.length;
       setNextNode(nodes[nextIndex]?.id ?? null);
       indexRef.current = nextIndex;
     }, DELAY_MS);
@@ -94,6 +101,7 @@ export const SwarmVisualization = () => {
   }, []);
 
   // Helpers
+  const isNodeVisible = (nodeId: string) => visibleNodes.includes(nodeId);
   const isNodeHighlighted = (nodeId: string) => highlightedNodes.includes(nodeId);
   const isNodeConnected = (nodeId: string) =>
     highlightedNodes.some((hid) =>
@@ -105,6 +113,8 @@ export const SwarmVisualization = () => {
   const isNextCandidate = (nodeId: string) => nodeId === nextNode;
   const isConnectionHighlighted = (c: Connection) =>
     highlightedNodes.includes(c.from) || highlightedNodes.includes(c.to);
+  const isConnectionVisible = (c: Connection) =>
+    visibleNodes.includes(c.from) && visibleNodes.includes(c.to);
 
   const getConnectionPath = (from: string, to: string): string => {
     const a = nodes.find((n) => n.id === from);
@@ -146,20 +156,26 @@ export const SwarmVisualization = () => {
               </feMerge>
             </filter>
           </defs>
-          {connections.map((c) => (
-            <path
-              key={`${c.from}-${c.to}`}
-              d={getConnectionPath(c.from, c.to)}
-              stroke={isConnectionHighlighted(c) ? "lime" : "#475569"}
-              strokeWidth={isConnectionHighlighted(c) ? 3 : 2}
-              fill="none"
-              className="transition-all duration-500 ease-in-out"
-              filter={isConnectionHighlighted(c) ? "url(#glow)" : "none"}
-            />
-          ))}
+          {connections.map((c) => {
+            if (!isConnectionVisible(c)) return null;
+
+            return (
+              <path
+                key={`${c.from}-${c.to}`}
+                d={getConnectionPath(c.from, c.to)}
+                stroke={isConnectionHighlighted(c) ? "lime" : "#475569"}
+                strokeWidth={isConnectionHighlighted(c) ? 3 : 2}
+                fill="none"
+                className="transition-all duration-500 ease-in-out"
+                filter={isConnectionHighlighted(c) ? "url(#glow)" : "none"}
+              />
+            );
+          })}
         </svg>
 
         {nodes.map((node) => {
+          if (!isNodeVisible(node.id)) return null;
+
           const width = CARD_W * scaleX;
           const height = CARD_H * scaleY; // same ratio here
           const left = node.x * scaleX - width / 2;

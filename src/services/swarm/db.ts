@@ -30,6 +30,7 @@ interface SaveOrUpdateSwarmParams {
   repositoryDescription?: string;
   repositoryUrl?: string;
   swarmApiKey?: string;
+  swarmPassword?: string;
   poolName?: string;
   services?: ServiceConfig[]; // Use ServiceConfig[]
   swarmId?: string;
@@ -55,6 +56,7 @@ export const select = {
   repositoryDescription: true,
   repositoryUrl: true,
   swarmApiKey: true,
+  swarmPassword: true,
   poolApiKey: true,
   poolName: true,
   services: true,
@@ -97,6 +99,10 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.swarmApiKey !== undefined)
     data.swarmApiKey = JSON.stringify(
       encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
+    );
+  if (params.swarmPassword !== undefined)
+    data.swarmPassword = JSON.stringify(
+      encryptionService.encryptField("swarmPassword", params.swarmPassword),
     );
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
@@ -153,6 +159,12 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
         params.swarmApiKey !== undefined
           ? JSON.stringify(
               encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
+            )
+          : undefined,
+      swarmPassword:
+        params.swarmPassword !== undefined
+          ? JSON.stringify(
+              encryptionService.encryptField("swarmPassword", params.swarmPassword),
             )
           : undefined,
       poolName: params.poolName || "",

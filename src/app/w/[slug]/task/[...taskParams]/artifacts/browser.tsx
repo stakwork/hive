@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   Monitor,
   RefreshCw,
@@ -9,96 +9,31 @@ import {
   Circle,
   Square,
   Target,
-  Copy,
+  FlaskConical,
+  Bug,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
+import { TestManagerModal } from "./TestManagerModal";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import Prism from "prismjs";
-import "prismjs/components/prism-javascript";
-import "./prism-dark-plus.css";
-
-interface PlaywrightTestModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  playwrightTest: string;
-}
-
-function PlaywrightTestModal({
-  isOpen,
-  onClose,
-  playwrightTest,
-}: PlaywrightTestModalProps) {
-  const [copied, setCopied] = useState(false);
-  const codeRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (isOpen && playwrightTest) {
-      // Wait for the DOM element to be rendered
-      const timeoutId = setTimeout(() => {
-        if (codeRef.current) {
-          Prism.highlightElement(codeRef.current);
-        }
-      }, 50);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [playwrightTest, isOpen]);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(playwrightTest);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Failed to copy to clipboard:", error);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent
-        className="w-[98vw] h-[70vh] flex flex-col"
-        style={{ width: "94vw", maxWidth: "1200px" }}
-      >
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center justify-between">
-            Generated Playwright Test
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopy}
-              className="flex items-center gap-2 mr-6"
-            >
-              <Copy className="w-4 h-4" />
-              {copied ? "Copied!" : "Copy Test"}
-            </Button>
-          </DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex-1 min-h-0 overflow-auto">
-            <pre className="text-sm bg-background/50 p-4 rounded border">
-              <code ref={codeRef} className="language-javascript">
-                {playwrightTest}
-              </code>
-            </pre>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+  TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import { DebugOverlay } from "@/components/DebugOverlay";
+import { useDebugSelection } from "@/hooks/useDebugSelection";
 
 export function BrowserArtifactPanel({
   artifacts,
   ide,
+  onDebugMessage,
+  onUserJourneySave,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
+  onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
+  onUserJourneySave?: (filename: string, generatedCode: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -122,6 +57,16 @@ export function BrowserArtifactPanel({
     generatedPlaywrightTest,
     closePlaywrightModal,
   } = useStaktrak(activeContent?.url);
+
+  // Use debug selection hook with iframeRef from staktrak
+  const {
+    debugMode,
+    isSubmittingDebug,
+    setDebugMode,
+    handleDebugElement,
+    handleDebugSelection: handleDebugSelectionHook,
+  } = useDebugSelection({ onDebugMessage, iframeRef });
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
@@ -150,17 +95,35 @@ export function BrowserArtifactPanel({
     }
   };
 
+  // Tab change handler
+  const handleTabChange = (newTab: number) => {
+    setActiveTab(newTab);
+    if (debugMode) {
+      setDebugMode(false);
+    }
+  };
+
+  // Wrapper to pass artifacts and activeTab to the hook's handleDebugSelection
+  const handleDebugSelection = async (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => {
+    await handleDebugSelectionHook(x, y, width, height, artifacts, activeTab);
+  };
+
   if (artifacts.length === 0) return null;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-0 min-w-0 flex flex-col">
       {artifacts.length > 1 && (
         <div className="border-b bg-muted/20">
           <div className="flex overflow-x-auto">
             {artifacts.map((artifact, index) => (
               <button
                 key={artifact.id}
-                onClick={() => setActiveTab(index)}
+                onClick={() => handleTabChange(index)}
                 className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                   activeTab === index
                     ? "border-primary text-primary bg-background"
@@ -174,7 +137,7 @@ export function BrowserArtifactPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0 min-w-0">
         {artifacts.map((artifact, index) => {
           const content = artifact.content as BrowserContent;
           const isActive = activeTab === index;
@@ -196,67 +159,130 @@ export function BrowserArtifactPanel({
                   </div>
                   <div className="flex items-center gap-1">
                     {isSetup && isRecording && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleAssertionToggle}
-                        className={`h-8 w-8 p-0 ${
-                          isAssertionMode
-                            ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
-                            : "hover:bg-accent hover:text-accent-foreground"
-                        }`}
-                        title={
-                          isAssertionMode
-                            ? "Disable assertion mode"
-                            : "Enable assertion mode"
-                        }
-                      >
-                        <Target className="w-4 h-4" />
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleAssertionToggle}
+                              className={`h-8 w-8 p-0 ${
+                                isAssertionMode
+                                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              <Target className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {isAssertionMode
+                              ? "Disable assertion mode"
+                              : "Enable assertion mode"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                     {isSetup && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRecordToggle}
-                        className={`h-8 w-8 p-0 ${
-                          isRecording
-                            ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
-                            : "hover:bg-accent hover:text-accent-foreground"
-                        }`}
-                        title={
-                          isRecording ? "Stop recording" : "Start recording"
-                        }
-                      >
-                        {isRecording ? (
-                          <Square className="w-4 h-4" />
-                        ) : (
-                          <Circle className="w-4 h-4" />
-                        )}
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleRecordToggle}
+                              className={`h-8 w-8 p-0 ${
+                                isRecording
+                                  ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              {isRecording ? (
+                                <Square className="w-4 h-4" />
+                              ) : (
+                                <Circle className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {isRecording ? "Stop recording" : "Start recording"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleTabOut(tabUrl)}
-                      className="h-8 w-8 p-0"
-                      title="Open in new tab"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRefresh}
-                      className="h-8 w-8 p-0"
-                      title="Refresh"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </Button>
+                    {!onUserJourneySave && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIsTestModalOpen(true)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <FlaskConical className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Tests</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {!onUserJourneySave && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={debugMode ? "default" : "ghost"}
+                              size="sm"
+                              onClick={handleDebugElement}
+                              className="h-8 w-8 p-0"
+                              title="Debug Element"
+                            >
+                              <Bug className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            Debug Element
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleTabOut(tabUrl)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Open in new tab
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleRefresh}
+                            className="h-8 w-8 p-0"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Refresh</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </div>
               )}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
@@ -264,16 +290,29 @@ export function BrowserArtifactPanel({
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                 />
+                {/* Debug overlay - only active for the current tab */}
+                {isActive && (
+                  <DebugOverlay
+                    isActive={debugMode}
+                    isSubmitting={isSubmittingDebug}
+                    onDebugSelection={handleDebugSelection}
+                  />
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      <PlaywrightTestModal
-        isOpen={showPlaywrightModal}
-        onClose={closePlaywrightModal}
-        playwrightTest={generatedPlaywrightTest}
+      <TestManagerModal
+        isOpen={isTestModalOpen || showPlaywrightModal}
+        onClose={() => {
+          setIsTestModalOpen(false);
+          if (showPlaywrightModal) closePlaywrightModal();
+        }}
+        generatedCode={generatedPlaywrightTest}
+        initialTab={showPlaywrightModal ? "generated" : "saved"}
+        onUserJourneySave={onUserJourneySave}
       />
     </div>
   );

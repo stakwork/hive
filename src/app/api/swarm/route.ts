@@ -5,9 +5,11 @@ import {
   SWARM_DEFAULT_INSTANCE_TYPE,
   getSwarmVanityAddress,
 } from "@/lib/constants";
+import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -53,13 +55,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate workspace access - ensure user has admin permissions to create swarms
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 },
+      );
+    }
+
+    if (!workspaceAccess.canAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only workspace owners and admins can create swarms",
+        },
+        { status: 403 },
+      );
+    }
+
     const vanity_address = getSwarmVanityAddress(name);
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
     const env = SWARM_DEFAULT_ENV_VARS;
 
     await saveOrUpdateSwarm({
       workspaceId,
-      name: vanity_address,
+      name: name,
       instanceType: instance_type,
       status: SwarmStatus.PENDING,
       repositoryName: repositoryName || "",
@@ -73,11 +94,15 @@ export async function POST(request: NextRequest) {
 
     const thirdPartyName = `${name.toLowerCase()}-Swarm`;
 
+    // Generate a secure password for the swarm
+    const swarmPassword = generateSecurePassword(20);
+
     const apiResponse = await swarmService.createSwarm({
       vanity_address,
       name: thirdPartyName,
       instance_type,
       env,
+      password: swarmPassword,
     });
 
     const swarm_id = apiResponse?.data?.swarm_id;
@@ -86,6 +111,7 @@ export async function POST(request: NextRequest) {
       swarmUrl: `https://${vanity_address}/api`,
       status: SwarmStatus.PENDING,
       swarmId: swarm_id,
+      swarmPassword: swarmPassword,
     });
 
     return NextResponse.json({
@@ -139,6 +165,35 @@ export async function PUT(request: NextRequest) {
           message: "Missing required fields: swarmId, envVars, services",
         },
         { status: 400 },
+      );
+    }
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Missing required field: workspaceId",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Validate workspace access - ensure user has admin permissions to update swarms
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 },
+      );
+    }
+
+    if (!workspaceAccess.canAdmin) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Only workspace owners and admins can update swarms",
+        },
+        { status: 403 },
       );
     }
 

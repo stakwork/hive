@@ -8,20 +8,12 @@ const prisma = new PrismaClient();
 const encryption = EncryptionService.getInstance();
 
 async function logAccounts() {
-  const accounts = await prisma.account.findMany({
-    select: {
-      id: true,
-      userId: true,
-      provider: true,
-      providerAccountId: true,
-      scope: true,
-      access_token: true,
-    },
-  });
+  const accounts = await prisma.account.findMany({});
 
   console.log("\n=== ACCOUNTS (access_token) ===");
   for (const a of accounts) {
     try {
+      console.log(a);
       const token = a.access_token ?? null;
       const decrypted = token
         ? encryption.decryptField("access_token", token)
@@ -31,6 +23,12 @@ async function logAccounts() {
       );
       console.log(`  scope: ${a.scope || "(none)"}`);
       console.log(`  access_token (decrypted): ${decrypted}`);
+      const rt = a.refresh_token ?? null;
+      const rtDec = rt ? encryption.decryptField("refresh_token", rt) : null;
+      console.log(`  refresh_token (decrypted): ${rtDec}`);
+      const idt = a.id_token ?? null;
+      const idtDec = idt ? encryption.decryptField("id_token", idt) : null;
+      console.log(`  id_token (decrypted): ${idtDec}`);
     } catch (err) {
       console.log(
         `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider} providerAccountId=${a.providerAccountId}`,
@@ -41,9 +39,7 @@ async function logAccounts() {
 }
 
 async function logUsers() {
-  const users = await prisma.user.findMany({
-    select: { id: true, email: true, role: true },
-  });
+  const users = await prisma.user.findMany({});
 
   console.log("\n=== USERS ===");
   for (const u of users) {
@@ -66,6 +62,7 @@ async function logGitHubAuths() {
     console.log(
       `[GITHUB] userId=${a.userId} username=${a.githubUsername} scopes=${(a.scopes || []).join(",")} organizationsHash=${a.organizationsHash} updatedAt=${a.updatedAt.toISOString()}`,
     );
+    console.log(a);
   }
 }
 
@@ -81,6 +78,7 @@ async function logWorkspaces() {
   console.log("\n=== WORKSPACES (stakworkApiKey) ===");
   for (const w of workspaces) {
     try {
+      console.log(w);
       const key = w.stakworkApiKey ?? null;
       const decrypted = key
         ? encryption.decryptField("stakworkApiKey", key)
@@ -122,6 +120,7 @@ async function logSwarms() {
   console.log("\n=== SWARMS (keys, env vars, status) ===");
   for (const s of swarms) {
     try {
+      console.log(s);
       const swarmKey = s.swarmApiKey ?? null;
       const decryptedKey = swarmKey
         ? encryption.decryptField("swarmApiKey", swarmKey)
@@ -214,6 +213,20 @@ async function logRepositories() {
   }
 }
 
+async function logUserWorkspaces() {
+  const userWorkspaces = await prisma.user.findMany({});
+
+  console.log("\n=== USER WORKSPACES ===");
+  for (const uw of userWorkspaces) {
+    console.log(uw);
+  }
+}
+
+async function logSessionDb() {
+  const session = await prisma.session.findMany({});
+  console.log(session);
+}
+
 async function main() {
   await prisma.$connect();
   await logAccounts();
@@ -222,6 +235,8 @@ async function main() {
   await logRepositories();
   await logSwarms();
   await logWorkspaces();
+  await logUserWorkspaces();
+  await logSessionDb();
 }
 
 if (require.main === module) {

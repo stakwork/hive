@@ -141,17 +141,17 @@ export function getSwarmVanityAddress(name: string) {
 
 // Language support for onboarding
 import {
-  SiReact,
-  SiPython,
-  SiGo,
-  SiRubyonrails,
-  SiTypescript,
-  SiSwift,
-  SiKotlin,
-  SiRust,
-  SiOpenjdk,
   SiAngular,
-  SiSvelte
+  SiGo,
+  SiKotlin,
+  SiOpenjdk,
+  SiPython,
+  SiReact,
+  SiRubyonrails,
+  SiRust,
+  SiSvelte,
+  SiSwift,
+  SiTypescript
 } from 'react-icons/si';
 
 type TSupportedLanguage = {
