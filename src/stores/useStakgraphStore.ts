@@ -22,6 +22,8 @@ const initialFormData: StakgraphSettings = {
   swarmSecretAlias: "",
   swarmApiKey: "",
   poolName: "",
+  poolCpu: "2",
+  poolMemory: "8Gi",
   environmentVariables: [],
   services: [],
   containerFiles: {},
@@ -133,6 +135,8 @@ export const useStakgraphStore = create<StakgraphStore>()(
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",
               poolName: settings.poolName || "",
+              poolCpu: settings.poolCpu || "2",
+              poolMemory: settings.poolMemory || "8Gi",
               environmentVariables: settings.environmentVariables || [],
               services: settings.services || [],
               status: settings.status,
@@ -268,6 +272,8 @@ export const useStakgraphStore = create<StakgraphStore>()(
           swarmUrl: state.formData.swarmUrl.trim(),
           swarmSecretAlias: state.formData.swarmSecretAlias.trim(),
           poolName: state.formData.poolName.trim(),
+          poolCpu: state.formData.poolCpu,
+          poolMemory: state.formData.poolMemory,
           environmentVariables: state.envVars.map((env) => ({
             name: env.name,
             value: env.value,
@@ -428,6 +434,12 @@ export const useStakgraphStore = create<StakgraphStore>()(
       const newErrors = { ...state.errors };
       if (data.poolName !== undefined && newErrors.poolName) {
         delete newErrors.poolName;
+      }
+      if (data.poolCpu !== undefined && newErrors.poolCpu) {
+        delete newErrors.poolCpu;
+      }
+      if (data.poolMemory !== undefined && newErrors.poolMemory) {
+        delete newErrors.poolMemory;
       }
       if (Object.keys(newErrors).length !== Object.keys(state.errors).length) {
         set({ errors: newErrors });
