@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TestTube, FunctionSquare, Globe, Loader2, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
@@ -24,7 +30,9 @@ export function TestCoverageCard() {
       setIsLoading(true);
       setError(undefined);
 
-      const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+      const response = await fetch(
+        `/api/tests/coverage?workspaceId=${workspaceId}`,
+      );
       const result = await response.json();
 
       if (!response.ok) {
@@ -37,7 +45,9 @@ export function TestCoverageCard() {
         setError(result.message || "No coverage data available");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch test coverage");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch test coverage",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -47,8 +57,8 @@ export function TestCoverageCard() {
     fetchTestCoverage();
   }, [workspaceId, fetchTestCoverage]);
   const getPercentageColor = (percent: number) => {
-    if (percent >= 80) return "text-green-600 border-green-200 bg-green-50";
-    if (percent >= 60) return "text-yellow-600 border-yellow-200 bg-yellow-50";
+    if (percent >= 70) return "text-green-600 border-green-200 bg-green-50";
+    if (percent >= 15) return "text-yellow-600 border-yellow-200 bg-yellow-50";
     return "text-red-600 border-red-200 bg-red-50";
   };
 
@@ -93,9 +103,7 @@ export function TestCoverageCard() {
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">
-              {error}
-            </p>
+            <p className="text-sm text-muted-foreground">{error}</p>
           </div>
         </CardContent>
       </Card>
@@ -110,9 +118,7 @@ export function TestCoverageCard() {
             <TestTube className="h-5 w-5 text-blue-500" />
             <span>Test Coverage</span>
           </CardTitle>
-          <CardDescription>
-            Code coverage analysis.
-          </CardDescription>
+          <CardDescription>Code coverage analysis.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
@@ -146,18 +152,23 @@ export function TestCoverageCard() {
                   <FunctionSquare className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Unit Tests</span>
                 </div>
-                <Badge variant="outline" className={getPercentageColor(data.unit_tests.percent || 0)}>
+                <Badge
+                  variant="outline"
+                  className={getPercentageColor(data.unit_tests.percent || 0)}
+                >
                   {(data.unit_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
-              
+
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.unit_tests.percent || 0)}`}
-                  style={{ width: `${Math.min(data.unit_tests.percent || 0, 100)}%` }}
+                  style={{
+                    width: `${Math.min(data.unit_tests.percent || 0, 100)}%`,
+                  }}
                 />
               </div>
-              
+
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{data.unit_tests.covered || 0} covered</span>
                 <span>{data.unit_tests.total || 0} total</span>
@@ -173,18 +184,25 @@ export function TestCoverageCard() {
                   <Globe className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Integration Tests</span>
                 </div>
-                <Badge variant="outline" className={getPercentageColor(data.integration_tests.percent || 0)}>
+                <Badge
+                  variant="outline"
+                  className={getPercentageColor(
+                    data.integration_tests.percent || 0,
+                  )}
+                >
                   {(data.integration_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
-              
+
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.integration_tests.percent || 0)}`}
-                  style={{ width: `${Math.min(data.integration_tests.percent || 0, 100)}%` }}
+                  style={{
+                    width: `${Math.min(data.integration_tests.percent || 0, 100)}%`,
+                  }}
                 />
               </div>
-              
+
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{data.integration_tests.covered || 0} covered</span>
                 <span>{data.integration_tests.total || 0} total</span>
@@ -200,18 +218,23 @@ export function TestCoverageCard() {
                   <Target className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">End to End Tests</span>
                 </div>
-                <Badge variant="outline" className={getPercentageColor(data.e2e_tests.percent || 0)}>
+                <Badge
+                  variant="outline"
+                  className={getPercentageColor(data.e2e_tests.percent || 0)}
+                >
                   {(data.e2e_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
-              
+
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.e2e_tests.percent || 0)}`}
-                  style={{ width: `${Math.min(data.e2e_tests.percent || 0, 100)}%` }}
+                  style={{
+                    width: `${Math.min(data.e2e_tests.percent || 0, 100)}%`,
+                  }}
                 />
               </div>
-              
+
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{data.e2e_tests.covered || 0} covered</span>
                 <span>{data.e2e_tests.total || 0} total</span>
