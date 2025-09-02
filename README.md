@@ -97,4 +97,3 @@ NEXTAUTH_SECRET="your-jwt-secret"
 GITHUB_CLIENT_ID="your-github-client-id"  
 GITHUB_CLIENT_SECRET="your-github-client-secret"
 ```
-

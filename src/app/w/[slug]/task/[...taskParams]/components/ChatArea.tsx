@@ -11,6 +11,7 @@ import {
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -25,6 +26,7 @@ interface ChatAreaProps {
   hasNonFormArtifacts?: boolean;
   isChainVisible?: boolean;
   lastLogLine?: string;
+  logs?: LogEntry[];
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
@@ -39,6 +41,7 @@ export function ChatArea({
   hasNonFormArtifacts = false,
   isChainVisible = false,
   lastLogLine = "",
+  logs = [],
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
   workflowStatus,
@@ -117,6 +120,7 @@ export function ChatArea({
 
       {/* Input Bar */}
       <ChatInput
+        logs={logs}
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}

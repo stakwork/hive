@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 
 interface ChatInputProps {
+  logs: LogEntry[];
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   isLoading?: boolean;
@@ -17,6 +19,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({
+  logs,
   onSend,
   disabled = false,
   isLoading = false,
@@ -35,7 +38,8 @@ export function ChatInput({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Allow sending if we have either text or a pending debug attachment
-    if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled) return;
+    if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled)
+      return;
 
     const message = input.trim();
     setInput("");
@@ -47,7 +51,7 @@ export function ChatInput({
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{mode}</span>
         <span>|</span>
-        <WorkflowStatusBadge status={workflowStatus} />
+        <WorkflowStatusBadge logs={logs} status={workflowStatus} />
       </div>
 
       {/* Debug attachment display */}
@@ -72,7 +76,12 @@ export function ChatInput({
           autoFocus
           disabled={disabled}
         />
-        <Button type="submit" disabled={(!input.trim() && !pendingDebugAttachment) || isLoading || disabled}>
+        <Button
+          type="submit"
+          disabled={
+            (!input.trim() && !pendingDebugAttachment) || isLoading || disabled
+          }
+        >
           {isLoading ? "Sending..." : "Send"}
         </Button>
       </form>
