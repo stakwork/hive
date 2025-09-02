@@ -1,6 +1,7 @@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Eye, EyeOff } from "lucide-react";
 import { EnvironmentData, FormSectionProps } from "../types";
 import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
@@ -49,6 +50,14 @@ export default function EnvironmentForm({
     onChange({ poolName: value });
   };
 
+  const handlePoolCpuChange = (value: string) => {
+    onChange({ poolCpu: value });
+  };
+
+  const handlePoolMemoryChange = (value: string) => {
+    onChange({ poolMemory: value });
+  };
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold mb-2">Environment</h3>
@@ -69,6 +78,60 @@ export default function EnvironmentForm({
         <p className="text-xs text-muted-foreground">
           The name of the pool to use for your Stakgraph configuration
         </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="poolCpu">CPU</Label>
+          <Select
+            value={data.poolCpu}
+            onValueChange={handlePoolCpuChange}
+            disabled={loading}
+          >
+            <SelectTrigger className={errors.poolCpu ? "border-destructive" : ""}>
+              <SelectValue placeholder="Select CPU" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0.5">0.5 CPU</SelectItem>
+              <SelectItem value="1">1 CPU</SelectItem>
+              <SelectItem value="2">2 CPU</SelectItem>
+              <SelectItem value="4">4 CPU</SelectItem>
+              <SelectItem value="8">8 CPU</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.poolCpu && (
+            <p className="text-sm text-destructive">{errors.poolCpu}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            CPU allocation for tasks in this pool
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="poolMemory">Memory</Label>
+          <Select
+            value={data.poolMemory}
+            onValueChange={handlePoolMemoryChange}
+            disabled={loading}
+          >
+            <SelectTrigger className={errors.poolMemory ? "border-destructive" : ""}>
+              <SelectValue placeholder="Select Memory" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1Gi">1 Gi</SelectItem>
+              <SelectItem value="2Gi">2 Gi</SelectItem>
+              <SelectItem value="4Gi">4 Gi</SelectItem>
+              <SelectItem value="8Gi">8 Gi</SelectItem>
+              <SelectItem value="16Gi">16 Gi</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.poolMemory && (
+            <p className="text-sm text-destructive">{errors.poolMemory}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Memory allocation for tasks in this pool
+          </p>
+        </div>
       </div>
 
       <div className="space-y-3">

@@ -32,6 +32,8 @@ interface SaveOrUpdateSwarmParams {
   swarmApiKey?: string;
   swarmPassword?: string;
   poolName?: string;
+  poolCpu?: string;
+  poolMemory?: string;
   services?: ServiceConfig[]; // Use ServiceConfig[]
   swarmId?: string;
   swarmSecretAlias?: string;
@@ -59,6 +61,8 @@ export const select = {
   swarmPassword: true,
   poolApiKey: true,
   poolName: true,
+  poolCpu: true,
+  poolMemory: true,
   services: true,
   swarmSecretAlias: true,
   wizardStep: true,
@@ -105,6 +109,8 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       encryptionService.encryptField("swarmPassword", params.swarmPassword),
     );
   if (params.poolName !== undefined) data.poolName = params.poolName;
+  if (params.poolCpu !== undefined) data.poolCpu = params.poolCpu;
+  if (params.poolMemory !== undefined) data.poolMemory = params.poolMemory;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.defaultBranch !== undefined)
     data.defaultBranch = params.defaultBranch;
@@ -168,6 +174,8 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
             )
           : undefined,
       poolName: params.poolName || "",
+      poolCpu: params.poolCpu || "2",
+      poolMemory: params.poolMemory || "8Gi",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",
       wizardStep: params.wizardStep,
