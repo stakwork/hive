@@ -13,6 +13,7 @@ import {
   WORKSPACE_SLUG_PATTERNS,
   WORKSPACE_ERRORS,
   WORKSPACE_PERMISSION_LEVELS,
+  WORKSPACE_LIMITS,
 } from "@/lib/constants";
 import { EncryptionService } from "@/lib/encryption";
 import { mapWorkspaceMembers, mapWorkspaceMember } from "@/lib/mappers/workspace-member";
@@ -40,6 +41,15 @@ export async function createWorkspace(
   const slugValidation = validateWorkspaceSlug(data.slug);
   if (!slugValidation.isValid) {
     throw new Error(slugValidation.error!);
+  }
+
+  // Check workspace limit for the user
+  const existingWorkspacesCount = await db.workspace.count({
+    where: { ownerId: data.ownerId, deleted: false },
+  });
+
+  if (existingWorkspacesCount >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER) {
+    throw new Error(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
   }
 
   // Check if the slug already exists

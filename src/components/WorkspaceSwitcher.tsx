@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { WorkspaceWithRole } from "@/types/workspace";
-import { Building2, ChevronsUpDown, Plus } from "lucide-react";
+import { Building2, ChevronsUpDown, Plus, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { WORKSPACE_LIMITS } from "@/lib/constants";
 
 interface WorkspaceSwitcherProps {
   // Legacy props for backward compatibility
@@ -48,12 +49,19 @@ export function WorkspaceSwitcher({
     }
   };
 
+  // Check if user is at workspace limit
+  const isAtLimit = workspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
+
+
   const handleCreateWorkspace = () => {
+    if (isAtLimit) {
+      // Don't navigate if at limit - this prevents the error flow
+      return;
+    }
 
     localStorage.removeItem("repoUrl");
     // Default behavior: navigate to workspace creation
     router.push("/onboarding/workspace");
-
   };
 
   // Loading state
@@ -175,14 +183,32 @@ export function WorkspaceSwitcher({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={handleCreateWorkspace}
-            className="flex items-center gap-2 p-2"
+            disabled={isAtLimit}
+            className={`flex items-center gap-2 p-2 ${
+              isAtLimit ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
           >
-            <div className="flex items-center justify-center w-6 h-6 rounded-md border border-dashed">
-              <Plus className="w-4 h-4" />
+            <div className={`flex items-center justify-center w-6 h-6 rounded-md ${
+              isAtLimit ? 'border border-muted bg-muted' : 'border border-dashed'
+            }`}>
+              {isAtLimit ? (
+                <Lock className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
             </div>
 
-            <div className="font-medium text-sm text-muted-foreground">
-              Create new workspace
+            <div className="flex-1">
+              <div className={`font-medium text-sm ${
+                isAtLimit ? 'text-muted-foreground' : 'text-muted-foreground'
+              }`}>
+                {isAtLimit ? 'Workspace limit reached' : 'Create new workspace'}
+              </div>
+              {isAtLimit && (
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {workspaces.length}/{WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER} workspaces used
+                </div>
+              )}
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>
