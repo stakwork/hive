@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TestTube, FunctionSquare, Globe, Loader2, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
@@ -30,9 +24,7 @@ export function TestCoverageCard() {
       setIsLoading(true);
       setError(undefined);
 
-      const response = await fetch(
-        `/api/tests/coverage?workspaceId=${workspaceId}`,
-      );
+      const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
       const result = await response.json();
 
       if (!response.ok) {
@@ -45,9 +37,7 @@ export function TestCoverageCard() {
         setError(result.message || "No coverage data available");
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch test coverage",
-      );
+      setError(err instanceof Error ? err.message : "Failed to fetch test coverage");
     } finally {
       setIsLoading(false);
     }
@@ -76,9 +66,7 @@ export function TestCoverageCard() {
             <TestTube className="h-5 w-5 text-blue-500" />
             <span>Test Coverage</span>
           </CardTitle>
-          <CardDescription>
-            Code coverage analysis from your test suite
-          </CardDescription>
+          <CardDescription>Code coverage analysis from your test suite</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -97,9 +85,7 @@ export function TestCoverageCard() {
             <TestTube className="h-5 w-5 text-blue-500" />
             <span>Test Coverage</span>
           </CardTitle>
-          <CardDescription>
-            Code coverage analysis from your test suite
-          </CardDescription>
+          <CardDescription>Code coverage analysis from your test suite</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
@@ -122,9 +108,7 @@ export function TestCoverageCard() {
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">
-              No coverage data available.
-            </p>
+            <p className="text-sm text-muted-foreground">No coverage data available.</p>
           </div>
         </CardContent>
       </Card>
@@ -138,9 +122,7 @@ export function TestCoverageCard() {
           <TestTube className="h-5 w-5 text-blue-500" />
           <span>Test Coverage</span>
         </CardTitle>
-        <CardDescription>
-          Code coverage analysis from your test suite
-        </CardDescription>
+        <CardDescription>Code coverage analysis from your test suite</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
@@ -152,10 +134,7 @@ export function TestCoverageCard() {
                   <FunctionSquare className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Unit Tests</span>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={getPercentageColor(data.unit_tests.percent || 0)}
-                >
+                <Badge variant="outline" className={getPercentageColor(data.unit_tests.percent || 0)}>
                   {(data.unit_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
@@ -184,12 +163,7 @@ export function TestCoverageCard() {
                   <Globe className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Integration Tests</span>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={getPercentageColor(
-                    data.integration_tests.percent || 0,
-                  )}
-                >
+                <Badge variant="outline" className={getPercentageColor(data.integration_tests.percent || 0)}>
                   {(data.integration_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
@@ -218,10 +192,7 @@ export function TestCoverageCard() {
                   <Target className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">End to End Tests</span>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={getPercentageColor(data.e2e_tests.percent || 0)}
-                >
+                <Badge variant="outline" className={getPercentageColor(data.e2e_tests.percent || 0)}>
                   {(data.e2e_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
