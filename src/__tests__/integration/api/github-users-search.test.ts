@@ -14,8 +14,8 @@ vi.mock("next-auth/next", () => ({
 // Mock axios for GitHub API calls
 vi.mock("axios");
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
-const mockAxios = axios as vi.Mocked<typeof axios>;
+const mockGetServerSession = getServerSession as any;
+const mockAxios = axios as any;
 
 describe("GitHub Users Search API Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();

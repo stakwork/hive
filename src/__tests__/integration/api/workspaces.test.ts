@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/workspaces/route";
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth/next";
