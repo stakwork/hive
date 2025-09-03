@@ -58,7 +58,9 @@ export const useProjectLogWebSocket = (
 
         const messageData = data?.message;
 
-        if ((messageData.type === "on_step_start" ||
+        if (
+          messageData &&
+          (messageData.type === "on_step_start" ||
             messageData.type === "on_step_complete")
         ) {
           // Skip empty messages to keep the current thinking log visible
