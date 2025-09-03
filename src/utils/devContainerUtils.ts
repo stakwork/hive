@@ -191,7 +191,7 @@ services:
 }
 
 export function dockerfileContent() {
-  return `FROM ghcr.io/stakwork/staklink-js:v0.1.1
+  return `FROM ghcr.io/stakwork/staklink-js:v0.1.2
 `;
 }
 

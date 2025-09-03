@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import type { User, Workspace, WorkspaceMember } from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
+import { Session } from "next-auth";
 
 // Test data factories for creating consistent test data
 
@@ -243,7 +244,7 @@ export const workspaceAssertions = {
  */
 export const mockData = {
   /**
-   * Generates a mock workspace
+   * Generates a mock workspace for unit tests (returns formatted response object)
    */
   workspace(overrides: Record<string, unknown> = {}) {
     return {
@@ -252,11 +253,49 @@ export const mockData = {
       description: "Mock description",
       slug: "mock-workspace",
       ownerId: "user-123",
-      createdAt: new Date("2024-01-01"),
-      updatedAt: new Date("2024-01-01"),
-      stakworkApiKey: null,
+      createdAt: "2024-01-01T00:00:00.000Z",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+      userRole: "OWNER" as const,
+      memberCount: 1,
       ...overrides,
     };
+  },
+
+  /**
+   * Generates a mock workspace response for workspace resolution tests
+   */
+  workspaceResponse(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "ws-123",
+      name: "Mock Workspace",
+      description: null,
+      slug: "mock-workspace",
+      ownerId: "user-123",
+      createdAt: "2024-01-01T00:00:00.000Z",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+      userRole: "OWNER" as const,
+      memberCount: 1,
+      ...overrides,
+    };
+  },
+
+  /**
+   * Generates multiple workspaces for testing scenarios
+   */
+  workspaces(count: number, overrides: Record<string, unknown> = []) {
+    const roles = ["OWNER", "ADMIN", "DEVELOPER", "PM", "STAKEHOLDER", "VIEWER"] as const;
+    return Array.from({ length: count }, (_, i) => ({
+      id: `ws-${i + 1}`,
+      name: `Workspace ${i + 1}`,
+      description: null,
+      slug: `workspace-${i + 1}`,
+      ownerId: i === 0 ? "user-123" : `user-${i + 1}`,
+      createdAt: `2024-01-0${i + 1}T00:00:00.000Z`,
+      updatedAt: `2024-01-0${i + 1}T00:00:00.000Z`,
+      userRole: roles[i % roles.length],
+      memberCount: i + 2,
+      ...(Array.isArray(overrides) && overrides[i] ? overrides[i] : {}),
+    }));
   },
 
   /**
@@ -302,6 +341,22 @@ export const mockData = {
       createdAt: new Date("2024-01-01"),
       updatedAt: new Date("2024-01-01"),
       ...overrides,
+    };
+  },
+
+  /**
+   * Generates a mock NextAuth session for testing
+   */
+  session(userId: string, overrides: Record<string, unknown> = {}): Session {
+    return {
+      user: {
+        id: userId,
+        name: "Test User",
+        email: "test@example.com",
+        image: null,
+        ...overrides,
+      },
+      expires: "2024-12-31T00:00:00.000Z",
     };
   },
 };
