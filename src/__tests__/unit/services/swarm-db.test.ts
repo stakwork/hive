@@ -8,10 +8,16 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
   let workspace: { id: string };
 
   beforeEach(async () => {
-    // Create test workspace
+    // Clean up any existing test data first
+    await db.swarm.deleteMany();
+    await db.workspace.deleteMany();
+    await db.user.deleteMany();
+
+    // Create test workspace with unique email
+    const uniqueEmail = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
     const user = await db.user.create({
       data: {
-        email: "test@example.com",
+        email: uniqueEmail,
         name: "Test User",
       },
     });
@@ -19,7 +25,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
     workspace = await db.workspace.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
+        slug: `test-workspace-${Date.now()}`,
         ownerId: user.id,
       },
     });
