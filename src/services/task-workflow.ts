@@ -334,17 +334,27 @@ async function callStakworkAPI(params: {
   };
 
   // Get workflow ID (replicating workflow selection logic)
-  const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
-  
   let workflowId: string;
-  if (mode === "live") {
-    workflowId = stakworkWorkflowIds[0];
-  } else if (mode === "unit") {
-    workflowId = stakworkWorkflowIds[2];
-  } else if (mode === "integration") {
-    workflowId = stakworkWorkflowIds[2];
+  
+  if (mode === "project-updates") {
+    // Use dedicated project updates workflow
+    if (!config.STAKWORK_PROJECT_UPDATES_WORKFLOW_ID) {
+      throw new Error("STAKWORK_PROJECT_UPDATES_WORKFLOW_ID is not configured");
+    }
+    workflowId = config.STAKWORK_PROJECT_UPDATES_WORKFLOW_ID;
   } else {
-    workflowId = stakworkWorkflowIds[1] || stakworkWorkflowIds[0]; // default to test mode or first
+    // Use regular task workflows
+    const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
+    
+    if (mode === "live") {
+      workflowId = stakworkWorkflowIds[0];
+    } else if (mode === "unit") {
+      workflowId = stakworkWorkflowIds[2];
+    } else if (mode === "integration") {
+      workflowId = stakworkWorkflowIds[2];
+    } else {
+      workflowId = stakworkWorkflowIds[1] || stakworkWorkflowIds[0]; // default to test mode or first
+    }
   }
 
   // Build Stakwork payload (replicating StakworkWorkflowPayload structure)
