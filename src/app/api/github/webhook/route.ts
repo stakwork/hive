@@ -178,7 +178,8 @@ export async function POST(request: NextRequest) {
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
-  const apiResult: AsyncSyncResult = await triggerAsyncSync(
+
+    const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarmHost,
       decryptedSwarmApiKey,
       repository.repositoryUrl,

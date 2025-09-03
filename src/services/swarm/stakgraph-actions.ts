@@ -5,7 +5,7 @@ type Creds = { username?: string; pat?: string };
 export interface AsyncSyncResult {
   ok: boolean;
   status: number;
-  data?: { request_id?: string; [k: string]: unknown };
+  data?: { request_id?: string;[k: string]: unknown };
 }
 
 export async function triggerSync(
@@ -35,20 +35,26 @@ export async function triggerAsyncSync(
   repoUrl: string,
   creds?: Creds,
   callbackUrl?: string,
-) {
+): Promise<AsyncSyncResult> {
   console.log("===Trigger AsyncSync was hit");
   const stakgraphUrl = `https://${swarmHost}:7799`;
   const data: Record<string, string> = { repo_url: repoUrl };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
   if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
-  return swarmApiRequest({
+  const result = await swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync_async",
     method: "POST",
     apiKey,
     data,
   });
+
+  return {
+    ok: result.ok,
+    status: result.status,
+    data: result.data as { request_id?: string;[k: string]: unknown } | undefined,
+  };
 }
 
 export async function triggerIngestAsync(
