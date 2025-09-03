@@ -40,6 +40,8 @@ interface IPoolManagerService {
     envVars: Array<{ name: string; value: string }>,
     currentEnvVars: Array<{ name: string; value: string; masked?: boolean }>,
     containerFiles: Record<string, DevContainerFile>,
+    poolCpu: string,
+    poolMemory: string,
   ) => Promise<void>;
 }
 
@@ -89,6 +91,8 @@ export class PoolManagerService
     envVars: Array<{ name: string; value: string }>,
     currentEnvVars: Array<{ name: string; value: string; masked?: boolean }>,
     containerFiles: Record<string, DevContainerFile>,
+    poolCpu: string | undefined,
+    poolMemory: string | undefined,
   ): Promise<void> {
     return updatePoolDataApi(
       poolName,
@@ -96,6 +100,8 @@ export class PoolManagerService
       envVars,
       currentEnvVars,
       containerFiles,
+      poolCpu,
+      poolMemory,
     );
   }
 }
