@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-interface LogEntry {
+export interface LogEntry {
   timestamp: string;
   projectId: string;
   chatId: string;
@@ -58,9 +58,7 @@ export const useProjectLogWebSocket = (
 
         const messageData = data?.message;
 
-        if (
-          messageData &&
-          (messageData.type === "on_step_start" ||
+        if ((messageData.type === "on_step_start" ||
             messageData.type === "on_step_complete")
         ) {
           // Skip empty messages to keep the current thinking log visible
@@ -76,7 +74,6 @@ export const useProjectLogWebSocket = (
           };
 
           addLogEntry(logEntry);
-
           console.log("Project Log:", logEntry);
         }
       };

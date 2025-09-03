@@ -33,6 +33,8 @@ const stakgraphSettingsSchema = z.object({
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
   swarmApiKey: z.string().optional(),
   poolName: z.string().min(1, "Pool name is required"),
+  poolCpu: z.string().optional(),
+  poolMemory: z.string().optional(),
   description: z.string().optional(),
   containerFiles: z.record(z.string()).optional().default({}),
   environmentVariables: z
@@ -146,6 +148,8 @@ export async function GET(
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
+        poolCpu: swarm.poolCpu || "2",
+        poolMemory: swarm.poolMemory || "8Gi",
         environmentVariables:
           typeof environmentVariables === "string"
             ? (() => {
@@ -283,6 +287,8 @@ export async function PUT(
       swarmSecretAlias: settings.swarmSecretAlias,
       swarmApiKey: settings.swarmApiKey,
       poolName: settings.poolName,
+      poolCpu: settings.poolCpu,
+      poolMemory: settings.poolMemory,
       services: settings.services,
       environmentVariables: settings.environmentVariables,
       containerFiles: settings.containerFiles,

@@ -47,8 +47,8 @@ export function TestCoverageCard() {
     fetchTestCoverage();
   }, [workspaceId, fetchTestCoverage]);
   const getPercentageColor = (percent: number) => {
-    if (percent >= 80) return "text-green-600 border-green-200 bg-green-50";
-    if (percent >= 60) return "text-yellow-600 border-yellow-200 bg-yellow-50";
+    if (percent >= 70) return "text-green-600 border-green-200 bg-green-50";
+    if (percent >= 15) return "text-yellow-600 border-yellow-200 bg-yellow-50";
     return "text-red-600 border-red-200 bg-red-50";
   };
 
@@ -66,9 +66,7 @@ export function TestCoverageCard() {
             <TestTube className="h-5 w-5 text-blue-500" />
             <span>Test Coverage</span>
           </CardTitle>
-          <CardDescription>
-            Code coverage analysis from your test suite
-          </CardDescription>
+          <CardDescription>Code coverage analysis from your test suite</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -87,15 +85,11 @@ export function TestCoverageCard() {
             <TestTube className="h-5 w-5 text-blue-500" />
             <span>Test Coverage</span>
           </CardTitle>
-          <CardDescription>
-            Code coverage analysis from your test suite
-          </CardDescription>
+          <CardDescription>Code coverage analysis from your test suite</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">
-              {error}
-            </p>
+            <p className="text-sm text-muted-foreground">{error}</p>
           </div>
         </CardContent>
       </Card>
@@ -110,15 +104,11 @@ export function TestCoverageCard() {
             <TestTube className="h-5 w-5 text-blue-500" />
             <span>Test Coverage</span>
           </CardTitle>
-          <CardDescription>
-            Code coverage analysis.
-          </CardDescription>
+          <CardDescription>Code coverage analysis.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">
-              No coverage data available.
-            </p>
+            <p className="text-sm text-muted-foreground">No coverage data available.</p>
           </div>
         </CardContent>
       </Card>
@@ -132,9 +122,7 @@ export function TestCoverageCard() {
           <TestTube className="h-5 w-5 text-blue-500" />
           <span>Test Coverage</span>
         </CardTitle>
-        <CardDescription>
-          Code coverage analysis from your test suite
-        </CardDescription>
+        <CardDescription>Code coverage analysis from your test suite</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
@@ -150,14 +138,16 @@ export function TestCoverageCard() {
                   {(data.unit_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
-              
+
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.unit_tests.percent || 0)}`}
-                  style={{ width: `${Math.min(data.unit_tests.percent || 0, 100)}%` }}
+                  style={{
+                    width: `${Math.min(data.unit_tests.percent || 0, 100)}%`,
+                  }}
                 />
               </div>
-              
+
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{data.unit_tests.covered || 0} covered</span>
                 <span>{data.unit_tests.total || 0} total</span>
@@ -177,14 +167,16 @@ export function TestCoverageCard() {
                   {(data.integration_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
-              
+
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.integration_tests.percent || 0)}`}
-                  style={{ width: `${Math.min(data.integration_tests.percent || 0, 100)}%` }}
+                  style={{
+                    width: `${Math.min(data.integration_tests.percent || 0, 100)}%`,
+                  }}
                 />
               </div>
-              
+
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{data.integration_tests.covered || 0} covered</span>
                 <span>{data.integration_tests.total || 0} total</span>
@@ -204,14 +196,16 @@ export function TestCoverageCard() {
                   {(data.e2e_tests.percent || 0).toFixed(1)}%
                 </Badge>
               </div>
-              
+
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.e2e_tests.percent || 0)}`}
-                  style={{ width: `${Math.min(data.e2e_tests.percent || 0, 100)}%` }}
+                  style={{
+                    width: `${Math.min(data.e2e_tests.percent || 0, 100)}%`,
+                  }}
                 />
               </div>
-              
+
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{data.e2e_tests.covered || 0} covered</span>
                 <span>{data.e2e_tests.total || 0} total</span>
