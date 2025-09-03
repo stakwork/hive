@@ -79,39 +79,48 @@ export async function swarmApiRequest({
   data?: unknown;
 }): Promise<{
   ok: boolean;
-  data?: {
-    request_id?: string;
-  };
+  data?: unknown;
   status: number;
 }> {
   try {
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
+    console.log('swarmhRequestStart')
+
     const headers: Record<string, string> = {
       Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey).toString()}`,
+      "x-api-token": encryptionService.decryptField("swarmApiKey", apiKey),
       "Content-Type": "application/json",
     };
+
+    console.log(url, headers, data, method, apiKey);
+
 
     const response = await fetch(url, {
       method,
       headers,
       ...(data ? { body: JSON.stringify(data) } : {}),
     });
+
+    console.log('swarmhRequestEnd', response)
+
     let responseData: unknown = undefined;
     // Get the text first, then try to parse as JSON
     const responseText = await response.text();
     try {
       responseData = JSON.parse(responseText);
+      console.log("API Response:", responseData);
     } catch (error) {
       console.error("swarmApiRequest JSON error", responseText, error);
       responseData = undefined;
     }
     return {
       ok: response.ok,
-      data: responseData as { request_id?: string },
+      data: responseData,
       status: response.status,
     };
   } catch (error) {
+
     console.error("swarmApiRequest", error);
     return { ok: false, status: 500 };
   }

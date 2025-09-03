@@ -230,15 +230,26 @@ export default function CodeGraphPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
           {/* Header */}
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-foreground">
-              Setting up CodeGraph
-            </h1>
-          </div>
 
-          <div className="flex justify-center">
-            It will take up to 5 minutes to complete the setup.
-          </div>
+          {currentStep === "COMPLETION" ? (
+            <div className="text-center">
+              <h1 className="text-3xl font-bold text-foreground">
+                CodeGraph Setup Complete
+              </h1>
+            </div>
+          ) : (
+            <>
+              <div className="text-center">
+                <h1 className="text-3xl font-bold text-foreground">
+                  Setting up CodeGraph
+                </h1>
+              </div>
+
+              <div className="flex justify-center">
+                It will take up to 5 minutes to complete the setup.
+              </div>
+            </>
+          )}
 
           <WizardStepRenderer
             onNext={handleNext}
