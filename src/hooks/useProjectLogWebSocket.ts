@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-interface LogEntry {
+export interface LogEntry {
   timestamp: string;
   projectId: string;
   chatId: string;
@@ -76,7 +76,6 @@ export const useProjectLogWebSocket = (
           };
 
           addLogEntry(logEntry);
-
           console.log("Project Log:", logEntry);
         }
       };

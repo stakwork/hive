@@ -48,6 +48,8 @@ export interface SwarmSelectResult {
   swarmSecretAlias: string;
   swarmApiKey: string | null;
   poolName: string;
+  poolCpu: string;
+  poolMemory: string;
   environmentVariables: Record<string, string>[];
   services: ServicesConfig[] | string; // string if not parsed yet
   containerFiles: Record<string, string>;

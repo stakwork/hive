@@ -25,6 +25,8 @@ export interface StakgraphSettings {
   swarmSecretAlias: string;
   swarmApiKey?: string;
   poolName: string;
+  poolCpu?: string;
+  poolMemory?: string;
   environmentVariables: EnvironmentVariable[];
   services: ServiceDataConfig[];
   status?: string;
@@ -51,6 +53,8 @@ export interface SwarmData {
 
 export interface EnvironmentData {
   poolName: string;
+  poolCpu: string;
+  poolMemory: string;
   environmentVariables: EnvironmentVariable[];
 }
 
