@@ -54,6 +54,12 @@ const statusConfig = {
     className: "text-red-600",
     iconClassName: "",
   },
+  [WorkflowStatus.CANCELLED]: {
+    label: "Cancelled",
+    icon: XCircle,
+    className: "text-orange-600",
+    iconClassName: "",
+  },
 };
 
 export function WorkflowStatusBadge({

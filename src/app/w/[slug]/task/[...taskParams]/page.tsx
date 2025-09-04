@@ -430,6 +430,7 @@ export default function TaskChatPage() {
                     taskTitle={taskTitle}
                     stakworkProjectId={stakworkProjectId}
                     workspaceSlug={slug}
+                    taskId={currentTaskId}
                   />
                 </div>
               </ResizablePanel>
@@ -461,6 +462,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 stakworkProjectId={stakworkProjectId}
                 workspaceSlug={slug}
+                taskId={currentTaskId}
               />
             </div>
           )}

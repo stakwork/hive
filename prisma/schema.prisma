@@ -762,6 +762,7 @@ enum WorkflowStatus {
   ERROR
   HALTED
   FAILED
+  CANCELLED
 }
 
 enum Priority {

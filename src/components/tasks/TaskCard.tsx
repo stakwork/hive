@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Calendar, User, Sparkles, ExternalLink } from "lucide-react";
+import { Users, Calendar, User, Sparkles, ExternalLink, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -8,7 +8,11 @@ import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatRelativeTime } from "@/lib/utils";
+import { useState } from "react";
+import { WorkflowStatus } from "@/lib/chat";
 
 interface TaskCardProps {
   task: TaskData;
@@ -17,9 +21,49 @@ interface TaskCardProps {
 
 export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
   const router = useRouter();
+  const [isStoppingTask, setIsStoppingTask] = useState(false);
+  const [showStopDialog, setShowStopDialog] = useState(false);
 
   const handleClick = () => {
     router.push(`/w/${workspaceSlug}/task/${task.id}`);
+  };
+
+  const handleStopButtonClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click navigation
+    
+    if (!task.stakworkProjectId || task.workflowStatus !== "IN_PROGRESS") {
+      return;
+    }
+
+    setShowStopDialog(true);
+  };
+
+  const handleConfirmStop = async () => {
+    setIsStoppingTask(true);
+    
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/stop`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Failed to stop task:", error);
+        alert("Failed to stop workflow: " + (error.error || "Unknown error"));
+        return;
+      }
+
+      // Refresh the page to show updated status
+      window.location.reload();
+    } catch (error) {
+      console.error("Error stopping task:", error);
+      alert("Failed to stop workflow. Please try again.");
+    } finally {
+      setIsStoppingTask(false);
+    }
   };
 
 
@@ -59,16 +103,30 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
             </Badge>
           )}
           {task.stakworkProjectId && (
-            <Link
-              href={`https://jobs.stakwork.com/admin/projects/${task.stakworkProjectId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-            >
-              Workflow
-              <ExternalLink className="w-3 h-3" />
-            </Link>
+            <div className="flex items-center gap-1">
+              <Link
+                href={`https://jobs.stakwork.com/admin/projects/${task.stakworkProjectId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
+                Workflow
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+              {task.workflowStatus === WorkflowStatus.IN_PROGRESS && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleStopButtonClick}
+                  disabled={isStoppingTask}
+                  className="h-6 w-6 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                  title="Stop workflow"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                </Button>
+              )}
+            </div>
           )}
           <div className="px-2 py-1 rounded-full border bg-background text-xs">
             <WorkflowStatusBadge status={task.workflowStatus} />
@@ -99,6 +157,17 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
           <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showStopDialog}
+        onOpenChange={setShowStopDialog}
+        title="Stop Workflow"
+        description="Are you sure you want to stop this workflow?"
+        confirmText="Stop"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={handleConfirmStop}
+      />
     </motion.div>
   );
 }

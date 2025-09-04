@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,6 +16,7 @@ import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -37,6 +38,7 @@ interface ChatAreaProps {
   taskTitle?: string | null;
   stakworkProjectId?: number | null;
   workspaceSlug?: string;
+  taskId?: string | null;
 }
 
 export function ChatArea({
@@ -55,9 +57,12 @@ export function ChatArea({
   taskTitle,
   stakworkProjectId,
   workspaceSlug,
+  taskId,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const [isStoppingTask, setIsStoppingTask] = useState(false);
+  const [showStopDialog, setShowStopDialog] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,6 +73,42 @@ export function ChatArea({
       router.push(`/w/${workspaceSlug}/tasks`);
     } else {
       router.back();
+    }
+  };
+
+  const handleStopButtonClick = () => {
+    if (!taskId || !stakworkProjectId || workflowStatus !== WorkflowStatus.IN_PROGRESS) {
+      return;
+    }
+
+    setShowStopDialog(true);
+  };
+
+  const handleConfirmStop = async () => {
+    setIsStoppingTask(true);
+    
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/stop`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Failed to stop task:", error);
+        alert("Failed to stop workflow: " + (error.error || "Unknown error"));
+        return;
+      }
+
+      // Refresh the page to show updated status
+      window.location.reload();
+    } catch (error) {
+      console.error("Error stopping task:", error);
+      alert("Failed to stop workflow. Please try again.");
+    } finally {
+      setIsStoppingTask(false);
     }
   };
 
@@ -120,17 +161,31 @@ export function ChatArea({
                 </AnimatePresence>
               </div>
               
-              {/* Stakwork Project Link */}
+              {/* Stakwork Project Link and Stop Button */}
               {stakworkProjectId && (
-                <Link
-                  href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-shrink-0"
-                >
-                  Workflow
-                  <ExternalLink className="w-3 h-3" />
-                </Link>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Link
+                    href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                  >
+                    Workflow
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                  {workflowStatus === WorkflowStatus.IN_PROGRESS && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleStopButtonClick}
+                      disabled={isStoppingTask}
+                      className="h-6 w-6 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                      title="Stop workflow"
+                    >
+                      <Square className="w-3 h-3 fill-current" />
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>
@@ -202,6 +257,17 @@ export function ChatArea({
         pendingDebugAttachment={pendingDebugAttachment}
         onRemoveDebugAttachment={onRemoveDebugAttachment}
         workflowStatus={workflowStatus}
+      />
+
+      <ConfirmDialog
+        open={showStopDialog}
+        onOpenChange={setShowStopDialog}
+        title="Stop Workflow"
+        description="Are you sure you want to stop this workflow?"
+        confirmText="Stop"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={handleConfirmStop}
       />
     </motion.div>
   );

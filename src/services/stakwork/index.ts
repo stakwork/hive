@@ -99,6 +99,29 @@ export class StakworkService extends BaseServiceClass {
   }
 
   /**
+   * Stop a Stakwork project by project ID
+   * @param projectId - The Stakwork project ID to stop
+   * @returns API response
+   */
+  async stopProject<T = unknown>(projectId: number): Promise<T> {
+    const endpoint = `/projects/${projectId}/stop`;
+    
+    // Compose headers as required by Stakwork - use config.STAKWORK_API_KEY directly like other API routes
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+    };
+
+    // Use the correct HTTP method
+    const client = this.getClient();
+    const requestFn = () => {
+      return client.post<T>(endpoint, {}, headers, this.serviceName);
+    };
+
+    return this.handleRequest(requestFn, `stakworkStopProject ${endpoint}`);
+  }
+
+  /**
    * Generic helper to make requests to the Stakwork API with required headers and payload structure.
    * @param endpoint - API endpoint (e.g., '/projects')
    * @param method - HTTP method (default: 'POST')
