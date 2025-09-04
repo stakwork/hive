@@ -71,6 +71,7 @@ export function BrowserArtifactPanel({
   const handleRecordToggle = () => {
     if (isRecording) {
       stopRecording();
+      setIsTestModalOpen(true);
     } else {
       startRecording();
     }
@@ -304,7 +305,6 @@ export function BrowserArtifactPanel({
         isOpen={isTestModalOpen}
         onClose={() => {
           setIsTestModalOpen(false);
-          if (generatedPlaywrightTest) setGeneratedPlaywrightTest("");
         }}
         generatedCode={generatedPlaywrightTest}
         initialTab={"generated"}
