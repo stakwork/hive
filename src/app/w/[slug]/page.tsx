@@ -1,5 +1,8 @@
 "use client";
 
+import { ConnectRepository } from "@/components/ConnectRepository";
+import { EmptyState, TaskCard } from "@/components/tasks";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -7,29 +10,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Server,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  GitBranch,
-  RefreshCw,
-  Settings,
-  TestTube,
-  Github,
-} from "lucide-react";
-import Link from "next/link";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
-import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
-import { TaskCard, EmptyState } from "@/components/tasks";
 import { VMConfigSection } from "@/components/vm-config";
-import { useEffect, useState } from "react";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { formatRelativeTime } from "@/lib/utils";
 import { TestCoverageData } from "@/types";
+import {
+  Clock,
+  GitBranch,
+  Github,
+  RefreshCw,
+  TestTube
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { GraphComponent } from "./graph";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
@@ -44,7 +39,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchCoverage = async () => {
       if (!workspace?.swarmStatus || workspace.swarmStatus !== "ACTIVE") return;
-      
+
       setCoverageLoading(true);
       try {
         const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
@@ -61,11 +56,11 @@ export default function DashboardPage() {
       }
     };
 
-    if (workspaceId) {
-      fetchCoverage();
-    }
   }, [workspaceId, workspace?.swarmStatus]);
 
+
+
+  console.log(workspace, slug);
 
   return (
     <div className="space-y-6">
@@ -112,8 +107,8 @@ export default function DashboardPage() {
                         workspace.repositories[0].status === "SYNCED"
                           ? "default"
                           : workspace.repositories[0].status === "PENDING"
-                          ? "secondary"
-                          : "destructive"
+                            ? "secondary"
+                            : "destructive"
                       }
                       className="text-xs"
                     >
@@ -197,6 +192,7 @@ export default function DashboardPage() {
           <EmptyState workspaceSlug={slug} />
         )
       )}
+      <GraphComponent />
     </div>
   );
 }

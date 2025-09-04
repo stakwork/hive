@@ -1,23 +1,13 @@
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SupportedLanguages } from "@/lib/constants";
 import { useWizardStore } from "@/stores/useWizardStore";
-import {
-  AlertCircle,
-  ArrowRight,
-  Github,
-} from "lucide-react";
-import { useSession } from "next-auth/react";
+import { AlertCircle, ArrowRight, Github } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -37,7 +27,6 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
     const githubUrlPattern = /^https:\/\/github\.com\/[^\/]+\/[^\/]+(\/.*)?$/;
     return githubUrlPattern.test(url.trim());
   };
-
 
   const handleRepositoryUrlChange = (value: string) => {
     setRepositoryUrl(value);
@@ -76,7 +65,14 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
   const redirectToLogin = () => {
     redirect("/auth/signin");
-  }
+  };
+
+  const logoutAndRedirectToLogin = async () => {
+    await signOut({
+      callbackUrl: "/auth/signin",
+      redirect: true,
+    });
+  };
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
@@ -85,9 +81,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           <Github className="w-8 h-8 text-blue-600 dark:text-blue-300" />
         </div>
         <CardTitle className="text-2xl">Welcome to Code Graph</CardTitle>
-        <CardDescription className="text-lg">
-          Enter your GitHub repository URL to get started
-        </CardDescription>
+        <CardDescription className="text-lg">Enter your GitHub repository URL to get started</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Repository URL Input */}
@@ -103,7 +97,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
               value={repositoryUrl}
               onChange={(e) => handleRepositoryUrlChange(e.target.value)}
               onKeyPress={handleKeyPress}
-              className={`pr-10 ${error ? 'border-red-500 focus:border-red-500' : ''}`}
+              className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
             />
             {error && (
               <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
@@ -115,11 +109,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
         </div>
 
         <div className="flex justify-center">
-          <Button
-            onClick={handleNext}
-            className="px-8 py-3"
-            disabled={!repositoryUrl.trim()}
-          >
+          <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()}>
             Get Started
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
@@ -151,9 +141,15 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           </TooltipProvider>
         </div>
       </CardContent>
-      {!session?.user && <Button className="self-center" variant="outline" onClick={redirectToLogin}>
-        I have an account
-      </Button>}
+      {!session?.user ? (
+        <Button className="self-center" variant="outline" onClick={redirectToLogin}>
+          I have an account
+        </Button>
+      ) : (
+        <Button className="self-center" variant="outline" onClick={logoutAndRedirectToLogin}>
+          Switch account
+        </Button>
+      )}
     </Card>
   );
 };

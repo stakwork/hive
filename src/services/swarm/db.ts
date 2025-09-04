@@ -175,7 +175,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
           : undefined,
       poolName: params.poolName || "",
       poolCpu: params.poolCpu || "2",
-      poolMemory: params.poolMemory || "8Gi",
+      poolMemory: params.poolMemory || "4Gi",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",
       wizardStep: params.wizardStep,

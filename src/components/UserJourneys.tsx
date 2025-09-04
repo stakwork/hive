@@ -9,52 +9,79 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, CheckCircle, Clock, Users, Target } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Plus, Copy, Check, Loader2, ExternalLink } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Artifact, BrowserContent } from "@/lib/chat";
 
-const mockUserJourneys = [
-  {
-    id: 1,
-    title: "New User Onboarding",
-    description: "Complete journey from signup to first task completion",
-    status: "completed",
-    steps: 5,
-    completedSteps: 5,
-    users: 127,
-    target: "Increase conversion rate by 25%",
-    completedAt: "2024-01-15",
-  },
-  {
-    id: 2,
-    title: "Feature Discovery Flow",
-    description: "Guide users through discovering and using key features",
-    status: "completed",
-    steps: 8,
-    completedSteps: 8,
-    users: 89,
-    target: "Improve feature adoption by 40%",
-    completedAt: "2024-01-10",
-  },
-  {
-    id: 3,
-    title: "Workspace Collaboration",
-    description: "Help teams set up and collaborate effectively",
-    status: "completed",
-    steps: 6,
-    completedSteps: 6,
-    users: 156,
-    target: "Increase team collaboration by 30%",
-    completedAt: "2024-01-08",
-  },
-];
+interface E2eTest {
+  node_type: string;
+  ref_id: string;
+  properties: {
+    token_count: number;
+    file: string;
+    test_kind: string;
+    node_key: string;
+    start: number;
+    name: string;
+    end: number;
+    body: string;
+  };
+}
 
 export default function UserJourneys() {
-  const { id } = useWorkspace();
+  const { id, slug } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
+  const [e2eTests, setE2eTests] = useState<E2eTest[]>([]);
+  const [fetchingTests, setFetchingTests] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const fetchE2eTests = useCallback(async () => {
+    if (!slug) return;
+    
+    try {
+      setFetchingTests(true);
+      const response = await fetch(
+        `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
+      );
+      
+      if (!response.ok) {
+        console.error("Failed to fetch e2e tests");
+        return;
+      }
+      
+      const result = await response.json();
+      if (result.success && result.data) {
+        setE2eTests(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching e2e tests:", error);
+    } finally {
+      setFetchingTests(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    if (!frontend) {
+      fetchE2eTests();
+    }
+  }, [frontend, fetchE2eTests]);
+
+  const handleCopyCode = async (code: string, refId: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopiedId(refId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const handleCreateUserJourney = async () => {
     try {
@@ -174,69 +201,88 @@ export default function UserJourneys() {
           />
         </div>
       ) : (
-        <div className="grid gap-6">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-semibold">Completed Journeys</h2>
-            <Badge variant="secondary" className="text-sm">
-              {mockUserJourneys.length} completed
-            </Badge>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {mockUserJourneys.map((journey) => (
-              <Card
-                key={journey.id}
-                className="hover:shadow-md transition-shadow"
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">{journey.title}</CardTitle>
-                      <CardDescription className="mt-2">
-                        {journey.description}
-                      </CardDescription>
-                    </div>
-                    <CheckCircle className="w-5 h-5 text-green-500 mt-1" />
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">
-                      {journey.completedSteps}/{journey.steps} steps
-                    </span>
-                  </div>
-
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-green-500 h-2 rounded-full"
-                      style={{
-                        width: `${(journey.completedSteps / journey.steps) * 100}%`,
-                      }}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-muted-foreground" />
-                      <span>{journey.users} users</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Target className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Target met</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      Completed {journey.completedAt}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>E2E Tests</CardTitle>
+              <CardDescription>
+                End-to-end tests from your codebase
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {fetchingTests ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : e2eTests.length > 0 ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Test Name</TableHead>
+                        <TableHead>File Path</TableHead>
+                        <TableHead className="w-[100px]">Code</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {e2eTests.map((test) => (
+                        <TableRow key={test.ref_id}>
+                          <TableCell className="font-medium">
+                            {test.properties.name}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">
+                                {test.properties.file}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  // Extract repo and path from file path like "stakwork/hive/src/__tests__/e2e/auth.spec.ts"
+                                  const parts = test.properties.file.split('/');
+                                  if (parts.length >= 2) {
+                                    const owner = parts[0];
+                                    const repo = parts[1];
+                                    const filePath = parts.slice(2).join('/');
+                                    // Using HEAD which GitHub redirects to the default branch
+                                    window.open(`https://github.com/${owner}/${repo}/blob/HEAD/${filePath}`, '_blank');
+                                  }
+                                }}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleCopyCode(test.properties.body, test.ref_id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              {copiedId === test.ref_id ? (
+                                <Check className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">
+                    No E2E tests found in your codebase.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
