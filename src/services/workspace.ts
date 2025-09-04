@@ -563,6 +563,11 @@ export function validateWorkspaceSlug(slug: string): {
   isValid: boolean;
   error?: string;
 } {
+  // Check if input is a valid string
+  if (typeof slug !== 'string' || slug === null || slug === undefined) {
+    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
+  }
+
   // Check length
   if (
     slug.length < WORKSPACE_SLUG_PATTERNS.MIN_LENGTH ||
@@ -572,7 +577,8 @@ export function validateWorkspaceSlug(slug: string): {
   }
 
   // Check format (lowercase alphanumeric with hyphens, start/end with alphanumeric)
-  if (!WORKSPACE_SLUG_PATTERNS.VALID.test(slug)) {
+  // Also check for consecutive hyphens
+  if (!WORKSPACE_SLUG_PATTERNS.VALID.test(slug) || slug.includes('--')) {
     return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
   }
 
