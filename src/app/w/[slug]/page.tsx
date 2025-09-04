@@ -28,7 +28,7 @@ import { GraphComponent } from "./graph";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
-  const { tasks } = useWorkspaceTasks(workspaceId, slug, false);
+  const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
   const [testCoverage, setTestCoverage] = useState<TestCoverageData | null>(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
 

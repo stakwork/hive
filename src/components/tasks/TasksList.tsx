@@ -11,9 +11,11 @@ import { Button } from "@/components/ui/button";
 import { FileText, Play } from "lucide-react";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useTaskStats } from "@/hooks/useTaskStats";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
+import { useEffect } from "react";
 
 interface TasksListProps {
   workspaceId: string;
@@ -21,8 +23,14 @@ interface TasksListProps {
 }
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
-  const { tasks, loading, error, pagination, loadMore } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
+  const { waitingForInputCount } = useWorkspace();
+  const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
   const { stats } = useTaskStats(workspaceId);
+
+  // Refresh task list when global notification count changes
+  useEffect(() => {
+    refetch();
+  }, [waitingForInputCount, refetch]);
 
   if (loading && tasks.length === 0) {
     return <LoadingState />;
