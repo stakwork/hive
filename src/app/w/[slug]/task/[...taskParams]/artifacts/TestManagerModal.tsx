@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog as ConfirmDialog,
@@ -19,17 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
-import {
-  Trash2,
-  Play,
-  Save,
-  Pencil,
-  Copy,
-  Check,
-  X,
-  Loader2,
-  RotateCw,
-} from "lucide-react";
+import { Trash2, Play, Save, Pencil, Copy, Check, X, Loader2, RotateCw } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-typescript";
@@ -54,15 +39,8 @@ export function TestManagerModal({
   initialTab,
   onUserJourneySave,
 }: TestManagerModalProps) {
-  const {
-    baseUrl,
-    apiKey,
-    loading: cfgLoading,
-    error: cfgError,
-  } = useSwarmTestsConfig();
-  const [activeTab, setActiveTab] = useState<string>(
-    initialTab ?? (generatedCode ? "generated" : "saved"),
-  );
+  const { baseUrl, apiKey, loading: cfgLoading, error: cfgError } = useSwarmTestsConfig();
+  const [activeTab, setActiveTab] = useState<string>(initialTab ?? (generatedCode ? "generated" : "saved"));
   const [filename, setFilename] = useState<string>("");
   const [editingTest, setEditingTest] = useState<string | null>(null);
   const [newName, setNewName] = useState<string>("");
@@ -174,19 +152,12 @@ export function TestManagerModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent
-        className="w-[98vw] h-[75vh] flex flex-col"
-        style={{ width: "94vw", maxWidth: "1200px" }}
-      >
+      <DialogContent className="w-[98vw] h-[75vh] flex flex-col" style={{ width: "94vw", maxWidth: "1200px" }}>
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>Tests</DialogTitle>
         </DialogHeader>
 
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="flex-1 flex min-h-0 flex-col"
-        >
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex min-h-0 flex-col">
           {!onUserJourneySave && (
             <TabsList>
               <TabsTrigger value="generated" disabled={!generatedCode}>
@@ -197,28 +168,16 @@ export function TestManagerModal({
           )}
 
           <TabsContent value="generated" className="flex-1 min-h-0 mt-2">
-            {cfgLoading && (
-              <div className="mb-2 text-xs text-muted-foreground">
-                Resolving tests endpoint…
-              </div>
-            )}
-            {cfgError && (
-              <div className="mb-2 text-xs text-red-600">{cfgError}</div>
-            )}
+            {cfgLoading && <div className="mb-2 text-xs text-muted-foreground">Resolving tests endpoint…</div>}
+            {cfgError && <div className="mb-2 text-xs text-red-600">{cfgError}</div>}
             <div className="flex items-center gap-2 mb-3">
               <Input
                 placeholder="filename e.g. my-test.spec.js"
                 value={filename}
                 onChange={(e) => setFilename(e.target.value)}
               />
-              <Button
-                onClick={handleSave}
-                disabled={
-                  !filename.trim() || !generatedCode || !baseUrl || saving
-                }
-              >
-                <Save className="w-4 h-4 mr-1" />{" "}
-                {saving ? "Saving…" : "Save Test"}
+              <Button onClick={handleSave} disabled={!filename.trim() || !generatedCode || !baseUrl || saving}>
+                <Save className="w-4 h-4 mr-1" /> {saving ? "Saving…" : "Save Test"}
               </Button>
               <Button variant="outline" onClick={handleCopy}>
                 <Copy className="w-4 h-4 mr-1" /> {copying ? "Copied!" : "Copy"}
@@ -234,14 +193,8 @@ export function TestManagerModal({
           </TabsContent>
 
           <TabsContent value="saved" className="flex-1 min-h-0 mt-2">
-            {cfgLoading && (
-              <div className="mb-2 text-xs text-muted-foreground">
-                Resolving tests endpoint…
-              </div>
-            )}
-            {cfgError && (
-              <div className="mb-2 text-xs text-red-600">{cfgError}</div>
-            )}
+            {cfgLoading && <div className="mb-2 text-xs text-muted-foreground">Resolving tests endpoint…</div>}
+            {cfgError && <div className="mb-2 text-xs text-red-600">{cfgError}</div>}
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm text-muted-foreground">Saved tests</div>
               <div className="flex items-center gap-2">
@@ -265,20 +218,14 @@ export function TestManagerModal({
                       };
                       toast({
                         title: "Run all failed",
-                        description: String(
-                          r.errors || r.error || "Unknown error",
-                        ),
+                        description: String(r.errors || r.error || "Unknown error"),
                         variant: "destructive",
                       });
                     }
                   }}
                   disabled={runningAll || isLoading || testFiles.length === 0}
                 >
-                  {runningAll ? (
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4 mr-1" />
-                  )}
+                  {runningAll ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Play className="w-4 h-4 mr-1" />}
                   {runningAll ? "Running…" : "Run all"}
                 </Button>
               </div>
@@ -286,15 +233,9 @@ export function TestManagerModal({
             <div className="flex-1 min-h-0 border rounded">
               <ScrollArea className="h-full">
                 <div className="divide-y">
-                  {isLoading && (
-                    <div className="p-3 text-sm text-muted-foreground">
-                      Loading...
-                    </div>
-                  )}
+                  {isLoading && <div className="p-3 text-sm text-muted-foreground">Loading...</div>}
                   {!isLoading && testFiles.length === 0 && (
-                    <div className="p-3 text-sm text-muted-foreground">
-                      No tests saved yet.
-                    </div>
+                    <div className="p-3 text-sm text-muted-foreground">No tests saved yet.</div>
                   )}
                   {testFiles.map((t: TestFile) => {
                     const name = t.name;
@@ -311,8 +252,7 @@ export function TestManagerModal({
                                   value={newName}
                                   onChange={(e) => setNewName(e.target.value)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter")
-                                      handleRenameConfirm(name);
+                                    if (e.key === "Enter") handleRenameConfirm(name);
                                     if (e.key === "Escape") {
                                       setEditingTest(null);
                                       setNewName("");
@@ -343,9 +283,7 @@ export function TestManagerModal({
                               </>
                             ) : (
                               <>
-                                <div className="font-medium truncate">
-                                  {name}
-                                </div>
+                                <div className="font-medium truncate">{name}</div>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -359,10 +297,7 @@ export function TestManagerModal({
                                 </Button>
                               </>
                             )}
-                            <div
-                              className="text-xs text-muted-foreground"
-                              title={t.modified || t.created}
-                            >
+                            <div className="text-xs text-muted-foreground" title={t.modified || t.created}>
                               {formatTimestamp(t.modified || t.created)}
                             </div>
                           </div>
@@ -382,10 +317,7 @@ export function TestManagerModal({
                               title="Run"
                               onClick={async () => {
                                 const res = await runTest(name);
-                                if (
-                                  res &&
-                                  (res as { success: boolean }).success
-                                ) {
+                                if (res && (res as { success: boolean }).success) {
                                   toast({
                                     title: "Run completed",
                                     description: name,
@@ -395,8 +327,7 @@ export function TestManagerModal({
                                     error?: unknown;
                                     errors?: unknown;
                                   };
-                                  const desc =
-                                    r.error ?? r.errors ?? "Unknown error";
+                                  const desc = r.error ?? r.errors ?? "Unknown error";
                                   toast({
                                     title: "Run failed",
                                     description: String(desc),
@@ -421,9 +352,7 @@ export function TestManagerModal({
                         </div>
                         {result && (
                           <div className="mt-2 text-xs">
-                            <div
-                              className={`font-semibold ${result.success ? "text-green-600" : "text-red-600"}`}
-                            >
+                            <div className={`font-semibold ${result.success ? "text-green-600" : "text-red-600"}`}>
                               {result.success ? "Success" : "Failed"}
                             </div>
                             {result.output && (
@@ -447,10 +376,7 @@ export function TestManagerModal({
           </TabsContent>
         </Tabs>
       </DialogContent>
-      <ConfirmDialog
-        open={!!pendingDelete}
-        onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
+      <ConfirmDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <ConfirmContent className="sm:max-w-md">
           <ConfirmHeader>
             <ConfirmTitle>Delete test?</ConfirmTitle>

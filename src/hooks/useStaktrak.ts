@@ -1,10 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 
-type StaktrakMessageType =
-  | "staktrak-setup"
-  | "staktrak-results"
-  | "staktrak-selection"
-  | "staktrak-page-navigation";
+type StaktrakMessageType = "staktrak-setup" | "staktrak-results" | "staktrak-selection" | "staktrak-page-navigation";
 
 interface StaktrakMessageData {
   type: StaktrakMessageType;
@@ -98,10 +94,7 @@ interface PlaywrightTrackingData {
   };
 }
 
-function sendCommand(
-  iframeRef: React.RefObject<HTMLIFrameElement | null>,
-  command: StaktrakCommandType,
-) {
+function sendCommand(iframeRef: React.RefObject<HTMLIFrameElement | null>, command: StaktrakCommandType) {
   console.log("Sending command:", command);
   if (iframeRef?.current && iframeRef.current.contentWindow) {
     iframeRef.current.contentWindow.postMessage({ type: command }, "*");
@@ -111,24 +104,18 @@ function sendCommand(
 declare global {
   interface Window {
     PlaywrightGenerator?: {
-      generatePlaywrightTest: (
-        url: string,
-        trackingData: PlaywrightTrackingData,
-      ) => string;
+      generatePlaywrightTest: (url: string, trackingData: PlaywrightTrackingData) => string;
     };
   }
 }
 
 export const useStaktrak = (initialUrl?: string) => {
-  const [currentUrl, setCurrentUrl] = useState<string | null>(
-    initialUrl || null,
-  );
+  const [currentUrl, setCurrentUrl] = useState<string | null>(initialUrl || null);
   const [isSetup, setIsSetup] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isAssertionMode, setIsAssertionMode] = useState(false);
-  const [showPlaywrightModal, setShowPlaywrightModal] = useState(false);
-  const [generatedPlaywrightTest, setGeneratedPlaywrightTest] =
-    useState<string>("");
+
+  const [generatedPlaywrightTest, setGeneratedPlaywrightTest] = useState<string>("");
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -156,17 +143,10 @@ export const useStaktrak = (initialUrl?: string) => {
     sendCommand(iframeRef, "staktrak-disable-selection");
   };
 
-  const closePlaywrightModal = () => {
-    setShowPlaywrightModal(false);
-    setGeneratedPlaywrightTest("");
-  };
-
   function cleanInitialUrl(url: string) {
     // Handle URLs like @https://fq5n7qeb-3000.workspaces.sphinx.chat
     // Extract port number and convert to localhost
-    const workspaceMatch = url.match(
-      /@?https?:\/\/[^-]+-(\d+)\.workspaces\.sphinx\.chat/,
-    );
+    const workspaceMatch = url.match(/@?https?:\/\/[^-]+-(\d+)\.workspaces\.sphinx\.chat/);
     if (workspaceMatch) {
       const port = workspaceMatch[1];
       return `http://localhost:${port}`;
@@ -191,13 +171,11 @@ export const useStaktrak = (initialUrl?: string) => {
             // Generate Playwright test when results are received
             if (window.PlaywrightGenerator && initialUrl) {
               try {
-                const playwrightTest =
-                  window.PlaywrightGenerator.generatePlaywrightTest(
-                    cleanInitialUrl(initialUrl),
-                    staktrakEvent.data.data as PlaywrightTrackingData,
-                  );
+                const playwrightTest = window.PlaywrightGenerator.generatePlaywrightTest(
+                  cleanInitialUrl(initialUrl),
+                  staktrakEvent.data.data as PlaywrightTrackingData,
+                );
                 setGeneratedPlaywrightTest(playwrightTest);
-                setShowPlaywrightModal(true);
               } catch (error) {
                 console.error("Error generating Playwright test:", error);
                 // You might want to show an error message to the user here
@@ -235,8 +213,7 @@ export const useStaktrak = (initialUrl?: string) => {
     stopRecording,
     enableAssertionMode,
     disableAssertionMode,
-    showPlaywrightModal,
     generatedPlaywrightTest,
-    closePlaywrightModal,
+    setGeneratedPlaywrightTest,
   };
 };

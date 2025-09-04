@@ -223,7 +223,7 @@ export default function StakgraphPage() {
                 data={{
                   poolName: formData.poolName,
                   poolCpu: formData.poolCpu || "2",
-                  poolMemory: formData.poolMemory || "8Gi",
+                  poolMemory: formData.poolMemory || "4Gi",
                   environmentVariables: formData.environmentVariables,
                 }}
                 errors={errors}

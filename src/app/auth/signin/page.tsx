@@ -1,13 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
@@ -23,10 +17,7 @@ export default function SignInPage() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
   const [mockUsername, setMockUsername] = useState("");
-  const [providers, setProviders] = useState<Record<
-    string,
-    ClientSafeProvider
-  > | null>(null);
+  const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
 
   // Fetch available providers
   useEffect(() => {
@@ -42,13 +33,13 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (session?.user) {
-
       const user = session.user as { defaultWorkspaceSlug?: string };
 
       if (user.defaultWorkspaceSlug) {
         // User has a default workspace, redirect to their workspace
         router.push(`/w/${user.defaultWorkspaceSlug}`);
       } else {
+        console.log("No default workspace, redirecting to onboarding");
         // User has no workspaces, redirect to onboarding
         router.push("/onboarding/workspace");
       }
@@ -121,12 +112,9 @@ export default function SignInPage() {
 
         <Card className="border-0 shadow-xl bg-card text-card-foreground">
           <CardHeader className="text-center pb-6">
-            <CardTitle className="text-2xl font-bold">
-              Welcome to Hive
-            </CardTitle>
+            <CardTitle className="text-2xl font-bold">Welcome to Hive</CardTitle>
             <CardDescription className="text-base">
-              Sign in to start managing your products with clarity and
-              confidence
+              Sign in to start managing your products with clarity and confidence
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -159,9 +147,7 @@ export default function SignInPage() {
                       <span className="w-full border-t" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Or for development
-                      </span>
+                      <span className="bg-background px-2 text-muted-foreground">Or for development</span>
                     </div>
                   </div>
                 )}
@@ -203,17 +189,11 @@ export default function SignInPage() {
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
                 By continuing, you agree to our{" "}
-                <a
-                  href="#"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
-                >
+                <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">
                   Terms of Service
                 </a>{" "}
                 and{" "}
-                <a
-                  href="#"
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
-                >
+                <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">
                   Privacy Policy
                 </a>
               </p>

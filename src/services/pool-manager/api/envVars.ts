@@ -40,6 +40,8 @@ export async function updatePoolDataApi(
   envVars: Array<{ name: string; value: string }>,
   currentEnvVars: Array<{ name: string; value: string; masked?: boolean }>,
   containerFiles: Record<string, DevContainerFile>,
+  poolCpu: string | undefined,
+  poolMemory: string | undefined,
 ): Promise<void> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}`;
   const currentMap = new Map(
@@ -57,18 +59,12 @@ export async function updatePoolDataApi(
   });
   const body = JSON.stringify({
     env_vars: envVarsForApi,
-    devcontainer_json: Buffer.from(
-      containerFiles["devcontainer_json"].content,
-    ).toString("base64"),
-    dockerfile: Buffer.from(containerFiles["dockerfile"].content).toString(
-      "base64",
-    ),
-    docker_compose_yml: Buffer.from(
-      containerFiles["docker_compose_yml"].content,
-    ).toString("base64"),
-    pm2_config_js: Buffer.from(
-      containerFiles["pm2_config_js"].content,
-    ).toString("base64"),
+    poolCpu: poolCpu,
+    poolMemory: poolMemory,
+    devcontainer_json: Buffer.from(containerFiles["devcontainer_json"].content).toString("base64"),
+    dockerfile: Buffer.from(containerFiles["dockerfile"].content).toString("base64"),
+    docker_compose_yml: Buffer.from(containerFiles["docker_compose_yml"].content).toString("base64"),
+    pm2_config_js: Buffer.from(containerFiles["pm2_config_js"].content).toString("base64"),
   });
 
   const response = await fetch(url, {
