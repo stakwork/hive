@@ -20,7 +20,7 @@ interface TasksListProps {
 }
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
-  const { tasks, loading, error, pagination, loadMore } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
+  const { tasks, loading, error, pagination, loadMore, runningTasksCount } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
 
   if (loading && tasks.length === 0) {
     return <LoadingState />;
@@ -49,9 +49,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             <FileText className="h-5 w-5" />
             Recent Tasks
           </div>
-          <span className="text-sm font-normal text-muted-foreground">
-            {pagination?.totalCount || tasks.length} task{(pagination?.totalCount || tasks.length) !== 1 ? 's' : ''}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-normal text-muted-foreground">
+              {pagination?.totalCount || tasks.length} task{(pagination?.totalCount || tasks.length) !== 1 ? 's' : ''}
+            </span>
+            <span className="text-sm font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
+              {runningTasksCount} running
+            </span>
+          </div>
         </CardTitle>
         <CardDescription>
           Your latest tasks in this workspace

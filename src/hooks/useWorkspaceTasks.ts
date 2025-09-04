@@ -58,6 +58,7 @@ interface UseWorkspaceTasksResult {
   loadMore: () => Promise<void>;
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
   waitingForInputCount: number;
+  runningTasksCount: number;
 }
 
 export function useWorkspaceTasks(
@@ -155,6 +156,9 @@ export function useWorkspaceTasks(
     ? tasks.filter(task => task.hasActionArtifact).length 
     : 0;
 
+  // Calculate count of running tasks
+  const runningTasksCount = tasks.filter(task => task.workflowStatus === 'IN_PROGRESS').length;
+
   // Update store when count changes (only when notifications are enabled)
   useEffect(() => {
     if (includeNotifications && workspaceId) {
@@ -170,5 +174,6 @@ export function useWorkspaceTasks(
     loadMore,
     refetch,
     waitingForInputCount,
+    runningTasksCount,
   };
 }
