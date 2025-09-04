@@ -59,11 +59,21 @@ export class HttpClient {
         } as ApiError;
       }
 
-      const jsonResponse = await response.json();
-
-      console.log("[HttpClient] RESPONSE:", jsonResponse);
-
-      return jsonResponse;
+      // Try to parse JSON, but return null for empty responses or handle non-JSON
+      const responseText = await response.text();
+      if (!responseText.trim()) {
+        return null as T;
+      }
+      
+      try {
+        const jsonResponse = JSON.parse(responseText);
+        console.log("[HttpClient] RESPONSE:", jsonResponse);
+        return jsonResponse;
+      } catch (parseError) {
+        // If it's not JSON, return the text response
+        console.log("[HttpClient] RESPONSE (non-JSON):", responseText);
+        return responseText as any;
+      }
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -132,7 +142,7 @@ export class HttpClient {
       endpoint,
       {
         method: "POST",
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
         headers,
       },
       service,
