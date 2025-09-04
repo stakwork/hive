@@ -14,6 +14,7 @@ import type {
   WorkspaceWithRole,
   WorkspaceRole,
 } from "@/types/workspace";
+import { updateWaitingForInputCount } from "@/stores/useTasksStore";
 
 // Context shape as specified in the requirements
 interface WorkspaceContextType {
@@ -26,6 +27,10 @@ interface WorkspaceContextType {
   // Available workspaces
   workspaces: WorkspaceWithRole[];
 
+  // Task notifications
+  waitingForInputCount: number;
+  notificationsLoading: boolean;
+
   // Loading and error states
   loading: boolean;
   error: string | null;
@@ -34,6 +39,7 @@ interface WorkspaceContextType {
   switchWorkspace: (workspace: WorkspaceWithRole) => void;
   refreshWorkspaces: () => Promise<void>;
   refreshCurrentWorkspace: () => Promise<void>;
+  refreshTaskNotifications: () => Promise<void>;
 
   // Helper methods
   hasAccess: boolean;
@@ -64,6 +70,10 @@ export function WorkspaceProvider({
   const [error, setError] = useState<string | null>(null);
   // Don't persist the loaded slug - start fresh on each mount
   const [currentLoadedSlug, setCurrentLoadedSlug] = useState<string>("");
+  
+  // Task notifications state
+  const [waitingForInputCount, setWaitingForInputCount] = useState<number>(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   // Fetch user's workspaces
   const fetchWorkspaces = useCallback(async (): Promise<
@@ -104,6 +114,39 @@ export function WorkspaceProvider({
       setLoading(false);
     }
   }, [fetchWorkspaces, status]);
+
+  // Fetch task notifications count
+  const fetchTaskNotifications = useCallback(async (workspaceSlug: string) => {
+    if (!workspaceSlug || status !== "authenticated") return;
+    
+    setNotificationsLoading(true);
+    try {
+      const response = await fetch(`/api/workspaces/${workspaceSlug}/tasks/notifications-count`);
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        const count = data.data.waitingForInputCount || 0;
+        setWaitingForInputCount(count);
+        
+        // Also update Zustand store for sidebar compatibility
+        const workspaceId = workspace?.id;
+        if (workspaceId) {
+          updateWaitingForInputCount(workspaceId, count);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch task notifications:', err);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [status, workspace?.id]);
+
+  // Refresh task notifications
+  const refreshTaskNotifications = useCallback(async () => {
+    if (workspace?.slug) {
+      await fetchTaskNotifications(workspace.slug);
+    }
+  }, [fetchTaskNotifications, workspace?.slug]);
 
   // Refresh current workspace - simplified to just re-trigger the effect
   const refreshCurrentWorkspace = useCallback(async () => {
@@ -176,6 +219,9 @@ export function WorkspaceProvider({
 
             setWorkspace(data.workspace);
             setCurrentLoadedSlug(currentSlug); // Track the loaded slug
+            
+            // Fetch task notifications for this workspace
+            await fetchTaskNotifications(currentSlug);
           } catch (err) {
             console.error(`Failed to fetch workspace ${currentSlug}:`, err);
             setError(
@@ -191,6 +237,25 @@ export function WorkspaceProvider({
         fetchCurrentWorkspace();
     }
   }, [pathname, status, initialSlug, currentLoadedSlug]); // Remove workspace from dependencies to prevent loops
+
+  // Refresh notification count when pathname changes (user navigates between pages)
+  useEffect(() => {
+    if (workspace?.slug && status === "authenticated") {
+      fetchTaskNotifications(workspace.slug);
+    }
+  }, [pathname, workspace?.slug, status, fetchTaskNotifications]);
+
+  // Refresh notification count when window regains focus
+  useEffect(() => {
+    if (!workspace?.slug || status !== "authenticated") return;
+
+    const handleFocus = () => {
+      fetchTaskNotifications(workspace.slug);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [workspace?.slug, status, fetchTaskNotifications]);
 
   // Computed values
   const slug = workspace?.slug || "";
@@ -214,6 +279,10 @@ export function WorkspaceProvider({
     // Available workspaces
     workspaces,
 
+    // Task notifications
+    waitingForInputCount,
+    notificationsLoading,
+
     // Loading and error states
     loading,
     error,
@@ -222,6 +291,7 @@ export function WorkspaceProvider({
     switchWorkspace,
     refreshWorkspaces,
     refreshCurrentWorkspace,
+    refreshTaskNotifications,
 
     // Helper methods
     hasAccess,
