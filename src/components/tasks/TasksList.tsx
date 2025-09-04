@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { FileText, Play } from "lucide-react";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useTaskStats } from "@/hooks/useTaskStats";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
@@ -21,8 +22,7 @@ interface TasksListProps {
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const { tasks, loading, error, pagination, loadMore } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
-  
-  const runningTasksCount = tasks.filter(task => task.workflowStatus === "IN_PROGRESS").length;
+  const { stats } = useTaskStats(workspaceId);
 
   if (loading && tasks.length === 0) {
     return <LoadingState />;
@@ -52,14 +52,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             Recent Tasks
           </div>
           <div className="flex items-center gap-4 text-sm">
-            {runningTasksCount > 0 && (
+            {stats?.inProgress && stats.inProgress > 0 && (
               <span className="flex items-center gap-1 font-normal text-green-600">
                 <Play className="h-4 w-4" />
-                {runningTasksCount} running
+                {stats.inProgress} running
               </span>
             )}
             <span className="font-normal text-muted-foreground">
-              {pagination?.totalCount || tasks.length} task{(pagination?.totalCount || tasks.length) !== 1 ? 's' : ''}
+              {stats?.total ?? pagination?.totalCount ?? tasks.length} task{(stats?.total ?? pagination?.totalCount ?? tasks.length) !== 1 ? 's' : ''}
             </span>
           </div>
         </CardTitle>
