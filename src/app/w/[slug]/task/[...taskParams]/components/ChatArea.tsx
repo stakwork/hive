@@ -30,6 +30,7 @@ interface ChatAreaProps {
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
+  taskTitle?: string | null;
 }
 
 export function ChatArea({
@@ -45,6 +46,7 @@ export function ChatArea({
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
   workflowStatus,
+  taskTitle,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +64,15 @@ export function ChatArea({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
     >
+      {/* Task Title Header */}
+      {taskTitle && (
+        <div className="px-4 py-3 border-b bg-muted/20">
+          <h2 className="text-lg font-semibold text-foreground truncate" title={taskTitle}>
+            {taskTitle.length > 80 ? `${taskTitle.slice(0, 80)}...` : taskTitle}
+          </h2>
+        </div>
+      )}
+      
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
         {messages

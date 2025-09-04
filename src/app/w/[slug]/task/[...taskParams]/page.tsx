@@ -56,6 +56,7 @@ export default function TaskChatPage() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(
     taskIdFromUrl,
   );
+  const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
@@ -144,6 +145,11 @@ export default function TaskChatPage() {
           );
           setProjectId(result.data.task.stakworkProjectId.toString());
         }
+
+        // Set task title from API response
+        if (result.data.task?.title) {
+          setTaskTitle(result.data.task.title);
+        }
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
@@ -190,6 +196,13 @@ export default function TaskChatPage() {
       const result = await response.json();
       const newTaskId = result.data.id;
       setCurrentTaskId(newTaskId);
+
+      // Set the task title from the response or fallback to the initial message
+      if (result.data.title) {
+        setTaskTitle(result.data.title);
+      } else {
+        setTaskTitle(msg); // Use the initial message as title fallback
+      }
 
       const newUrl = `/w/${slug}/task/${newTaskId}`;
       // this updates the URL WITHOUT reloading the page
@@ -399,6 +412,7 @@ export default function TaskChatPage() {
                       setPendingDebugAttachment(null)
                     }
                     workflowStatus={workflowStatus}
+                    taskTitle={taskTitle}
                   />
                 </div>
               </ResizablePanel>
@@ -427,6 +441,7 @@ export default function TaskChatPage() {
                 pendingDebugAttachment={pendingDebugAttachment}
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 workflowStatus={workflowStatus}
+                taskTitle={taskTitle}
               />
             </div>
           )}
