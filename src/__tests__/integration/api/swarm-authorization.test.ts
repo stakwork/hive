@@ -85,6 +85,7 @@ describe("Swarm API Authorization Tests", () => {
           name: "Test Workspace",
           slug: `test-ws-${Date.now()}`,
           ownerId: owner.id,
+          stakworkApiKey: "test-stakwork-key",
         },
       });
 
@@ -93,6 +94,7 @@ describe("Swarm API Authorization Tests", () => {
           name: "Other Workspace",
           slug: `other-ws-${Date.now()}`,
           ownerId: unauthorized.id,
+          stakworkApiKey: "test-stakwork-key-2",
         },
       });
 
@@ -150,10 +152,10 @@ describe("Swarm API Authorization Tests", () => {
       const body = JSON.stringify({
         workspaceId,
         name: "test-swarm",
-        repositoryName: "test-repo",
         repositoryUrl: "https://github.com/test/repo",
-        repositoryDescription: "Test repository",
-        repositoryDefaultBranch: "main",
+        instanceType: "L",
+        environmentVariables: [],
+        services: [],
       });
 
       return new NextRequest("http://localhost:3000/api/swarm", {
@@ -473,10 +475,10 @@ function createSwarmRequest(workspaceId: string) {
   const body = JSON.stringify({
     workspaceId,
     name: "test-swarm",
-    repositoryName: "test-repo",
     repositoryUrl: "https://github.com/test/repo",
-    repositoryDescription: "Test repository",
-    repositoryDefaultBranch: "main",
+    instanceType: "L",
+    environmentVariables: [],
+    services: [],
   });
 
   return new NextRequest("http://localhost:3000/api/swarm", {
