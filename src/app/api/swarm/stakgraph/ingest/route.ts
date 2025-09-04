@@ -140,10 +140,10 @@ export async function POST(request: NextRequest) {
       finalStatus = RepositoryStatus.SYNCED;
     }
 
-    if (apiResult?.data?.request_id) {
+    if (apiResult?.data && typeof apiResult.data === "object" && "request_id" in apiResult.data) {
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
-        ingestRefId: apiResult.data?.request_id,
+        ingestRefId: (apiResult.data as { request_id: string }).request_id,
       });
     }
 

@@ -385,6 +385,8 @@ export async function PUT(
               masked?: boolean;
             }>,
             files,
+            settings.poolCpu,
+            settings.poolMemory,
           );
         }
       } catch (err) {
