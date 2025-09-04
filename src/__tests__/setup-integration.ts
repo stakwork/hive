@@ -60,9 +60,9 @@ beforeAll(async () => {
   }
   // Ensure database schema is up to date
   try {
-    execSync("npx prisma db push --accept-data-loss", {
+    execSync("DATABASE_URL=" + TEST_DATABASE_URL + " npx prisma db push --accept-data-loss", {
       stdio: "pipe",
-      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
+      shell: true
     });
   } catch (error) {
     console.error("Failed to setup test database schema:", error);
