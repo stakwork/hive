@@ -16,9 +16,11 @@ import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { Badge } from "@/components/ui/badge";
 
 
 
@@ -64,7 +66,8 @@ const baseNavigationItems = [
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const { slug: workspaceSlug } = useWorkspace();
+  const { slug: workspaceSlug, workspace } = useWorkspace();
+  const { waitingForInputCount: tasksWaitingForInputCount } = useWorkspaceTasks(workspace?.id || null, true);
 
   const canAccessInsights = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
@@ -102,6 +105,8 @@ export function Sidebar({ user }: SidebarProps) {
         <ul className="space-y-2">
           {navigationItems.map((item) => {
             const isActive = isActiveTab(pathname, item.href);
+            const isTasksItem = item.label === "Tasks";
+            const showBadge = isTasksItem && tasksWaitingForInputCount > 0;
 
             return (
               <li key={item.href}>
@@ -115,6 +120,11 @@ export function Sidebar({ user }: SidebarProps) {
                 >
                   <item.icon className="w-4 h-4 mr-2" />
                   {item.label}
+                  {showBadge && (
+                    <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                      {tasksWaitingForInputCount}
+                    </Badge>
+                  )}
                 </Button>
               </li>
             );

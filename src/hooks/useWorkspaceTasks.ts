@@ -56,6 +56,7 @@ interface UseWorkspaceTasksResult {
   pagination: PaginationData | null;
   loadMore: () => Promise<void>;
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
+  waitingForInputCount: number;
 }
 
 export function useWorkspaceTasks(
@@ -148,6 +149,11 @@ export function useWorkspaceTasks(
     refetch();
   }, [refetch]);
 
+  // Calculate count of tasks waiting for input
+  const waitingForInputCount = includeNotifications 
+    ? tasks.filter(task => task.hasActionArtifact).length 
+    : 0;
+
   return {
     tasks,
     loading,
@@ -155,5 +161,6 @@ export function useWorkspaceTasks(
     pagination,
     loadMore,
     refetch,
+    waitingForInputCount,
   };
 }
