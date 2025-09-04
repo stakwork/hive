@@ -58,6 +58,7 @@ export default function TaskChatPage() {
     taskIdFromUrl,
   );
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
+  const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
@@ -157,6 +158,7 @@ export default function TaskChatPage() {
             result.data.task.stakworkProjectId,
           );
           setProjectId(result.data.task.stakworkProjectId.toString());
+          setStakworkProjectId(result.data.task.stakworkProjectId);
         }
 
         // Set task title from API response
@@ -426,6 +428,8 @@ export default function TaskChatPage() {
                     }
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
+                    stakworkProjectId={stakworkProjectId}
+                    workspaceSlug={slug}
                   />
                 </div>
               </ResizablePanel>
@@ -455,6 +459,8 @@ export default function TaskChatPage() {
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 workflowStatus={workflowStatus}
                 taskTitle={taskTitle}
+                stakworkProjectId={stakworkProjectId}
+                workspaceSlug={slug}
               />
             </div>
           )}
