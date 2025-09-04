@@ -16,7 +16,7 @@ import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useTasksStore } from "@/stores/useTasksStore";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -67,7 +67,9 @@ const baseNavigationItems = [
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
   const { slug: workspaceSlug, workspace } = useWorkspace();
-  const { waitingForInputCount: tasksWaitingForInputCount } = useWorkspaceTasks(workspace?.id || null, true);
+  const tasksWaitingForInputCount = useTasksStore(state => 
+    workspace?.id ? state.getWaitingForInputCount(workspace.id) : 0
+  );
 
   const canAccessInsights = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,

@@ -7,6 +7,7 @@ import {
   usePusherConnection,
   TaskTitleUpdateEvent,
 } from "@/hooks/usePusherConnection";
+import { updateWaitingForInputCount } from "@/stores/useTasksStore";
 
 export interface TaskData {
   id: string;
@@ -153,6 +154,13 @@ export function useWorkspaceTasks(
   const waitingForInputCount = includeNotifications 
     ? tasks.filter(task => task.hasActionArtifact).length 
     : 0;
+
+  // Update store when count changes (only when notifications are enabled)
+  useEffect(() => {
+    if (includeNotifications && workspaceId) {
+      updateWaitingForInputCount(workspaceId, waitingForInputCount);
+    }
+  }, [includeNotifications, workspaceId, waitingForInputCount]);
 
   return {
     tasks,
