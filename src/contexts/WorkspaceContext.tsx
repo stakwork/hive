@@ -14,7 +14,6 @@ import type {
   WorkspaceWithRole,
   WorkspaceRole,
 } from "@/types/workspace";
-import { updateWaitingForInputCount } from "@/stores/useTasksStore";
 
 // Context shape as specified in the requirements
 interface WorkspaceContextType {
@@ -128,18 +127,14 @@ export function WorkspaceProvider({
         const count = data.data.waitingForInputCount || 0;
         setWaitingForInputCount(count);
         
-        // Also update Zustand store for sidebar compatibility
-        const workspaceId = workspace?.id;
-        if (workspaceId) {
-          updateWaitingForInputCount(workspaceId, count);
-        }
+        // Note: Zustand store no longer needed - WorkspaceProvider is the single source of truth
       }
     } catch (err) {
       console.error('Failed to fetch task notifications:', err);
     } finally {
       setNotificationsLoading(false);
     }
-  }, [status, workspace?.id]);
+  }, [status]);
 
   // Refresh task notifications
   const refreshTaskNotifications = useCallback(async () => {
