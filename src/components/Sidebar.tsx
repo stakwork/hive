@@ -65,7 +65,7 @@ const baseNavigationItems = [
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
   
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
