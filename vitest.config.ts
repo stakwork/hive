@@ -5,7 +5,7 @@ const testSuite = process.env.TEST_SUITE;
 
 export default defineConfig({
   test: {
-    environment: "node",
+    environment: "jsdom",
     globals: true,
     // Run integration tests sequentially to avoid database conflicts
     pool: testSuite === "integration" ? "forks" : "threads",
@@ -16,8 +16,8 @@ export default defineConfig({
     } : undefined,
     include:
       testSuite === "integration"
-        ? ["src/__tests__/integration/**/*.test.ts"]
-        : ["src/__tests__/unit/**/*.test.ts"],
+        ? ["src/__tests__/integration/**/*.test.{ts,tsx}"]
+        : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
         ? ["./src/__tests__/setup-integration.ts"]
