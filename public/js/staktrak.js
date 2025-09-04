@@ -1287,7 +1287,6 @@ var userBehaviour = (() => {
             const element = await waitForElement(action.selector);
             if (element) {
               const htmlElement = element;
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               const originalBorder = htmlElement.style.border;
               htmlElement.style.border = "3px solid #ff6b6b";
               htmlElement.style.boxShadow = "0 0 10px rgba(255, 107, 107, 0.5)";
@@ -1305,7 +1304,6 @@ var userBehaviour = (() => {
           if (action.selector && action.value !== void 0) {
             const element = await waitForElement(action.selector);
             if (element) {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.focus();
               element.value = "";
               element.value = String(action.value);
@@ -1322,7 +1320,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && (element.type === "checkbox" || element.type === "radio")) {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               if (!element.checked) {
                 element.click();
               }
@@ -1339,7 +1336,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && element.type === "checkbox") {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               if (element.checked) {
                 element.click();
               }
@@ -1354,7 +1350,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && element.tagName === "SELECT") {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.value = String(action.value);
               element.dispatchEvent(new Event("change", { bubbles: true }));
             } else {
@@ -1385,7 +1380,6 @@ var userBehaviour = (() => {
           if (action.selector) {
             const element = await waitForElement(action.selector);
             if (element) {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.dispatchEvent(
                 new MouseEvent("mouseover", { bubbles: true })
               );
@@ -1403,7 +1397,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && typeof element.focus === "function") {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.focus();
             } else {
               throw new Error(
@@ -1429,13 +1422,7 @@ var userBehaviour = (() => {
         case "scrollIntoView":
           if (action.selector) {
             const element = await waitForElement(action.selector);
-            if (element) {
-              element.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-                inline: "center"
-              });
-            } else {
+            if (!element) {
               throw new Error(
                 `Element not found for scrollIntoView: ${action.selector}`
               );
@@ -1874,13 +1861,17 @@ var userBehaviour = (() => {
     }
     return [];
   }
-  async function waitForElement(selector, timeout = 5e3) {
+  async function waitForElement(selector, matchedText) {
+    const timeout = 5e3;
     const startTime = Date.now();
     while (Date.now() - startTime < timeout) {
       try {
         const elements = findElements(selector);
         if (elements.length > 0) {
           const element = elements[0];
+          if (matchedText) {
+            element.__stakTrakMatchedText = matchedText;
+          }
           setTimeout(() => highlightElement(element), 100);
           return element;
         }
@@ -1897,20 +1888,44 @@ var userBehaviour = (() => {
     const style = doc.createElement("style");
     style.id = "staktrak-highlight-styles";
     style.textContent = `
-    .staktrak-text-highlight {
-      background-color: #3b82f6 !important;
+    /* Use much higher specificity and inline-style fallbacks */
+    .staktrak-text-highlight,
+    *[data-staktrak-highlight="true"] {
+      background: #3b82f6 !important;
       color: white !important;
       padding: 2px 4px !important;
       border-radius: 3px !important;
       font-weight: bold !important;
       box-shadow: 0 0 8px rgba(59, 130, 246, 0.6) !important;
       animation: staktrak-text-pulse 2s ease-in-out !important;
+      position: relative !important;
+      z-index: 999999 !important;
+    }
+
+    /* Element border highlighting as fallback */
+    .staktrak-element-highlight {
+      outline: 3px solid #3b82f6 !important;
+      outline-offset: 2px !important;
+      background-color: rgba(59, 130, 246, 0.1) !important;
+      animation: staktrak-element-pulse 2s ease-in-out !important;
+      position: relative !important;
+      z-index: 999998 !important;
     }
 
     @keyframes staktrak-text-pulse {
-      0% { background-color: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
-      50% { background-color: #1d4ed8; box-shadow: 0 0 15px rgba(29, 78, 216, 0.8); }
-      100% { background-color: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
+      0%, 100% { 
+        background-color: #3b82f6 !important; 
+        box-shadow: 0 0 8px rgba(59, 130, 246, 0.6) !important; 
+      }
+      50% { 
+        background-color: #1d4ed8 !important; 
+        box-shadow: 0 0 15px rgba(29, 78, 216, 0.8) !important; 
+      }
+    }
+
+    @keyframes staktrak-element-pulse {
+      0%, 100% { outline-color: #3b82f6 !important; }
+      50% { outline-color: #1d4ed8 !important; }
     }
   `;
     doc.head.appendChild(style);
@@ -1918,17 +1933,17 @@ var userBehaviour = (() => {
   function highlightElement(element, matchedText) {
     try {
       ensureStylesInDocument(document);
-      element.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "center"
-      });
       const textToHighlight = matchedText || element.__stakTrakMatchedText;
+      let textHighlighted = false;
       if (textToHighlight) {
-        highlightTextInElement(element, textToHighlight);
+        textHighlighted = highlightTextInElement(element, textToHighlight);
+      }
+      if (!textHighlighted) {
+        highlightElementBorder(element);
       }
     } catch (error) {
       console.warn("Error highlighting element:", error);
+      highlightElementBorder(element);
     }
   }
   function highlightTextInElement(element, textToHighlight) {
@@ -1937,49 +1952,134 @@ var userBehaviour = (() => {
         var _a;
         if (node.nodeType === Node.TEXT_NODE) {
           const textContent = node.textContent || "";
-          if (textContent.includes(textToHighlight)) {
+          if (textContent.trim() && textContent.includes(textToHighlight)) {
             const parent = node.parentNode;
             if (parent) {
-              const tempDiv = document.createElement("div");
-              tempDiv.innerHTML = textContent.replace(
-                new RegExp(
-                  `(${textToHighlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-                  "gi"
-                ),
-                '<span class="staktrak-text-highlight">$1</span>'
-              );
-              while (tempDiv.firstChild) {
-                parent.insertBefore(tempDiv.firstChild, node);
+              try {
+                const highlightSpan = document.createElement("span");
+                highlightSpan.className = "staktrak-text-highlight";
+                highlightSpan.setAttribute("data-staktrak-highlight", "true");
+                highlightSpan.style.cssText = `
+                background: #3b82f6 !important;
+                color: white !important;
+                padding: 2px 4px !important;
+                border-radius: 3px !important;
+                font-weight: bold !important;
+                box-shadow: 0 0 8px rgba(59, 130, 246, 0.6) !important;
+                position: relative !important;
+                z-index: 999999 !important;
+              `;
+                const parts = textContent.split(textToHighlight);
+                const fragment = document.createDocumentFragment();
+                for (let i = 0; i < parts.length; i++) {
+                  if (parts[i]) {
+                    fragment.appendChild(document.createTextNode(parts[i]));
+                  }
+                  if (i < parts.length - 1) {
+                    const span = highlightSpan.cloneNode(true);
+                    span.textContent = textToHighlight;
+                    fragment.appendChild(span);
+                    highlightApplied = true;
+                  }
+                }
+                parent.replaceChild(fragment, node);
+                return true;
+              } catch (e) {
+                console.warn("Failed to wrap text node:", e);
+                return false;
               }
-              parent.removeChild(node);
             }
           }
-        } else if (node.nodeType === Node.ELEMENT_NODE && !((_a = node.classList) == null ? void 0 : _a.contains("staktrak-text-highlight"))) {
+        } else if (node.nodeType === Node.ELEMENT_NODE && !((_a = node.classList) == null ? void 0 : _a.contains("staktrak-text-highlight")) && !node.hasAttribute("data-staktrak-highlight")) {
           const children = Array.from(node.childNodes);
-          children.forEach((child) => wrapTextNodes2(child));
+          let childHighlighted = false;
+          children.forEach((child) => {
+            if (wrapTextNodes2(child)) {
+              childHighlighted = true;
+            }
+          });
+          return childHighlighted;
         }
+        return false;
       };
       var wrapTextNodes = wrapTextNodes2;
       ensureStylesInDocument(document);
-      wrapTextNodes2(element);
-      element.setAttribute("data-staktrak-processed", "true");
-      setTimeout(() => {
-        const highlights = element.querySelectorAll(".staktrak-text-highlight");
-        highlights.forEach((highlight) => {
-          const parent = highlight.parentNode;
-          if (parent) {
-            parent.insertBefore(
-              document.createTextNode(highlight.textContent || ""),
-              highlight
-            );
-            parent.removeChild(highlight);
-          }
+      let highlightApplied = false;
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.removedNodes.forEach((node) => {
+            var _a;
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node;
+              if ((_a = el.classList) == null ? void 0 : _a.contains("staktrak-text-highlight")) {
+                setTimeout(
+                  () => highlightTextInElement(element, textToHighlight),
+                  100
+                );
+              }
+            }
+          });
         });
-        element.removeAttribute("data-staktrak-processed");
-        element.normalize();
-      }, 3e3);
+      });
+      const success = wrapTextNodes2(element);
+      if (success) {
+        observer.observe(element, {
+          childList: true,
+          subtree: true
+        });
+        setTimeout(() => {
+          observer.disconnect();
+          cleanupHighlights(element);
+        }, 3e3);
+      }
+      return success || highlightApplied;
     } catch (error) {
       console.warn("Error highlighting text:", error);
+      return false;
+    }
+  }
+  function highlightElementBorder(element) {
+    try {
+      const htmlElement = element;
+      const originalOutline = htmlElement.style.outline;
+      const originalOutlineOffset = htmlElement.style.outlineOffset;
+      const originalBackground = htmlElement.style.backgroundColor;
+      const originalZIndex = htmlElement.style.zIndex;
+      htmlElement.classList.add("staktrak-element-highlight");
+      htmlElement.style.outline = "3px solid #3b82f6";
+      htmlElement.style.outlineOffset = "2px";
+      htmlElement.style.backgroundColor = "rgba(59, 130, 246, 0.1)";
+      htmlElement.style.zIndex = "999998";
+      setTimeout(() => {
+        htmlElement.classList.remove("staktrak-element-highlight");
+        htmlElement.style.outline = originalOutline;
+        htmlElement.style.outlineOffset = originalOutlineOffset;
+        htmlElement.style.backgroundColor = originalBackground;
+        htmlElement.style.zIndex = originalZIndex;
+      }, 3e3);
+    } catch (error) {
+      console.warn("Error applying element border highlight:", error);
+    }
+  }
+  function cleanupHighlights(element) {
+    try {
+      const highlights = element.querySelectorAll(
+        '.staktrak-text-highlight, [data-staktrak-highlight="true"]'
+      );
+      highlights.forEach((highlight) => {
+        const parent = highlight.parentNode;
+        if (parent) {
+          parent.insertBefore(
+            document.createTextNode(highlight.textContent || ""),
+            highlight
+          );
+          parent.removeChild(highlight);
+        }
+      });
+      element.removeAttribute("data-staktrak-processed");
+      element.normalize();
+    } catch (error) {
+      console.warn("Error cleaning up highlights:", error);
     }
   }
   async function verifyExpectation(action) {
@@ -1994,7 +2094,10 @@ var userBehaviour = (() => {
         }
         break;
       case "toContainText":
-        const textElement = await waitForElement(action.selector);
+        const textElement = await waitForElement(
+          action.selector,
+          String(action.value)
+        );
         if (!textElement || !((_a = textElement.textContent) == null ? void 0 : _a.includes(String(action.value || "")))) {
           throw new Error(
             `Element does not contain text "${action.value}": ${action.selector}`
@@ -2002,7 +2105,10 @@ var userBehaviour = (() => {
         }
         break;
       case "toHaveText":
-        const exactTextElement = await waitForElement(action.selector);
+        const exactTextElement = await waitForElement(
+          action.selector,
+          String(action.value)
+        );
         if (!exactTextElement || ((_b = exactTextElement.textContent) == null ? void 0 : _b.trim()) !== String(action.value || "")) {
           throw new Error(
             `Element does not have exact text "${action.value}": ${action.selector}`
