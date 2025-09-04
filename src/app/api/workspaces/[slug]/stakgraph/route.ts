@@ -149,7 +149,7 @@ export async function GET(
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
         poolCpu: swarm.poolCpu || "2",
-        poolMemory: swarm.poolMemory || "8Gi",
+        poolMemory: swarm.poolMemory || "4Gi",
         environmentVariables:
           typeof environmentVariables === "string"
             ? (() => {
