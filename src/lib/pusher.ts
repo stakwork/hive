@@ -39,4 +39,6 @@ export const PUSHER_EVENTS = {
   CONNECTION_COUNT: "connection-count",
   WORKFLOW_STATUS_UPDATE: "workflow-status-update",
   RECOMMENDATIONS_UPDATED: "recommendations-updated",
+  TASK_TITLE_UPDATE: "task-title-update",
+  WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
 } as const;

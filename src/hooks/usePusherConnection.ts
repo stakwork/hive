@@ -23,6 +23,13 @@ export interface RecommendationsUpdatedEvent {
   timestamp: Date;
 }
 
+export interface TaskTitleUpdateEvent {
+  taskId: string;
+  newTitle: string;
+  previousTitle: string;
+  timestamp: Date;
+}
+
 interface UsePusherConnectionOptions {
   taskId?: string | null;
   workspaceSlug?: string | null;
@@ -30,6 +37,7 @@ interface UsePusherConnectionOptions {
   onMessage?: (message: ChatMessage) => void;
   onWorkflowStatusUpdate?: (update: WorkflowStatusUpdate) => void;
   onRecommendationsUpdated?: (update: RecommendationsUpdatedEvent) => void;
+  onTaskTitleUpdate?: (update: TaskTitleUpdateEvent) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -50,6 +58,7 @@ export function usePusherConnection({
   onMessage,
   onWorkflowStatusUpdate,
   onRecommendationsUpdated,
+  onTaskTitleUpdate,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -61,12 +70,14 @@ export function usePusherConnection({
   const onMessageRef = useRef(onMessage);
   const onWorkflowStatusUpdateRef = useRef(onWorkflowStatusUpdate);
   const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
+  const onTaskTitleUpdateRef = useRef(onTaskTitleUpdate);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<'task' | 'workspace' | null>(null);
 
   onMessageRef.current = onMessage;
   onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
   onRecommendationsUpdatedRef.current = onRecommendationsUpdated;
+  onTaskTitleUpdateRef.current = onTaskTitleUpdate;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -169,6 +180,24 @@ export function usePusherConnection({
               }
             },
           );
+
+          // Task title update events
+          channel.bind(
+            PUSHER_EVENTS.TASK_TITLE_UPDATE,
+            (update: TaskTitleUpdateEvent) => {
+              if (LOGS) {
+                console.log("Received task title update:", {
+                  taskId: update.taskId,
+                  newTitle: update.newTitle,
+                  previousTitle: update.previousTitle,
+                  channelName,
+                });
+              }
+              if (onTaskTitleUpdateRef.current) {
+                onTaskTitleUpdateRef.current(update);
+              }
+            },
+          );
         }
 
         // Workspace-specific events
@@ -186,6 +215,24 @@ export function usePusherConnection({
               }
               if (onRecommendationsUpdatedRef.current) {
                 onRecommendationsUpdatedRef.current(update);
+              }
+            },
+          );
+
+          // Workspace task title update events
+          channel.bind(
+            PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+            (update: TaskTitleUpdateEvent) => {
+              if (LOGS) {
+                console.log("Received workspace task title update:", {
+                  taskId: update.taskId,
+                  newTitle: update.newTitle,
+                  previousTitle: update.previousTitle,
+                  channelName,
+                });
+              }
+              if (onTaskTitleUpdateRef.current) {
+                onTaskTitleUpdateRef.current(update);
               }
             },
           );

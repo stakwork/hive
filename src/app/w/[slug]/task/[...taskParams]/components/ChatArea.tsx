@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ChatMessage as ChatMessageType,
   Option,
@@ -65,13 +65,32 @@ export function ChatArea({
       transition={{ duration: 0.2 }}
     >
       {/* Task Title Header */}
-      {taskTitle && (
-        <div className="px-4 py-3 border-b bg-muted/20">
-          <h2 className="text-lg font-semibold text-foreground truncate" title={taskTitle}>
-            {taskTitle.length > 80 ? `${taskTitle.slice(0, 80)}...` : taskTitle}
-          </h2>
-        </div>
-      )}
+      <AnimatePresence mode="wait">
+        {taskTitle && (
+          <motion.div
+            key="title-header"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="px-4 py-3 border-b bg-muted/20"
+          >
+            <AnimatePresence mode="wait">
+              <motion.h2
+                key={taskTitle} // This will trigger re-animation when title changes
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="text-lg font-semibold text-foreground truncate"
+                title={taskTitle}
+              >
+                {taskTitle.length > 80 ? `${taskTitle.slice(0, 80)}...` : taskTitle}
+              </motion.h2>
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">

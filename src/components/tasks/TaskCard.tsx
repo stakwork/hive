@@ -3,6 +3,7 @@
 import { Users, Calendar, User, Sparkles, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -23,15 +24,27 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
 
 
   return (
-    <div
+    <motion.div
+      layout
       className="p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors"
       onClick={handleClick}
+      whileHover={{ scale: 1.005 }}
+      transition={{ duration: 0.15 }}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <h4 className="text-sm font-medium line-clamp-1">
-            {task.title}
-          </h4>
+          <AnimatePresence mode="wait">
+            <motion.h4
+              key={task.title} // This will trigger re-animation when title changes
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.25, ease: "easeInOut" }}
+              className="text-sm font-medium line-clamp-1"
+            >
+              {task.title}
+            </motion.h4>
+          </AnimatePresence>
           {task.hasActionArtifact && (
             <Badge className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200">
               Waiting for input
@@ -86,6 +99,6 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
           <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

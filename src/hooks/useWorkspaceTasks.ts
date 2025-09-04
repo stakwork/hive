@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { WorkflowStatus } from "@/lib/chat";
+import {
+  usePusherConnection,
+  TaskTitleUpdateEvent,
+} from "@/hooks/usePusherConnection";
 
 export interface TaskData {
   id: string;
@@ -54,13 +58,38 @@ interface UseWorkspaceTasksResult {
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
 }
 
-export function useWorkspaceTasks(workspaceId: string | null, includeNotifications: boolean = false): UseWorkspaceTasksResult {
+export function useWorkspaceTasks(
+  workspaceId: string | null, 
+  workspaceSlug?: string | null, 
+  includeNotifications: boolean = false
+): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Handle real-time task title updates
+  const handleTaskTitleUpdate = useCallback(
+    (update: TaskTitleUpdateEvent) => {
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === update.taskId 
+            ? { ...task, title: update.newTitle }
+            : task
+        )
+      );
+    },
+    [],
+  );
+
+  // Subscribe to workspace-level updates if workspaceSlug is provided
+  usePusherConnection({
+    workspaceSlug,
+    enabled: !!workspaceSlug,
+    onTaskTitleUpdate: handleTaskTitleUpdate,
+  });
 
   const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
     if (!workspaceId || !session?.user) {

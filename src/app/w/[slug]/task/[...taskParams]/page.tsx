@@ -17,6 +17,7 @@ import { useParams } from "next/navigation";
 import {
   usePusherConnection,
   WorkflowStatusUpdate,
+  TaskTitleUpdateEvent,
 } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import {
@@ -96,11 +97,23 @@ export default function TaskChatPage() {
     [],
   );
 
+  const handleTaskTitleUpdate = useCallback(
+    (update: TaskTitleUpdateEvent) => {
+      // Only update if it's for the current task
+      if (update.taskId === currentTaskId) {
+        console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
+        setTaskTitle(update.newTitle);
+      }
+    },
+    [currentTaskId],
+  );
+
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
+    onTaskTitleUpdate: handleTaskTitleUpdate,
   });
 
   // Show connection errors as toasts
