@@ -17,6 +17,8 @@ import { getAgentIcon } from "@/lib/icons";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useToast } from "@/components/ui/use-toast";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -61,6 +63,7 @@ export function ChatArea({
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const { toast } = useToast();
   const [isStoppingTask, setIsStoppingTask] = useState(false);
   const [showStopDialog, setShowStopDialog] = useState(false);
 
@@ -98,15 +101,28 @@ export function ChatArea({
       if (!response.ok) {
         const error = await response.json();
         console.error("Failed to stop task:", error);
-        alert("Failed to stop workflow: " + (error.error || "Unknown error"));
+        toast({
+          title: "Error",
+          description: `Failed to stop workflow: ${error.error || "Unknown error"}`,
+          variant: "destructive",
+        });
         return;
       }
+
+      toast({
+        title: "Success",
+        description: "Workflow stopped successfully",
+      });
 
       // Refresh the page to show updated status
       window.location.reload();
     } catch (error) {
       console.error("Error stopping task:", error);
-      alert("Failed to stop workflow. Please try again.");
+      toast({
+        title: "Error", 
+        description: "Failed to stop workflow. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsStoppingTask(false);
     }
@@ -174,16 +190,22 @@ export function ChatArea({
                     <ExternalLink className="w-3 h-3" />
                   </Link>
                   {workflowStatus === WorkflowStatus.IN_PROGRESS && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleStopButtonClick}
-                      disabled={isStoppingTask}
-                      className="h-6 w-6 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
-                      title="Stop workflow"
-                    >
-                      <Square className="w-3 h-3 fill-current" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleStopButtonClick}
+                          disabled={isStoppingTask}
+                          className="h-6 w-6 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                        >
+                          <Square className="w-3 h-3 fill-current" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Stop Workflow</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               )}

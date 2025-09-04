@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { ServiceFactory } from "@/lib/service-factory";
 import { StakworkService } from "@/services/stakwork";
+import { WorkflowStatus } from "@prisma/client";
 
 export async function POST(
   request: NextRequest,
@@ -73,7 +74,7 @@ export async function POST(
       );
     }
 
-    if (task.workflowStatus !== "IN_PROGRESS") {
+    if (task.workflowStatus !== WorkflowStatus.IN_PROGRESS) {
       return NextResponse.json(
         { error: "Task is not currently running" },
         { status: 400 }
@@ -99,7 +100,7 @@ export async function POST(
       const updatedTask = await db.task.update({
         where: { id: taskId },
         data: {
-          workflowStatus: "CANCELLED",
+          workflowStatus: WorkflowStatus.CANCELLED,
           workflowCompletedAt: new Date(),
           updatedById: session.user.id,
         },
@@ -121,7 +122,7 @@ export async function POST(
       const updatedTask = await db.task.update({
         where: { id: taskId },
         data: {
-          workflowStatus: "CANCELLED",
+          workflowStatus: WorkflowStatus.CANCELLED,
           workflowCompletedAt: new Date(),
           updatedById: session.user.id,
         },
