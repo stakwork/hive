@@ -25,13 +25,26 @@ export async function POST(
         id: taskId,
         deleted: false,
       },
-      include: {
+      select: {
+        id: true,
+        workspaceId: true,
+        workflowStatus: true,
+        stakworkProjectId: true,
         workspace: {
           select: {
             id: true,
             name: true,
             slug: true,
+            ownerId: true,
             stakworkApiKey: true,
+            members: {
+              where: {
+                userId: session.user.id,
+              },
+              select: {
+                role: true,
+              },
+            },
           },
         },
       },
@@ -41,15 +54,11 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // Verify user has access to the workspace
-    const hasAccess = await db.workspaceMember.findFirst({
-      where: {
-        workspaceId: task.workspaceId,
-        userId: session.user.id,
-      },
-    });
+    // Check if user is workspace owner or member
+    const isOwner = task.workspace.ownerId === session.user.id;
+    const isMember = task.workspace.members.length > 0;
 
-    if (!hasAccess) {
+    if (!isOwner && !isMember) {
       return NextResponse.json(
         { error: "Access denied to workspace" },
         { status: 403 }
