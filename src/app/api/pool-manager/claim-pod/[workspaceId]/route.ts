@@ -101,6 +101,14 @@ export async function POST(
       );
     }
 
+    // Check if swarm has pool configuration first
+    if (!workspace.swarm.poolName) {
+      return NextResponse.json(
+        { error: "Swarm not properly configured with pool information" },
+        { status: 400 },
+      );
+    }
+
     let poolApiKey = workspace.swarm.poolApiKey;
     const swarm = workspace.swarm;
     if (!swarm.poolApiKey) {
@@ -108,8 +116,8 @@ export async function POST(
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    // Check if swarm has pool configuration
-    if (!workspace.swarm.poolName || !poolApiKey) {
+    // Check if we have a valid pool API key
+    if (!poolApiKey) {
       return NextResponse.json(
         { error: "Swarm not properly configured with pool information" },
         { status: 400 },
