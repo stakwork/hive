@@ -14,22 +14,16 @@ export const metadata: Metadata = {
   description: "A PMs dream",
   icons: {
     icon: [
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon.ico', sizes: 'any' }
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any" },
     ],
-    apple: [
-      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }
-    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
-  manifest: '/site.webmanifest'
+  manifest: "/site.webmanifest",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -37,12 +31,9 @@ export default function RootLayout({
           {`window.STAKTRAK_CONFIG = { maxTraversalDepth: 10 };`}
         </Script>
         <Script src="/js/staktrak.js" />
-        <Script src="/js/replay.js" />
         <Script src="/js/playwright-generator.js" />
       </head>
-      <body
-        className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
-      >
+      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
         <ToastProvider>
           <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>

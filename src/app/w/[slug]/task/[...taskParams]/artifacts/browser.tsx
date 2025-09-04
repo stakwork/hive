@@ -2,25 +2,12 @@
 
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import {
-  Monitor,
-  RefreshCw,
-  ExternalLink,
-  Circle,
-  Square,
-  Target,
-  FlaskConical,
-  Bug,
-} from "lucide-react";
+import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
+import { usePlaywrightReplay } from "@/hooks/useStaktrakReplay";
 import { TestManagerModal } from "./TestManagerModal";
-import {
-  TooltipProvider,
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 
@@ -53,10 +40,12 @@ export function BrowserArtifactPanel({
     stopRecording,
     enableAssertionMode,
     disableAssertionMode,
-    showPlaywrightModal,
     generatedPlaywrightTest,
-    closePlaywrightModal,
+    setGeneratedPlaywrightTest,
   } = useStaktrak(activeContent?.url);
+
+  // Use playwright replay hook
+  const { isPlaywrightReplaying, startPlaywrightReplay, stopPlaywrightReplay } = usePlaywrightReplay(iframeRef);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -82,6 +71,7 @@ export function BrowserArtifactPanel({
   const handleRecordToggle = () => {
     if (isRecording) {
       stopRecording();
+      setIsTestModalOpen(true);
     } else {
       startRecording();
     }
@@ -95,6 +85,14 @@ export function BrowserArtifactPanel({
     }
   };
 
+  const handleReplayToggle = () => {
+    if (isPlaywrightReplaying) {
+      stopPlaywrightReplay();
+    } else if (generatedPlaywrightTest) {
+      startPlaywrightReplay(generatedPlaywrightTest);
+    }
+  };
+
   // Tab change handler
   const handleTabChange = (newTab: number) => {
     setActiveTab(newTab);
@@ -104,12 +102,7 @@ export function BrowserArtifactPanel({
   };
 
   // Wrapper to pass artifacts and activeTab to the hook's handleDebugSelection
-  const handleDebugSelection = async (
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ) => {
+  const handleDebugSelection = async (x: number, y: number, width: number, height: number) => {
     await handleDebugSelectionHook(x, y, width, height, artifacts, activeTab);
   };
 
@@ -145,17 +138,12 @@ export function BrowserArtifactPanel({
           const tabUrl = isActive ? displayUrl : content.url;
 
           return (
-            <div
-              key={artifact.id}
-              className={`h-full flex flex-col ${isActive ? "block" : "hidden"}`}
-            >
+            <div key={artifact.id} className={`h-full flex flex-col ${isActive ? "block" : "hidden"}`}>
               {!ide && (
                 <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
                   <div className="flex items-center gap-2 min-w-0">
                     <Monitor className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-sm font-medium truncate">
-                      {tabUrl}
-                    </span>
+                    <span className="text-sm font-medium truncate">{tabUrl}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     {isSetup && isRecording && (
@@ -176,9 +164,30 @@ export function BrowserArtifactPanel({
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
-                            {isAssertionMode
-                              ? "Disable assertion mode"
-                              : "Enable assertion mode"}
+                            {isAssertionMode ? "Disable assertion mode" : "Enable assertion mode"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {generatedPlaywrightTest && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleReplayToggle}
+                              className={`h-8 w-8 p-0 ${
+                                isPlaywrightReplaying
+                                  ? "bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:hover:bg-orange-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              {isPlaywrightReplaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {isPlaywrightReplaying ? "Stop replay" : "Start replay"}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -197,11 +206,7 @@ export function BrowserArtifactPanel({
                                   : "hover:bg-accent hover:text-accent-foreground"
                               }`}
                             >
-                              {isRecording ? (
-                                <Square className="w-4 h-4" />
-                              ) : (
-                                <Circle className="w-4 h-4" />
-                              )}
+                              {isRecording ? <Square className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
@@ -210,6 +215,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
+
                     {!onUserJourneySave && (
                       <TooltipProvider>
                         <Tooltip>
@@ -241,9 +247,7 @@ export function BrowserArtifactPanel({
                               <Bug className="w-4 h-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            Debug Element
-                          </TooltipContent>
+                          <TooltipContent side="bottom">Debug Element</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -259,20 +263,13 @@ export function BrowserArtifactPanel({
                             <ExternalLink className="w-4 h-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          Open in new tab
-                        </TooltipContent>
+                        <TooltipContent side="bottom">Open in new tab</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleRefresh}
-                            className="h-8 w-8 p-0"
-                          >
+                          <Button variant="ghost" size="sm" onClick={handleRefresh} className="h-8 w-8 p-0">
                             <RefreshCw className="w-4 h-4" />
                           </Button>
                         </TooltipTrigger>
@@ -305,13 +302,12 @@ export function BrowserArtifactPanel({
       </div>
 
       <TestManagerModal
-        isOpen={isTestModalOpen || showPlaywrightModal}
+        isOpen={isTestModalOpen}
         onClose={() => {
           setIsTestModalOpen(false);
-          if (showPlaywrightModal) closePlaywrightModal();
         }}
         generatedCode={generatedPlaywrightTest}
-        initialTab={showPlaywrightModal ? "generated" : "saved"}
+        initialTab={"generated"}
         onUserJourneySave={onUserJourneySave}
       />
     </div>
