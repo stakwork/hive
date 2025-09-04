@@ -28,9 +28,16 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
       onClick={handleClick}
     >
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-medium line-clamp-1">
-          {task.title}
-        </h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-sm font-medium line-clamp-1">
+            {task.title}
+          </h4>
+          {task.hasActionArtifact && (
+            <Badge className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200">
+              Waiting for input
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {task.sourceType === "JANITOR" && (
             <Badge variant="secondary" className="gap-1">

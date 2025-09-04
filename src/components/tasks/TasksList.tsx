@@ -20,7 +20,7 @@ interface TasksListProps {
 }
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
-  const { tasks, loading, error, pagination, loadMore } = useWorkspaceTasks(workspaceId);
+  const { tasks, loading, error, pagination, loadMore } = useWorkspaceTasks(workspaceId, true);
 
   if (loading && tasks.length === 0) {
     return <LoadingState />;
