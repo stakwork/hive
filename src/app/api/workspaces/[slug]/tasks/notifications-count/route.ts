@@ -65,11 +65,14 @@ export async function GET(
     }
 
     // Count tasks waiting for user input (tasks with FORM artifacts in latest message only)
-    // We need to get tasks and check the latest message, can't do this efficiently with a simple count query
+    // Only count tasks that are IN_PROGRESS or PENDING
     const tasksWithLatestMessage = await db.task.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,
+        workflowStatus: {
+          in: ["IN_PROGRESS", "PENDING"],
+        },
       },
       select: {
         id: true,
