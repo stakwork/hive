@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    saveOrUpdateSwarm({
-      swarmId,
+    // Save container files to swarm
+    await saveOrUpdateSwarm({
       workspaceId,
       containerFiles: container_files,
     });
@@ -174,8 +174,7 @@ export async function POST(request: NextRequest) {
       container_files,
     });
 
-    saveOrUpdateSwarm({
-      swarmId,
+    await saveOrUpdateSwarm({
       workspaceId,
       poolName: swarmId,
     });
