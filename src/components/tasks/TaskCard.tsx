@@ -13,9 +13,10 @@ import { formatRelativeTime } from "@/lib/utils";
 interface TaskCardProps {
   task: TaskData;
   workspaceSlug: string;
+  hideWorkflowStatus?: boolean;
 }
 
-export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
+export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: TaskCardProps) {
   const router = useRouter();
 
   const handleClick = () => {
@@ -70,9 +71,11 @@ export function TaskCard({ task, workspaceSlug }: TaskCardProps) {
               <ExternalLink className="w-3 h-3" />
             </Link>
           )}
-          <div className="px-2 py-1 rounded-full border bg-background text-xs">
-            <WorkflowStatusBadge status={task.workflowStatus} />
-          </div>
+          {!hideWorkflowStatus && (
+            <div className="px-2 py-1 rounded-full border bg-background text-xs">
+              <WorkflowStatusBadge status={task.workflowStatus} />
+            </div>
+          )}
         </div>
       </div>
       
