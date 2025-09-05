@@ -55,11 +55,7 @@ export class WebhookService extends BaseServiceClass {
       },
     });
 
-    const defaultBranch = await this.detectRepositoryDefaultBranch(
-      token,
-      owner,
-      repo,
-    );
+    const defaultBranch = await this.detectRepositoryDefaultBranch(token, owner, repo);
 
     if (defaultBranch) {
       await db.repository.update({
@@ -84,21 +80,14 @@ export class WebhookService extends BaseServiceClass {
     };
   }
 
-  private async detectRepositoryDefaultBranch(
-    token: string,
-    owner: string,
-    repo: string,
-  ): Promise<string | null> {
+  private async detectRepositoryDefaultBranch(token: string, owner: string, repo: string): Promise<string | null> {
     try {
-      const response = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}`,
-        {
-          headers: {
-            Authorization: `token ${token}`,
-            Accept: "application/vnd.github.v3+json",
-          },
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
         },
-      );
+      });
 
       if (response.ok) {
         const repoInfo = (await response.json()) as { default_branch?: string };
@@ -154,10 +143,7 @@ export class WebhookService extends BaseServiceClass {
         active,
       });
       const storedSecret = repoRec.githubWebhookSecret
-        ? encryptionService.decryptField(
-            "githubWebhookSecret",
-            repoRec.githubWebhookSecret,
-          )
+        ? encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret)
         : null;
       const secret = storedSecret || crypto.randomBytes(32).toString("hex");
       if (!repoRec.githubWebhookSecret) {
@@ -165,9 +151,7 @@ export class WebhookService extends BaseServiceClass {
           where: { id: repoRec.id },
           data: {
             githubWebhookId: String(existing.id),
-            githubWebhookSecret: JSON.stringify(
-              encryptionService.encryptField("githubWebhookSecret", secret),
-            ),
+            githubWebhookSecret: JSON.stringify(encryptionService.encryptField("githubWebhookSecret", secret)),
           },
         });
       } else if (!repoRec.githubWebhookId) {
@@ -194,20 +178,14 @@ export class WebhookService extends BaseServiceClass {
       where: { id: repoRec.id },
       data: {
         githubWebhookId: String(created.id),
-        githubWebhookSecret: JSON.stringify(
-          encryptionService.encryptField("githubWebhookSecret", secret),
-        ),
+        githubWebhookSecret: JSON.stringify(encryptionService.encryptField("githubWebhookSecret", secret)),
       },
     });
 
     return { id: created.id, secret };
   }
 
-  async deleteRepoWebhook({
-    userId,
-    repositoryUrl,
-    workspaceId,
-  }: DeleteWebhookParams): Promise<void> {
+  async deleteRepoWebhook({ userId, repositoryUrl, workspaceId }: DeleteWebhookParams): Promise<void> {
     const token = await this.getUserGithubAccessToken(userId);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
@@ -244,26 +222,29 @@ export class WebhookService extends BaseServiceClass {
     owner: string,
     repo: string,
   ): Promise<Array<{ id: number; config?: { url?: string } }>> {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/hooks?per_page=100`,
-      {
+    const url = `https://api.github.com/repos/${owner}/${repo}/hooks?per_page=100`;
+    try {
+      const res = await fetch(url, {
         method: "GET",
         headers: {
           Authorization: `token ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
-      },
-    );
-    if (!res.ok) {
-      if (res.status === 403) {
-        throw new Error("INSUFFICIENT_PERMISSIONS");
+      });
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error("INSUFFICIENT_PERMISSIONS");
+        }
+        throw new Error("WEBHOOK_CREATION_FAILED");
       }
+      return (await res.json()) as Array<{
+        id: number;
+        config?: { url?: string };
+      }>;
+    } catch (error) {
+      console.error("Failed to list hooks at:", url, error);
       throw new Error("WEBHOOK_CREATION_FAILED");
     }
-    return (await res.json()) as Array<{
-      id: number;
-      config?: { url?: string };
-    }>;
   }
 
   private async createHook(params: {
@@ -275,28 +256,25 @@ export class WebhookService extends BaseServiceClass {
     events: string[];
     active: boolean;
   }): Promise<{ id: number }> {
-    const res = await fetch(
-      `https://api.github.com/repos/${params.owner}/${params.repo}/hooks`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `token ${params.token}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: "web",
-          config: {
-            url: params.url,
-            content_type: "json",
-            secret: params.secret,
-            insecure_ssl: "0",
-          },
-          events: params.events,
-          active: params.active,
-        }),
+    const res = await fetch(`https://api.github.com/repos/${params.owner}/${params.repo}/hooks`, {
+      method: "POST",
+      headers: {
+        Authorization: `token ${params.token}`,
+        Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        name: "web",
+        config: {
+          url: params.url,
+          content_type: "json",
+          secret: params.secret,
+          insecure_ssl: "0",
+        },
+        events: params.events,
+        active: params.active,
+      }),
+    });
     const data = await res.json();
 
     if (!res.ok) {
@@ -316,21 +294,18 @@ export class WebhookService extends BaseServiceClass {
     events: string[];
     active: boolean;
   }): Promise<void> {
-    const res = await fetch(
-      `https://api.github.com/repos/${params.owner}/${params.repo}/hooks/${params.hookId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `token ${params.token}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          events: params.events,
-          active: params.active,
-        }),
+    const res = await fetch(`https://api.github.com/repos/${params.owner}/${params.repo}/hooks/${params.hookId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `token ${params.token}`,
+        Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        events: params.events,
+        active: params.active,
+      }),
+    });
     if (!res.ok) {
       if (res.status === 403) {
         throw new Error("INSUFFICIENT_PERMISSIONS");
@@ -339,22 +314,14 @@ export class WebhookService extends BaseServiceClass {
     }
   }
 
-  private async deleteHook(
-    token: string,
-    owner: string,
-    repo: string,
-    hookId: number,
-  ): Promise<void> {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
+  private async deleteHook(token: string, owner: string, repo: string, hookId: number): Promise<void> {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
       },
-    );
+    });
     if (!res.ok) {
       if (res.status === 403) {
         throw new Error("INSUFFICIENT_PERMISSIONS");
