@@ -23,9 +23,9 @@ jobs:
       - name: Load Environment Variables
         run: |
           if [ -f .vercel/.env ]; then
-            echo "Loading environment variables from .vercel/.env"
+            echo "Loading environment variables from .vercel/.env.production.local"
             set -a
-            source .vercel/.env
+            source .vercel/.env.production.local
             set +a
           else
             echo "No .env file found in .vercel directory"
