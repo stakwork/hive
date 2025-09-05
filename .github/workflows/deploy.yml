@@ -25,6 +25,7 @@ jobs:
           if [ -f .vercel/.env.production.local ]; then
             echo "Loading environment variables from .vercel/.env.production.local"
             set -a
+            cp .vercel/.env.production.local .env
             source .vercel/.env.production.local
             set +a
           else
