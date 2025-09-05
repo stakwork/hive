@@ -96,6 +96,15 @@ describe('POST /api/pool-manager/create-pool - Integration Tests', () => {
       },
     });
 
+    // Create workspace membership for the test user
+    await testDb.workspaceMember.create({
+      data: {
+        userId: testUser.id,
+        workspaceId: testWorkspace.id,
+        role: 'OWNER',
+      },
+    });
+
     // Create test repository
     testRepository = await testDb.repository.create({
       data: {
@@ -704,8 +713,8 @@ describe('POST /api/pool-manager/create-pool - Integration Tests', () => {
           userId: softDeletedUser.id,
           workspaceId: testWorkspace.id,
           role: 'VIEWER',
-          // Simulating soft delete with updatedAt in the past
-          updatedAt: new Date('2020-01-01'),
+          // Simulating soft delete with leftAt in the past
+          leftAt: new Date('2020-01-01'),
         },
       });
 
@@ -718,11 +727,10 @@ describe('POST /api/pool-manager/create-pool - Integration Tests', () => {
         container_files: {},
       });
 
-      // Should still allow access for member (unless explicitly deleted)
+      // Should return 404 because the user doesn't have access to the swarm (due to leftAt being set)
       const response = await POST(request);
       
-      // The current implementation should allow access for any workspace member
-      expect(response.status).not.toBe(403);
+      expect(response.status).toBe(404);
     });
   });
 });
