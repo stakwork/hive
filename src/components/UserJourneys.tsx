@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -20,6 +19,7 @@ import {
 import { Plus, Copy, Check, Loader2, ExternalLink } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useState, useEffect, useCallback } from "react";
+import { useToast } from "@/components/ui/use-toast";
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Artifact, BrowserContent } from "@/lib/chat";
 
@@ -40,6 +40,7 @@ interface E2eTest {
 
 export default function UserJourneys() {
   const { id, slug } = useWorkspace();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [e2eTests, setE2eTests] = useState<E2eTest[]>([]);
@@ -92,24 +93,35 @@ export default function UserJourneys() {
           "Content-Type": "application/json",
         },
       });
-      setIsLoading(false);
 
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
-        // You can add error handling UI here
+        
+        // Show error message to user
+        toast({
+          variant: "destructive",
+          title: "Unable to Create User Journey",
+          description: "No virtual machines are available right now. Please try again later.",
+        });
         return;
       }
 
       const data = await response.json();
       console.log("Pod claimed successfully:", data);
+      
       if (data.frontend) {
         setFrontend(data.frontend);
       }
-      // You can add success handling UI here
     } catch (error) {
       console.error("Error claiming pod:", error);
-      // You can add error handling UI here
+      toast({
+        variant: "destructive",
+        title: "Connection Error",
+        description: "Unable to connect to the service. Please try again later.",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
