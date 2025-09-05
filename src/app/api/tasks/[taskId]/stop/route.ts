@@ -96,7 +96,7 @@ export async function POST(
       // Call Stakwork stop API
       await stakworkService.stopProject(task.stakworkProjectId);
 
-      // Update task status to CANCELLED
+      // Update task workflow status to CANCELLED
       const updatedTask = await db.task.update({
         where: { id: taskId },
         data: {
@@ -105,7 +105,7 @@ export async function POST(
           updatedById: session.user.id,
         },
       });
-
+      
       return NextResponse.json({
         success: true,
         task: {
@@ -127,7 +127,7 @@ export async function POST(
           updatedById: session.user.id,
         },
       });
-
+      
       return NextResponse.json({
         success: true,
         task: {

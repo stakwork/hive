@@ -114,8 +114,8 @@ export function ChatArea({
         description: "Workflow stopped successfully",
       });
 
-      // Refresh the page to show updated status
-      window.location.reload();
+      // Don't reload on individual task pages - just close the dialog
+      setShowStopDialog(false);
     } catch (error) {
       console.error("Error stopping task:", error);
       toast({

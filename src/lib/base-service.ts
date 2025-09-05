@@ -9,14 +9,6 @@ export abstract class BaseServiceClass implements BaseService {
   constructor(config: ServiceConfig) {
     this.config = config;
 
-    console.log(
-      "--------------------------------config--------------------------------",
-    );
-    console.log(config);
-    console.log(
-      "--------------------------------config--------------------------------",
-    );
-
     this.client = new HttpClient({
       baseURL: config.baseURL,
       defaultHeaders: {

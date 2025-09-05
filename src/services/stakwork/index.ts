@@ -104,6 +104,7 @@ export class StakworkService extends BaseServiceClass {
    * @returns API response
    */
   async stopProject<T = unknown>(projectId: number): Promise<T> {
+    // Use relative endpoint - the HttpClient already has the base URL
     const endpoint = `/projects/${projectId}/stop`;
     
     // Compose headers as required by Stakwork - use config.STAKWORK_API_KEY directly like other API routes
