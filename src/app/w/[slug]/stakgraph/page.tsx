@@ -105,9 +105,21 @@ export default function StakgraphPage() {
 
   const handleGitHubAppInstall = async () => {
     try {
+      if (!slug) {
+        toast({
+          title: "Error",
+          description: "Workspace not found",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const res = await fetch("/api/github/app/install", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceSlug: slug,
+        }),
       });
 
       const data = await res.json();

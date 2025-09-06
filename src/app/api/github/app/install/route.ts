@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
@@ -6,7 +6,7 @@ import { randomBytes } from "crypto";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -17,10 +17,28 @@ export async function POST() {
       return NextResponse.json({ success: false, message: "GitHub App not configured" }, { status: 500 });
     }
 
-    // Generate a secure random state string
-    const state = randomBytes(32).toString("hex");
+    // Get workspace slug from request body
+    const body = await request.json();
+    const workspaceSlug = body?.workspaceSlug;
 
-    // Generate the GitHub App installation URL
+    if (!workspaceSlug) {
+      return NextResponse.json({ success: false, message: "Workspace slug is required" }, { status: 400 });
+    }
+
+    // Generate a secure random state string
+    const randomState = randomBytes(32).toString("hex");
+
+    // Encode workspace slug and random state into a single state parameter
+    const stateData = {
+      workspaceSlug,
+      randomState,
+      timestamp: Date.now(),
+    };
+
+    // Base64 encode the state data
+    const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+
+    // Generate the GitHub App installation URL with callback
     const installationUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;
 
     return NextResponse.json(
