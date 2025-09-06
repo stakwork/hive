@@ -102,6 +102,7 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+
 model GitHubAuth {
   id                String    @id @default(cuid())
   userId            String    @unique @map("user_id")
