@@ -187,16 +187,15 @@ export default function StakgraphPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>VM Settings</CardTitle>
           <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={handleGitHubAppInstall}>
+              <Github className="mr-2 h-4 w-4" />
+            </Button>
             {!formData.webhookEnsured && formData.repositoryUrl ? (
               <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
                 <Webhook className="mr-2 h-4 w-4" />
                 Add Github Webhooks
               </Button>
             ) : null}
-            <Button type="button" variant="outline" onClick={handleGitHubAppInstall}>
-              <Github className="mr-2 h-4 w-4" />
-              Install GitHub App
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
