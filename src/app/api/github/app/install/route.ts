@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
+import { db } from "@/lib/db";
 import { randomBytes } from "crypto";
 
 export const runtime = "nodejs";
@@ -37,6 +38,12 @@ export async function POST(request: NextRequest) {
 
     // Base64 encode the state data
     const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+
+    // Store the GitHub state in the user's session
+    await db.session.updateMany({
+      where: { userId: session.user.id as string },
+      data: { githubState: state },
+    });
 
     // Generate the GitHub App installation URL with callback
     const installationUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;

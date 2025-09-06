@@ -39,6 +39,7 @@ model Session {
   sessionToken String   @unique @map("session_token")
   userId       String   @map("user_id")
   expires      DateTime
+  githubState  String?  @map("github_state")
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
@@ -228,6 +229,9 @@ model Swarm {
 
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")
+
+  // GitHub App installation
+  githubInstallationId String? @map("github_installation_id")
 
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
