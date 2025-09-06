@@ -62,16 +62,33 @@ export async function GET(request: NextRequest) {
 
     // If we have an installation ID, save it to the swarm
     if (installationId && (setupAction === "install" || setupAction === "update")) {
-      await db.swarm.updateMany({
-        where: { workspaceId: userSession.userId },
+      console.log(`Saving GitHub App installation ID ${installationId} to workspace ${workspaceSlug}`);
+
+      // Find the workspace by slug and update its swarm
+      const result = await db.swarm.updateMany({
+        where: {
+          workspace: {
+            slug: workspaceSlug,
+          },
+        },
         data: { githubInstallationId: installationId },
       });
+
+      console.log(`Updated ${result.count} swarm(s) with GitHub installation ID`);
     } else if (setupAction === "uninstall") {
+      console.log(`Clearing GitHub App installation ID from workspace ${workspaceSlug}`);
+
       // Clear the installation ID if uninstalled
-      await db.swarm.updateMany({
-        where: { workspaceId: userSession.userId },
+      const result = await db.swarm.updateMany({
+        where: {
+          workspace: {
+            slug: workspaceSlug,
+          },
+        },
         data: { githubInstallationId: null },
       });
+
+      console.log(`Cleared GitHub installation ID from ${result.count} swarm(s)`);
     }
 
     // Redirect to the workspace page with just the setup action
