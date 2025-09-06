@@ -636,6 +636,7 @@ model JanitorConfig {
   unitTestsEnabled        Boolean @default(false) @map("unit_tests_enabled")
   integrationTestsEnabled Boolean @default(false) @map("integration_tests_enabled")
   e2eTestsEnabled         Boolean @default(false) @map("e2e_tests_enabled")
+  securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -832,6 +833,7 @@ enum JanitorType {
   UNIT_TESTS
   INTEGRATION_TESTS
   E2E_TESTS
+  SECURITY_REVIEW
 }
 
 enum JanitorStatus {
