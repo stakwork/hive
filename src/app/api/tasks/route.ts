@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 50) {
+    if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
         {
           error:
-            "Invalid pagination parameters. Page must be >= 1, limit must be 1-50",
+            "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
         },
         { status: 400 },
       );
