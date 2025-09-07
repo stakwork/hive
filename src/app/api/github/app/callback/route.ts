@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
 async function getAccessToken(code: string, state: string) {
-  console.log("getAccessToken", code, state);
+  // console.log("getAccessToken", code, state);
   // 2. Exchange the temporary code for an OAuth token
   const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -91,8 +92,48 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/?error=invalid_code", request.url));
     }
 
-    console.log("userAccessToken", userAccessToken);
-    console.log("userRefreshToken", userRefreshToken);
+    // console.log("userAccessToken", userAccessToken);
+    // console.log("userRefreshToken", userRefreshToken);
+
+    // Encrypt the tokens before storing
+    const encryptionService = EncryptionService.getInstance();
+    const encryptedAccessToken = JSON.stringify(encryptionService.encryptField("app_access_token", userAccessToken));
+    const encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("app_refresh_token", userRefreshToken));
+
+    // Find existing GitHub account for this user
+    const existingAccount = await db.account.findFirst({
+      where: {
+        userId: session.user.id as string,
+        provider: "github",
+      },
+    });
+
+    if (existingAccount) {
+      // Update existing account with new app tokens
+      await db.account.update({
+        where: {
+          id: existingAccount.id,
+        },
+        data: {
+          app_access_token: encryptedAccessToken,
+          app_refresh_token: encryptedRefreshToken,
+          app_expires_at: Math.floor(Date.now() / 1000) + 8 * 60 * 60, // 8 hours from now
+        },
+      });
+    } else {
+      // Create new account with app tokens
+      await db.account.create({
+        data: {
+          userId: session.user.id as string,
+          type: "oauth",
+          provider: "github",
+          providerAccountId: session.user.id as string, // Use session user ID as fallback
+          app_access_token: encryptedAccessToken,
+          app_refresh_token: encryptedRefreshToken,
+          app_expires_at: Math.floor(Date.now() / 1000) + 8 * 60 * 60, // 8 hours from now
+        },
+      });
+    }
 
     // Decode the state to get workspace information
     let workspaceSlug: string;

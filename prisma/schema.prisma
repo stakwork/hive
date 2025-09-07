@@ -28,6 +28,10 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
+  // GitHub App specific tokens (different from regular OAuth)
+  app_access_token  String? @map("app_access_token")
+  app_refresh_token String? @map("app_refresh_token")
+  app_expires_at    Int?    @map("app_expires_at")
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
