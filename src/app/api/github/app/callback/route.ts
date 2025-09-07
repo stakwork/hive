@@ -5,23 +5,71 @@ import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 
+async function getAccessToken(code: string, state: string) {
+  console.log("getAccessToken", code, state);
+  // 2. Exchange the temporary code for an OAuth token
+  const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      client_id: process.env.GITHUB_APP_CLIENT_ID,
+      client_secret: process.env.GITHUB_APP_CLIENT_SECRET,
+      code,
+      state,
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error(`HTTP error! status: ${tokenResponse.status}`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  const userAccessToken = tokenData.access_token;
+  const userRefreshToken = tokenData.refresh_token;
+
+  return { userAccessToken, userRefreshToken };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+
+    // GH app must have:
+    // Request user authorization (OAuth) during installation
+    // and a single callback URL only
+
+    // Log EVERYTHING GitHub sends you
+    // console.log("=== ALL SEARCH PARAMS ===");
+    // for (const [key, value] of searchParams.entries()) {
+    //   console.log(`${key}: ${value}`);
+    // }
+
     const state = searchParams.get("state");
     const installationId = searchParams.get("installation_id");
     const setupAction = searchParams.get("setup_action");
+    const code = searchParams.get("code");
+
+    console.log("installationId", installationId);
+    console.log("setupAction", setupAction);
+    console.log("code", code);
+
+    // Validate required parameters
+    if (!state) {
+      return NextResponse.redirect(new URL("/?error=missing_state", request.url));
+    }
+    if (!code) {
+      console.log("missing code!!!!");
+      return NextResponse.redirect(new URL("/?error=missing_code", request.url));
+    }
 
     // Check if user is authenticated
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       // Redirect to login if not authenticated
       return NextResponse.redirect(new URL("/auth", request.url));
-    }
-
-    // Validate required parameters
-    if (!state) {
-      return NextResponse.redirect(new URL("/?error=missing_state", request.url));
     }
 
     // Get the user's session to validate the GitHub state
@@ -36,6 +84,15 @@ export async function GET(request: NextRequest) {
       console.error("Invalid or expired GitHub state for user:", session.user.id);
       return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     }
+
+    const { userAccessToken, userRefreshToken } = await getAccessToken(code, state);
+
+    if (!userAccessToken || !userRefreshToken) {
+      return NextResponse.redirect(new URL("/?error=invalid_code", request.url));
+    }
+
+    console.log("userAccessToken", userAccessToken);
+    console.log("userRefreshToken", userRefreshToken);
 
     // Decode the state to get workspace information
     let workspaceSlug: string;

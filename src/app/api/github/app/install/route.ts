@@ -45,8 +45,16 @@ export async function POST(request: NextRequest) {
       data: { githubState: state },
     });
 
-    // Generate the GitHub App installation URL with callback
-    const installationUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;
+    // Only set redirect_uri if we're running on localhost
+    const host = request.headers.get("host") || "";
+    const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
+
+    let installationUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;
+
+    if (isLocalhost) {
+      const redirectUrl = `http://localhost:3000/api/github/app/callback`;
+      installationUrl += `&redirect_uri=${encodeURIComponent(redirectUrl)}`;
+    }
 
     return NextResponse.json(
       {
