@@ -99,7 +99,10 @@ export async function GET(request: NextRequest) {
     // Encrypt the tokens before storing
     const encryptionService = EncryptionService.getInstance();
     const encryptedAccessToken = JSON.stringify(encryptionService.encryptField("app_access_token", userAccessToken));
-    const encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("app_refresh_token", userRefreshToken));
+    let encryptedRefreshToken;
+    if (userRefreshToken) {
+      encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("app_refresh_token", userRefreshToken));
+    }
 
     // Find existing GitHub account for this user
     const existingAccount = await db.account.findFirst({

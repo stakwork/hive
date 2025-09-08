@@ -78,7 +78,6 @@ export async function getUserAppTokens(
       userId,
       provider: "github",
       app_access_token: { not: null },
-      app_refresh_token: { not: null },
     },
     select: {
       app_access_token: true,
@@ -86,14 +85,18 @@ export async function getUserAppTokens(
     },
   });
 
-  if (!account?.app_access_token || !account?.app_refresh_token) {
+  if (!account?.app_access_token) {
     return null;
   }
 
   try {
     const encryptionService = EncryptionService.getInstance();
     const accessToken = encryptionService.decryptField("app_access_token", account.app_access_token);
-    const refreshToken = encryptionService.decryptField("app_refresh_token", account.app_refresh_token);
+
+    let refreshToken;
+    if (account.app_refresh_token) {
+      refreshToken = encryptionService.decryptField("app_refresh_token", account.app_refresh_token);
+    }
 
     return { accessToken, refreshToken };
   } catch (error) {
@@ -113,7 +116,10 @@ async function updateUserAppTokens(
 ): Promise<void> {
   const encryptionService = EncryptionService.getInstance();
   const encryptedAccessToken = JSON.stringify(encryptionService.encryptField("app_access_token", accessToken));
-  const encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("app_refresh_token", refreshToken));
+  let encryptedRefreshToken;
+  if (refreshToken) {
+    encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("app_refresh_token", refreshToken));
+  }
 
   const expiresAt = expiresIn ? Math.floor(Date.now() / 1000) + expiresIn : undefined;
 
@@ -196,7 +202,6 @@ export async function getOrRefreshAccessToken(
         userId,
         provider: "github",
         app_access_token: { not: null },
-        app_refresh_token: { not: null },
       },
       select: {
         app_access_token: true,
@@ -205,28 +210,30 @@ export async function getOrRefreshAccessToken(
       },
     });
 
-    if (!account?.app_access_token || !account?.app_refresh_token) {
+    if (!account?.app_access_token) {
       console.error("No GitHub App tokens found for user:", userId);
       return null;
     }
 
-    // Check if token is close to expiration
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = account.app_expires_at;
+    if (account?.app_refresh_token) {
+      // Check if token is close to expiration
+      const now = Math.floor(Date.now() / 1000);
+      const expiresAt = account.app_expires_at;
 
-    if (expiresAt && expiresAt - now <= refreshThresholdSeconds) {
-      console.log(`Token expires in ${expiresAt - now} seconds, refreshing...`);
+      if (expiresAt && expiresAt - now <= refreshThresholdSeconds) {
+        console.log(`Token expires in ${expiresAt - now} seconds, refreshing...`);
 
-      // Token is close to expiration, refresh it
-      const refreshSuccess = await refreshAndUpdateAccessTokens(userId);
-      if (!refreshSuccess) {
-        console.error("Failed to refresh token for user:", userId);
-        return null;
+        // Token is close to expiration, refresh it
+        const refreshSuccess = await refreshAndUpdateAccessTokens(userId);
+        if (!refreshSuccess) {
+          console.error("Failed to refresh token for user:", userId);
+          return null;
+        }
+
+        // Get the newly refreshed token
+        const newTokens = await getUserAppTokens(userId);
+        return newTokens?.accessToken || null;
       }
-
-      // Get the newly refreshed token
-      const newTokens = await getUserAppTokens(userId);
-      return newTokens?.accessToken || null;
     }
 
     // Token is still valid, decrypt and return it

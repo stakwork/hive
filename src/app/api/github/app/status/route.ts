@@ -14,7 +14,7 @@ export async function GET() {
 
     // Check if user has GitHub App tokens
     const tokens = await getUserAppTokens(session.user.id);
-    const hasTokens = !!(tokens?.accessToken && tokens?.refreshToken);
+    const hasTokens = !!tokens?.accessToken;
 
     return NextResponse.json({ hasTokens }, { status: 200 });
   } catch (error) {
