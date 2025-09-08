@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
+// import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
@@ -13,8 +14,14 @@ export async function GET() {
     }
 
     // Check if user has GitHub App tokens
-    const tokens = await getUserAppTokens(session.user.id);
-    const hasTokens = !!tokens?.accessToken;
+    const apptokens = await getUserAppTokens(session.user.id);
+    const hasTokens = !!apptokens?.accessToken;
+
+    // if (hasTokens) {
+    //   const encryptionService = EncryptionService.getInstance();
+    //   const accessToken = encryptionService.decryptField("app_access_token", apptokens.accessToken as string);
+    //   console.log("=> accessToken", accessToken);
+    // }
 
     return NextResponse.json({ hasTokens }, { status: 200 });
   } catch (error) {
