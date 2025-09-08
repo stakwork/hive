@@ -3,32 +3,23 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { db } from "@/lib/db";
+import { checkAppInstalled, getOrRefreshAccessToken } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
 
 export const runtime = "nodejs";
-
-async function checkAppInstalled(workspaceSlug: string): Promise<{ installed: boolean; installationId?: string }> {
-  // Check if we already have an installation ID for this workspace
-  const swarm = await db.swarm.findFirst({
-    where: {
-      workspace: { slug: workspaceSlug },
-      githubInstallationId: { not: null },
-    },
-    select: { githubInstallationId: true },
-  });
-
-  if (swarm?.githubInstallationId) {
-    return { installed: true, installationId: swarm.githubInstallationId };
-  }
-
-  return { installed: false };
-}
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    }
+
+    const accessToken = await getOrRefreshAccessToken(session.user.id);
+    console.log(">>>> accessToken", accessToken);
+
+    if (!accessToken) {
+      return NextResponse.json({ success: false, message: "Failed to get or refresh access token" }, { status: 500 });
     }
 
     if (!config.GITHUB_APP_SLUG) {
