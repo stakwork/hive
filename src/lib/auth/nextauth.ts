@@ -43,8 +43,7 @@ const getProviders = () => {
         clientSecret: process.env.GITHUB_CLIENT_SECRET!,
         authorization: {
           params: {
-            scope:
-              "read:user user:email read:org repo admin:repo_hook admin:org_hook",
+            scope: "read:user user:email read:org repo admin:repo_hook admin:org_hook",
           },
         },
       }),
@@ -148,10 +147,7 @@ export const authOptions: NextAuthOptions = {
 
             if (!existingAccount) {
               // Create a new account record linking GitHub to the existing user
-              const encryptedAccessToken = encryptionService.encryptField(
-                "access_token",
-                account.access_token ?? "",
-              );
+              const encryptedAccessToken = encryptionService.encryptField("access_token", account.access_token ?? "");
 
               await db.account.create({
                 data: {
@@ -161,28 +157,15 @@ export const authOptions: NextAuthOptions = {
                   providerAccountId: account.providerAccountId,
                   access_token: JSON.stringify(encryptedAccessToken),
                   refresh_token: account.refresh_token
-                    ? JSON.stringify(
-                        encryptionService.encryptField(
-                          "refresh_token",
-                          account.refresh_token,
-                        ),
-                      )
+                    ? JSON.stringify(encryptionService.encryptField("refresh_token", account.refresh_token))
                     : (null as unknown as string | undefined | null),
                   expires_at: account.expires_at as number | undefined | null,
                   token_type: account.token_type as string | undefined | null,
                   scope: account.scope,
                   id_token: account.id_token
-                    ? JSON.stringify(
-                        encryptionService.encryptField(
-                          "id_token",
-                          account.id_token,
-                        ),
-                      )
+                    ? JSON.stringify(encryptionService.encryptField("id_token", account.id_token))
                     : (null as unknown as string | undefined | null),
-                  session_state: account.session_state as
-                    | string
-                    | undefined
-                    | null,
+                  session_state: account.session_state as string | undefined | null,
                 },
               });
 
@@ -190,10 +173,7 @@ export const authOptions: NextAuthOptions = {
               user.id = existingUser.id;
             } else {
               if (account.access_token) {
-                const encryptedAccessToken = encryptionService.encryptField(
-                  "access_token",
-                  account.access_token ?? "",
-                );
+                const encryptedAccessToken = encryptionService.encryptField("access_token", account.access_token ?? "");
 
                 await db.account.update({
                   where: { id: existingAccount.id },
@@ -201,20 +181,10 @@ export const authOptions: NextAuthOptions = {
                     access_token: JSON.stringify(encryptedAccessToken),
                     scope: account.scope,
                     refresh_token: account.refresh_token
-                      ? JSON.stringify(
-                          encryptionService.encryptField(
-                            "refresh_token",
-                            account.refresh_token,
-                          ),
-                        )
+                      ? JSON.stringify(encryptionService.encryptField("refresh_token", account.refresh_token))
                       : existingAccount.refresh_token,
                     id_token: account.id_token
-                      ? JSON.stringify(
-                          encryptionService.encryptField(
-                            "id_token",
-                            account.id_token,
-                          ),
-                        )
+                      ? JSON.stringify(encryptionService.encryptField("id_token", account.id_token))
                       : existingAccount.id_token,
                   },
                 });
@@ -251,9 +221,7 @@ export const authOptions: NextAuthOptions = {
             const uid = (session.user as { id: string }).id;
             const ws = await getDefaultWorkspaceForUser(uid);
             if (ws?.slug) {
-              (
-                session.user as { defaultWorkspaceSlug?: string }
-              ).defaultWorkspaceSlug = ws.slug;
+              (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = ws.slug;
             }
           } catch {}
           return session;
@@ -275,8 +243,7 @@ export const authOptions: NextAuthOptions = {
                 };
               }
             ).github = {
-              username:
-                user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
+              username: user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
               publicRepos: 5,
               followers: 10,
             };
@@ -302,17 +269,11 @@ export const authOptions: NextAuthOptions = {
           if (account && account.access_token) {
             try {
               // Fetch profile from GitHub API
-              const { data: githubProfile } = await axios.get<GitHubProfile>(
-                "https://api.github.com/user",
-                {
-                  headers: {
-                    Authorization: `token ${encryptionService.decryptField(
-                      "access_token",
-                      account.access_token,
-                    )}`,
-                  },
+              const { data: githubProfile } = await axios.get<GitHubProfile>("https://api.github.com/user", {
+                headers: {
+                  Authorization: `token ${encryptionService.decryptField("access_token", account.access_token)}`,
                 },
-              );
+              });
 
               githubAuth = await db.gitHubAuth.upsert({
                 where: { userId: user.id },
@@ -330,12 +291,8 @@ export const authOptions: NextAuthOptions = {
                   publicGists: githubProfile.public_gists,
                   followers: githubProfile.followers,
                   following: githubProfile.following,
-                  githubCreatedAt: githubProfile.created_at
-                    ? new Date(githubProfile.created_at)
-                    : null,
-                  githubUpdatedAt: githubProfile.updated_at
-                    ? new Date(githubProfile.updated_at)
-                    : null,
+                  githubCreatedAt: githubProfile.created_at ? new Date(githubProfile.created_at) : null,
+                  githubUpdatedAt: githubProfile.updated_at ? new Date(githubProfile.updated_at) : null,
                   accountType: githubProfile.type,
                   scopes: account.scope ? account.scope.split(",") : [],
                 },
@@ -354,12 +311,8 @@ export const authOptions: NextAuthOptions = {
                   publicGists: githubProfile.public_gists,
                   followers: githubProfile.followers,
                   following: githubProfile.following,
-                  githubCreatedAt: githubProfile.created_at
-                    ? new Date(githubProfile.created_at)
-                    : null,
-                  githubUpdatedAt: githubProfile.updated_at
-                    ? new Date(githubProfile.updated_at)
-                    : null,
+                  githubCreatedAt: githubProfile.created_at ? new Date(githubProfile.created_at) : null,
+                  githubUpdatedAt: githubProfile.updated_at ? new Date(githubProfile.updated_at) : null,
                   accountType: githubProfile.type,
                   scopes: account.scope ? account.scope.split(",") : [],
                 },
@@ -370,9 +323,7 @@ export const authOptions: NextAuthOptions = {
             }
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
-            console.log(
-              "GitHub account exists but token is revoked - user needs to re-authenticate",
-            );
+            console.log("GitHub account exists but token is revoked - user needs to re-authenticate");
           }
         }
 
@@ -402,8 +353,7 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name;
         token.picture = user.image;
         token.github = {
-          username:
-            user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
+          username: user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
           publicRepos: 5,
           followers: 10,
         };
@@ -415,12 +365,7 @@ export const authOptions: NextAuthOptions = {
     async linkAccount({ user, account }) {
       try {
         if (account?.provider === "github" && account.access_token) {
-          const encryptedToken = JSON.stringify(
-            encryptionService.encryptField(
-              "access_token",
-              account.access_token,
-            ),
-          );
+          const encryptedToken = JSON.stringify(encryptionService.encryptField("access_token", account.access_token));
           await db.account.updateMany({
             where: {
               userId: user.id,
@@ -446,13 +391,17 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
+interface GithubUsernameAndPAT {
+  username: string;
+  pat: string;
+  appAccessToken: string | null;
+}
+
 /**
  * Fetches the GitHub username and PAT (accessToken) for a given userId.
  * Returns { username, pat } or null if not found.
  */
-export async function getGithubUsernameAndPAT(
-  userId: string,
-): Promise<{ username: string; pat: string } | null> {
+export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUsernameAndPAT | null> {
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (user?.email?.endsWith("@mock.dev")) {
@@ -469,10 +418,10 @@ export async function getGithubUsernameAndPAT(
   if (githubAuth?.githubUsername && githubAccount?.access_token) {
     return {
       username: githubAuth.githubUsername,
-      pat: encryptionService.decryptField(
-        "access_token",
-        githubAccount.access_token,
-      ),
+      pat: encryptionService.decryptField("access_token", githubAccount.access_token),
+      appAccessToken: githubAccount.app_access_token
+        ? encryptionService.decryptField("app_access_token", githubAccount.app_access_token)
+        : null,
     };
   }
   return null;
