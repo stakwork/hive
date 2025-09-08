@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { db } from "@/lib/db";
-import { checkAppInstalled, getOrRefreshAccessToken } from "@/lib/githubApp";
+import { checkAppInstalled } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
 
 export const runtime = "nodejs";
@@ -13,13 +13,6 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
-
-    const accessToken = await getOrRefreshAccessToken(session.user.id);
-    console.log(">>>> accessToken", accessToken);
-
-    if (!accessToken) {
-      return NextResponse.json({ success: false, message: "Failed to get or refresh access token" }, { status: 500 });
     }
 
     if (!config.GITHUB_APP_SLUG) {

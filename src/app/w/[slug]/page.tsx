@@ -8,22 +8,64 @@ import { PageHeader } from "@/components/ui/page-header";
 import { VMConfigSection } from "@/components/vm-config";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useGithubApp } from "@/hooks/useGithubApp";
 import { formatRelativeTime } from "@/lib/utils";
-import { GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { GitBranch, Github, RefreshCw, TestTube, ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
 import { GraphComponent } from "./graph";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
+  const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const processedCallback = useRef(false);
+  const [isInstalling, setIsInstalling] = useState(false);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
+
+  // Handle GitHub App installation
+  const handleGithubAppInstall = async () => {
+    if (!slug) return;
+
+    setIsInstalling(true);
+    try {
+      const response = await fetch("/api/github/app/install", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ workspaceSlug: slug }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.data?.link) {
+        // Redirect to GitHub App installation
+        window.location.href = data.data.link;
+      } else {
+        toast({
+          title: "Installation Failed",
+          description: data.message || "Failed to generate GitHub App installation link",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to install GitHub App:", error);
+      toast({
+        title: "Installation Failed",
+        description: "An error occurred while trying to install the GitHub App",
+        variant: "destructive",
+      });
+    } finally {
+      setIsInstalling(false);
+    }
+  };
 
   // Handle GitHub App callback
   useEffect(() => {
@@ -94,10 +136,25 @@ export default function DashboardPage() {
                   <GitBranch className="w-4 h-4" />
                   Graph Database
                 </CardTitle>
-                <Badge variant="outline" className="text-xs flex items-center gap-1">
-                  <Github className="w-3 h-3" />
-                  GitHub
-                </Badge>
+                {!isGithubAppLoading &&
+                  (hasGithubAppTokens ? (
+                    <Badge variant="outline" className="text-xs flex items-center gap-1">
+                      <Github className="w-3 h-3" />
+                      GitHub
+                    </Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGithubAppInstall}
+                      disabled={isInstalling}
+                      className="text-xs h-6 px-2 bg-white text-black hover:bg-gray-100 hover:text-black dark:bg-white dark:text-black dark:hover:bg-gray-100 dark:hover:text-black border-gray-300 dark:border-gray-300"
+                    >
+                      <Github className="w-3 h-3 mr-1" />
+                      {isInstalling ? "Installing..." : "Link GitHub"}
+                      <ExternalLink className="w-3 h-3 ml-1" />
+                    </Button>
+                  ))}
               </div>
             </CardHeader>
             <CardContent className="flex flex-col h-full">

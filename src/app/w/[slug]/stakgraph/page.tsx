@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { Webhook, Loader2, Save, ArrowLeft, Github } from "lucide-react";
+import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
@@ -103,53 +103,6 @@ export default function StakgraphPage() {
     }
   };
 
-  const handleGitHubAppInstall = async () => {
-    try {
-      if (!slug) {
-        toast({
-          title: "Error",
-          description: "Workspace not found",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const res = await fetch("/api/github/app/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceSlug: slug,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast({
-          title: "Error",
-          description: data.message || "Failed to generate installation link",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Open the GitHub App installation link in a new tab
-      window.open(data.data.link, "_blank");
-
-      toast({
-        title: "GitHub App Installation",
-        description: "Opening GitHub App installation page...",
-      });
-    } catch (error) {
-      console.error("Failed to generate GitHub App installation link", error);
-      toast({
-        title: "Error",
-        description: "Failed to generate installation link",
-        variant: "destructive",
-      });
-    }
-  };
-
   // const allFieldsFilled =
   //   formData.name &&
   //     formData.repositoryUrl &&
@@ -199,9 +152,6 @@ export default function StakgraphPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>VM Settings</CardTitle>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={handleGitHubAppInstall}>
-              <Github className="mr-2 h-4 w-4" />
-            </Button>
             {!formData.webhookEnsured && formData.repositoryUrl ? (
               <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
                 <Webhook className="mr-2 h-4 w-4" />
