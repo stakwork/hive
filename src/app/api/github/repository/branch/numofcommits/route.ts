@@ -8,10 +8,7 @@ export async function GET(request: Request) {
   const repoUrl = searchParams.get("repoUrl");
 
   if (!repoUrl) {
-    return NextResponse.json(
-      { error: "Repo URL is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Repo URL is required" }, { status: 400 });
   }
 
   try {
@@ -25,11 +22,9 @@ export async function GET(request: Request) {
 
     const githubProfile = await getGithubUsernameAndPAT(userId);
     if (!githubProfile?.pat) {
-      return NextResponse.json(
-        { error: "GitHub access token not found" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
+    const pat = githubProfile.appAccessToken || githubProfile.pat;
 
     function parseOwnerRepo(url: string): { owner: string; repo: string } {
       const u = url.replace(/\.git$/i, "");
@@ -44,32 +39,26 @@ export async function GET(request: Request) {
 
     const { owner, repo } = parseOwnerRepo(repoUrl);
 
-    const res = await axios.get(
-      `https://api.github.com/repos/${owner}/${repo}`,
-      {
-        headers: {
-          Authorization: `token ${githubProfile.pat}`,
-          Accept: "application/vnd.github.v3+json",
-        },
+    const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Authorization: `token ${pat}`,
+        Accept: "application/vnd.github.v3+json",
       },
-    );
+    });
 
     const repoData = res.data;
     const default_branch = repoData.default_branch;
 
-    const commitNumberRes = await axios.get(
-      `https://api.github.com/repos/${owner}/${repo}/commits`,
-      {
-        headers: {
-          Authorization: `token ${githubProfile.pat}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-        params: {
-          sha: default_branch,
-          per_page: 1,
-        },
+    const commitNumberRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
+      headers: {
+        Authorization: `token ${pat}`,
+        Accept: "application/vnd.github.v3+json",
       },
-    );
+      params: {
+        sha: default_branch,
+        per_page: 1,
+      },
+    });
 
     const linkHeader = commitNumberRes.headers.link;
     let totalCommits = 0;
@@ -88,20 +77,17 @@ export async function GET(request: Request) {
     const sinceDate = oneWeekAgo.toISOString();
 
     // Fetch commits from the last week
-    const lastWeekCommitsRes = await axios.get(
-      `https://api.github.com/repos/${owner}/${repo}/commits`,
-      {
-        headers: {
-          Authorization: `token ${githubProfile.pat}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-        params: {
-          sha: default_branch,
-          since: sinceDate,
-          per_page: 100, // Adjust per_page as needed (GitHub API max is 100)
-        },
+    const lastWeekCommitsRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
+      headers: {
+        Authorization: `token ${pat}`,
+        Accept: "application/vnd.github.v3+json",
       },
-    );
+      params: {
+        sha: default_branch,
+        since: sinceDate,
+        per_page: 100, // Adjust per_page as needed (GitHub API max is 100)
+      },
+    });
 
     // Count commits from last week
     let commitsFromLastWeek = lastWeekCommitsRes.data.length;
@@ -135,15 +121,9 @@ export async function GET(request: Request) {
       "status" in error.response &&
       error.response.status === 401
     ) {
-      return NextResponse.json(
-        { error: "GitHub token expired or invalid" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "GitHub token expired or invalid" }, { status: 401 });
     }
 
-    return NextResponse.json(
-      { error: "Failed to fetch repositories" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch repositories" }, { status: 500 });
   }
 }

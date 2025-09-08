@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       const creds = await getGithubUsernameAndPAT(ownerId);
       if (creds) {
         username = creds.username;
-        pat = creds.pat;
+        pat = creds.appAccessToken || creds.pat;
       }
     }
 

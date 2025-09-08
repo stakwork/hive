@@ -6,10 +6,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
-import {
-  getGithubWebhookCallbackUrl,
-  getStakgraphWebhookCallbackUrl,
-} from "@/lib/url";
+import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -21,20 +18,14 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
     const { workspaceId, swarmId } = body;
 
     if (!swarmId) {
-      return NextResponse.json(
-        { success: false, message: "Missing required fields: swarmId" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Missing required fields: swarmId" }, { status: 400 });
     }
 
     const where: Record<string, string> = {};
@@ -42,16 +33,10 @@ export async function POST(request: NextRequest) {
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL or API key not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
     const repoWorkspaceId = workspaceId || swarm.workspaceId;
@@ -65,17 +50,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!final_repo_url) {
-      return NextResponse.json(
-        { success: false, message: "No repository URL found" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "No repository URL found" }, { status: 400 });
     }
 
     if (!repoWorkspaceId) {
-      return NextResponse.json(
-        { success: false, message: "No repository workspace ID found" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "No repository workspace ID found" }, { status: 400 });
     }
 
     const repository = await db.repository.upsert({
@@ -99,7 +78,7 @@ export async function POST(request: NextRequest) {
     const dataApi = {
       repo_url: final_repo_url,
       username: creds?.username,
-      pat: creds?.pat,
+      pat: creds?.appAccessToken || creds?.pat,
       callback_url: getStakgraphWebhookCallbackUrl(request),
     };
 
@@ -158,9 +137,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error ingesting code:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to ingest code" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }

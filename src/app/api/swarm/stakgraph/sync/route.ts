@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import {
-  triggerAsyncSync,
-  AsyncSyncResult,
-} from "@/services/swarm/stakgraph-actions";
+import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { RepositoryStatus } from "@prisma/client";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -15,10 +12,7 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
     console.log("SESSION", session);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -32,16 +26,10 @@ export async function POST(request: NextRequest) {
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found or misconfigured" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
     }
     if (!swarm.repositoryUrl) {
-      return NextResponse.json(
-        { success: false, message: "Repository URL not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Repository URL not set" }, { status: 400 });
     }
 
     let username: string | undefined;
@@ -50,7 +38,7 @@ export async function POST(request: NextRequest) {
     const creds = await getGithubUsernameAndPAT(userId);
     if (creds) {
       username = creds.username;
-      pat = creds.pat;
+      pat = creds.appAccessToken || creds.pat;
     }
     try {
       await db.repository.update({
@@ -63,10 +51,7 @@ export async function POST(request: NextRequest) {
         data: { status: RepositoryStatus.PENDING },
       });
     } catch (e) {
-      console.error(
-        "Repository not found or failed to set PENDING before sync",
-        e,
-      );
+      console.error("Repository not found or failed to set PENDING before sync", e);
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
@@ -100,10 +85,7 @@ export async function POST(request: NextRequest) {
           data: { status: RepositoryStatus.FAILED },
         });
       } catch (e) {
-        console.error(
-          "Failed to mark repository FAILED after sync start error",
-          e,
-        );
+        console.error("Failed to mark repository FAILED after sync start error", e);
       }
     }
 
@@ -112,9 +94,6 @@ export async function POST(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch {
-    return NextResponse.json(
-      { success: false, message: "Failed to sync" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to sync" }, { status: 500 });
   }
 }
