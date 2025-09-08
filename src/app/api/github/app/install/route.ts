@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Check if app is already installed on this workspace
-    const { installed } = await checkAppInstalled(workspaceSlug);
+    const { installed, installationId } = await checkAppInstalled(workspaceSlug);
+
+    console.log("=> installed:", installed, "installationId:", installationId);
 
     let authUrl: string;
     let flowType: string;
@@ -56,6 +58,8 @@ export async function POST(request: NextRequest) {
       authUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;
       flowType = "installation";
     }
+
+    console.log("=> authUrl:", authUrl, "flowType:", flowType);
 
     return NextResponse.json(
       {
