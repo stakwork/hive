@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { config } from "@/lib/env";
 
 export const runtime = "nodejs";
 
@@ -16,8 +17,8 @@ async function getAccessToken(code: string, state: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      client_id: process.env.GITHUB_APP_CLIENT_ID,
-      client_secret: process.env.GITHUB_APP_CLIENT_SECRET,
+      client_id: config.GITHUB_APP_CLIENT_ID,
+      client_secret: config.GITHUB_APP_CLIENT_SECRET,
       code,
       state,
     }),
