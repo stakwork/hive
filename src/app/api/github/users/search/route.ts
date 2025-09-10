@@ -17,26 +17,21 @@ export async function GET(request: Request) {
     const query = searchParams.get("q");
 
     if (!query || query.trim().length < 2) {
-      return NextResponse.json(
-        { error: "Search query must be at least 2 characters" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Search query must be at least 2 characters" }, { status: 400 });
     }
 
     const userId = (session.user as { id: string }).id;
-    
+
     const githubProfile = await getGithubUsernameAndPAT(userId);
     if (!githubProfile?.pat) {
-      return NextResponse.json(
-        { error: "GitHub access token not found" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
+    const pat = githubProfile.appAccessToken || githubProfile.pat;
 
     // Search GitHub users
     const response = await axios.get("https://api.github.com/search/users", {
       headers: {
-        Authorization: `token ${githubProfile.pat}`,
+        Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
       },
       params: {
@@ -70,15 +65,9 @@ export async function GET(request: Request) {
       "status" in error.response &&
       error.response.status === 401
     ) {
-      return NextResponse.json(
-        { error: "GitHub token expired or invalid" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "GitHub token expired or invalid" }, { status: 401 });
     }
 
-    return NextResponse.json(
-      { error: "Failed to search GitHub users" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to search GitHub users" }, { status: 500 });
   }
 }
