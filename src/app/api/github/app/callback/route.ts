@@ -7,7 +7,7 @@ import { config } from "@/lib/env";
 
 export const runtime = "nodejs";
 
-async function getAccessToken(code: string, state: string) {
+export async function getAccessToken(code: string, state: string) {
   // console.log("getAccessToken", code, state);
   // 2. Exchange the temporary code for an OAuth token
   const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
