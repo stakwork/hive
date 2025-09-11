@@ -1,31 +1,27 @@
-import { defineConfig } from "vitest/config";
-import path from "path";
-
-const testSuite = process.env.TEST_SUITE;
+import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
   test: {
-    environment: "node",
     globals: true,
-    // Run integration tests sequentially to avoid database conflicts
-    pool: testSuite === "integration" ? "forks" : "threads",
-    poolOptions: testSuite === "integration" ? {
-      forks: {
-        singleFork: true,
-      },
-    } : undefined,
-    include:
-      testSuite === "integration"
-        ? ["src/__tests__/integration/**/*.test.ts"]
-        : ["src/__tests__/unit/**/*.test.ts"],
-    setupFiles:
-      testSuite === "integration"
-        ? ["./src/__tests__/setup-integration.ts"]
-        : ["./src/__tests__/setup-unit.ts"],
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    css: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/__tests__/**',
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.stories.{ts,tsx}',
+        'node_modules/**',
+      ],
+      reporter: ['text', 'json', 'html'],
+    },
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      '@': resolve(__dirname, './src'),
     },
   },
 });
