@@ -20,13 +20,14 @@ describe("WorkspaceSwitcher Logic", () => {
     const workspaces = [
       { id: "1", userRole: "OWNER", name: "Workspace 1" },
       { id: "2", userRole: "OWNER", name: "Workspace 2" },
-      { id: "3", userRole: "DEVELOPER", name: "Workspace 3" }, // Not owned
+      { id: "3", userRole: "OWNER", name: "Workspace 3" },
+      { id: "4", userRole: "DEVELOPER", name: "Workspace 4" }, // Not owned
     ];
 
     const ownedWorkspaces = workspaces.filter(ws => ws.userRole === 'OWNER');
     const isAtLimit = ownedWorkspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
 
-    expect(ownedWorkspaces).toHaveLength(2);
+    expect(ownedWorkspaces).toHaveLength(3);
     expect(isAtLimit).toBe(true);
   });
 
@@ -47,16 +48,17 @@ describe("WorkspaceSwitcher Logic", () => {
     const workspaces = [
       { id: "1", userRole: "OWNER", name: "Owned 1" },
       { id: "2", userRole: "OWNER", name: "Owned 2" },
-      { id: "3", userRole: "ADMIN", name: "Admin workspace" },
-      { id: "4", userRole: "DEVELOPER", name: "Dev workspace" },
-      { id: "5", userRole: "VIEWER", name: "Viewer workspace" },
+      { id: "3", userRole: "OWNER", name: "Owned 3" },
+      { id: "4", userRole: "ADMIN", name: "Admin workspace" },
+      { id: "5", userRole: "DEVELOPER", name: "Dev workspace" },
+      { id: "6", userRole: "VIEWER", name: "Viewer workspace" },
     ];
 
     const ownedWorkspaces = workspaces.filter(ws => ws.userRole === 'OWNER');
     const isAtLimit = ownedWorkspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
 
-    expect(ownedWorkspaces).toHaveLength(2);
-    expect(workspaces).toHaveLength(5); // Total workspaces user can access
-    expect(isAtLimit).toBe(true); // But only 2 are owned, so at limit
+    expect(ownedWorkspaces).toHaveLength(3);
+    expect(workspaces).toHaveLength(6); // Total workspaces user can access
+    expect(isAtLimit).toBe(true); // 3 owned workspaces = at limit (default is 3)
   });
 });
