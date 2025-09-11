@@ -40,6 +40,7 @@ export async function fetchSwarmDetails(
     undefined;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      console.log(`Attempt: ${attempt} - maxRetries: ${maxRetries} - delay: ${delay}`);
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
       const response = await fetch(url, {
