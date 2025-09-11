@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const vanity_address = getSwarmVanityAddress(name);
+    // const vanity_address = getSwarmVanityAddress(name);
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
     const env = SWARM_DEFAULT_ENV_VARS;
 
@@ -80,7 +80,6 @@ export async function POST(request: NextRequest) {
     const swarmPassword = generateSecurePassword(20);
 
     const apiResponse = await swarmService.createSwarm({
-      vanity_address,
       name: thirdPartyName,
       instance_type,
       env,
@@ -88,10 +87,19 @@ export async function POST(request: NextRequest) {
     });
 
     const swarm_id = apiResponse?.data?.swarm_id;
+    const swarm_address = apiResponse?.data?.address;
+    const x_api_key = apiResponse?.data?.x_api_key;
+
+    const match = typeof swarm_id === "string" ? swarm_id.match(/(\d+)/) : null;
+    const swarm_id_num = match ? match[1] : swarm_id;
+    const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
+
     const updatedSwarm = await saveOrUpdateSwarm({
       workspaceId,
-      swarmUrl: `https://${vanity_address}/api`,
-      status: SwarmStatus.PENDING,
+      swarmUrl: `${swarm_address}/api`,
+      swarmApiKey: x_api_key,
+      swarmSecretAlias: swarmSecretAlias,
+      status: SwarmStatus.ACTIVE,
       swarmId: swarm_id,
       swarmPassword: swarmPassword,
     });
