@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     const updatedSwarm = await saveOrUpdateSwarm({
       workspaceId,
-      swarmUrl: `${swarm_address}/api`,
+      swarmUrl: `https://${swarm_address}/api`,
       swarmApiKey: x_api_key,
       swarmSecretAlias: swarmSecretAlias,
       status: SwarmStatus.ACTIVE,
