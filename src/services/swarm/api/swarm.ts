@@ -34,13 +34,14 @@ export async function validateUriApi(
 export async function fetchSwarmDetails(
   swarmId: string,
 ): Promise<{ ok: boolean; data?: unknown; status: number }> {
-  const maxRetries = 5;
-  let delay = 500; // start with 500ms
+  const maxRetries = 3;
+  let delay = 200; // start with 200ms
   let lastError: { ok: boolean; data?: unknown; status: number } | undefined =
     undefined;
+  
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`Attempt: ${attempt} - maxRetries: ${maxRetries} - delay: ${delay}`);
+      console.log(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`);
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
       const response = await fetch(url, {
@@ -52,6 +53,7 @@ export async function fetchSwarmDetails(
       const data = await response.json();
 
       if (response.ok) {
+        // Return immediately on success - no delays
         return { ok: true, data, status: response.status };
       } else {
         lastError = { ok: false, data, status: response.status };
@@ -60,8 +62,12 @@ export async function fetchSwarmDetails(
       lastError = { ok: false, status: 500 };
     }
 
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    delay *= 2;
+    // Only delay between retries on failures, not on first attempt or success
+    if (attempt < maxRetries - 1) {
+      console.log(`Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 1.5; // More moderate backoff
+    }
   }
   return lastError || { ok: false, status: 500 };
 }
