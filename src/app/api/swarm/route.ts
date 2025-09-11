@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     // const vanity_address = getSwarmVanityAddress(name);
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
-    const env = SWARM_DEFAULT_ENV_VARS;
+    // const env = SWARM_DEFAULT_ENV_VARS;
 
     await saveOrUpdateSwarm({
       workspaceId,
@@ -82,7 +82,6 @@ export async function POST(request: NextRequest) {
     const apiResponse = await swarmService.createSwarm({
       name: thirdPartyName,
       instance_type,
-      env,
       password: swarmPassword,
     });
 
