@@ -2,6 +2,29 @@
 import "@testing-library/jest-dom";
 import { beforeAll, afterAll } from "vitest";
 
+// Add React test environment
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => {},
+  }),
+});
+
+// Mock IntersectionObserver for any components that might use it
+global.IntersectionObserver = class IntersectionObserver {
+  constructor() {}
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+};
+
 // Add any global test setup here
 beforeAll(() => {
   // Setup any global test environment for unit tests
