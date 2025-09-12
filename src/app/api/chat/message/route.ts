@@ -3,23 +3,13 @@ import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
-import {
-  ChatRole,
-  ChatStatus,
-  ArtifactType,
-  type ContextTag,
-  type Artifact,
-  type ChatMessage,
-} from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType, type ContextTag, type Artifact, type ChatMessage } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
-import { EncryptionService } from "@/lib/encryption";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 
 export const runtime = "nodejs";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -73,9 +63,7 @@ async function callMock(
     });
 
     if (!response.ok) {
-      console.error(
-        `Failed to send message to mock server: ${response.statusText}`,
-      );
+      console.error(`Failed to send message to mock server: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
@@ -108,9 +96,7 @@ async function callStakwork(
       throw new Error("STAKWORK_API_KEY is required for Stakwork integration");
     }
     if (!config.STAKWORK_WORKFLOW_ID) {
-      throw new Error(
-        "STAKWORK_WORKFLOW_ID is required for Stakwork integration",
-      );
+      throw new Error("STAKWORK_WORKFLOW_ID is required for Stakwork integration");
     }
 
     const baseUrl = getBaseUrl(request?.headers.get("host"));
@@ -124,9 +110,7 @@ async function callStakwork(
 
     // Generate presigned URLs for attachments
     const attachmentUrls = await Promise.all(
-      attachmentPaths.map((path) =>
-        getS3Service().generatePresignedDownloadUrl(path),
-      ),
+      attachmentPaths.map((path) => getS3Service().generatePresignedDownloadUrl(path)),
     );
 
     // stakwork workflow vars
@@ -183,9 +167,7 @@ async function callStakwork(
     });
 
     if (!response.ok) {
-      console.error(
-        `Failed to send message to Stakwork: ${response.statusText}`,
-      );
+      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
@@ -206,10 +188,7 @@ export async function POST(request: NextRequest) {
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -227,16 +206,10 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!message) {
-      return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
     if (!taskId) {
-      return NextResponse.json(
-        { error: "taskId is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "taskId is required" }, { status: 400 });
     }
 
     // Find the task and get its workspace with swarm details
@@ -338,9 +311,7 @@ export async function POST(request: NextRequest) {
     // Convert to client-side type
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string,
-      ) as ContextTag[],
+      contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
@@ -350,18 +321,13 @@ export async function POST(request: NextRequest) {
 
     console.log("clientMessage", clientMessage);
 
-    const useStakwork =
-      config.STAKWORK_API_KEY &&
-      config.STAKWORK_BASE_URL &&
-      config.STAKWORK_WORKFLOW_ID;
+    const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
 
     const githubProfile = await getGithubUsernameAndPAT(userId);
     const userName = githubProfile?.username || null;
-    const accessToken = githubProfile?.pat || null;
+    const accessToken = githubProfile?.appAccessToken || githubProfile?.pat || null;
     const swarm = task.workspace.swarm;
-    const swarmUrl = swarm?.swarmUrl
-      ? swarm.swarmUrl.replace("/api", ":8444/api")
-      : "";
+    const swarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":8444/api") : "";
 
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.id || null;
@@ -371,8 +337,7 @@ export async function POST(request: NextRequest) {
 
     if (useStakwork) {
       // Extract attachment paths for Stakwork
-      const attachmentPaths =
-        chatMessage.attachments?.map((att) => att.path) || [];
+      const attachmentPaths = chatMessage.attachments?.map((att) => att.path) || [];
 
       stakworkData = await callStakwork(
         taskId,
@@ -418,13 +383,7 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      stakworkData = await callMock(
-        taskId,
-        message,
-        userId,
-        artifacts,
-        request,
-      );
+      stakworkData = await callMock(taskId, message, userId, artifacts, request);
     }
 
     return NextResponse.json(
@@ -437,9 +396,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error creating chat message:", error);
-    return NextResponse.json(
-      { error: "Failed to create chat message" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create chat message" }, { status: 500 });
   }
 }

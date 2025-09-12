@@ -1,11 +1,7 @@
 import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
 import { HttpClient } from "@/lib/http-client";
-import {
-  CreateSwarmRequest,
-  CreateSwarmResponse,
-  ValidateUriResponse,
-} from "@/types";
+import { CreateSwarmRequest, CreateSwarmResponse, ValidateUriResponse } from "@/types";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function createSwarmApi(
@@ -21,25 +17,20 @@ export async function createSwarmApi(
   );
 }
 
-export async function validateUriApi(
-  client: HttpClient,
-  domain: string,
-): Promise<ValidateUriResponse> {
-  return client.get<ValidateUriResponse>(
-    `/api/super/check-domain?domain=${domain}`,
-    { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
-  );
+export async function validateUriApi(client: HttpClient, domain: string): Promise<ValidateUriResponse> {
+  return client.get<ValidateUriResponse>(`/api/super/check-domain?domain=${domain}`, {
+    "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string,
+  });
 }
 
-export async function fetchSwarmDetails(
-  swarmId: string,
-): Promise<{ ok: boolean; data?: unknown; status: number }> {
-  const maxRetries = 5;
-  let delay = 500; // start with 500ms
-  let lastError: { ok: boolean; data?: unknown; status: number } | undefined =
-    undefined;
+export async function fetchSwarmDetails(swarmId: string): Promise<{ ok: boolean; data?: unknown; status: number }> {
+  const maxRetries = 10;
+  const retryDelay = 1000; // 1 second
+  let lastError: { ok: boolean; data?: unknown; status: number } | undefined = undefined;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      console.log(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`);
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
       const response = await fetch(url, {
@@ -51,16 +42,25 @@ export async function fetchSwarmDetails(
       const data = await response.json();
 
       if (response.ok) {
+        // Return immediately on success
         return { ok: true, data, status: response.status };
-      } else {
+      } else if (response.status === 400) {
+        // For 400 errors, retry after delay
         lastError = { ok: false, data, status: response.status };
+        console.log(`Got 400 error, will retry in ${retryDelay}ms...`);
+      } else {
+        // For other errors, return immediately (don't retry)
+        return { ok: false, data, status: response.status };
       }
-    } catch {
+    } catch (error) {
+      console.error("fetchSwarmDetails network error:", error);
       lastError = { ok: false, status: 500 };
     }
 
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    delay *= 2;
+    // Only delay and retry if we have more attempts and got a 400
+    if (attempt < maxRetries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
   }
   return lastError || { ok: false, status: 500 };
 }
@@ -85,7 +85,7 @@ export async function swarmApiRequest({
   try {
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-    console.log('swarmhRequestStart')
+    console.log("swarmhRequestStart");
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey).toString()}`,
@@ -95,14 +95,13 @@ export async function swarmApiRequest({
 
     console.log(url, headers, data, method, apiKey);
 
-
     const response = await fetch(url, {
       method,
       headers,
       ...(data ? { body: JSON.stringify(data) } : {}),
     });
 
-    console.log('swarmhRequestEnd', response)
+    console.log("swarmhRequestEnd", response);
 
     let responseData: unknown = undefined;
     // Get the text first, then try to parse as JSON
@@ -120,7 +119,6 @@ export async function swarmApiRequest({
       status: response.status,
     };
   } catch (error) {
-
     console.error("swarmApiRequest", error);
     return { ok: false, status: 500 };
   }
@@ -145,18 +143,16 @@ export async function swarmApiRequestAuth({
     // build query string if params provided
     const queryString = params
       ? "?" +
-      new URLSearchParams(
-        Object.entries(params).reduce(
-          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-          {} as Record<string, string>
-        )
-      ).toString()
+        new URLSearchParams(
+          Object.entries(params).reduce(
+            (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
+            {} as Record<string, string>,
+          ),
+        ).toString()
       : "";
 
     const url =
-      `${swarmUrl.replace(/\/$/, "")}` +
-      `${endpoint.startsWith("/") ? "" : "/"}` +
-      `${endpoint}${queryString}`;
+      `${swarmUrl.replace(/\/$/, "")}` + `${endpoint.startsWith("/") ? "" : "/"}` + `${endpoint}${queryString}`;
 
     const headers: Record<string, string> = {
       "x-api-token": encryptionService.decryptField("swarmApiKey", apiKey),
@@ -182,4 +178,3 @@ export async function swarmApiRequestAuth({
     return { ok: false, status: 500 };
   }
 }
-

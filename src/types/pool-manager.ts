@@ -83,18 +83,8 @@ export interface CreatePoolRequest {
 //   "success": true
 // }
 
-export interface GetPoolRequest {
-  name: string;
-}
-
 export interface DeletePoolRequest {
   name: string;
-}
-
-export interface UpdatePoolRequest {
-  name: string;
-  description?: string;
-  members?: string[];
 }
 
 export interface PoolUser {

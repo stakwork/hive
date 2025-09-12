@@ -21,15 +21,15 @@ export const env = requiredEnvVars;
 
 // Optional environment variables with defaults
 export const optionalEnvVars = {
-  STAKWORK_BASE_URL:
-    process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
+  STAKWORK_BASE_URL: process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
-  STAKWORK_USER_JOURNEY_WORKFLOW_ID:
-    process.env.STAKWORK_USER_JOURNEY_WORKFLOW_ID,
-  POOL_MANAGER_BASE_URL:
-    process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+  STAKWORK_USER_JOURNEY_WORKFLOW_ID: process.env.STAKWORK_USER_JOURNEY_WORKFLOW_ID,
+  POOL_MANAGER_BASE_URL: process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
+  GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
+  GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
+  GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
 } as const;
 
 // Combined environment configuration
