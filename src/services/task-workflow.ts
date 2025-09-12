@@ -239,14 +239,16 @@ async function createChatMessageAndTriggerStakwork(params: {
         mode,
       });
 
-      if (stakworkData.success) {
+      if (stakworkData.success || stakworkData.project_id) {
         const updateData: any = {
           workflowStatus: "IN_PROGRESS",
           workflowStartedAt: new Date(),
         };
 
         // Extract project ID from Stakwork response
-        if (stakworkData.data?.project_id) {
+        if (stakworkData.project_id) {
+          updateData.stakworkProjectId = stakworkData.project_id;
+        } else if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
         } else {
           console.warn("No project_id found in Stakwork response:", stakworkData);
