@@ -1,0 +1,479 @@
+import { describe, test, expect, vi, beforeEach } from "vitest";
+import { renderHook } from "@testing-library/react";
+import React from "react";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import {
+  MockWorkspaceProvider,
+  createMockWorkspaceContext,
+  mockWorkspaces,
+  validRoles,
+} from "../../utils/workspace-test-utils";
+
+describe("useWorkspace Hook Security Tests", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("Unauthorized Access Prevention", () => {
+    test("should deny access when hasAccess is false", () => {
+      const contextValue = createMockWorkspaceContext({
+        hasAccess: false,
+        workspace: null,
+        role: null,
+        workspaces: [],
+        error: "Access denied",
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Should deny access
+      expect(result.current.hasAccess).toBe(false);
+      expect(result.current.workspace).toBeNull();
+      expect(result.current.role).toBeNull();
+
+      // All role checks should return false
+      expect(result.current.isOwner).toBe(false);
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.isPM).toBe(false);
+      expect(result.current.isDeveloper).toBe(false);
+      expect(result.current.isStakeholder).toBe(false);
+      expect(result.current.isViewer).toBe(false);
+
+      // Should not provide workspace data
+      expect(result.current.id).toBe("");
+      expect(result.current.slug).toBe("");
+    });
+
+    test("should not expose sensitive workspace data without access", () => {
+      const sensitiveWorkspace = {
+        id: "sensitive-workspace",
+        name: "Sensitive Workspace",
+        slug: "sensitive-workspace",
+        description: "Contains sensitive data",
+        userRole: "OWNER" as const,
+        ownerId: "sensitive-owner-id",
+        stakworkApiKey: "sensitive-api-key-12345",
+        createdAt: new Date(,
+        updatedAt: new Date(,
+      };
+
+      const contextValue = createMockWorkspaceContext({
+        hasAccess: false,
+        workspace: null, // Should be null even if sensitive workspace exists
+        role: null,
+        error: "Unauthorized access",
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Should not expose any workspace data
+      expect(result.current.workspace).toBeNull();
+      expect(result.current.id).toBe("");
+      expect(result.current.slug).toBe("");
+
+      // Utility functions should not find sensitive data
+      expect(result.current.getWorkspaceById("sensitive-workspace")).toBeUndefined();
+      expect(result.current.getWorkspaceBySlug("sensitive-workspace")).toBeUndefined();
+      expect(result.current.isCurrentWorkspace("sensitive-workspace")).toBe(false);
+    });
+
+    test("should prevent role escalation attacks", () => {
+      // Simulate an attempt to escalate role from VIEWER to OWNER
+      const maliciousContextValue = createMockWorkspaceContext({
+        role: "VIEWER", // Actual role
+        workspace: {
+          ...mockWorkspaces[0],
+          userRole: "VIEWER", // Consistent with actual role
+        },
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          <MockWorkspaceProvider contextValue={maliciousContextValue}>
+            
+          
+        ,
+      });
+
+      // Should only grant VIEWER permissions
+      expect(result.current.role).toBe("VIEWER");
+      expect(result.current.isViewer).toBe(true);
+      expect(result.current.isOwner).toBe(false);
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.isPM).toBe(false);
+      expect(result.current.isDeveloper).toBe(false);
+      expect(result.current.isStakeholder).toBe(false);
+    });
+
+    test("should handle tampered workspace data securely", () => {
+      const tamperedWorkspace = {
+        id: "../../malicious-path", // Path traversal attempt
+        name: "<script>alert('xss')</script>", // XSS attempt
+        slug: "workspace'; DROP TABLE workspaces;--", // SQL injection attempt
+        userRole: "SUPER_ADMIN" as any, // Invalid role
+      };
+
+      const contextValue = createMockWorkspaceContext({
+        workspace: tamperedWorkspace,
+        role: null, // No valid role
+        workspaces: [tamperedWorkspace],
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Should handle tampered data without granting elevated permissions
+      expect(result.current.role).toBeNull();
+      expect(result.current.isOwner).toBe(false);
+      expect(result.current.isAdmin).toBe(false);
+
+      // Should still provide the tampered data as-is (filtering should be done at API level)
+      // But without role-based access
+      expect(result.current.workspace).toEqual(tamperedWorkspace);
+
+      // Utility functions should work with tampered data
+      expect(result.current.getWorkspaceById("../../malicious-path")).toEqual(tamperedWorkspace);
+    });
+
+    test("should prevent access with null or undefined role", () => {
+      const testCases = [null, undefined, ""] as const;
+
+      testCases.forEach((invalidRole) => {
+        const contextValue = createMockWorkspaceContext({
+          role: invalidRole as any,
+          workspace: mockWorkspaces[0],
+        });
+
+        const { result } = renderHook(() => useWorkspace(), {
+          wrapper: ({ children }) =>
+            React.createElement(MockWorkspaceProvider, { contextValue }, children)
+              
+            
+          ,
+        });
+
+        // All role checks should be false
+        expect(result.current.isOwner).toBe(false);
+        expect(result.current.isAdmin).toBe(false);
+        expect(result.current.isPM).toBe(false);
+        expect(result.current.isDeveloper).toBe(false);
+        expect(result.current.isStakeholder).toBe(false);
+        expect(result.current.isViewer).toBe(false);
+      });
+    });
+
+    test("should handle invalid role values securely", () => {
+      const invalidRoles = [
+        "INVALID_ROLE",
+        "admin", // lowercase
+        "Owner", // mixed case
+        "ROOT",
+        "SUPER_USER",
+        123, // number
+        {}, // object
+        [], // array
+        null,
+        undefined,
+      ];
+
+      invalidRoles.forEach((invalidRole) => {
+        const contextValue = createMockWorkspaceContext({
+          role: invalidRole as any,
+        });
+
+        const { result } = renderHook(() => useWorkspace(), {
+          wrapper: ({ children }) =>
+            React.createElement(MockWorkspaceProvider, { contextValue }, children)
+              
+            
+          ,
+        });
+
+        // All role checks should be false for invalid roles
+        expect(result.current.isOwner).toBe(false);
+        expect(result.current.isAdmin).toBe(false);
+        expect(result.current.isPM).toBe(false);
+        expect(result.current.isDeveloper).toBe(false);
+        expect(result.current.isStakeholder).toBe(false);
+        expect(result.current.isViewer).toBe(false);
+
+        // Role should be returned as-is (for debugging/logging)
+        expect(result.current.role).toBe(invalidRole);
+      });
+    });
+  });
+
+  describe("Data Sanitization and Validation", () => {
+    test("should handle workspace ID injection attempts", () => {
+      const maliciousWorkspaces = [
+        {
+          id: "'; DELETE FROM workspaces; --",
+          name: "Malicious Workspace",
+          slug: "malicious",
+          userRole: "OWNER" as const,
+        },
+        {
+          id: "../../../etc/passwd",
+          name: "Path Traversal",
+          slug: "traversal",
+          userRole: "ADMIN" as const,
+        },
+      ];
+
+      const contextValue = createMockWorkspaceContext({
+        workspaces: maliciousWorkspaces,
+        role: "VIEWER", // Limited role
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Utility functions should handle malicious IDs without throwing
+      expect(() => {
+        result.current.getWorkspaceById("'; DELETE FROM workspaces; --");
+      }).not.toThrow();
+
+      expect(() => {
+        result.current.getWorkspaceById("../../../etc/passwd");
+      }).not.toThrow();
+
+      // Should return the malicious workspace if it exists (filtering at API level)
+      const maliciousWorkspace = result.current.getWorkspaceById("'; DELETE FROM workspaces; --");
+      expect(maliciousWorkspace).toBeDefined();
+      expect(maliciousWorkspace?.name).toBe("Malicious Workspace");
+    });
+
+    test("should handle workspace slug injection attempts", () => {
+      const maliciousWorkspaces = [
+        {
+          id: "ws-1",
+          name: "Normal Workspace",
+          slug: "<script>alert('xss')</script>",
+          userRole: "OWNER" as const,
+        },
+        {
+          id: "ws-2",
+          name: "Another Workspace", 
+          slug: "../../admin/panel",
+          userRole: "ADMIN" as const,
+        },
+      ];
+
+      const contextValue = createMockWorkspaceContext({
+        workspaces: maliciousWorkspaces,
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Should handle malicious slugs without throwing
+      expect(() => {
+        result.current.getWorkspaceBySlug("<script>alert('xss')</script>");
+      }).not.toThrow();
+
+      expect(() => {
+        result.current.getWorkspaceBySlug("../../admin/panel");
+      }).not.toThrow();
+
+      // Should find workspaces with malicious slugs
+      const xssWorkspace = result.current.getWorkspaceBySlug("<script>alert('xss')</script>");
+      expect(xssWorkspace?.name).toBe("Normal Workspace");
+    });
+
+    test("should prevent workspace enumeration through utility functions", () => {
+      const limitedWorkspaces = [mockWorkspaces[0]]; // User only has access to one workspace
+
+      const contextValue = createMockWorkspaceContext({
+        workspaces: limitedWorkspaces,
+        role: "VIEWER",
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Should only find workspaces user has access to
+      expect(result.current.getWorkspaceById("workspace-1")).toBeDefined();
+      expect(result.current.getWorkspaceById("workspace-2")).toBeUndefined(); // No access
+      expect(result.current.getWorkspaceById("workspace-3")).toBeUndefined(); // No access
+
+      // Should not expose information about workspaces user doesn't have access to
+      expect(result.current.workspaces).toHaveLength(1);
+    });
+  });
+
+  describe("Context Security", () => {
+    test("should fail securely when context is compromised", () => {
+      // Simulate a compromised context with inconsistent data
+      const compromisedContext = {
+        workspace: mockWorkspaces[0],
+        slug: "compromised-slug",
+        id: "compromised-id",
+        role: "OWNER",
+        workspaces: [],
+        loading: false,
+        error: null,
+        hasAccess: false, // Inconsistent: has workspace but no access
+        switchWorkspace: vi.fn(,
+        refreshWorkspaces: vi.fn(,
+        refreshCurrentWorkspace: vi.fn(,
+      };
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          <MockWorkspaceProvider contextValue={compromisedContext}>
+            
+          
+        ,
+      });
+
+      // Should respect hasAccess flag over other data
+      expect(result.current.hasAccess).toBe(false);
+      
+      // But still provide the context data as-is
+      expect(result.current.workspace).toBeDefined();
+      expect(result.current.role).toBe("OWNER");
+    });
+
+    test("should handle context with missing required properties", () => {
+      const incompleteContext = {
+        // Missing several required properties
+        workspace: null,
+        workspaces: mockWorkspaces,
+        loading: false,
+        switchWorkspace: vi.fn(,
+      } as any;
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          <MockWorkspaceProvider contextValue={incompleteContext}>
+            
+          
+        ,
+      });
+
+      // Should handle missing properties gracefully
+      expect(result.current.slug).toBe("");
+      expect(result.current.id).toBe("");
+      expect(result.current.role).toBeNull();
+      expect(result.current.hasAccess).toBe(false);
+      expect(result.current.error).toBeNull();
+
+      // Functions should still be available
+      expect(typeof result.current.refreshWorkspaces).toBe("function");
+      expect(typeof result.current.refreshCurrentWorkspace).toBe("function");
+    });
+  });
+
+  describe("Role Consistency and Security", () => {
+    test("should maintain role consistency across all role checks", () => {
+      validRoles.forEach((role) => {
+        const contextValue = createMockWorkspaceContext({
+          role,
+          workspace: { ...mockWorkspaces[0], userRole: role },
+        });
+
+        const { result } = renderHook(() => useWorkspace(), {
+          wrapper: ({ children }) =>
+            React.createElement(MockWorkspaceProvider, { contextValue }, children)
+              
+            
+          ,
+        });
+
+        // Count how many role flags are true
+        const roleFlagsCount = [
+          result.current.isOwner,
+          result.current.isAdmin,
+          result.current.isPM,
+          result.current.isDeveloper,
+          result.current.isStakeholder,
+          result.current.isViewer,
+        ].filter(Boolean).length;
+
+        // Exactly one role flag should be true
+        expect(roleFlagsCount).toBe(1);
+
+        // The correct role flag should be true
+        switch (role) {
+          case "OWNER":
+            expect(result.current.isOwner).toBe(true);
+            break;
+          case "ADMIN":
+            expect(result.current.isAdmin).toBe(true);
+            break;
+          case "PM":
+            expect(result.current.isPM).toBe(true);
+            break;
+          case "DEVELOPER":
+            expect(result.current.isDeveloper).toBe(true);
+            break;
+          case "STAKEHOLDER":
+            expect(result.current.isStakeholder).toBe(true);
+            break;
+          case "VIEWER":
+            expect(result.current.isViewer).toBe(true);
+            break;
+        }
+      });
+    });
+
+    test("should prevent role confusion attacks", () => {
+      // Test case where workspace userRole differs from context role
+      const contextValue = createMockWorkspaceContext({
+        role: "VIEWER",
+        workspace: {
+          ...mockWorkspaces[0],
+          userRole: "OWNER", // Different from context role
+        },
+      });
+
+      const { result } = renderHook(() => useWorkspace(), {
+        wrapper: ({ children }) =>
+          React.createElement(MockWorkspaceProvider, { contextValue }, children)
+            
+          
+        ,
+      });
+
+      // Hook should use the context role, not workspace userRole
+      expect(result.current.role).toBe("VIEWER");
+      expect(result.current.isViewer).toBe(true);
+      expect(result.current.isOwner).toBe(false);
+
+      // Workspace data should still reflect its original userRole
+      expect(result.current.workspace?.userRole).toBe("OWNER");
+    });
+  });
+});
