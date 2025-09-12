@@ -6,8 +6,6 @@ import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
-const encryptionService: EncryptionService = EncryptionService.getInstance();
-
 export async function POST() {
   try {
     const session = await getServerSession(authOptions);
@@ -36,6 +34,7 @@ export async function POST() {
     // Revoke the GitHub OAuth access token
     if (account.access_token) {
       try {
+        const encryptionService = EncryptionService.getInstance();
         const response = await fetch(
           "https://api.github.com/applications/revoke",
           {
