@@ -402,27 +402,40 @@ interface GithubUsernameAndPAT {
  * Returns { username, pat } or null if not found.
  */
 export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUsernameAndPAT | null> {
-  // Check if this is a mock user
+  // Check if user exists first
   const user = await db.user.findUnique({ where: { id: userId } });
-  if (user?.email?.endsWith("@mock.dev")) {
+  if (!user) {
+    return null;
+  }
+
+  // Check if this is a mock user
+  if (user.email?.endsWith("@mock.dev")) {
     // Mock users don't have real GitHub credentials
     return null;
   }
 
   // Get GitHub username from GitHubAuth
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
+  if (!githubAuth?.githubUsername) {
+    return null;
+  }
+  
   // Get PAT from Account
   const githubAccount = await db.account.findFirst({
     where: { userId, provider: "github" },
   });
-  if (githubAuth?.githubUsername && githubAccount?.access_token) {
-    return {
-      username: githubAuth.githubUsername,
-      pat: encryptionService.decryptField("access_token", githubAccount.access_token),
-      appAccessToken: githubAccount.app_access_token
-        ? encryptionService.decryptField("app_access_token", githubAccount.app_access_token)
-        : null,
-    };
+  
+  if (!githubAccount?.access_token) {
+    return null;
   }
-  return null;
+
+  const encryptionService = EncryptionService.getInstance();
+
+  return {
+    username: githubAuth.githubUsername,
+    pat: encryptionService.decryptField("access_token", githubAccount.access_token),
+    appAccessToken: githubAccount.app_access_token
+      ? encryptionService.decryptField("app_access_token", githubAccount.app_access_token)
+      : null,
+  };
 }
