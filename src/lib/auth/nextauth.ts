@@ -7,6 +7,7 @@ import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
 import { getDefaultWorkspaceForUser } from "@/services/workspace";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -118,7 +119,7 @@ export const authOptions: NextAuthOptions = {
 
           await ensureMockWorkspaceForUser(user.id as string);
         } catch (error) {
-          console.error("Error handling mock authentication:", error);
+          logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
           return false;
         }
         return true;
@@ -192,7 +193,7 @@ export const authOptions: NextAuthOptions = {
             }
           }
         } catch (error) {
-          console.error("Error handling GitHub re-authentication:", error);
+          logger.authError("Failed to handle GitHub re-authentication", "SIGNIN_GITHUB", error);
         }
       }
       return true;
@@ -319,11 +320,17 @@ export const authOptions: NextAuthOptions = {
               });
             } catch (err) {
               // If GitHub API fails, just skip
-              console.error("Failed to fetch GitHub profile:", err);
+              logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", { 
+                hasAccount: !!account,
+                userId: user.id 
+              });
             }
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
-            console.log("GitHub account exists but token is revoked - user needs to re-authenticate");
+            logger.authInfo("GitHub account token revoked, re-authentication required", "SESSION_TOKEN_REVOKED", {
+              userId: user.id,
+              provider: account.provider
+            });
           }
         }
 
@@ -376,7 +383,7 @@ export const authOptions: NextAuthOptions = {
           });
         }
       } catch (error) {
-        console.error("Error in linkAccount encryption:", error);
+        logger.authError("Failed to encrypt tokens during account linking", "LINKACCOUNT_ENCRYPTION", error);
       }
     },
   },
