@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const creds = await getGithubUsernameAndPAT(userId);
     if (creds) {
       username = creds.username;
-      pat = creds.appAccessToken || creds.pat;
+      pat = creds.appAccessToken || creds.pat || undefined;
     }
     try {
       await db.repository.update({
