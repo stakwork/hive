@@ -170,6 +170,10 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       stepStatus: params.stepStatus,
       defaultBranch: params.defaultBranch || "",
       wizardData: params.wizardData,
+      containerFiles: params.containerFiles,
+      githubInstallationId: params.githubInstallationId,
+      swarmId: params.swarmId,
+      ingestRefId: params.ingestRefId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
