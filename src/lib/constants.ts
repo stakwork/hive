@@ -180,3 +180,17 @@ export const SupportedLanguages: TSupportedLanguage[] = [
   { name: 'Angular', icon: SiAngular, color: 'text-red-600' },
   { name: 'Svelte', icon: SiSvelte, color: 'text-orange-500' }
 ];
+
+export const ENV_VALIDATION_ERRORS = {
+  VALIDATION_FAILED: "Environment validation failed",
+  MISSING_REQUIRED: "Missing required environment variable",
+  INVALID_VALUE: "Invalid environment variable value",
+  CONFIGURATION_ERROR: "Configuration error detected",
+} as const;
+
+export const CSRF_ERRORS = {
+  TOKEN_MISSING: "Security token is missing. Please refresh the page and try again.",
+  TOKEN_INVALID: "Security token is invalid. Please refresh the page and try again.",
+  TOKEN_EXPIRED: "Security token has expired. Please refresh the page and try again.",
+  VALIDATION_FAILED: "Security validation failed. Please refresh the page and try again.",
+} as const;
