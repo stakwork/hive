@@ -95,11 +95,19 @@ export async function swarmApiRequest({
 
     console.log(url, headers, data, method, apiKey);
 
-    const response = await fetch(url, {
+    // Only include body for POST and PUT requests
+    const requestOptions: RequestInit = {
       method,
       headers,
-      ...(data ? { body: JSON.stringify(data) } : {}),
-    });
+    };
+
+    if (method === "POST" || method === "PUT") {
+      if (data) {
+        requestOptions.body = JSON.stringify(data);
+      }
+    }
+
+    const response = await fetch(url, requestOptions);
 
     console.log("swarmhRequestEnd", response);
 
