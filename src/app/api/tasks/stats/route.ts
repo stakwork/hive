@@ -85,11 +85,14 @@ export async function GET(request: NextRequest) {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
         },
       }),
-      // Tasks waiting for input (have FORM artifacts in latest message)
+      // Tasks waiting for input (have FORM artifacts in latest message AND are active)
       db.task.count({
         where: {
           workspaceId,
           deleted: false,
+          workflowStatus: {
+            in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING],
+          },
           chatMessages: {
             some: {
               artifacts: {

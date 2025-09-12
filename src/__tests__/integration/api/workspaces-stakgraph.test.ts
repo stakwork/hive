@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
   GET as GET_STAK,
-  POST as POST_STAK,
+  PUT as PUT_STAK,
 } from "@/app/api/workspaces/[slug]/stakgraph/route";
 import { db } from "@/lib/db";
 import { encryptEnvVars } from "@/lib/encryption";
