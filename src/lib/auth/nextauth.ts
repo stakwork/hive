@@ -7,6 +7,7 @@ import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
 import { getDefaultWorkspaceForUser } from "@/services/workspace";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -51,7 +52,7 @@ const getProviders = () => {
   }
 
   // Add mock provider for development when POD_URL is defined
-  if (process.env.POD_URL) {
+  if (process.env.POD_URL && isDevelopmentMode()) {
     providers.push(
       CredentialsProvider({
         id: "mock",
@@ -60,21 +61,56 @@ const getProviders = () => {
           username: {
             label: "Username",
             type: "text",
-            placeholder: "Enter any username",
+            placeholder: "Enter a valid username (3-39 characters, alphanumeric and hyphens only)",
           },
         },
         async authorize(credentials) {
-          // Mock authentication - accept any username in development
-          if (credentials?.username) {
-            const username = credentials.username.trim();
-            return {
-              id: `mock-${username}`,
-              name: username,
-              email: `${username}@mock.dev`,
-              image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
-            };
+          // Restrict mock authentication to development environment only
+          if (!isDevelopmentMode()) {
+            console.error("Mock authentication attempted in non-development environment");
+            return null;
           }
-          return null;
+
+          if (!credentials?.username) {
+            console.error("Mock authentication: No username provided");
+            return null;
+          }
+
+          const username = credentials.username.trim();
+
+          // Validate username: must be 3-39 characters, alphanumeric and hyphens only
+          if (!username) {
+            console.error("Mock authentication: Empty username after trim");
+            return null;
+          }
+
+          if (username.length < 3 || username.length > 39) {
+            console.error("Mock authentication: Username must be 3-39 characters long");
+            return null;
+          }
+
+          if (!/^[a-zA-Z0-9-]+$/.test(username)) {
+            console.error("Mock authentication: Username contains invalid characters");
+            return null;
+          }
+
+          if (username.startsWith('-') || username.endsWith('-')) {
+            console.error("Mock authentication: Username cannot start or end with hyphen");
+            return null;
+          }
+
+          if (username.includes('--')) {
+            console.error("Mock authentication: Username cannot contain consecutive hyphens");
+            return null;
+          }
+
+          console.log(`Mock authentication successful for username: ${username}`);
+          return {
+            id: `mock-${username}`,
+            name: username,
+            email: `${username}@mock.dev`,
+            image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
+          };
         },
       }),
     );
