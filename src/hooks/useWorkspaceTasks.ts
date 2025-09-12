@@ -148,6 +148,8 @@ export function useWorkspaceTasks(
     refetch();
   }, [refetch]);
 
+  // Note: Global notification count is now handled by WorkspaceProvider
+
   return {
     tasks,
     loading,
