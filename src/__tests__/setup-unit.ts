@@ -2,52 +2,45 @@
 import "@testing-library/jest-dom";
 import { beforeAll, afterAll } from "vitest";
 import { vi } from "vitest";
+import { configure } from '@testing-library/react';
 
-// Mock DOM globals for testing-library/react-dom
-Object.defineProperty(global, 'document', {
-  value: {
-    createElement: vi.fn((tagName: string) => ({
-      tagName: tagName.toUpperCase(),
-      appendChild: vi.fn(),
-      removeChild: vi.fn(),
-      querySelector: vi.fn(),
-      querySelectorAll: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      setAttribute: vi.fn(),
-      getAttribute: vi.fn(),
-      removeAttribute: vi.fn(),
-      innerHTML: '',
-      textContent: '',
-      children: [],
-      childNodes: [],
-      style: {},
-      classList: {
-        add: vi.fn(),
-        remove: vi.fn(),
-        contains: vi.fn(),
-        toggle: vi.fn(),
-      },
-    })),
-    body: {
-      appendChild: vi.fn(),
-      removeChild: vi.fn(),
-      querySelector: vi.fn(),
-      querySelectorAll: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    },
-    documentElement: {
-      appendChild: vi.fn(),
-      removeChild: vi.fn(),
-    },
-    querySelector: vi.fn(),
-    querySelectorAll: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  },
-  writable: true
+// Configure React Testing Library for React 18
+configure({
+  asyncUtilTimeout: 5000,
 });
+
+// Ensure we have a proper DOM environment
+if (typeof document !== 'undefined') {
+  // Create a proper document body if it doesn't exist
+  if (!document.body) {
+    document.body = document.createElement('body');
+  }
+  
+  // Ensure document.documentElement exists
+  if (!document.documentElement) {
+    const html = document.createElement('html');
+    document.appendChild(html);
+    html.appendChild(document.head || document.createElement('head'));
+    html.appendChild(document.body);
+  }
+}
+
+// Mock window and global DOM APIs if needed
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
 
 // Add any global test setup here
 beforeAll(() => {

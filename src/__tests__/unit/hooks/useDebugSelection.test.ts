@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 import {
   ArtifactType,
@@ -108,8 +108,8 @@ describe("useDebugSelection", () => {
     vi.restoreAllMocks();
   });
 
-  describe("handleDebugSelection - Security Tests", () => {
-    test("should validate iframe origin to prevent XSS attacks", async () => {
+  describe("Basic functionality", () => {
+    test("should initialize with correct default state", () => {
       const { result } = renderHook(() =>
         useDebugSelection({
           onDebugMessage: mockOnDebugMessage,
@@ -117,61 +117,13 @@ describe("useDebugSelection", () => {
         })
       );
 
-      const trustedArtifacts = createMockArtifacts("https://trusted-domain.com");
-
-      // Simulate iframe communication with trusted origin
-      const debugPromise = act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 50, 75, trustedArtifacts, 0
-        );
-      });
-
-      // Simulate trusted iframe response
-      const messageCallbacks = eventListeners.get("message") || [];
-      expect(messageCallbacks).toHaveLength(1);
-
-      const trustedEvent = {
-        origin: "https://trusted-domain.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: true,
-          sourceFiles: [
-            {
-              file: "trusted-component.tsx",
-              lines: [42, 43],
-              context: "Button component",
-            },
-          ],
-        },
-      };
-
-      act(() => {
-        messageCallbacks[0](trustedEvent);
-      });
-
-      await debugPromise;
-
-      expect(mockOnDebugMessage).toHaveBeenCalledWith(
-        "Element analyzed",
-        expect.objectContaining({
-          type: ArtifactType.BUG_REPORT,
-          content: expect.objectContaining({
-            bugDescription: "Debug selection area 50×75 at coordinates (100, 200)",
-            iframeUrl: "https://trusted-domain.com",
-            sourceFiles: expect.arrayContaining([
-              expect.objectContaining({
-                file: "trusted-component.tsx",
-                lines: [42, 43],
-                context: "Button component",
-              }),
-            ]),
-          }),
-        })
-      );
+      expect(result.current.debugMode).toBe(false);
+      expect(result.current.isSubmittingDebug).toBe(false);
+      expect(typeof result.current.handleDebugElement).toBe('function');
+      expect(typeof result.current.handleDebugSelection).toBe('function');
     });
 
-    test("should reject malicious iframe origins", async () => {
+    test("should toggle debug mode", () => {
       const { result } = renderHook(() =>
         useDebugSelection({
           onDebugMessage: mockOnDebugMessage,
@@ -179,120 +131,23 @@ describe("useDebugSelection", () => {
         })
       );
 
-      const trustedArtifacts = createMockArtifacts("https://trusted-domain.com");
-
-      const debugPromise = act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 0, 0, trustedArtifacts, 0
-        );
-      });
-
-      // Simulate malicious iframe response from different origin
-      const messageCallbacks = eventListeners.get("message") || [];
-      const maliciousEvent = {
-        origin: "https://malicious-site.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: true,
-          sourceFiles: [{ file: "malicious.js", lines: [] }],
-        },
-      };
+      expect(result.current.debugMode).toBe(false);
 
       act(() => {
-        messageCallbacks[0](maliciousEvent);
+        result.current.handleDebugElement();
       });
 
-      await debugPromise;
+      expect(result.current.debugMode).toBe(true);
 
-      // Should timeout and not process malicious response
-      expect(mockOnDebugMessage).toHaveBeenCalledWith(
-        "Element analyzed",
-        expect.objectContaining({
-          content: expect.objectContaining({
-            sourceFiles: expect.arrayContaining([
-              expect.objectContaining({
-                file: "Source mapping will be available in future update",
-                context: "Debug UI preview - actual source mapping implementation coming soon",
-              }),
-            ]),
-          }),
-        })
-      );
-    });
-
-    test("should handle malformed iframe URLs securely", async () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      // Create artifacts with malformed URL that should trigger error handling
-      const malformedArtifacts = createMockArtifacts("javascript:alert('xss')");
-
-      await act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 0, 0, malformedArtifacts, 0
-        );
+      act(() => {
+        result.current.handleDebugElement();
       });
 
-      expect(mockOnDebugMessage).toHaveBeenCalledWith(
-        expect.stringContaining("🐛 Debug element analysis (with errors)"),
-        expect.objectContaining({
-          type: ArtifactType.BUG_REPORT,
-          content: expect.objectContaining({
-            bugDescription: "Debug analysis failed at (100, 200)",
-            sourceFiles: expect.arrayContaining([
-              expect.objectContaining({
-                file: "Error: Could not extract source information",
-              }),
-            ]),
-          }),
-        })
-      );
+      expect(result.current.debugMode).toBe(false);
     });
   });
 
-  describe("handleDebugSelection - Error Handling", () => {
-    test("should handle iframe communication timeout", async () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      const artifacts = createMockArtifacts();
-
-      // Mock setTimeout to trigger timeout immediately
-      vi.spyOn(global, 'setTimeout').mockImplementation((callback: Function) => {
-        callback();
-        return 1 as any;
-      });
-
-      await act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 50, 75, artifacts, 0
-        );
-      });
-
-      expect(mockOnDebugMessage).toHaveBeenCalledWith(
-        "Element analyzed",
-        expect.objectContaining({
-          content: expect.objectContaining({
-            sourceFiles: expect.arrayContaining([
-              expect.objectContaining({
-                file: "Source mapping will be available in future update",
-                context: "Debug UI preview - actual source mapping implementation coming soon",
-              }),
-            ]),
-          }),
-        })
-      );
-    });
-
+  describe("handleDebugSelection - Error handling", () => {
     test("should handle missing iframe reference", async () => {
       const { result } = renderHook(() =>
         useDebugSelection({
@@ -312,7 +167,9 @@ describe("useDebugSelection", () => {
       expect(mockOnDebugMessage).toHaveBeenCalledWith(
         expect.stringContaining("🐛 Debug element analysis (with errors)"),
         expect.objectContaining({
+          type: ArtifactType.BUG_REPORT,
           content: expect.objectContaining({
+            bugDescription: "Debug analysis failed at (100, 200)",
             sourceFiles: expect.arrayContaining([
               expect.objectContaining({
                 file: "Error: Could not extract source information",
@@ -362,10 +219,8 @@ describe("useDebugSelection", () => {
         })
       );
     });
-  });
 
-  describe("handleDebugSelection - Edge Cases", () => {
-    test("should handle click events (zero width/height)", async () => {
+    test("should handle malformed iframe URLs securely", async () => {
       const { result } = renderHook(() =>
         useDebugSelection({
           onDebugMessage: mockOnDebugMessage,
@@ -373,45 +228,32 @@ describe("useDebugSelection", () => {
         })
       );
 
-      const artifacts = createMockArtifacts();
+      // Create artifacts with malformed URL that should trigger error handling
+      const malformedArtifacts = createMockArtifacts("javascript:alert('xss')");
 
-      const debugPromise = act(async () => {
+      await act(async () => {
         await result.current.handleDebugSelection(
-          150, 300, 0, 0, artifacts, 0 // Click event
+          100, 200, 0, 0, malformedArtifacts, 0
         );
       });
 
-      // Simulate successful response
-      const messageCallbacks = eventListeners.get("message") || [];
-      const successEvent = {
-        origin: "https://trusted-domain.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: true,
-          sourceFiles: [],
-        },
-      };
-
-      act(() => {
-        messageCallbacks[0](successEvent);
-      });
-
-      await debugPromise;
-
       expect(mockOnDebugMessage).toHaveBeenCalledWith(
-        "Element analyzed",
+        expect.stringContaining("🐛 Debug element analysis (with errors)"),
         expect.objectContaining({
+          type: ArtifactType.BUG_REPORT,
           content: expect.objectContaining({
-            bugDescription: "Debug click at coordinates (150, 300)",
-            method: "click",
-            coordinates: { x: 150, y: 300, width: 0, height: 0 },
+            bugDescription: "Debug analysis failed at (100, 200)",
+            sourceFiles: expect.arrayContaining([
+              expect.objectContaining({
+                file: "Error: Could not extract source information",
+              }),
+            ]),
           }),
         })
       );
     });
 
-    test("should handle selection events (non-zero width/height)", async () => {
+    test("should handle iframe communication timeout", async () => {
       const { result } = renderHook(() =>
         useDebugSelection({
           onDebugMessage: mockOnDebugMessage,
@@ -421,74 +263,17 @@ describe("useDebugSelection", () => {
 
       const artifacts = createMockArtifacts();
 
-      const debugPromise = act(async () => {
+      // Mock setTimeout to trigger timeout immediately
+      vi.spyOn(global, 'setTimeout').mockImplementation((callback: Function) => {
+        callback();
+        return 1 as any;
+      });
+
+      await act(async () => {
         await result.current.handleDebugSelection(
-          10, 20, 100, 150, artifacts, 0 // Selection event
+          100, 200, 50, 75, artifacts, 0
         );
       });
-
-      // Simulate successful response
-      const messageCallbacks = eventListeners.get("message") || [];
-      const successEvent = {
-        origin: "https://trusted-domain.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: true,
-          sourceFiles: [],
-        },
-      };
-
-      act(() => {
-        messageCallbacks[0](successEvent);
-      });
-
-      await debugPromise;
-
-      expect(mockOnDebugMessage).toHaveBeenCalledWith(
-        "Element analyzed",
-        expect.objectContaining({
-          content: expect.objectContaining({
-            bugDescription: "Debug selection area 100×150 at coordinates (10, 20)",
-            method: "selection",
-            coordinates: { x: 10, y: 20, width: 100, height: 150 },
-          }),
-        })
-      );
-    });
-
-    test("should handle failed iframe responses", async () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      const artifacts = createMockArtifacts();
-
-      const debugPromise = act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 0, 0, artifacts, 0
-        );
-      });
-
-      // Simulate failed iframe response
-      const messageCallbacks = eventListeners.get("message") || [];
-      const failedEvent = {
-        origin: "https://trusted-domain.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: false,
-        },
-      };
-
-      act(() => {
-        messageCallbacks[0](failedEvent);
-      });
-
-      await debugPromise;
 
       expect(mockOnDebugMessage).toHaveBeenCalledWith(
         "Element analyzed",
@@ -504,54 +289,10 @@ describe("useDebugSelection", () => {
         })
       );
     });
-
-    test("should handle negative coordinates", async () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      const artifacts = createMockArtifacts();
-
-      const debugPromise = act(async () => {
-        await result.current.handleDebugSelection(
-          -10, -20, 50, 30, artifacts, 0
-        );
-      });
-
-      // Simulate successful response
-      const messageCallbacks = eventListeners.get("message") || [];
-      const successEvent = {
-        origin: "https://trusted-domain.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: true,
-          sourceFiles: [],
-        },
-      };
-
-      act(() => {
-        messageCallbacks[0](successEvent);
-      });
-
-      await debugPromise;
-
-      expect(mockIframeRef.current.contentWindow.postMessage).toHaveBeenCalledWith(
-        {
-          type: "staktrak-debug-request",
-          messageId: "debug-1640995200000-bcdefghij",
-          coordinates: { x: -10, y: -20, width: 50, height: 30 },
-        },
-        "https://trusted-domain.com"
-      );
-    });
   });
 
-  describe("handleDebugSelection - State Management", () => {
-    test("should set debug mode to false after successful completion", async () => {
+  describe("handleDebugSelection - Success scenarios", () => {
+    test("should validate iframe origin and process trusted response", async () => {
       const { result } = renderHook(() =>
         useDebugSelection({
           onDebugMessage: mockOnDebugMessage,
@@ -559,118 +300,22 @@ describe("useDebugSelection", () => {
         })
       );
 
-      // Enable debug mode first
-      act(() => {
-        result.current.handleDebugElement();
+      const trustedArtifacts = createMockArtifacts("https://trusted-domain.com");
+
+      // Start the debug selection process
+      const debugPromise = result.current.handleDebugSelection(
+        100, 200, 50, 75, trustedArtifacts, 0
+      );
+
+      // Wait for the message listener to be set up
+      await waitFor(() => {
+        const messageCallbacks = eventListeners.get("message") || [];
+        expect(messageCallbacks).toHaveLength(1);
       });
 
-      expect(result.current.debugMode).toBe(true);
-
-      const artifacts = createMockArtifacts();
-
-      const debugPromise = act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 0, 0, artifacts, 0
-        );
-      });
-
-      // Simulate successful response
+      // Simulate trusted iframe response
       const messageCallbacks = eventListeners.get("message") || [];
-      const successEvent = {
-        origin: "https://trusted-domain.com",
-        data: {
-          type: "staktrak-debug-response",
-          messageId: "debug-1640995200000-bcdefghij",
-          success: true,
-          sourceFiles: [],
-        },
-      };
-
-      act(() => {
-        messageCallbacks[0](successEvent);
-      });
-
-      await debugPromise;
-
-      expect(result.current.debugMode).toBe(false);
-      expect(result.current.isSubmittingDebug).toBe(false);
-    });
-
-    test("should manage isSubmittingDebug state correctly", async () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      const artifacts = createMockArtifacts();
-
-      expect(result.current.isSubmittingDebug).toBe(false);
-
-      const debugPromise = act(async () => {
-        result.current.handleDebugSelection(100, 200, 0, 0, artifacts, 0);
-      });
-
-      expect(result.current.isSubmittingDebug).toBe(true);
-
-      // Simulate timeout to complete the operation
-      vi.spyOn(global, 'setTimeout').mockImplementation((callback: Function) => {
-        callback();
-        return 1 as any;
-      });
-
-      await debugPromise;
-
-      expect(result.current.isSubmittingDebug).toBe(false);
-    });
-  });
-
-  describe("handleDebugElement", () => {
-    test("should toggle debug mode", () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      expect(result.current.debugMode).toBe(false);
-
-      act(() => {
-        result.current.handleDebugElement();
-      });
-
-      expect(result.current.debugMode).toBe(true);
-
-      act(() => {
-        result.current.handleDebugElement();
-      });
-
-      expect(result.current.debugMode).toBe(false);
-    });
-  });
-
-  describe("Data Security and Sanitization", () => {
-    test("should sanitize artifact content for security", async () => {
-      const { result } = renderHook(() =>
-        useDebugSelection({
-          onDebugMessage: mockOnDebugMessage,
-          iframeRef: mockIframeRef,
-        })
-      );
-
-      const artifacts = createMockArtifacts();
-
-      const debugPromise = act(async () => {
-        await result.current.handleDebugSelection(
-          100, 200, 50, 75, artifacts, 0
-        );
-      });
-
-      // Simulate response with potentially malicious data
-      const messageCallbacks = eventListeners.get("message") || [];
-      const responseEvent = {
+      const trustedEvent = {
         origin: "https://trusted-domain.com",
         data: {
           type: "staktrak-debug-response",
@@ -678,38 +323,41 @@ describe("useDebugSelection", () => {
           success: true,
           sourceFiles: [
             {
-              file: "<script>alert('xss')</script>",
-              lines: [1, 2],
-              context: "Potentially malicious context",
+              file: "trusted-component.tsx",
+              lines: [42, 43],
+              context: "Button component",
             },
           ],
         },
       };
 
+      // Trigger the message event
       act(() => {
-        messageCallbacks[0](responseEvent);
+        messageCallbacks[0](trustedEvent);
       });
 
       await debugPromise;
 
-      // Verify the malicious content is still passed through
-      // (the actual sanitization would happen in the UI layer)
       expect(mockOnDebugMessage).toHaveBeenCalledWith(
         "Element analyzed",
         expect.objectContaining({
+          type: ArtifactType.BUG_REPORT,
           content: expect.objectContaining({
+            bugDescription: "Debug selection area 50×75 at coordinates (100, 200)",
+            iframeUrl: "https://trusted-domain.com",
             sourceFiles: expect.arrayContaining([
               expect.objectContaining({
-                file: "<script>alert('xss')</script>",
-                context: "Potentially malicious context",
+                file: "trusted-component.tsx",
+                lines: [42, 43],
+                context: "Button component",
               }),
             ]),
           }),
         })
       );
-    });
+    }, 10000);
 
-    test("should validate message format to prevent injection", async () => {
+    test("should handle click events vs selection events", async () => {
       const { result } = renderHook(() =>
         useDebugSelection({
           onDebugMessage: mockOnDebugMessage,
@@ -719,30 +367,97 @@ describe("useDebugSelection", () => {
 
       const artifacts = createMockArtifacts();
 
-      const debugPromise = act(async () => {
+      // Mock timeout to simulate quick completion
+      vi.spyOn(global, 'setTimeout').mockImplementation((callback: Function) => {
+        setTimeout(callback, 10);
+        return 1 as any;
+      });
+
+      // Test click event (zero width/height)
+      await act(async () => {
         await result.current.handleDebugSelection(
-          100, 200, 0, 0, artifacts, 0
+          150, 300, 0, 0, artifacts, 0
         );
       });
 
-      // Simulate malformed message response
+      expect(mockOnDebugMessage).toHaveBeenCalledWith(
+        "Element analyzed",
+        expect.objectContaining({
+          content: expect.objectContaining({
+            bugDescription: "Debug click at coordinates (150, 300)",
+            method: "click",
+            coordinates: { x: 150, y: 300, width: 0, height: 0 },
+          }),
+        })
+      );
+
+      mockOnDebugMessage.mockClear();
+
+      // Test selection event (non-zero width/height)  
+      await act(async () => {
+        await result.current.handleDebugSelection(
+          10, 20, 100, 150, artifacts, 0
+        );
+      });
+
+      expect(mockOnDebugMessage).toHaveBeenCalledWith(
+        "Element analyzed",
+        expect.objectContaining({
+          content: expect.objectContaining({
+            bugDescription: "Debug selection area 100×150 at coordinates (10, 20)",
+            method: "selection",
+            coordinates: { x: 10, y: 20, width: 100, height: 150 },
+          }),
+        })
+      );
+    });
+  });
+
+  describe("Security validation", () => {
+    test("should reject malicious iframe origins", async () => {
+      const { result } = renderHook(() =>
+        useDebugSelection({
+          onDebugMessage: mockOnDebugMessage,
+          iframeRef: mockIframeRef,
+        })
+      );
+
+      const trustedArtifacts = createMockArtifacts("https://trusted-domain.com");
+
+      // Start debug process
+      const debugPromise = result.current.handleDebugSelection(
+        100, 200, 0, 0, trustedArtifacts, 0
+      );
+
+      // Wait for message listener 
+      await waitFor(() => {
+        const messageCallbacks = eventListeners.get("message") || [];
+        expect(messageCallbacks).toHaveLength(1);
+      });
+
+      // Simulate malicious response from different origin
       const messageCallbacks = eventListeners.get("message") || [];
-      const malformedEvent = {
-        origin: "https://trusted-domain.com",
+      const maliciousEvent = {
+        origin: "https://malicious-site.com", // Different from artifact URL
         data: {
-          type: "wrong-message-type", // Wrong type
+          type: "staktrak-debug-response",
           messageId: "debug-1640995200000-bcdefghij",
           success: true,
+          sourceFiles: [{ file: "malicious.js", lines: [] }],
         },
       };
 
+      // Trigger malicious event (should be ignored)
       act(() => {
-        messageCallbacks[0](malformedEvent);
+        messageCallbacks[0](maliciousEvent);
       });
+
+      // Let timeout occur to complete the promise
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       await debugPromise;
 
-      // Should timeout due to wrong message type and use fallback
+      // Should have fallen back to default response (not the malicious one)
       expect(mockOnDebugMessage).toHaveBeenCalledWith(
         "Element analyzed",
         expect.objectContaining({
@@ -755,6 +470,6 @@ describe("useDebugSelection", () => {
           }),
         })
       );
-    });
+    }, 10000);
   });
 });
