@@ -1,13 +1,10 @@
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
-import {
-  getSwarmPoolApiKeyFor,
-  updateSwarmPoolApiKeyFor,
-} from "@/services/swarm/secrets";
+import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
@@ -77,10 +74,7 @@ const stakgraphSettingsSchema = z.object({
     .default([]),
 });
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { slug } = await params;
@@ -157,9 +151,7 @@ export async function GET(
                   const parsed = JSON.parse(environmentVariables);
                   if (Array.isArray(parsed)) {
                     try {
-                      return decryptEnvVars(
-                        parsed as Array<{ name: string; value: unknown }>,
-                      );
+                      return decryptEnvVars(parsed as Array<{ name: string; value: unknown }>);
                     } catch {
                       return parsed;
                     }
@@ -183,10 +175,7 @@ export async function GET(
                   }
                 })()
               : environmentVariables,
-        services:
-          typeof swarm.services === "string"
-            ? JSON.parse(swarm.services)
-            : swarm.services || [],
+        services: typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services || [],
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
@@ -216,10 +205,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { slug } = await params;
@@ -320,9 +306,7 @@ export async function PUT(
     let decryptedPoolApiKey: string;
 
     try {
-      decryptedPoolApiKey = swarmPoolApiKey
-        ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey)
-        : "";
+      decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey) : "";
     } catch (error) {
       console.error("Failed to decrypt poolApiKey:", error);
       decryptedPoolApiKey = swarmPoolApiKey;
@@ -332,15 +316,13 @@ export async function PUT(
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService(getServiceConfig("github"));
 
-      const { defaultBranch } = await webhookService.setupRepositoryWithWebhook(
-        {
-          userId,
-          workspaceId: workspace.id,
-          repositoryUrl: settings.repositoryUrl,
-          callbackUrl,
-          repositoryName: settings.name,
-        },
-      );
+      const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
+        userId,
+        workspaceId: workspace.id,
+        repositoryUrl: settings.repositoryUrl,
+        callbackUrl,
+        repositoryName: settings.name,
+      });
 
       if (defaultBranch) {
         await db.swarm.update({
@@ -353,25 +335,17 @@ export async function PUT(
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
-    if (
-      settings.poolName &&
-      decryptedPoolApiKey &&
-      Array.isArray(settings.environmentVariables)
-    ) {
+    if (settings.poolName && decryptedPoolApiKey && Array.isArray(settings.environmentVariables)) {
       try {
-        const poolManager = new PoolManagerService(
-          config as unknown as ServiceConfig,
-        );
+        const poolManager = new PoolManagerService(config as unknown as ServiceConfig);
 
         if (swarm) {
-          const currentEnvVars = await poolManager.getPoolEnvVars(
-            swarm.id,
-            decryptedPoolApiKey,
-          );
+          const currentEnvVars = await poolManager.getPoolEnvVars(swarm.id, decryptedPoolApiKey);
 
           // TODO: This is a solution to preserve data structure.
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
+          const github_pat = await getGithubUsernameAndPAT(session?.user.id);
           await poolManager.updatePoolData(
             swarm.id,
             decryptedPoolApiKey,
@@ -387,6 +361,8 @@ export async function PUT(
             files,
             settings.poolCpu,
             settings.poolMemory,
+            github_pat?.appAccessToken || github_pat?.pat || "",
+            github_pat?.username || "",
           );
         }
       } catch (err) {
@@ -406,10 +382,7 @@ export async function PUT(
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
-        services:
-          typeof typedSwarm.services === "string"
-            ? JSON.parse(typedSwarm.services)
-            : typedSwarm.services || [],
+        services: typeof typedSwarm.services === "string" ? JSON.parse(typedSwarm.services) : typedSwarm.services || [],
         status: typedSwarm.status,
         updatedAt: typedSwarm.updatedAt,
       },
