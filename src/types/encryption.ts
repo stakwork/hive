@@ -23,14 +23,12 @@ export type EncryptableField =
   | "swarmApiKey"
   | "swarmPassword"
   | "stakworkApiKey"
-  | "githubWebhookSecret";
+  | "githubWebhookSecret"
+  | "app_access_token"
+  | "app_refresh_token";
 
 export interface EncryptionError extends Error {
-  code:
-    | "ENCRYPTION_FAILED"
-    | "DECRYPTION_FAILED"
-    | "INVALID_KEY"
-    | "INVALID_DATA";
+  code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";
   field?: string;
   error?: string;
 }

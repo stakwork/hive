@@ -7,7 +7,6 @@ import {
   usePusherConnection,
   TaskTitleUpdateEvent,
 } from "@/hooks/usePusherConnection";
-import { updateWaitingForInputCount } from "@/stores/useTasksStore";
 
 // SessionStorage key for persisting current page across navigation
 const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
@@ -81,7 +80,6 @@ interface UseWorkspaceTasksResult {
   pagination: PaginationData | null;
   loadMore: () => Promise<void>;
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
-  waitingForInputCount: number;
 }
 
 export function useWorkspaceTasks(
@@ -241,17 +239,7 @@ export function useWorkspaceTasks(
     restoreFromStorage();
   }, [restoreFromStorage]);
 
-  // Calculate count of tasks waiting for input
-  const waitingForInputCount = includeNotifications 
-    ? tasks.filter(task => task.hasActionArtifact).length 
-    : 0;
-
-  // Update store when count changes (only when notifications are enabled)
-  useEffect(() => {
-    if (includeNotifications && workspaceId) {
-      updateWaitingForInputCount(workspaceId, waitingForInputCount);
-    }
-  }, [includeNotifications, workspaceId, waitingForInputCount]);
+  // Note: Global notification count is now handled by WorkspaceProvider
 
   return {
     tasks,
@@ -260,6 +248,5 @@ export function useWorkspaceTasks(
     pagination,
     loadMore,
     refetch,
-    waitingForInputCount,
   };
 }

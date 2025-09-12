@@ -99,7 +99,7 @@ export const RESERVED_WORKSPACE_SLUGS = [
 
 // Workspace slug validation patterns
 export const WORKSPACE_SLUG_PATTERNS = {
-  VALID: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
+  VALID: /^[a-z0-9]([a-z0-9]|-[a-z0-9])*$/,
   MIN_LENGTH: 2,
   MAX_LENGTH: 50,
 } as const;
@@ -118,7 +118,7 @@ export const WORKSPACE_PERMISSION_LEVELS: Record<WorkspaceRole, number> = {
 
 // Workspace limits
 export const WORKSPACE_LIMITS = {
-  MAX_WORKSPACES_PER_USER: parseInt(process.env.MAX_WORKSPACES_PER_USER || "3", 10),
+  MAX_WORKSPACES_PER_USER: parseInt(process.env.NEXT_PUBLIC_MAX_WORKSPACES_PER_USER || "3", 10),
 } as const;
 
 // Error messages
