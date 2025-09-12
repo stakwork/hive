@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  EnvironmentForm,
-  ProjectInfoForm,
-  RepositoryForm,
-  ServicesForm,
-  SwarmForm,
-} from "@/components/stakgraph";
+import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +9,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
@@ -82,9 +75,7 @@ export default function StakgraphPage() {
         if (data.error === "INSUFFICIENT_PERMISSIONS") {
           toast({
             title: "Permission Required",
-            description:
-              data.message ||
-              "Admin access required to manage webhooks on this repository",
+            description: data.message || "Admin access required to manage webhooks on this repository",
             variant: "destructive",
           });
         } else {
@@ -126,10 +117,7 @@ export default function StakgraphPage() {
   if (initialLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader 
-          title="Stakgraph Configuration"
-          description="Configure your settings for Stakgraph integration"
-        />
+        <PageHeader title="Stakgraph Configuration" description="Configure your settings for Stakgraph integration" />
         <Card className="max-w-2xl">
           <CardContent className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2">
@@ -155,7 +143,7 @@ export default function StakgraphPage() {
           Back to Settings
         </Button>
       </div>
-      <PageHeader 
+      <PageHeader
         title="VM Configuration"
         description="Configure your virtual machine settings for development environment"
       />
@@ -163,16 +151,14 @@ export default function StakgraphPage() {
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>VM Settings</CardTitle>
-          {!formData.webhookEnsured && formData.repositoryUrl ? (
-            <Button
-              type="button"
-              variant="default"
-              onClick={handleEnsureWebhooks}
-            >
-              <Webhook className="mr-2 h-4 w-4" />
-              Add Github Webhooks
-            </Button>
-          ) : null}
+          <div className="flex gap-2">
+            {!formData.webhookEnsured && formData.repositoryUrl ? (
+              <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
+                <Webhook className="mr-2 h-4 w-4" />
+                Add Github Webhooks
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -184,9 +170,7 @@ export default function StakgraphPage() {
 
             {saved && (
               <div className="p-3 rounded-md bg-green-50 border border-green-200">
-                <p className="text-sm text-green-700">
-                  Configuration saved successfully!
-                </p>
+                <p className="text-sm text-green-700">Configuration saved successfully!</p>
               </div>
             )}
 
@@ -232,11 +216,7 @@ export default function StakgraphPage() {
                 onEnvVarsChange={handleEnvVarsChange}
               />
 
-              <ServicesForm
-                data={formData.services}
-                loading={loading}
-                onChange={handleServicesChange}
-              />
+              <ServicesForm data={formData.services} loading={loading} onChange={handleServicesChange} />
 
               <FileTabs
                 fileContents={formData.containerFiles}
