@@ -71,6 +71,7 @@ jobs:
           POOL_MANAGER_API_USERNAME: fake_secret
           POOL_MANAGER_API_PASSWORD: fake_secret
           SWARM_SUPER_ADMIN_URL: placeholder
+          GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
         run: npm run build
 
@@ -93,6 +94,7 @@ jobs:
           POOL_MANAGER_API_USERNAME: fake_secret
           POOL_MANAGER_API_PASSWORD: fake_secret
           SWARM_SUPER_ADMIN_URL: placeholder
+          GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
         run: npm start &
 

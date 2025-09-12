@@ -19,14 +19,12 @@ export async function GET(request: Request) {
     }
 
     const userId = (session.user as { id: string }).id;
-    
+
     const githubProfile = await getGithubUsernameAndPAT(userId);
     if (!githubProfile?.pat) {
-      return NextResponse.json(
-        { error: "GitHub access token not found" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
+    const pat = githubProfile.appAccessToken || githubProfile.pat;
 
     function parseOwnerRepo(url: string): { owner: string; repo: string } {
       const u = url.replace(/\.git$/i, "");
@@ -43,7 +41,7 @@ export async function GET(request: Request) {
 
     const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        Authorization: `token ${githubProfile.pat}`,
+        Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
       },
     });
@@ -70,15 +68,12 @@ export async function GET(request: Request) {
       };
 
       return NextResponse.json({
-        message: 'Repo is pushable',
+        message: "Repo is pushable",
         data,
-      })
+      });
     } else {
-      return NextResponse.json(
-        { error: "You do not have push access to this repository" },
-        { status: 403 })
+      return NextResponse.json({ error: "You do not have push access to this repository" }, { status: 403 });
     }
-
   } catch (error: unknown) {
     console.error("Error fetching repositories:", error);
 
@@ -91,15 +86,9 @@ export async function GET(request: Request) {
       "status" in error.response &&
       error.response.status === 401
     ) {
-      return NextResponse.json(
-        { error: "GitHub token expired or invalid" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "GitHub token expired or invalid" }, { status: 401 });
     }
 
-    return NextResponse.json(
-      { error: "Failed to fetch repositories" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch repositories" }, { status: 500 });
   }
 }
