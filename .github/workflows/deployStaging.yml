@@ -1,4 +1,4 @@
-name: Deploy Staging 
+name: Deploy Staging
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -7,9 +7,9 @@ on:
   push:
     branches:
       - master
-        
+
 jobs:
-  Deploy-Production:
+  Deploy-Staging:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest

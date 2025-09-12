@@ -214,7 +214,7 @@ export class WebhookService extends BaseServiceClass {
     if (!githubProfile?.pat) {
       throw new Error("GitHub access token not found for user");
     }
-    return githubProfile.pat;
+    return githubProfile.appAccessToken || githubProfile.pat;
   }
 
   private async listHooks(

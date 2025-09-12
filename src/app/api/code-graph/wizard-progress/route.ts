@@ -29,24 +29,15 @@ const VALID_STATUS_TRANSITIONS: Record<StepStatus, StepStatus[]> = {
   FAILED: ["STARTED", "PROCESSING"],
 };
 
-function validateStepTransition(
-  currentStep: SwarmWizardStep,
-  newStep: SwarmWizardStep,
-): boolean {
+function validateStepTransition(currentStep: SwarmWizardStep, newStep: SwarmWizardStep): boolean {
   const currentIndex = WIZARD_STEP_ORDER.indexOf(currentStep);
   const newIndex = WIZARD_STEP_ORDER.indexOf(newStep);
 
   return newIndex >= 0 && currentIndex >= 0;
 }
 
-function validateStatusTransition(
-  currentStatus: StepStatus,
-  newStatus: StepStatus,
-): boolean {
-  return (
-    VALID_STATUS_TRANSITIONS[currentStatus]?.includes(newStatus) ||
-    currentStatus === newStatus
-  );
+function validateStatusTransition(currentStatus: StepStatus, newStatus: StepStatus): boolean {
+  return VALID_STATUS_TRANSITIONS[currentStatus]?.includes(newStatus) || currentStatus === newStatus;
 }
 
 export async function PUT(request: NextRequest) {
@@ -68,16 +59,8 @@ export async function PUT(request: NextRequest) {
     const { workspaceSlug, wizardStep, stepStatus, wizardData } = body;
 
     // Convert types to Prisma enums if provided
-    const prismaWizardStep = enumFromString(
-      SwarmWizardStep,
-      wizardStep,
-      SwarmWizardStep.WELCOME,
-    );
-    const prismaStepStatus = enumFromString(
-      StepStatus,
-      stepStatus,
-      StepStatus.PENDING,
-    );
+    const prismaWizardStep = enumFromString(SwarmWizardStep, wizardStep, SwarmWizardStep.WELCOME);
+    const prismaStepStatus = enumFromString(StepStatus, stepStatus, StepStatus.PENDING);
 
     if (!workspaceSlug) {
       return NextResponse.json(
@@ -90,10 +73,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate workspace access
-    const validatedSlug = await validateUserWorkspaceAccess(
-      session,
-      workspaceSlug,
-    );
+    const validatedSlug = await validateUserWorkspaceAccess(session, workspaceSlug);
     if (!validatedSlug) {
       return NextResponse.json(
         {
@@ -145,11 +125,17 @@ export async function PUT(request: NextRequest) {
       wizardData: (wizardData ?? {}) as Prisma.InputJsonValue,
     });
 
-    if (
-      prismaWizardStep &&
-      currentSwarm &&
-      !validateStepTransition(currentSwarm.wizardStep, prismaWizardStep)
-    ) {
+    if (!swarm) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to update swarm",
+        } as WizardProgressResponse,
+        { status: 500 },
+      );
+    }
+
+    if (prismaWizardStep && currentSwarm && !validateStepTransition(currentSwarm.wizardStep, prismaWizardStep)) {
       return NextResponse.json(
         {
           success: false,
@@ -159,17 +145,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (
-      prismaStepStatus &&
-      currentSwarm &&
-      !validateStatusTransition(currentSwarm.stepStatus, prismaStepStatus)
-    ) {
-      console.log(
-        "Invalid step status transition from",
-        currentSwarm.stepStatus,
-        "to",
-        prismaStepStatus,
-      );
+    if (prismaStepStatus && currentSwarm && !validateStatusTransition(currentSwarm.stepStatus, prismaStepStatus)) {
+      console.log("Invalid step status transition from", currentSwarm.stepStatus, "to", prismaStepStatus);
     }
 
     let parsedWizardData: Record<string, unknown> = {};
@@ -180,10 +157,7 @@ export async function PUT(request: NextRequest) {
         console.warn("Failed to parse wizard data:", error);
         parsedWizardData = {};
       }
-    } else if (
-      typeof swarm.wizardData === "object" &&
-      swarm.wizardData !== null
-    ) {
+    } else if (typeof swarm.wizardData === "object" && swarm.wizardData !== null) {
       parsedWizardData = swarm.wizardData as Record<string, unknown>;
     }
 

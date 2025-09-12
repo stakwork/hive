@@ -28,6 +28,10 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
+  // GitHub App specific tokens (different from regular OAuth)
+  app_access_token  String? @map("app_access_token")
+  app_refresh_token String? @map("app_refresh_token")
+  app_expires_at    Int?    @map("app_expires_at")
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
@@ -39,6 +43,7 @@ model Session {
   sessionToken String   @unique @map("session_token")
   userId       String   @map("user_id")
   expires      DateTime
+  githubState  String?  @map("github_state")
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
@@ -101,6 +106,7 @@ model VerificationToken {
   @@unique([identifier, token])
   @@map("verification_tokens")
 }
+
 
 model GitHubAuth {
   id                String    @id @default(cuid())
@@ -227,6 +233,9 @@ model Swarm {
 
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")
+
+  // GitHub App installation
+  githubInstallationId String? @map("github_installation_id")
 
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
@@ -636,6 +645,7 @@ model JanitorConfig {
   unitTestsEnabled        Boolean @default(false) @map("unit_tests_enabled")
   integrationTestsEnabled Boolean @default(false) @map("integration_tests_enabled")
   e2eTestsEnabled         Boolean @default(false) @map("e2e_tests_enabled")
+  securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -832,6 +842,7 @@ enum JanitorType {
   UNIT_TESTS
   INTEGRATION_TESTS
   E2E_TESTS
+  SECURITY_REVIEW
 }
 
 enum JanitorStatus {

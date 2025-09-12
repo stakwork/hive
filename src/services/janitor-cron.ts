@@ -31,6 +31,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
     unitTestsEnabled: boolean;
     integrationTestsEnabled: boolean;
     e2eTestsEnabled: boolean;
+    securityReviewEnabled: boolean;
   } | null;
 }>> {
   return await db.workspace.findMany({
@@ -51,6 +52,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
           unitTestsEnabled: true,
           integrationTestsEnabled: true,
           e2eTestsEnabled: true,
+          securityReviewEnabled: true,
         }
       }
     }
