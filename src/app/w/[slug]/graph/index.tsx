@@ -354,7 +354,7 @@ export const GraphComponent = () => {
           <select
             value={selectedSchema || ""}
             onChange={(e) => setSelectedSchema(e.target.value || null)}
-            className="px-3 py-1 border rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1 border rounded-md text-sm bg-white max-w-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">-- Select a schema --</option>
             {schemas.map((schema) => (
