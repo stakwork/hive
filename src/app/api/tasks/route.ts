@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   try {
@@ -171,7 +171,11 @@ export async function GET(request: NextRequest) {
     const processedTasks = tasks.map((task: any) => {
       let hasActionArtifact = false;
       
-      if (includeLatestMessage && task.chatMessages && task.chatMessages.length > 0) {
+      // Only check for action artifacts if the workflow is pending or in_progress
+      if (includeLatestMessage && 
+          task.chatMessages && 
+          task.chatMessages.length > 0 &&
+          (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)) {
         const latestMessage = task.chatMessages[0];
         hasActionArtifact = latestMessage.artifacts?.some(
           (artifact: any) => artifact.type === 'FORM'

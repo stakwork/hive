@@ -10,9 +10,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { FileText, Play } from "lucide-react";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
+import { useTaskStats } from "@/hooks/useTaskStats";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
+import { useEffect } from "react";
 
 interface TasksListProps {
   workspaceId: string;
@@ -20,9 +23,14 @@ interface TasksListProps {
 }
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
-  const { tasks, loading, error, pagination, loadMore } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
-  
-  const runningTasksCount = tasks.filter(task => task.workflowStatus === "IN_PROGRESS").length;
+  const { waitingForInputCount } = useWorkspace();
+  const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
+  const { stats } = useTaskStats(workspaceId);
+
+  // Refresh task list when global notification count changes
+  useEffect(() => {
+    refetch();
+  }, [waitingForInputCount, refetch]);
 
   if (loading && tasks.length === 0) {
     return <LoadingState />;
@@ -52,14 +60,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             Recent Tasks
           </div>
           <div className="flex items-center gap-4 text-sm">
-            {runningTasksCount > 0 && (
+            {stats?.inProgress && stats.inProgress > 0 && (
               <span className="flex items-center gap-1 font-normal text-green-600">
                 <Play className="h-4 w-4" />
-                {runningTasksCount} running
+                {stats.inProgress} running
               </span>
             )}
             <span className="font-normal text-muted-foreground">
-              {pagination?.totalCount || tasks.length} task{(pagination?.totalCount || tasks.length) !== 1 ? 's' : ''}
+              {stats?.total ?? pagination?.totalCount ?? tasks.length} task{(stats?.total ?? pagination?.totalCount ?? tasks.length) !== 1 ? 's' : ''}
             </span>
           </div>
         </CardTitle>

@@ -6,12 +6,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { AnimatePresence, motion } from "framer-motion";
-import { ErrorDisplay } from "@/components/ui/error-display";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -312,73 +312,77 @@ export function ProjectNameSetupStep() {
         </AnimatePresence>
       </CardHeader>
 
-      {swarmIsLoading ? <SwarmVisualization /> : (
 
-        <CardContent className="space-y-6">
-          {error ? (
-            <>
-              <div className="flex justify-center items-center text-red-500">{error}</div>
-              <Button className="mt-2 m-auto px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
-                Reset
-              </Button>
-            </>
-          ) : (
-            <>
-              <div>
-                <Label
-                  htmlFor="graphDomain"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Graph Domain
-                </Label>
-                {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
-                  {infoMessage}
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </p>}
-                <Input
-                  id="graphDomain"
-                  placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
-                  value={isLookingForAvailableName ? "" : projectName}
-                  readOnly
-                  tabIndex={-1}
-                  className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
-                  style={{ pointerEvents: "none" }}
-                />
-              </div>
 
-              <div className="flex justify-between pt-4">
-                {!swarmId ? (
-                  <>
+      <CardContent className="space-y-6">
+        {swarmIsLoading ? <SwarmVisualization /> : (
+          <>
+            {error ? (
+              <>
+                <div className="flex justify-center items-center text-red-500">{error}</div>
+                <Button className="mt-2 m-auto px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
+                  Reset
+                </Button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <Label
+                    htmlFor="graphDomain"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    Graph Domain
+                  </Label>
+                  {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
+                    {infoMessage}
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </p>}
+                  <Input
+                    id="graphDomain"
+                    placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
+                    value={isLookingForAvailableName ? "" : projectName}
+                    readOnly
+                    tabIndex={-1}
+                    className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </div>
 
-                    <Button variant="outline" type="button" onClick={resetProgress}>
-                      Reset
-                    </Button>
-                    <Button
-                      disabled={swarmIsLoading}
-                      className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                      type="button"
-                      onClick={handleCreateWorkspace}
-                    >
-                      Create
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-end gap-2 w-full">
-                    <Button
-                      className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
-                      type="button"
-                      disabled
-                    >
-                      Generating Swarm...
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </CardContent>
-      )}
+                <div className="flex justify-between pt-4">
+                  {!swarmId ? (
+                    <>
+
+                      <Button variant="outline" type="button" onClick={resetProgress}>
+                        Reset
+                      </Button>
+                      <Button
+                        disabled={swarmIsLoading}
+                        className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                        type="button"
+                        onClick={handleCreateWorkspace}
+                      >
+                        Create
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-end gap-2 w-full">
+                      <Button
+                        className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
+                        type="button"
+                        disabled
+                      >
+                        Generating Swarm...
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+      </CardContent>
 
     </Card>
   );
