@@ -4,14 +4,14 @@ import { Users, Calendar, User, Sparkles, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { TaskData } from "@/hooks/useWorkspaceTasks";
+import { Task } from "@/types/task";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
 
 interface TaskCardProps {
-  task: TaskData;
+  task: Task;
   workspaceSlug: string;
 }
 

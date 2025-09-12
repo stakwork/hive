@@ -26,5 +26,8 @@ export * from "./janitor";
 // Stakgraph types
 export * from "./stakgraph";
 
+// Task types
+export * from "./task";
+
 // Github types
 export * from "./github";
