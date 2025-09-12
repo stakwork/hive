@@ -1,6 +1,53 @@
 // Unit test setup
 import "@testing-library/jest-dom";
 import { beforeAll, afterAll } from "vitest";
+import { vi } from "vitest";
+
+// Mock DOM globals for testing-library/react-dom
+Object.defineProperty(global, 'document', {
+  value: {
+    createElement: vi.fn((tagName: string) => ({
+      tagName: tagName.toUpperCase(),
+      appendChild: vi.fn(),
+      removeChild: vi.fn(),
+      querySelector: vi.fn(),
+      querySelectorAll: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      setAttribute: vi.fn(),
+      getAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      innerHTML: '',
+      textContent: '',
+      children: [],
+      childNodes: [],
+      style: {},
+      classList: {
+        add: vi.fn(),
+        remove: vi.fn(),
+        contains: vi.fn(),
+        toggle: vi.fn(),
+      },
+    })),
+    body: {
+      appendChild: vi.fn(),
+      removeChild: vi.fn(),
+      querySelector: vi.fn(),
+      querySelectorAll: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    },
+    documentElement: {
+      appendChild: vi.fn(),
+      removeChild: vi.fn(),
+    },
+    querySelector: vi.fn(),
+    querySelectorAll: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  },
+  writable: true
+});
 
 // Add any global test setup here
 beforeAll(() => {
