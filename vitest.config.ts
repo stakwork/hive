@@ -1,11 +1,13 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
+import react from '@vitejs/plugin-react';
 
 const testSuite = process.env.TEST_SUITE;
 
 export default defineConfig({
+  plugins: testSuite === "integration" ? [] : [react()],
   test: {
-    environment: "node",
+    environment: testSuite === "integration" ? "node" : "jsdom",
     globals: true,
     // Run integration tests sequentially to avoid database conflicts
     pool: testSuite === "integration" ? "forks" : "threads",
@@ -17,7 +19,7 @@ export default defineConfig({
     include:
       testSuite === "integration"
         ? ["src/__tests__/integration/**/*.test.ts"]
-        : ["src/__tests__/unit/**/*.test.ts"],
+        : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
         ? ["./src/__tests__/setup-integration.ts"]
