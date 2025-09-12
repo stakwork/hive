@@ -1287,7 +1287,6 @@ var userBehaviour = (() => {
             const element = await waitForElement(action.selector);
             if (element) {
               const htmlElement = element;
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               const originalBorder = htmlElement.style.border;
               htmlElement.style.border = "3px solid #ff6b6b";
               htmlElement.style.boxShadow = "0 0 10px rgba(255, 107, 107, 0.5)";
@@ -1305,7 +1304,6 @@ var userBehaviour = (() => {
           if (action.selector && action.value !== void 0) {
             const element = await waitForElement(action.selector);
             if (element) {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.focus();
               element.value = "";
               element.value = String(action.value);
@@ -1322,7 +1320,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && (element.type === "checkbox" || element.type === "radio")) {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               if (!element.checked) {
                 element.click();
               }
@@ -1339,7 +1336,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && element.type === "checkbox") {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               if (element.checked) {
                 element.click();
               }
@@ -1354,7 +1350,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && element.tagName === "SELECT") {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.value = String(action.value);
               element.dispatchEvent(new Event("change", { bubbles: true }));
             } else {
@@ -1385,7 +1380,6 @@ var userBehaviour = (() => {
           if (action.selector) {
             const element = await waitForElement(action.selector);
             if (element) {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.dispatchEvent(
                 new MouseEvent("mouseover", { bubbles: true })
               );
@@ -1403,7 +1397,6 @@ var userBehaviour = (() => {
               action.selector
             );
             if (element && typeof element.focus === "function") {
-              element.scrollIntoView({ behavior: "auto", block: "center" });
               element.focus();
             } else {
               throw new Error(
@@ -1874,13 +1867,17 @@ var userBehaviour = (() => {
     }
     return [];
   }
-  async function waitForElement(selector, timeout = 5e3) {
+  async function waitForElement(selector, matchedText) {
     const startTime = Date.now();
+    const timeout = 5e3;
     while (Date.now() - startTime < timeout) {
       try {
         const elements = findElements(selector);
         if (elements.length > 0) {
           const element = elements[0];
+          if (matchedText) {
+            element.__stakTrakMatchedText = matchedText;
+          }
           setTimeout(() => highlightElement(element), 100);
           return element;
         }
@@ -1918,11 +1915,6 @@ var userBehaviour = (() => {
   function highlightElement(element, matchedText) {
     try {
       ensureStylesInDocument(document);
-      element.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "center"
-      });
       const textToHighlight = matchedText || element.__stakTrakMatchedText;
       if (textToHighlight) {
         highlightTextInElement(element, textToHighlight);
@@ -1994,7 +1986,7 @@ var userBehaviour = (() => {
         }
         break;
       case "toContainText":
-        const textElement = await waitForElement(action.selector);
+        const textElement = await waitForElement(action.selector, action.value);
         if (!textElement || !((_a = textElement.textContent) == null ? void 0 : _a.includes(String(action.value || "")))) {
           throw new Error(
             `Element does not contain text "${action.value}": ${action.selector}`
@@ -2002,7 +1994,10 @@ var userBehaviour = (() => {
         }
         break;
       case "toHaveText":
-        const exactTextElement = await waitForElement(action.selector);
+        const exactTextElement = await waitForElement(
+          action.selector,
+          action.value
+        );
         if (!exactTextElement || ((_b = exactTextElement.textContent) == null ? void 0 : _b.trim()) !== String(action.value || "")) {
           throw new Error(
             `Element does not have exact text "${action.value}": ${action.selector}`

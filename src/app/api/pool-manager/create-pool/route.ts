@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
-
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -31,10 +30,7 @@ export async function POST(request: NextRequest) {
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     // Find the swarm and verify user has access to the workspace
@@ -66,7 +62,6 @@ export async function POST(request: NextRequest) {
 
     const github_pat = await getGithubUsernameAndPAT(session?.user.id);
 
-
     if (!poolApiKey) {
       await updateSwarmPoolApiKeyFor(swarm.id);
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
@@ -83,10 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!swarm.workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     const isOwner = swarm.workspace.ownerId === userId;
@@ -98,10 +90,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!swarm.id) {
-      return NextResponse.json(
-        { error: "Missing required field: name" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required field: name" }, { status: 400 });
     }
 
     const repository = await db.repository.findFirst({
@@ -110,14 +99,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-
     const poolManager = new PoolManagerService({
       ...serviceConfigs.poolManager,
       headers: {
-        Authorization: `Bearer ${encryptionService.decryptField(
-          "poolApiKey",
-          poolApiKey,
-        )}`,
+        Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
       },
     });
 
@@ -168,7 +153,7 @@ export async function POST(request: NextRequest) {
       minimum_vms: 2,
       repo_name: repository?.repositoryUrl || "",
       branch_name: repository?.branch || "",
-      github_pat: github_pat?.pat || "",
+      github_pat: github_pat?.appAccessToken || github_pat?.pat || "",
       github_username: github_pat?.username || "",
       env_vars: envVars,
       container_files,
@@ -197,9 +182,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-      { error: "Failed to create pool" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create pool" }, { status: 500 });
   }
 }

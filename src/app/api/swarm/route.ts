@@ -1,10 +1,6 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
-import {
-  SWARM_DEFAULT_ENV_VARS,
-  SWARM_DEFAULT_INSTANCE_TYPE,
-  getSwarmVanityAddress,
-} from "@/lib/constants";
+import { SWARM_DEFAULT_ENV_VARS, SWARM_DEFAULT_INSTANCE_TYPE, getSwarmVanityAddress } from "@/lib/constants";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -27,29 +23,18 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
 
-    const {
-      workspaceId,
-      name,
-      repositoryName,
-      repositoryUrl,
-      repositoryDescription,
-      repositoryDefaultBranch,
-    } = body;
+    const { workspaceId, name, repositoryName, repositoryUrl, repositoryDescription, repositoryDefaultBranch } = body;
 
     if (!workspaceId || !name || !repositoryName || !repositoryUrl) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Missing required fields: workspaceId, name, repositoryName, repositoryUrl",
+          message: "Missing required fields: workspaceId, name, repositoryName, repositoryUrl",
         },
         { status: 400 },
       );
@@ -58,10 +43,7 @@ export async function POST(request: NextRequest) {
     // Validate workspace access - ensure user has admin permissions to create swarms
     const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
     if (!workspaceAccess.hasAccess) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found or access denied" },
-        { status: 403 },
-      );
+      return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 403 });
     }
 
     if (!workspaceAccess.canAdmin) {
@@ -74,9 +56,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const vanity_address = getSwarmVanityAddress(name);
+    // const vanity_address = getSwarmVanityAddress(name);
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
-    const env = SWARM_DEFAULT_ENV_VARS;
+    // const env = SWARM_DEFAULT_ENV_VARS;
 
     await saveOrUpdateSwarm({
       workspaceId,
@@ -98,21 +80,35 @@ export async function POST(request: NextRequest) {
     const swarmPassword = generateSecurePassword(20);
 
     const apiResponse = await swarmService.createSwarm({
-      vanity_address,
       name: thirdPartyName,
       instance_type,
-      env,
       password: swarmPassword,
     });
 
     const swarm_id = apiResponse?.data?.swarm_id;
+    const swarm_address = apiResponse?.data?.address;
+    const x_api_key = apiResponse?.data?.x_api_key;
+
+    const match = typeof swarm_id === "string" ? swarm_id.match(/(\d+)/) : null;
+    const swarm_id_num = match ? match[1] : swarm_id;
+    const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
+
+    // We change the name of the swarm with the swarm_id so subsequent API requests
+    // can succeed since we now use swarm_ids by default.
     const updatedSwarm = await saveOrUpdateSwarm({
       workspaceId,
-      swarmUrl: `https://${vanity_address}/api`,
-      status: SwarmStatus.PENDING,
+      swarmUrl: `https://${swarm_address}/api`,
+      name: swarm_id,
+      swarmApiKey: x_api_key,
+      swarmSecretAlias: swarmSecretAlias,
+      status: SwarmStatus.ACTIVE,
       swarmId: swarm_id,
       swarmPassword: swarmPassword,
     });
+
+    if (!updatedSwarm) {
+      return NextResponse.json({ success: false, message: "Failed to update swarm" }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
@@ -129,19 +125,12 @@ export async function POST(request: NextRequest) {
       typeof (error as { status: number }).status === "number"
     ) {
       const status = (error as { status: number }).status;
-      const errorMessage =
-        "message" in error ? error.message : "Failed to create swarm";
+      const errorMessage = "message" in error ? error.message : "Failed to create swarm";
 
-      return NextResponse.json(
-        { success: false, message: errorMessage },
-        { status },
-      );
+      return NextResponse.json({ success: false, message: errorMessage }, { status });
     }
 
-    return NextResponse.json(
-      { success: false, message: "Unknown error while creating swarm" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Unknown error while creating swarm" }, { status: 500 });
   }
 }
 
@@ -149,10 +138,7 @@ export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -181,10 +167,7 @@ export async function PUT(request: NextRequest) {
     // Validate workspace access - ensure user has admin permissions to update swarms
     const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
     if (!workspaceAccess.hasAccess) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found or access denied" },
-        { status: 403 },
-      );
+      return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 403 });
     }
 
     if (!workspaceAccess.canAdmin) {
@@ -210,9 +193,6 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error creating Swarm:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to create swarm" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to create swarm" }, { status: 500 });
   }
 }

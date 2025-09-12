@@ -1,4 +1,4 @@
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -15,10 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -44,26 +41,25 @@ export async function GET(request: NextRequest) {
     const swarm = await db.swarm.findFirst({ where });
 
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL or API key not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
-
+    const githubProfile = await getGithubUsernameAndPAT(session?.user?.id);
 
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequestAuth({
       swarmUrl: `https://${getSwarmVanityAddress(swarm.name)}:3355`,
       endpoint: "/services",
       method: "GET",
-      params: { ...(clone === 'true' ? { clone } : {}), ...(repo_url ? { repo_url } : {}) },
+      params: {
+        ...(clone === "true" ? { clone } : {}),
+        ...(repo_url ? { repo_url } : {}),
+        ...(githubProfile?.username ? { username: githubProfile?.username } : {}),
+        ...(githubProfile?.pat ? { pat: githubProfile?.pat } : {}),
+      },
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 
@@ -86,9 +82,6 @@ export async function GET(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch {
-    return NextResponse.json(
-      { success: false, message: "Failed to ingest code" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }

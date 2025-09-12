@@ -11,6 +11,7 @@ export interface JanitorConfigUpdate {
   unitTestsEnabled?: boolean;
   integrationTestsEnabled?: boolean;
   e2eTestsEnabled?: boolean;
+  securityReviewEnabled?: boolean;
 }
 
 export interface AcceptRecommendationRequest {
