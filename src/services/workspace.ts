@@ -1,33 +1,33 @@
+import {
+  RESERVED_WORKSPACE_SLUGS,
+  WORKSPACE_ERRORS,
+  WORKSPACE_LIMITS,
+  WORKSPACE_PERMISSION_LEVELS,
+  WORKSPACE_SLUG_PATTERNS,
+} from "@/lib/constants";
 import { db } from "@/lib/db";
-import { WorkspaceRole } from "@prisma/client";
+import { EncryptionService } from "@/lib/encryption";
+import {
+  createWorkspaceMember,
+  findActiveMember,
+  findPreviousMember,
+  findUserByGitHubUsername,
+  getActiveWorkspaceMembers,
+  isWorkspaceOwner,
+  reactivateWorkspaceMember,
+  softDeleteMember,
+  updateMemberRole,
+} from "@/lib/helpers/workspace-member-queries";
+import { mapWorkspaceMember, mapWorkspaceMembers } from "@/lib/mappers/workspace-member";
 import {
   CreateWorkspaceRequest,
   UpdateWorkspaceRequest,
-  WorkspaceResponse,
-  WorkspaceWithRole,
-  WorkspaceWithAccess,
   WorkspaceAccessValidation,
+  WorkspaceResponse,
+  WorkspaceWithAccess,
+  WorkspaceWithRole,
 } from "@/types/workspace";
-import {
-  RESERVED_WORKSPACE_SLUGS,
-  WORKSPACE_SLUG_PATTERNS,
-  WORKSPACE_ERRORS,
-  WORKSPACE_PERMISSION_LEVELS,
-  WORKSPACE_LIMITS,
-} from "@/lib/constants";
-import { EncryptionService } from "@/lib/encryption";
-import { mapWorkspaceMembers, mapWorkspaceMember } from "@/lib/mappers/workspace-member";
-import {
-  findUserByGitHubUsername,
-  findActiveMember,
-  findPreviousMember,
-  isWorkspaceOwner,
-  createWorkspaceMember,
-  reactivateWorkspaceMember,
-  getActiveWorkspaceMembers,
-  updateMemberRole,
-  softDeleteMember,
-} from "@/lib/helpers/workspace-member-queries";
+import { WorkspaceRole } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -56,6 +56,7 @@ export async function createWorkspace(
   const existing = await db.workspace.findUnique({
     where: { slug: data.slug, deleted: false },
   });
+
   if (existing) {
     throw new Error(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
   }
@@ -525,11 +526,26 @@ export async function getDefaultWorkspaceForUser(
  * Soft deletes a workspace by ID
  */
 export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
+
+  // Get the current workspace to access its slug
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId }
+  });
+
+  if (!workspace) {
+    throw new Error('Workspace not found');
+  }
+
+  const timestamp = Date.now();
+  const deletedSlug = `${workspace.slug}-deleted-${timestamp}`;
+
   await db.workspace.update({
     where: { id: workspaceId },
-    data: { 
+    data: {
       deleted: true,
-      deletedAt: new Date()
+      deletedAt: new Date(),
+      originalSlug: workspace.slug, // Store original slug for recovery
+      slug: deletedSlug // Modify slug to allow reuse of original
     },
   });
 }
@@ -544,6 +560,7 @@ export async function deleteWorkspaceBySlug(
   // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
+
   if (!workspace) {
     throw new Error("Workspace not found or access denied");
   }
@@ -552,8 +569,64 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
+
   // Soft delete the workspace
   await softDeleteWorkspace(workspace.id);
+}
+
+/**
+ * Recovers a soft-deleted workspace by ID
+ */
+export async function recoverWorkspace(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceResponse> {
+  // Get the deleted workspace
+  const workspace = await db.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      ownerId: userId,
+      deleted: true
+    }
+  });
+
+  if (!workspace) {
+    throw new Error("Deleted workspace not found or access denied");
+  }
+
+  if (!workspace.originalSlug) {
+    throw new Error("Cannot recover workspace: original slug not stored");
+  }
+
+  // Check if original slug is available
+  const existingWorkspace = await db.workspace.findFirst({
+    where: {
+      slug: workspace.originalSlug,
+      deleted: false
+    }
+  });
+
+  // Determine the slug to use for recovery
+  const recoveredSlug = existingWorkspace
+    ? `${workspace.originalSlug}-recovered-${Date.now()}`
+    : workspace.originalSlug;
+
+  // Recover the workspace
+  const recoveredWorkspace = await db.workspace.update({
+    where: { id: workspaceId },
+    data: {
+      deleted: false,
+      deletedAt: null,
+      slug: recoveredSlug,
+      originalSlug: null // Clear original slug after recovery
+    }
+  });
+
+  return {
+    ...recoveredWorkspace,
+    createdAt: recoveredWorkspace.createdAt.toISOString(),
+    updatedAt: recoveredWorkspace.updatedAt.toISOString(),
+  };
 }
 
 /**
@@ -603,7 +676,7 @@ export function validateWorkspaceSlug(slug: string): {
 export async function getWorkspaceMembers(workspaceId: string) {
   // Get regular members from workspace_members table
   const members = await getActiveWorkspaceMembers(workspaceId);
-  
+
   // Get workspace owner information
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
@@ -641,12 +714,12 @@ export async function getWorkspaceMembers(workspaceId: string) {
       image: workspace.owner.image,
       github: workspace.owner.githubAuth
         ? {
-            username: workspace.owner.githubAuth.githubUsername,
-            name: workspace.owner.githubAuth.name,
-            bio: workspace.owner.githubAuth.bio,
-            publicRepos: workspace.owner.githubAuth.publicRepos,
-            followers: workspace.owner.githubAuth.followers,
-          }
+          username: workspace.owner.githubAuth.githubUsername,
+          name: workspace.owner.githubAuth.name,
+          bio: workspace.owner.githubAuth.bio,
+          publicRepos: workspace.owner.githubAuth.publicRepos,
+          followers: workspace.owner.githubAuth.followers,
+        }
         : null,
     },
   };
@@ -709,7 +782,7 @@ export async function updateWorkspaceMemberRole(
   if (!member) {
     throw new Error("Member not found");
   }
-  
+
   // Check if the new role is the same as current role
   if (member.role === newRole) {
     throw new Error("Member already has this role");
