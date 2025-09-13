@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause } from "lucide-react";
