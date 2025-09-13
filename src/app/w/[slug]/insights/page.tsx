@@ -15,11 +15,13 @@ import { BarChart3, BookOpen, GitPullRequest, Package, Shield, TestTube, Type, W
 import { redirect } from "next/navigation";
 import { useEffect, useCallback } from "react";
 
-// Testing janitors - real data from centralized constants plus PR reviews
+// Get all janitor items and separate them by category
+const allJanitors = getAllJanitorItems();
 const testingJanitors: JanitorItem[] = [
-  ...getAllJanitorItems(),
+  ...allJanitors.filter(j => j.id !== "SECURITY_REVIEW"),
   { id: "pr-reviews", name: "PR Reviews", icon: GitPullRequest, description: "Enable automatic PR reviews.", comingSoon: true },
 ];
+const securityReviewJanitor = allJanitors.find(j => j.id === "SECURITY_REVIEW");
 
 // Maintainability janitors - coming soon
 const maintainabilityJanitors: JanitorItem[] = [
@@ -28,10 +30,10 @@ const maintainabilityJanitors: JanitorItem[] = [
   { id: "documentation", name: "Documentation", icon: BookOpen, description: "Generate missing documentation." },
 ];
 
-// Security janitors - coming soon  
+// Security janitors
 const securityJanitors: JanitorItem[] = [
-  { id: "security", name: "Security Scan", icon: Shield, description: "Scan for vulnerabilities." },
-  { id: "supply-chain", name: "Supply Chain", icon: Package, description: "Check dependencies risk." },
+  ...(securityReviewJanitor ? [securityReviewJanitor] : []),
+  { id: "supply-chain", name: "Supply Chain", icon: Package, description: "Check dependencies risk.", comingSoon: true },
 ];
 
 export default function InsightsPage() {
@@ -124,7 +126,6 @@ export default function InsightsPage() {
         description="Security scanning and vulnerability detection"
         icon={<Shield className="h-5 w-5 text-red-500" />}
         janitors={securityJanitors}
-        comingSoon={true}
       />
       </div>{/* End content container */}
     </div>

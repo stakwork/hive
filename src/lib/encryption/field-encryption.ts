@@ -1,9 +1,5 @@
 import { encrypt, decrypt, isEncrypted, hexToBuffer } from "./crypto";
-import {
-  EncryptedData,
-  EncryptableField,
-  EncryptionError,
-} from "@/types/encryption";
+import { EncryptedData, EncryptableField, EncryptionError } from "@/types/encryption";
 
 export class FieldEncryptionService {
   private key: Buffer;
@@ -20,21 +16,15 @@ export class FieldEncryptionService {
     try {
       return encrypt(value, this.key);
     } catch (error) {
-      const encryptionError = new Error(
-        `Failed to encrypt field: ${fieldName}`,
-      ) as EncryptionError;
+      const encryptionError = new Error(`Failed to encrypt field: ${fieldName}`) as EncryptionError;
       encryptionError.code = "ENCRYPTION_FAILED";
       encryptionError.field = fieldName;
-      encryptionError.error =
-        error instanceof Error ? error.message : String(error);
+      encryptionError.error = error instanceof Error ? error.message : String(error);
       throw encryptionError;
     }
   }
 
-  decryptField(
-    fieldName: EncryptableField,
-    encryptedData: EncryptedData | string,
-  ): string {
+  decryptField(fieldName: EncryptableField, encryptedData: EncryptedData | string): string {
     try {
       if (typeof encryptedData === "string") {
         try {
@@ -52,13 +42,10 @@ export class FieldEncryptionService {
         throw new Error("Invalid encrypted data format");
       }
     } catch (error) {
-      const decryptionError = new Error(
-        `Failed to decrypt field: ${fieldName}`,
-      ) as EncryptionError;
+      const decryptionError = new Error(`Failed to decrypt field: ${fieldName}`) as EncryptionError;
       decryptionError.code = "DECRYPTION_FAILED";
       decryptionError.field = fieldName;
-      decryptionError.error =
-        error instanceof Error ? error.message : String(error);
+      decryptionError.error = error instanceof Error ? error.message : String(error);
       throw decryptionError;
     }
   }
@@ -71,8 +58,11 @@ export class FieldEncryptionService {
       "environmentVariables",
       "poolApiKey",
       "swarmApiKey",
+      "swarmPassword",
       "stakworkApiKey",
       "githubWebhookSecret",
+      "app_access_token",
+      "app_refresh_token",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
