@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -60,13 +60,15 @@ export function ChatArea({
   const router = useRouter();
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current?.scrollIntoView) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const handleBackToTasks = () => {
-    if (workspaceSlug) {
+    if (workspaceSlug && router?.push) {
       router.push(`/w/${workspaceSlug}/tasks`);
-    } else {
+    } else if (router?.back) {
       router.back();
     }
   };
