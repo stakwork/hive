@@ -17,7 +17,7 @@ export default defineConfig({
     include:
       testSuite === "integration"
         ? ["src/__tests__/integration/**/*.test.ts"]
-        : ["src/__tests__/unit/**/*.test.ts"],
+        : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
         ? ["./src/__tests__/setup-integration.ts"]
