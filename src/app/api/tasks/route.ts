@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "5");
+    const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -130,6 +131,24 @@ export async function GET(request: NextRequest) {
               comments: true,
             },
           },
+          ...(includeLatestMessage && {
+            chatMessages: {
+              orderBy: {
+                timestamp: "desc",
+              },
+              take: 1,
+              select: {
+                id: true,
+                timestamp: true,
+                artifacts: {
+                  select: {
+                    id: true,
+                    type: true,
+                  },
+                },
+              },
+            },
+          }),
         },
         orderBy: {
           createdAt: "desc",
@@ -148,10 +167,33 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
     const hasMore = page < totalPages;
 
+    // Process tasks to add hasActionArtifact flag
+    const processedTasks = tasks.map((task: any) => {
+      let hasActionArtifact = false;
+      
+      // Only check for action artifacts if the workflow is pending or in_progress
+      if (includeLatestMessage && 
+          task.chatMessages && 
+          task.chatMessages.length > 0 &&
+          (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)) {
+        const latestMessage = task.chatMessages[0];
+        hasActionArtifact = latestMessage.artifacts?.some(
+          (artifact: any) => artifact.type === 'FORM'
+        ) || false;
+      }
+
+      // Return task with hasActionArtifact flag, removing chatMessages array to keep response clean
+      const { chatMessages, ...taskWithoutMessages } = task;
+      return {
+        ...taskWithoutMessages,
+        hasActionArtifact,
+      };
+    });
+
     return NextResponse.json(
       {
         success: true,
-        data: tasks,
+        data: includeLatestMessage ? processedTasks : tasks,
         pagination: {
           page,
           limit,

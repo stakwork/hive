@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { WorkflowStatus } from "@/lib/chat";
+import {
+  usePusherConnection,
+  TaskTitleUpdateEvent,
+} from "@/hooks/usePusherConnection";
 
 export interface TaskData {
   id: string;
@@ -15,6 +19,7 @@ export interface TaskData {
   stakworkProjectId?: number | null;
   createdAt: string;
   updatedAt: string;
+  hasActionArtifact?: boolean;
   assignee?: {
     id: string;
     name: string | null;
@@ -50,10 +55,14 @@ interface UseWorkspaceTasksResult {
   error: string | null;
   pagination: PaginationData | null;
   loadMore: () => Promise<void>;
-  refetch: () => Promise<void>;
+  refetch: (includeLatestMessage?: boolean) => Promise<void>;
 }
 
-export function useWorkspaceTasks(workspaceId: string | null): UseWorkspaceTasksResult {
+export function useWorkspaceTasks(
+  workspaceId: string | null, 
+  workspaceSlug?: string | null, 
+  includeNotifications: boolean = false
+): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,7 +70,28 @@ export function useWorkspaceTasks(workspaceId: string | null): UseWorkspaceTasks
   const [pagination, setPagination] = useState<PaginationData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchTasks = useCallback(async (page: number, reset: boolean = false) => {
+  // Handle real-time task title updates
+  const handleTaskTitleUpdate = useCallback(
+    (update: TaskTitleUpdateEvent) => {
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === update.taskId 
+            ? { ...task, title: update.newTitle }
+            : task
+        )
+      );
+    },
+    [],
+  );
+
+  // Subscribe to workspace-level updates if workspaceSlug is provided
+  usePusherConnection({
+    workspaceSlug,
+    enabled: !!workspaceSlug,
+    onTaskTitleUpdate: handleTaskTitleUpdate,
+  });
+
+  const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
     if (!workspaceId || !session?.user) {
       setTasks([]);
       setPagination(null);
@@ -72,7 +102,8 @@ export function useWorkspaceTasks(workspaceId: string | null): UseWorkspaceTasks
     setError(null);
 
     try {
-      const response = await fetch(`/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5`, {
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+      const response = await fetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -98,7 +129,7 @@ export function useWorkspaceTasks(workspaceId: string | null): UseWorkspaceTasks
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user]);
+  }, [workspaceId, session?.user, includeNotifications]);
 
   const loadMore = useCallback(async () => {
     if (pagination?.hasMore) {
@@ -108,14 +139,16 @@ export function useWorkspaceTasks(workspaceId: string | null): UseWorkspaceTasks
     }
   }, [fetchTasks, pagination?.hasMore, currentPage]);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (includeLatestMessage?: boolean) => {
     setCurrentPage(1);
-    await fetchTasks(1, true);
+    await fetchTasks(1, true, includeLatestMessage);
   }, [fetchTasks]);
 
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  // Note: Global notification count is now handled by WorkspaceProvider
 
   return {
     tasks,

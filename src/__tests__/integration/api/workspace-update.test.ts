@@ -331,12 +331,14 @@ describe("Workspace Update API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
 
-      // Verify workspace was soft-deleted in database
+      // Verify workspace was soft-deleted in database (use ID since slug changes)
       const deletedWorkspaceInDb = await db.workspace.findUnique({
-        where: { slug: workspace.slug },
+        where: { id: workspace.id },
       });
       expect(deletedWorkspaceInDb?.deleted).toBe(true);
       expect(deletedWorkspaceInDb?.deletedAt).toBeTruthy();
+      expect(deletedWorkspaceInDb?.originalSlug).toBe(workspace.slug);
+      expect(deletedWorkspaceInDb?.slug).toMatch(/^.+-deleted-\d+$/);
     });
 
     test("should return 403 for non-owner attempting deletion", async () => {
@@ -358,9 +360,10 @@ describe("Workspace Update API Integration Tests", () => {
 
       // Verify workspace was not deleted
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
-        where: { slug: workspace.slug },
+        where: { id: workspace.id },
       });
       expect(unchangedWorkspaceInDb?.deleted).toBeFalsy();
+      expect(unchangedWorkspaceInDb?.slug).toBe(workspace.slug); // Slug should remain unchanged
     });
 
     test("should return 404 for non-existent workspace", async () => {
@@ -398,9 +401,10 @@ describe("Workspace Update API Integration Tests", () => {
 
       // Verify workspace was not deleted
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
-        where: { slug: workspace.slug },
+        where: { id: workspace.id },
       });
       expect(unchangedWorkspaceInDb?.deleted).toBeFalsy();
+      expect(unchangedWorkspaceInDb?.slug).toBe(workspace.slug); // Slug should remain unchanged
     });
   });
 });
