@@ -24,27 +24,16 @@ interface TasksListProps {
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const { waitingForInputCount } = useWorkspace();
-  const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(workspaceId, workspaceSlug, true);
+  const { tasks, loading, pagination, loadMore, refresh } = useWorkspaceTasks(workspaceId);
   const { stats } = useTaskStats(workspaceId);
 
   // Refresh task list when global notification count changes
   useEffect(() => {
-    refetch();
-  }, [waitingForInputCount, refetch]);
+    refresh();
+  }, [waitingForInputCount, refresh]);
 
   if (loading && tasks.length === 0) {
     return <LoadingState />;
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-red-600">Error loading tasks</CardTitle>
-          <CardDescription>{error}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
   }
 
   if (tasks.length === 0) {
@@ -67,7 +56,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
               </span>
             )}
             <span className="font-normal text-muted-foreground">
-              {stats?.total ?? pagination?.totalCount ?? tasks.length} task{(stats?.total ?? pagination?.totalCount ?? tasks.length) !== 1 ? 's' : ''}
+              {stats?.total ?? tasks.length} task{(stats?.total ?? tasks.length) !== 1 ? 's' : ''}
             </span>
           </div>
         </CardTitle>
