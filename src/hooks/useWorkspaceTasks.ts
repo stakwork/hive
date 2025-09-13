@@ -1,161 +1,159 @@
-"use client";
+import { useState, useEffect, useCallback } from 'react';
+import { Task } from '@/types/task';
 
-import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
-import { WorkflowStatus } from "@/lib/chat";
-import {
-  usePusherConnection,
-  TaskTitleUpdateEvent,
-} from "@/hooks/usePusherConnection";
-
-export interface TaskData {
-  id: string;
-  title: string;
-  description: string | null;
-  status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
-  priority: "LOW" | "MEDIUM" | "HIGH";
-  workflowStatus: WorkflowStatus | null;
-  sourceType: "USER" | "JANITOR" | "SYSTEM";
-  stakworkProjectId?: number | null;
-  createdAt: string;
-  updatedAt: string;
-  hasActionArtifact?: boolean;
-  assignee?: {
-    id: string;
-    name: string | null;
-    email: string | null;
-  };
-  repository?: {
-    id: string;
-    name: string;
-    repositoryUrl: string;
-  };
-  createdBy: {
-    id: string;
-    name: string | null;
-    email: string | null;
-    image: string | null;
-    githubAuth: {
-      githubUsername: string;
-    } | null;
-  };
-}
-
-interface PaginationData {
+interface PaginationState {
   page: number;
-  limit: number;
-  totalCount: number;
-  totalPages: number;
   hasMore: boolean;
 }
 
-interface UseWorkspaceTasksResult {
-  tasks: TaskData[];
+interface UseWorkspaceTasksReturn {
+  tasks: Task[];
   loading: boolean;
-  error: string | null;
-  pagination: PaginationData | null;
-  loadMore: () => Promise<void>;
-  refetch: (includeLatestMessage?: boolean) => Promise<void>;
+  pagination: PaginationState;
+  loadMore: () => void;
+  refresh: () => void;
 }
 
-export function useWorkspaceTasks(
-  workspaceId: string | null, 
-  workspaceSlug?: string | null, 
-  includeNotifications: boolean = false
-): UseWorkspaceTasksResult {
-  const { data: session } = useSession();
-  const [tasks, setTasks] = useState<TaskData[]>([]);
+export const useWorkspaceTasks = (workspaceId: string): UseWorkspaceTasksReturn => {
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState<PaginationData | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-
-  // Handle real-time task title updates
-  const handleTaskTitleUpdate = useCallback(
-    (update: TaskTitleUpdateEvent) => {
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === update.taskId 
-            ? { ...task, title: update.newTitle }
-            : task
-        )
-      );
-    },
-    [],
-  );
-
-  // Subscribe to workspace-level updates if workspaceSlug is provided
-  usePusherConnection({
-    workspaceSlug,
-    enabled: !!workspaceSlug,
-    onTaskTitleUpdate: handleTaskTitleUpdate,
+  const [pagination, setPagination] = useState<PaginationState>({
+    page: 1,
+    hasMore: true,
   });
+  const [persistedItemCount, setPersistedItemCount] = useState<number>(5);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
-    if (!workspaceId || !session?.user) {
-      setTasks([]);
-      setPagination(null);
-      return;
+  // Load persisted item count from localStorage on mount
+  useEffect(() => {
+    const savedItemCount = localStorage.getItem('task_display_count');
+    if (savedItemCount) {
+      const count = parseInt(savedItemCount, 10);
+      if (count && count > 0 && count <= 500) { // Reasonable max limit
+        setPersistedItemCount(count);
+      }
     }
+    setIsInitialized(true);
+  }, []);
 
-    setLoading(true);
-    setError(null);
+  // Save item count to localStorage whenever it changes
+  const updatePersistedItemCount = useCallback((count: number) => {
+    setPersistedItemCount(count);
+    localStorage.setItem('task_display_count', count.toString());
+  }, []);
+
+  const fetchTasks = useCallback(async (page: number, includeLatestMessage: boolean = false) => {
+    if (!workspaceId) return null;
 
     try {
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tasks: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      // Assuming there's an API call to fetch tasks
+      const response = await fetch(`/api/workspaces/${workspaceId}/tasks?page=${page}&includeLatestMessage=${includeLatestMessage}`);
       
-      if (result.success && Array.isArray(result.data)) {
-        setTasks(prevTasks => reset ? result.data : [...prevTasks, ...result.data]);
-        setPagination(result.pagination);
-      } else {
-        throw new Error("Invalid response format");
+      if (!response.ok) {
+        throw new Error('Failed to fetch tasks');
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to fetch tasks";
-      setError(errorMessage);
-      console.error("Error fetching workspace tasks:", err);
+
+      const data = await response.json();
+      return {
+        tasks: data.tasks as Task[],
+        hasMore: data.hasMore as boolean,
+      };
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      return null;
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !isInitialized) return;
+
+    const loadInitialTasks = async () => {
+      setLoading(true);
+      try {
+        // Calculate how many pages we need to restore the persisted item count
+        const itemsPerPage = 5;
+        const pagesToLoad = Math.ceil(persistedItemCount / itemsPerPage);
+        
+        let allTasks: Task[] = [];
+        let currentPage = 1;
+        let hasMore = true;
+
+        // Load pages sequentially until we have the persisted item count
+        while (currentPage <= pagesToLoad && hasMore) {
+          const result = await fetchTasks(currentPage, currentPage === 1);
+          if (result) {
+            if (currentPage === 1) {
+              allTasks = result.tasks;
+            } else {
+              allTasks = [...allTasks, ...result.tasks];
+            }
+            hasMore = result.hasMore;
+            currentPage++;
+          } else {
+            break;
+          }
+        }
+
+        setTasks(allTasks);
+        setPagination({
+          page: currentPage - 1,
+          hasMore: hasMore,
+        });
+      } catch (error) {
+        console.error('Error loading tasks:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialTasks();
+  }, [workspaceId, fetchTasks, persistedItemCount, isInitialized]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || !pagination.hasMore) return;
+
+    setLoading(true);
+    try {
+      const result = await fetchTasks(pagination.page + 1);
+      if (result) {
+        setTasks(prev => [...prev, ...result.tasks]);
+        setPagination({
+          page: pagination.page + 1,
+          hasMore: result.hasMore,
+        });
+        
+        // Update persisted item count to reflect the new total
+        const newItemCount = persistedItemCount + 5; // Adding 5 more items
+        updatePersistedItemCount(newItemCount);
+      }
+    } catch (error) {
+      console.error('Error loading more tasks:', error);
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications]);
+  }, [loading, pagination, fetchTasks, persistedItemCount, updatePersistedItemCount]);
 
-  const loadMore = useCallback(async () => {
-    if (pagination?.hasMore) {
-      const nextPage = currentPage + 1;
-      setCurrentPage(nextPage);
-      await fetchTasks(nextPage, false);
+  const refresh = useCallback(async () => {
+    if (!workspaceId) return;
+
+    setLoading(true);
+    try {
+      const result = await fetchTasks(1, true);
+      if (result) {
+        setTasks(result.tasks);
+        setPagination({
+          page: 1,
+          hasMore: result.hasMore,
+        });
+        // Reset persisted item count to default on refresh
+        updatePersistedItemCount(5);
+      }
+    } catch (error) {
+      console.error('Error refreshing tasks:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [fetchTasks, pagination?.hasMore, currentPage]);
+  }, [workspaceId, fetchTasks, updatePersistedItemCount]);
 
-  const refetch = useCallback(async (includeLatestMessage?: boolean) => {
-    setCurrentPage(1);
-    await fetchTasks(1, true, includeLatestMessage);
-  }, [fetchTasks]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  // Note: Global notification count is now handled by WorkspaceProvider
-
-  return {
-    tasks,
-    loading,
-    error,
-    pagination,
-    loadMore,
-    refetch,
-  };
-}
+  return { tasks, loading, pagination, loadMore, refresh };
+};

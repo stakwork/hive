@@ -19,7 +19,7 @@ import { GraphComponent } from "./graph";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
-  const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
+  const { tasks } = useWorkspaceTasks(workspaceId);
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp();
   const searchParams = useSearchParams();
   const { toast } = useToast();
