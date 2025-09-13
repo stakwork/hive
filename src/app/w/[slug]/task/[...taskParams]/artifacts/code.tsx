@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { useRef, useEffect, useState } from "react";
 import { Code, Copy, Check, FileText, GitBranch } from "lucide-react";
@@ -69,9 +70,14 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
   };
 
   const handleCopy = async (content: string, id: string) => {
-    await navigator.clipboard.writeText(content);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(id);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (error) {
+      // Clipboard failed, don't set copied state
+      console.error('Failed to copy:', error);
+    }
   };
 
   if (artifacts.length === 0) return null;
@@ -130,6 +136,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
                   size="sm"
                   onClick={() => handleCopy(normalizeContent(content.content), artifact.id)}
                   className="h-8 w-8 p-0 flex-shrink-0"
+                  aria-label={copied === artifact.id ? "check" : "copy"}
                 >
                   {copied === artifact.id ? (
                     <Check className="w-4 h-4" />
