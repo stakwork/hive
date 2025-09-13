@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Artifact, ArtifactType } from "@/lib/chat";
@@ -27,10 +27,14 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
     return tabs;
   }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length]);
 
-  // Auto-select first tab when artifacts become available
+  // Auto-select first tab when artifacts become available, or when activeTab is invalid
   useEffect(() => {
-    if (availableTabs.length > 0 && !activeTab) {
-      setActiveTab(availableTabs[0]);
+    if (availableTabs.length > 0) {
+      if (!activeTab || !availableTabs.includes(activeTab)) {
+        setActiveTab(availableTabs[0]);
+      }
+    } else {
+      setActiveTab(null);
     }
   }, [availableTabs, activeTab]);
 
