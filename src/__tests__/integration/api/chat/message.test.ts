@@ -53,6 +53,13 @@ describe("Chat Message Creation Integration Tests", () => {
   let testTask: Task;
 
   beforeAll(async () => {
+    // Clean up any existing test data first
+    await db.chatMessage.deleteMany({
+      where: {
+        message: { contains: "test" }
+      }
+    });
+    
     // Set up test data that persists across tests
     testUser = await db.user.create({
       data: {
@@ -91,26 +98,52 @@ describe("Chat Message Creation Integration Tests", () => {
         updatedById: testUser.id,
       },
     });
+    
+    // Verify test data was created
+    const verifyWorkspace = await db.workspace.findUnique({ 
+      where: { id: testWorkspace.id } 
+    });
+    const verifyTask = await db.task.findUnique({ 
+      where: { id: testTask.id } 
+    });
+    
+    if (!verifyWorkspace || !verifyTask) {
+      throw new Error("Failed to create test data properly");
+    }
   });
 
   afterAll(async () => {
-    // Clean up test data
-    await db.chatMessage.deleteMany({ where: { taskId: testTask.id } });
-    await db.task.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
-    await db.workspace.deleteMany({ where: { ownerId: testUser.id } });
-    await db.user.deleteMany({ where: { id: testUser.id } });
+    // Clean up test data in proper order to avoid foreign key issues
+    if (testTask?.id) {
+      await db.chatMessage.deleteMany({ where: { taskId: testTask.id } });
+    }
+    if (testWorkspace?.id) {
+      await db.workspaceMember.deleteMany({ where: { workspaceId: testWorkspace.id } });
+      await db.task.deleteMany({ where: { workspaceId: testWorkspace.id } });
+      await db.swarm.deleteMany({ where: { workspaceId: testWorkspace.id } });
+    }
+    if (testUser?.id) {
+      await db.workspace.deleteMany({ where: { ownerId: testUser.id } });
+      await db.user.deleteMany({ where: { id: testUser.id } });
+    }
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
   });
 
   afterEach(async () => {
-    // Clean up any messages created during tests
-    await db.chatMessage.deleteMany({
-      where: { taskId: testTask.id },
-    });
+    // Clean up any messages and workspace members created during tests
+    if (testTask?.id) {
+      await db.chatMessage.deleteMany({
+        where: { taskId: testTask.id },
+      });
+    }
+    if (testWorkspace?.id) {
+      await db.workspaceMember.deleteMany({
+        where: { workspaceId: testWorkspace.id },
+      });
+    }
   });
 
   describe("Basic Message Creation", () => {
@@ -221,6 +254,15 @@ describe("Chat Message Creation Integration Tests", () => {
           name: "Member User",
         },
       });
+
+      // Ensure workspace exists before creating workspace member
+      const workspaceExists = await db.workspace.findUnique({ 
+        where: { id: testWorkspace.id } 
+      });
+      
+      if (!workspaceExists) {
+        throw new Error(`Workspace ${testWorkspace.id} does not exist`);
+      }
 
       // Add as workspace member
       await db.workspaceMember.create({
