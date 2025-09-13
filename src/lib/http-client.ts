@@ -132,7 +132,7 @@ export class HttpClient {
       endpoint,
       {
         method: "POST",
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
         headers,
       },
       service,
@@ -149,7 +149,7 @@ export class HttpClient {
       endpoint,
       {
         method: "PUT",
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
         headers,
       },
       service,
@@ -166,7 +166,7 @@ export class HttpClient {
       endpoint,
       {
         method: "PATCH",
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
         headers,
       },
       service,
