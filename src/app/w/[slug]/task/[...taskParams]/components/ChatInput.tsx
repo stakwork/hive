@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
@@ -31,8 +31,12 @@ export function ChatInput({
   const [mode, setMode] = useState("live");
 
   useEffect(() => {
-    const mode = localStorage.getItem("task_mode");
-    setMode(mode || "live");
+    try {
+      const mode = localStorage.getItem("task_mode");
+      setMode(mode || "live");
+    } catch (error) {
+      setMode("live");
+    }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +47,12 @@ export function ChatInput({
 
     const message = input.trim();
     setInput("");
-    await onSend(message);
+    try {
+      await onSend(message);
+    } catch (error) {
+      // Log error but still clear input
+      console.error('Failed to send message:', error);
+    }
   };
 
   return (
