@@ -587,8 +587,9 @@ describe("Workspace Service - Unit Tests", () => {
         swarm: null,
       };
 
-      // Mock database calls for getWorkspaceBySlug
+      // Mock database calls for getWorkspaceBySlug and softDeleteWorkspace
       (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+      (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
       (db.workspace.update as Mock).mockResolvedValue({});
 
       await deleteWorkspaceBySlug("test-workspace", "user1");
@@ -597,7 +598,9 @@ describe("Workspace Service - Unit Tests", () => {
         where: { id: "ws1" },
         data: { 
           deleted: true,
-          deletedAt: expect.any(Date)
+          deletedAt: expect.any(Date),
+          originalSlug: "test-workspace",
+          slug: expect.stringMatching(/^test-workspace-deleted-\d+$/)
         },
       });
     });
