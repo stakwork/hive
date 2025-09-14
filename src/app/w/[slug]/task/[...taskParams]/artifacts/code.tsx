@@ -61,6 +61,13 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
 
+  // Helper function to normalize content (handle both string and object types)
+  const normalizeContent = (content: any): string => {
+    return typeof content === 'string' 
+      ? content 
+      : JSON.stringify(content, null, 2);
+  };
+
   const handleCopy = async (content: string, id: string) => {
     await navigator.clipboard.writeText(content);
     setCopied(id);
@@ -121,7 +128,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleCopy(content.content, artifact.id)}
+                  onClick={() => handleCopy(normalizeContent(content.content), artifact.id)}
                   className="h-8 w-8 p-0 flex-shrink-0"
                 >
                   {copied === artifact.id ? (
@@ -143,7 +150,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
 
               <div className="p-4 pt-1 flex-1 min-h-0 min-w-0 overflow-auto">
                 <SyntaxHighlighter
-                  code={content.content}
+                  code={normalizeContent(content.content)}
                   language={
                     content.file
                       ? getLanguageFromFile(content.file)

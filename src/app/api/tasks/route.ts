@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 50) {
+    if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
         {
           error:
-            "Invalid pagination parameters. Page must be >= 1, limit must be 1-50",
+            "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
         },
         { status: 400 },
       );
@@ -171,7 +171,11 @@ export async function GET(request: NextRequest) {
     const processedTasks = tasks.map((task: any) => {
       let hasActionArtifact = false;
       
-      if (includeLatestMessage && task.chatMessages && task.chatMessages.length > 0) {
+      // Only check for action artifacts if the workflow is pending or in_progress
+      if (includeLatestMessage && 
+          task.chatMessages && 
+          task.chatMessages.length > 0 &&
+          (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)) {
         const latestMessage = task.chatMessages[0];
         hasActionArtifact = latestMessage.artifacts?.some(
           (artifact: any) => artifact.type === 'FORM'
@@ -273,6 +277,19 @@ export async function POST(request: NextRequest) {
     }
 
     const workspaceId = workspace.id;
+    
+    // Verify that the user exists in the database
+    const user = await db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 },
+      );
+    }
+
     // Check if user is workspace owner or member
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
@@ -334,11 +351,10 @@ export async function POST(request: NextRequest) {
       const repository = await db.repository.findFirst({
         where: {
           id: repositoryId,
-          workspaceId: workspaceId,
         },
       });
 
-      if (!repository) {
+      if (!repository || repository.workspaceId !== workspaceId) {
         return NextResponse.json(
           {
             error: "Repository not found or does not belong to this workspace",
