@@ -151,6 +151,7 @@ Required environment variables:
 - `NEXTAUTH_SECRET` - Session encryption secret
 - `GITHUB_CLIENT_ID` - GitHub OAuth client ID
 - `GITHUB_CLIENT_SECRET` - GitHub OAuth client secret
+- `NEXT_PUBLIC_MAX_WORKSPACES_PER_USER` - Maximum workspaces per user (default: 3)
 
 ### Code Style
 - Uses ESLint with Next.js configuration
