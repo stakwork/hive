@@ -31,6 +31,8 @@ process.env.TOKEN_ENCRYPTION_KEY =
 process.env.TOKEN_ENCRYPTION_KEY_ID =
   process.env.TOKEN_ENCRYPTION_KEY_ID || "k-test";
 process.env.STAKWORK_API_KEY = process.env.STAKWORK_API_KEY || "test-stakwork";
+process.env.STAKWORK_JANITOR_WORKFLOW_ID = process.env.STAKWORK_JANITOR_WORKFLOW_ID || "123";
+process.env.STAKWORK_BASE_URL = process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1";
 process.env.POOL_MANAGER_API_KEY =
   process.env.POOL_MANAGER_API_KEY || "test-pool";
 process.env.POOL_MANAGER_API_USERNAME =

@@ -57,6 +57,12 @@ export async function POST(
           { status: 400 }
         );
       }
+      if (error.message.includes("Insufficient permissions")) {
+        return NextResponse.json(
+          { error: "Insufficient permissions" },
+          { status: 400 }
+        );
+      }
     }
 
     return NextResponse.json(
