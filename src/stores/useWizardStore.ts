@@ -146,7 +146,7 @@ export const useWizardStore = create<WizardStore>()(
           } = data;
           set({
             envVars: environmentVariables,
-            currentStep: wizardStep,
+            currentStep: wizardStep === "WELCOME" ? "GRAPH_INFRASTRUCTURE" : wizardStep,
             currentStepStatus: stepStatus as WizardStepStatus,
             projectName: data.wizardData?.projectName || "",
             swarmId,
@@ -169,7 +169,9 @@ export const useWizardStore = create<WizardStore>()(
     createSwarm: async () => {
       const state = get();
       set({ swarmIsLoading: true });
+
       try {
+
         const res = await fetch("/api/swarm", {
           method: "POST",
           headers: {
@@ -194,18 +196,9 @@ export const useWizardStore = create<WizardStore>()(
 
         const { swarmId } = json.data;
 
-
-        await state.updateWizardProgress({
-          wizardStep: "GRAPH_INFRASTRUCTURE",
-          stepStatus: "PROCESSING",
-          wizardData: {},
-        });
-
         set({
           swarmId,
           swarmName: state.projectName,
-          currentStep: "GRAPH_INFRASTRUCTURE",
-          currentStepStatus: "PROCESSING",
         });
 
         if (!res.ok) throw new Error("Failed to create swarm");

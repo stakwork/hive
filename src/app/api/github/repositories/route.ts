@@ -14,19 +14,17 @@ export async function GET() {
     }
 
     const userId = (session.user as { id: string }).id;
-    
+
     const githubProfile = await getGithubUsernameAndPAT(userId);
     if (!githubProfile?.pat) {
-      return NextResponse.json(
-        { error: "GitHub access token not found" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
+    const pat = githubProfile.appAccessToken || githubProfile.pat;
 
     // Fetch repositories from GitHub API
     const response = await axios.get("https://api.github.com/user/repos", {
       headers: {
-        Authorization: `token ${githubProfile.pat}`,
+        Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
       },
       params: {
@@ -71,15 +69,9 @@ export async function GET() {
       "status" in error.response &&
       error.response.status === 401
     ) {
-      return NextResponse.json(
-        { error: "GitHub token expired or invalid" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "GitHub token expired or invalid" }, { status: 401 });
     }
 
-    return NextResponse.json(
-      { error: "Failed to fetch repositories" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch repositories" }, { status: 500 });
   }
 }
