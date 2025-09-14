@@ -175,6 +175,6 @@ export async function swarmApiRequestAuth({
     return { ok: response.ok, data: responseData, status: response.status };
   } catch (error) {
     console.error("swarmApiRequest", error);
-    return { ok: false, status: 500 };
+    return { ok: false, status: 500, data: undefined };
   }
 }
