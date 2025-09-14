@@ -20,11 +20,14 @@ export function useWorkspace() {
     id,
     role,
     workspaces,
+    waitingForInputCount,
+    notificationsLoading,
     loading,
     error,
     switchWorkspace,
     refreshWorkspaces,
     refreshCurrentWorkspace,
+    refreshTaskNotifications,
     hasAccess,
   } = context;
 
@@ -38,6 +41,10 @@ export function useWorkspace() {
     // Available workspaces
     workspaces,
 
+    // Task notifications
+    waitingForInputCount,
+    notificationsLoading,
+
     // Loading and error states
     loading,
     error,
@@ -47,6 +54,7 @@ export function useWorkspace() {
     switchWorkspace,
     refreshWorkspaces,
     refreshCurrentWorkspace,
+    refreshTaskNotifications,
 
     // Helper methods
     isOwner: role === "OWNER",

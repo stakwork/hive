@@ -31,8 +31,7 @@ export async function POST(request: NextRequest) {
 
     const repoHtmlUrl: string | undefined = payload?.repository?.html_url;
     const fullName: string | undefined = payload?.repository?.full_name;
-    const candidateUrl =
-      repoHtmlUrl || (fullName ? `https://github.com/${fullName}` : undefined);
+    const candidateUrl = repoHtmlUrl || (fullName ? `https://github.com/${fullName}` : undefined);
     if (!candidateUrl) {
       console.error("Missing candidate url in payload");
       return NextResponse.json({ success: false }, { status: 400 });
@@ -61,10 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const enc = EncryptionService.getInstance();
-    const secret = enc.decryptField(
-      "githubWebhookSecret",
-      repository.githubWebhookSecret,
-    );
+    const secret = enc.decryptField("githubWebhookSecret", repository.githubWebhookSecret);
 
     const expectedDigest = computeHmacSha256Hex(secret, rawBody);
     const expected = `sha256=${expectedDigest}`;
@@ -74,12 +70,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 401 });
     }
 
-    const repoDefaultBranch: string | undefined =
-      payload?.repository?.default_branch;
+    const repoDefaultBranch: string | undefined = payload?.repository?.default_branch;
     const allowedBranches = new Set<string>(
-      [repository.branch, repoDefaultBranch, "main", "master"].filter(
-        Boolean,
-      ) as string[],
+      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
     );
 
     if (event === "push") {
@@ -101,14 +94,7 @@ export async function POST(request: NextRequest) {
       const action: string | undefined = payload?.action;
       const merged: boolean | undefined = payload?.pull_request?.merged;
       const baseRef: string | undefined = payload?.pull_request?.base?.ref;
-      if (
-        !(
-          action === "closed" &&
-          merged &&
-          baseRef &&
-          allowedBranches.has(baseRef)
-        )
-      ) {
+      if (!(action === "closed" && merged && baseRef && allowedBranches.has(baseRef))) {
         console.log("Pull request not allowed. action:", action);
         return NextResponse.json({ success: true }, { status: 202 });
       }
@@ -143,31 +129,22 @@ export async function POST(request: NextRequest) {
       const creds = await getGithubUsernameAndPAT(ownerId);
       if (creds) {
         username = creds.username;
-        pat = creds.pat;
+        pat = creds.appAccessToken || creds.pat;
       }
     }
 
     // Decrypt the swarm API key
     let decryptedSwarmApiKey: string;
     try {
-      const parsed =
-        typeof swarm.swarmApiKey === "string"
-          ? JSON.parse(swarm.swarmApiKey)
-          : swarm.swarmApiKey;
+      const parsed = typeof swarm.swarmApiKey === "string" ? JSON.parse(swarm.swarmApiKey) : swarm.swarmApiKey;
       decryptedSwarmApiKey = enc.decryptField("swarmApiKey", parsed);
     } catch (error) {
       console.error("Failed to decrypt swarmApiKey:", error);
       decryptedSwarmApiKey = swarm.swarmApiKey as string;
     }
 
-    const swarmHost = swarm.swarmUrl
-      ? new URL(swarm.swarmUrl).host
-      : `${swarm.name}.sphinx.chat`;
-    console.log(
-      "Trigger sync at:",
-      swarmHost,
-      decryptedSwarmApiKey.slice(0, 2) + "...",
-    );
+    const swarmHost = swarm.swarmUrl ? new URL(swarm.swarmUrl).host : `${swarm.name}.sphinx.chat`;
+    console.log("Trigger sync at:", swarmHost, decryptedSwarmApiKey.slice(0, 2) + "...");
     try {
       await db.repository.update({
         where: { id: repository.id },
@@ -200,10 +177,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Webhook will update status to SYNCED / FAILED when complete
-    return NextResponse.json(
-      { success: apiResult.ok, delivery },
-      { status: 202 },
-    );
+    return NextResponse.json({ success: apiResult.ok, delivery }, { status: 202 });
   } catch (error) {
     console.error(`Error processing webhook: ${error}`);
     console.error(error);
