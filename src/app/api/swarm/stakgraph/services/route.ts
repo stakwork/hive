@@ -66,7 +66,9 @@ export async function GET(request: NextRequest) {
     // Transform response format: wrap array in {services: [...]} for new format
     const responseData = Array.isArray(apiResult.data)
       ? { services: apiResult.data as ServiceConfig[] }
-      : (apiResult.data as { services: ServiceConfig[] });
+      : apiResult.data && typeof apiResult.data === 'object' && 'services' in apiResult.data
+        ? (apiResult.data as { services: ServiceConfig[] })
+        : { services: [] }; // Handle undefined or invalid data
 
     await saveOrUpdateSwarm({
       workspaceId: swarm.workspaceId,
