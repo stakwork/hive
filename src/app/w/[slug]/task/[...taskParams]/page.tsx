@@ -17,6 +17,7 @@ import { useParams } from "next/navigation";
 import {
   usePusherConnection,
   WorkflowStatusUpdate,
+  TaskTitleUpdateEvent,
 } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import {
@@ -56,6 +57,8 @@ export default function TaskChatPage() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(
     taskIdFromUrl,
   );
+  const [taskTitle, setTaskTitle] = useState<string | null>(null);
+  const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
@@ -95,11 +98,23 @@ export default function TaskChatPage() {
     [],
   );
 
+  const handleTaskTitleUpdate = useCallback(
+    (update: TaskTitleUpdateEvent) => {
+      // Only update if it's for the current task
+      if (update.taskId === currentTaskId) {
+        console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
+        setTaskTitle(update.newTitle);
+      }
+    },
+    [currentTaskId],
+  );
+
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
+    onTaskTitleUpdate: handleTaskTitleUpdate,
   });
 
   // Show connection errors as toasts
@@ -143,6 +158,12 @@ export default function TaskChatPage() {
             result.data.task.stakworkProjectId,
           );
           setProjectId(result.data.task.stakworkProjectId.toString());
+          setStakworkProjectId(result.data.task.stakworkProjectId);
+        }
+
+        // Set task title from API response
+        if (result.data.task?.title) {
+          setTaskTitle(result.data.task.title);
         }
       }
     } catch (error) {
@@ -190,6 +211,13 @@ export default function TaskChatPage() {
       const result = await response.json();
       const newTaskId = result.data.id;
       setCurrentTaskId(newTaskId);
+
+      // Set the task title from the response or fallback to the initial message
+      if (result.data.title) {
+        setTaskTitle(result.data.title);
+      } else {
+        setTaskTitle(msg); // Use the initial message as title fallback
+      }
 
       const newUrl = `/w/${slug}/task/${newTaskId}`;
       // this updates the URL WITHOUT reloading the page
@@ -399,6 +427,9 @@ export default function TaskChatPage() {
                       setPendingDebugAttachment(null)
                     }
                     workflowStatus={workflowStatus}
+                    taskTitle={taskTitle}
+                    stakworkProjectId={stakworkProjectId}
+                    workspaceSlug={slug}
                   />
                 </div>
               </ResizablePanel>
@@ -427,6 +458,9 @@ export default function TaskChatPage() {
                 pendingDebugAttachment={pendingDebugAttachment}
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 workflowStatus={workflowStatus}
+                taskTitle={taskTitle}
+                stakworkProjectId={stakworkProjectId}
+                workspaceSlug={slug}
               />
             </div>
           )}

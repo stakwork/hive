@@ -19,6 +19,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { Badge } from "@/components/ui/badge";
 
 
 
@@ -64,7 +65,10 @@ const baseNavigationItems = [
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const { slug: workspaceSlug } = useWorkspace();
+  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  
+  // Use global notification count from WorkspaceContext (not affected by pagination)
+  const tasksWaitingForInputCount = waitingForInputCount;
 
   const canAccessInsights = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
@@ -82,6 +86,11 @@ export function Sidebar({ user }: SidebarProps) {
   const isTaskPage = pathname.includes("/task/");
 
   const handleNavigate = (href: string) => {
+    // Refresh notification count when user clicks Tasks menu item
+    if (href === "/tasks") {
+      refreshTaskNotifications();
+    }
+    
     if (workspaceSlug) {
       const fullPath =
         href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
@@ -102,6 +111,8 @@ export function Sidebar({ user }: SidebarProps) {
         <ul className="space-y-2">
           {navigationItems.map((item) => {
             const isActive = isActiveTab(pathname, item.href);
+            const isTasksItem = item.label === "Tasks";
+            const showBadge = isTasksItem && tasksWaitingForInputCount > 0;
 
             return (
               <li key={item.href}>
@@ -115,6 +126,11 @@ export function Sidebar({ user }: SidebarProps) {
                 >
                   <item.icon className="w-4 h-4 mr-2" />
                   {item.label}
+                  {showBadge && (
+                    <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                      {tasksWaitingForInputCount}
+                    </Badge>
+                  )}
                 </Button>
               </li>
             );
@@ -150,25 +166,23 @@ export function Sidebar({ user }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile Sidebar */}
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon"
-            className={
-              isTaskPage
-                ? "flex items-center justify-center absolute left-3 top-2 z-50"
-                : "md:hidden"
-            }
-          >
-            <Menu className="h-4 w-4" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-80 p-0">
-          <SidebarContent />
-        </SheetContent>
-      </Sheet>
+      {/* Mobile Sidebar - Hidden on task pages since we have a back button */}
+      {!isTaskPage && (
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="md:hidden"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-80 p-0">
+            <SidebarContent />
+          </SheetContent>
+        </Sheet>
+      )}
       {/* Desktop Sidebar */}
       <div
         className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-50`}

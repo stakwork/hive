@@ -10,10 +10,7 @@ export async function fetchPoolEnvVars(
 ): Promise<Array<{ key: string; value: string }>> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}`;
   const headers = {
-    Authorization: `Bearer ${encryptionService.decryptField(
-      "poolApiKey",
-      poolApiKey,
-    )}`,
+    Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
     "Content-Type": "application/json",
   };
 
@@ -42,11 +39,11 @@ export async function updatePoolDataApi(
   containerFiles: Record<string, DevContainerFile>,
   poolCpu: string | undefined,
   poolMemory: string | undefined,
+  github_pat: string,
+  github_username: string,
 ): Promise<void> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}`;
-  const currentMap = new Map(
-    currentEnvVars.map((env) => [env.name, env.value]),
-  );
+  const currentMap = new Map(currentEnvVars.map((env) => [env.name, env.value]));
   const envVarsForApi = envVars.map(({ name, value }) => {
     const currentValue = currentMap.get(name);
     if (currentValue === undefined) {
@@ -65,6 +62,8 @@ export async function updatePoolDataApi(
     dockerfile: Buffer.from(containerFiles["dockerfile"].content).toString("base64"),
     docker_compose_yml: Buffer.from(containerFiles["docker_compose_yml"].content).toString("base64"),
     pm2_config_js: Buffer.from(containerFiles["pm2_config_js"].content).toString("base64"),
+    github_pat: github_pat,
+    github_username: github_username,
   });
 
   const response = await fetch(url, {
