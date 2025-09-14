@@ -64,7 +64,7 @@ export function WorkflowStatusBadge({
   // Default to PENDING if no status provided
   const effectiveStatus = status || WorkflowStatus.PENDING;
   const effectiveLogs = logs || [];
-  const config = statusConfig[effectiveStatus];
+  const config = statusConfig[effectiveStatus as keyof typeof statusConfig];
   const [isHovered, setIsHovered] = useState(false);
 
   if (!config) {
