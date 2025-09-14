@@ -1,10 +1,8 @@
 // Swarm-specific types and interfaces
 
 export interface CreateSwarmRequest {
-  vanity_address: string;
   name: string;
   instance_type: string;
-  env?: Record<string, string>;
   password?: string;
 }
 
@@ -21,6 +19,8 @@ export interface CreateSwarmResponse {
   message: string;
   data: {
     swarm_id: string;
+    address: string;
+    x_api_key: string;
   };
 }
 
