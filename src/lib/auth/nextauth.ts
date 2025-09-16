@@ -404,25 +404,68 @@ interface GithubUsernameAndPAT {
 export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUsernameAndPAT | null> {
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
-  if (user?.email?.endsWith("@mock.dev")) {
-    // Mock users don't have real GitHub credentials
+  if (!user) {
+    return null;
+  }
+  
+  // Check for mock user (case insensitive, supports subdomains)
+  if (user.email?.toLowerCase().includes("@mock.dev")) {
     return null;
   }
 
   // Get GitHub username from GitHubAuth
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
+  if (!githubAuth) {
+    return null;
+  }
+  
+  // Check for valid username
+  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === '') {
+    return null;
+  }
+  
   // Get PAT from Account
   const githubAccount = await db.account.findFirst({
     where: { userId, provider: "github" },
   });
-  if (githubAuth?.githubUsername && githubAccount?.access_token) {
-    return {
-      username: githubAuth.githubUsername,
-      pat: encryptionService.decryptField("access_token", githubAccount.access_token),
-      appAccessToken: githubAccount.app_access_token
-        ? encryptionService.decryptField("app_access_token", githubAccount.app_access_token)
-        : null,
-    };
+  
+  if (!githubAccount) {
+    return null;
   }
-  return null;
+  
+  // Check if we have any access token (regular PAT or app token)
+  if (!githubAccount.access_token && !githubAccount.app_access_token) {
+    return null;
+  }
+  
+  let pat: string | undefined;
+  let appAccessToken: string | null = null;
+  
+  // Try regular PAT first
+  if (githubAccount.access_token) {
+    pat = encryptionService.decryptField("access_token", githubAccount.access_token);
+    
+    // Also decrypt app token if available
+    if (githubAccount.app_access_token) {
+      appAccessToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
+    }
+  } else if (githubAccount.app_access_token) {
+    // Only app token available, use it as PAT too
+    const decryptedAppToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
+    pat = decryptedAppToken;
+    appAccessToken = decryptedAppToken;
+  } else {
+    return null;
+  }
+  
+  // Ensure pat is defined
+  if (!pat) {
+    return null;
+  }
+  
+  return {
+    username: githubAuth.githubUsername,
+    pat,
+    appAccessToken,
+  };
 }

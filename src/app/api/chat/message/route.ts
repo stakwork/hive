@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!message) {
+    if (!message && artifacts.length === 0) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
     if (!taskId) {

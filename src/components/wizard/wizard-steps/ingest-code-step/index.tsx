@@ -14,7 +14,7 @@ interface IngestCodeStepStepProps {
 }
 
 export function IngestCodeStep({ onNext }: IngestCodeStepStepProps) {
-  const swarmId = useWizardStore((s) => s.swarmId);
+  const workspaceId = useWizardStore((s) => s.workspaceId);
   const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
   const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
   const setIngestRefId = useWizardStore((s) => s.setIngestRefId);
@@ -29,7 +29,7 @@ export function IngestCodeStep({ onNext }: IngestCodeStepStepProps) {
       const res = await fetch("/api/swarm/stakgraph/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ swarmId }),
+        body: JSON.stringify({ workspaceId }),
       });
 
       const { data } = await res.json();
@@ -54,7 +54,7 @@ export function IngestCodeStep({ onNext }: IngestCodeStepStepProps) {
       console.error("Failed to ingest code:", error);
       setCurrentStepStatus("FAILED");
     }
-  }, [swarmId, updateWizardProgress, setIngestRefId, onNext, setCurrentStepStatus]);
+  }, [workspaceId, updateWizardProgress, setIngestRefId, onNext, setCurrentStepStatus]);
 
   useEffect(() => {
 
