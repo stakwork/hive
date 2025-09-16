@@ -37,11 +37,13 @@ async function encryptValue(fieldName: string, value: string): Promise<string> {
 
 describe('encryptValue', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockEncryptField.mockClear();
+    mockConsoleError.mockClear();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // Don't restore console.error as we want to keep the spy active
+    mockEncryptField.mockReset();
   });
 
   describe('successful encryption', () => {
