@@ -17,7 +17,6 @@ export function RecommendationsSection() {
   const {
     recommendations,
     recommendationsLoading: loading,
-    dismissedSuggestions,
     showAll,
     janitorConfig,
     runningJanitors,
@@ -67,8 +66,7 @@ export function RecommendationsSection() {
       });
     }
   };
-  const visibleRecommendations = recommendations.filter(r => !dismissedSuggestions.has(r.id));
-  const displayedRecommendations = showAll ? visibleRecommendations : visibleRecommendations.slice(0, 3);
+  const displayedRecommendations = showAll ? recommendations : recommendations.slice(0, 3);
   
   // Check if any janitors are enabled
   const hasEnabledJanitors = janitorConfig ? 
@@ -185,15 +183,15 @@ export function RecommendationsSection() {
           </div>
         )}
         
-        {!loading && visibleRecommendations.length > 3 && !showAll && (
+        {!loading && recommendations.length > 3 && !showAll && (
           <div className="pt-2 text-center">
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setShowAll(true)}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
-              Show {visibleRecommendations.length - 3} more recommendations
+              Show {recommendations.length - 3} more recommendations
             </Button>
           </div>
         )}
