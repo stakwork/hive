@@ -37,10 +37,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
     }
 
+    const swarmUrlObj = new URL(swarm.swarmUrl || "");
+    let gitseeUrl = `https://${swarmUrlObj.hostname}:3355`;
+    if (swarm.swarmUrl?.includes("localhost")) {
+      gitseeUrl = `http://localhost:3355`;
+    }
+
     const encryptionService: EncryptionService = EncryptionService.getInstance();
     const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm?.swarmApiKey || "");
     // Proxy to your EC2 GitSee server
-    const response = await fetch(`http://${swarm?.swarmUrl}/gitsee`, {
+    const response = await fetch(`${gitseeUrl}/gitsee`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
