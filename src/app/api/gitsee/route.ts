@@ -46,11 +46,13 @@ export async function POST(request: NextRequest) {
     const encryptionService: EncryptionService = EncryptionService.getInstance();
     const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm?.swarmApiKey || "");
     // Proxy to your EC2 GitSee server
+    console.log("=> gitseeUrl", gitseeUrl);
+
     const response = await fetch(`${gitseeUrl}/gitsee`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${decryptedSwarmApiKey}`,
+        "x-api-token": decryptedSwarmApiKey,
       },
       body: JSON.stringify(body),
     });
