@@ -12,7 +12,8 @@ import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { formatRelativeTime } from "@/lib/utils";
-import { Database, ExternalLink, GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
+import { TestCoverageData } from "@/types";
+import { Clock, Database, ExternalLink, GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { GraphComponent } from "./graph";
@@ -26,6 +27,8 @@ export default function DashboardPage() {
   const processedCallback = useRef(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [testCoverage, setTestCoverage] = useState<TestCoverageData | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
 
   console.log(workspace)
 
@@ -116,6 +119,30 @@ export default function DashboardPage() {
       setIsIngesting(false);
     }
   };
+
+  // Fetch test coverage if workspace has a swarm
+  useEffect(() => {
+    const fetchCoverage = async () => {
+      if (!workspace?.swarmStatus || workspace.swarmStatus !== "ACTIVE") return;
+
+      setCoverageLoading(true);
+      try {
+        const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            setTestCoverage(result.data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch test coverage:", error);
+      } finally {
+        setCoverageLoading(false);
+      }
+    };
+
+    fetchCoverage();
+  }, [workspaceId, workspace?.swarmStatus]);
 
   // Handle GitHub App callback
   useEffect(() => {
@@ -259,6 +286,37 @@ export default function DashboardPage() {
               </CardTitle>
             </div>
           </CardHeader>
+          <CardContent>
+            {coverageLoading ? (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Loading...</span>
+              </div>
+            ) : testCoverage ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Unit</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage.unit_tests.percent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Integration</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage.integration_tests?.percent.toFixed(1) || 0}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">E2E</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage.e2e_tests?.percent.toFixed(1) || 0}%
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">No coverage data</span>
+            )}
+          </CardContent>
         </Card>
       </div>
 
