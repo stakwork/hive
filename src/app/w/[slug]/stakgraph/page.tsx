@@ -73,7 +73,7 @@ export default function StakgraphPage() {
       viz = new GitVisualizer(
         "#vizzy",
         `/api/gitsee?workspaceId=${id}`, // Nextjs proxy endpoint
-        {}, // custom headers (optional)
+        {}, // custom headers (not needed here since /api adds them)
         `${gitseeUrl}/gitsee`, // SSE endpoint
       );
       setTimeout(() => {
