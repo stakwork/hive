@@ -263,6 +263,7 @@ export default function TaskChatPage() {
       if (result.workflow?.project_id) {
         console.log("Project ID:", result.workflow.project_id);
         setProjectId(result.workflow.project_id);
+        setStakworkProjectId(result.workflow.project_id);
         setIsChainVisible(true);
         clearLogs();
       }
