@@ -1,6 +1,6 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
-import { SWARM_DEFAULT_ENV_VARS, SWARM_DEFAULT_INSTANCE_TYPE, getSwarmVanityAddress } from "@/lib/constants";
+import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -93,9 +93,12 @@ export async function POST(request: NextRequest) {
     const swarm_id_num = match ? match[1] : swarm_id;
     const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
 
+    // We change the name of the swarm with the swarm_id so subsequent API requests
+    // can succeed since we now use swarm_ids by default.
     const updatedSwarm = await saveOrUpdateSwarm({
       workspaceId,
       swarmUrl: `https://${swarm_address}/api`,
+      name: swarm_id,
       swarmApiKey: x_api_key,
       swarmSecretAlias: swarmSecretAlias,
       status: SwarmStatus.ACTIVE,
