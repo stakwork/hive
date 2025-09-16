@@ -216,12 +216,21 @@ export default function ServicesForm({
           {data.map((svc, idx) => (
             <Card key={idx} className="mb-2">
               <CardContent className="space-y-3 py-2">
-                <div className="mb-2">
+                <div className="mb-2 flex justify-between items-center">
                   <span className="text-md font-bold">Service</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleRemoveService(idx)}
+                    className="px-2"
+                    disabled={loading}
+                  >
+                    Remove
+                  </Button>
                 </div>
 
-                <div className="flex gap-2 mb-2 items-end">
-                  <div className="w-1/3">
+                <div className="grid grid-cols-2 gap-4 mb-2">
+                  <div>
                     <Label htmlFor={`service-name-${idx}`} className="mb-1">
                       Name
                     </Label>
@@ -236,7 +245,7 @@ export default function ServicesForm({
                     />
                   </div>
 
-                  <div className="w-1/6">
+                  <div>
                     <Label htmlFor={`service-port-${idx}`} className="mb-1">
                       Port
                     </Label>
@@ -260,7 +269,7 @@ export default function ServicesForm({
                     />
                   </div>
 
-                  <div className="w-1/6">
+                  <div>
                     <Label
                       htmlFor={`service-interpreter-${idx}`}
                       className="mb-1"
@@ -279,7 +288,7 @@ export default function ServicesForm({
                     />
                   </div>
 
-                  <div className="w-1/4">
+                  <div>
                     <Label
                       htmlFor={`service-cwd-${idx}`}
                       className="mb-1"
@@ -288,7 +297,7 @@ export default function ServicesForm({
                     </Label>
                     <Input
                       id={`service-cwd-${idx}`}
-                      placeholder="e.g. backend or services/api"
+                      placeholder="Subdirectory (e.g. backend, services/api)"
                       type="text"
                       value={svc.cwd || ""}
                       onChange={(e) => {
@@ -296,18 +305,6 @@ export default function ServicesForm({
                       }}
                       disabled={loading}
                     />
-                  </div>
-
-                  <div className="flex-1 flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleRemoveService(idx)}
-                      className="px-2"
-                      disabled={loading}
-                    >
-                      Remove
-                    </Button>
                   </div>
                 </div>
 

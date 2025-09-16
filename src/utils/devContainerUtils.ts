@@ -34,7 +34,8 @@ export const generatePM2Apps = (
   }
 
   return servicesData.map((service) => {
-    // If cwd is specified, append it to the repo path, otherwise use repo root
+    // If cwd is specified, treat it as a subdirectory within the workspace
+    // Otherwise use the workspace root
     const cwd = service.cwd
       ? `/workspaces/${repoName}/${service.cwd.replace(/^\/+/, '')}`
       : `/workspaces/${repoName}`;
