@@ -2,11 +2,7 @@ import { db } from "@/lib/db";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { RepositoryStatus, SwarmWizardStep } from "@prisma/client";
 import { mapStatusToStepStatus } from "@/utils/conversions";
-import {
-  computeHmacSha256Hex,
-  timingSafeEqual,
-  EncryptionService,
-} from "@/lib/encryption";
+import { computeHmacSha256Hex, timingSafeEqual, EncryptionService } from "@/lib/encryption";
 import { WebhookPayload } from "@/types";
 
 export class StakgraphWebhookService {
@@ -31,12 +27,11 @@ export class StakgraphWebhookService {
           message: "Missing request_id",
         };
       }
-
-      const swarm = await this.lookupAndVerifySwarm(
-        request_id,
-        signature,
-        rawBody,
-      );
+      console.log("STAKGRAPH WEBHOOK RECEIVED", {
+        requestId: request_id,
+        requestIdHeader,
+      });
+      const swarm = await this.lookupAndVerifySwarm(request_id, signature, rawBody);
       if (!swarm) {
         return {
           success: false,
@@ -48,6 +43,14 @@ export class StakgraphWebhookService {
       await this.processWebhookPayload(swarm, payload, requestIdHeader);
 
       await this.updateRepositoryStatus(swarm, payload);
+
+      console.log("[StakgraphWebhook] processed", {
+        requestId: request_id,
+        workspaceId: swarm.workspaceId,
+        swarmId: swarm.id,
+        repositoryUrl: swarm.repositoryUrl,
+        status: payload.status,
+      });
 
       return { success: true, status: 200 };
     } catch (error) {
@@ -92,18 +95,13 @@ export class StakgraphWebhookService {
     // Decrypt and verify the signature
     let secret: string;
     try {
-      secret = this.encryptionService.decryptField(
-        "swarmApiKey",
-        swarm.swarmApiKey,
-      );
+      secret = this.encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     } catch (error) {
       console.error("Failed to decrypt swarm API key:", error);
       return null;
     }
 
-    const sigHeader = signature.startsWith("sha256=")
-      ? signature.slice(7)
-      : signature;
+    const sigHeader = signature.startsWith("sha256=") ? signature.slice(7) : signature;
     const expected = computeHmacSha256Hex(secret, rawBody);
 
     if (!timingSafeEqual(expected, sigHeader)) {
@@ -164,10 +162,7 @@ export class StakgraphWebhookService {
               },
             },
             data: {
-              status:
-                stepStatus === "COMPLETED"
-                  ? RepositoryStatus.SYNCED
-                  : RepositoryStatus.FAILED,
+              status: stepStatus === "COMPLETED" ? RepositoryStatus.SYNCED : RepositoryStatus.FAILED,
             },
           });
         } catch (repoErr) {

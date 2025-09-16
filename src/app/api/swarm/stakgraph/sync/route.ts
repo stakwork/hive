@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
+    console.log("SYNC CALLBACK URL", callbackUrl);
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarm.name,
       swarm.swarmApiKey,
@@ -64,10 +65,21 @@ export async function POST(request: NextRequest) {
     );
     const requestId = apiResult.data?.request_id;
     if (requestId) {
+      console.log("STAKGRAPH SYNC START", {
+        requestId,
+        workspaceId: swarm.workspaceId,
+        swarmId: swarm.id,
+        repositoryUrl: swarm.repositoryUrl,
+      });
       try {
         await saveOrUpdateSwarm({
           workspaceId: swarm.workspaceId,
           ingestRefId: requestId,
+        });
+        console.log("STAKGRAPH SYNC START SAVED INGEST REF ID", {
+          requestId,
+          workspaceId: swarm.workspaceId,
+          swarmId: swarm.id,
         });
       } catch (err) {
         console.error("Failed to store ingestRefId for sync", err);
