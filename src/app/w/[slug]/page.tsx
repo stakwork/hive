@@ -143,8 +143,8 @@ export default function DashboardPage() {
           variant = "destructive";
           break;
         default:
-          title = "GitHub App Action";
-          description = `GitHub App ${setupAction} completed`;
+          title = "GitHub App Connected";
+          description = "Successfully connected to GitHub";
       }
 
       toast({
