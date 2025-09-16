@@ -1,6 +1,13 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 
@@ -65,7 +72,7 @@ export const GraphComponent = () => {
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
+  const [selectedSchema, setSelectedSchema] = useState<string | null>("Repository");
 
   console.log('workspaceId', workspaceId)
 
@@ -321,7 +328,7 @@ export const GraphComponent = () => {
   return (
     <div className="h-auto w-full border rounded-lg bg-white p-4">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Stakgraph Visualization</h3>
+        <h3 className="text-lg font-semibold">Graph Visualisation</h3>
         <div className="flex items-center gap-2">
           {selectedSchema && (
             <>
@@ -351,18 +358,21 @@ export const GraphComponent = () => {
       <div className="mb-4">
         <div className="flex items-center gap-4">
           <label className="text-sm font-medium text-gray-700">Select Schema:</label>
-          <select
+          <Select
             value={selectedSchema || ""}
-            onChange={(e) => setSelectedSchema(e.target.value || null)}
-            className="px-3 py-1 border rounded-md text-sm bg-white max-w-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onValueChange={(value) => setSelectedSchema(value || null)}
           >
-            <option value="">-- Select a schema --</option>
-            {schemas.map((schema) => (
-              <option key={schema.node_type} value={schema.node_type}>
-                {schema.node_type} - {schema.description}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-[400px]">
+              <SelectValue placeholder="-- Select a schema --" />
+            </SelectTrigger>
+            <SelectContent>
+              {schemas.map((schema) => (
+                <SelectItem key={schema.node_type} value={schema.node_type}>
+                  {schema.node_type} - {schema.description}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {nodesLoading && (
             <div className="text-sm text-gray-500">Loading nodes...</div>
           )}
