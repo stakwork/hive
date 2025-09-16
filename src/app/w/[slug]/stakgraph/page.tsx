@@ -65,11 +65,16 @@ export default function StakgraphPage() {
     try {
       const { owner, repo } = parseGithubOwnerRepo(formData.repositoryUrl);
       console.log("start GitVisualizer", owner, repo);
+      const swarmUrlObj = new URL(formData.swarmUrl || "");
+      let gitseeUrl = `https://${swarmUrlObj.hostname}:3355`;
+      if (formData.swarmUrl?.includes("localhost")) {
+        gitseeUrl = `http://localhost:3355`;
+      }
       viz = new GitVisualizer(
         "#vizzy",
         `/api/gitsee?workspaceId=${id}`, // Nextjs proxy endpoint
         {}, // custom headers (optional)
-        `${formData.swarmUrl}:3355/gitsee`, // SSE endpoint
+        `${gitseeUrl}/gitsee`, // SSE endpoint
       );
       setTimeout(() => {
         viz?.visualize(owner, repo);
