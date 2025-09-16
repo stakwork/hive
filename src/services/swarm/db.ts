@@ -8,6 +8,8 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export interface ServiceConfig {
   name: string;
   port: number;
+  interpreter?: string;
+  cwd?: string;
   scripts: {
     start: string;
     install?: string;
