@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 50) {
+    if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
         {
           error:
-            "Invalid pagination parameters. Page must be >= 1, limit must be 1-50",
+            "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
         },
         { status: 400 },
       );
@@ -277,6 +277,19 @@ export async function POST(request: NextRequest) {
     }
 
     const workspaceId = workspace.id;
+    
+    // Verify that the user exists in the database
+    const user = await db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 },
+      );
+    }
+
     // Check if user is workspace owner or member
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
@@ -338,11 +351,10 @@ export async function POST(request: NextRequest) {
       const repository = await db.repository.findFirst({
         where: {
           id: repositoryId,
-          workspaceId: workspaceId,
         },
       });
 
-      if (!repository) {
+      if (!repository || repository.workspaceId !== workspaceId) {
         return NextResponse.json(
           {
             error: "Repository not found or does not belong to this workspace",

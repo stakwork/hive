@@ -1,6 +1,6 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
-import { SWARM_DEFAULT_ENV_VARS, SWARM_DEFAULT_INSTANCE_TYPE, getSwarmVanityAddress } from "@/lib/constants";
+import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
