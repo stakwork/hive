@@ -34,10 +34,15 @@ export const generatePM2Apps = (
   }
 
   return servicesData.map((service) => {
+    // If cwd is specified, append it to the repo path, otherwise use repo root
+    const cwd = service.cwd
+      ? `/workspaces/${repoName}/${service.cwd.replace(/^\/+/, '')}`
+      : `/workspaces/${repoName}`;
+
     const appConfig = {
       name: service.name,
       script: service.scripts?.start || "",
-      cwd: `/workspaces/${repoName}`,
+      cwd,
       instances: 1,
       autorestart: true,
       watch: false,

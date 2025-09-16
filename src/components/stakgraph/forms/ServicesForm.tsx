@@ -102,6 +102,7 @@ export default function ServicesForm({
       {
         name: "",
         port: 0,
+        cwd: "",
         scripts: { start: "", install: "" },
         env: {},
       },
@@ -128,6 +129,8 @@ export default function ServicesForm({
       updatedServices[idx].name = value as string;
     } else if (field === "interpreter") {
       updatedServices[idx].interpreter = value as string;
+    } else if (field === "cwd") {
+      updatedServices[idx].cwd = value as string;
     }
     onChange(updatedServices);
   };
@@ -257,7 +260,7 @@ export default function ServicesForm({
                     />
                   </div>
 
-                  <div className="w-1/4">
+                  <div className="w-1/6">
                     <Label
                       htmlFor={`service-interpreter-${idx}`}
                       className="mb-1"
@@ -271,6 +274,25 @@ export default function ServicesForm({
                       value={svc.interpreter}
                       onChange={(e) => {
                         handleServiceChange(idx, "interpreter", e.target.value);
+                      }}
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div className="w-1/4">
+                    <Label
+                      htmlFor={`service-cwd-${idx}`}
+                      className="mb-1"
+                    >
+                      CWD
+                    </Label>
+                    <Input
+                      id={`service-cwd-${idx}`}
+                      placeholder="e.g. backend or services/api"
+                      type="text"
+                      value={svc.cwd || ""}
+                      onChange={(e) => {
+                        handleServiceChange(idx, "cwd", e.target.value);
                       }}
                       disabled={loading}
                     />
