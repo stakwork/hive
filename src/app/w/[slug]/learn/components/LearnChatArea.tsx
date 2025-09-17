@@ -13,11 +13,7 @@ interface LearnChatAreaProps {
   isLoading?: boolean;
 }
 
-export function LearnChatArea({
-  messages,
-  onSend,
-  isLoading = false,
-}: LearnChatAreaProps) {
+export function LearnChatArea({ messages, onSend, isLoading = false }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,61 +21,64 @@ export function LearnChatArea({
   }, [messages]);
 
   return (
-    <motion.div
-      className="flex h-full min-w-0 flex-col bg-background rounded-xl border shadow-sm overflow-hidden"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      {/* Header */}
-      <div className="px-6 py-4 border-b bg-muted/20">
+    <div className="h-full flex flex-col relative">
+      {/* Header - Fixed */}
+      <motion.div
+        className="px-6 py-4 border-b bg-muted/20 flex-shrink-0 bg-background rounded-t-xl border border-b-0 shadow-sm"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="flex items-center gap-3">
           <BookOpen className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-semibold text-foreground">Learning Assistant</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Ask questions, get explanations, and learn new concepts
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Ask questions, get explanations, and learn new concepts</p>
+      </motion.div>
+
+      {/* Messages - Scrollable area with bottom padding for input */}
+      <div className="flex-1 px-6 py-6 pb-24 bg-muted/40 border-l border-r">
+        <motion.div
+          className="space-y-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          {messages.map((message) => (
+            <LearnChatMessage key={message.id} message={message} />
+          ))}
+
+          {isLoading && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start">
+              <div className="max-w-[85%] bg-muted rounded-2xl px-4 py-3 shadow-sm">
+                <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Learning Assistant
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
+                  <div
+                    className="w-1 h-1 bg-current rounded-full animate-pulse"
+                    style={{ animationDelay: "0.2s" }}
+                  ></div>
+                  <div
+                    className="w-1 h-1 bg-current rounded-full animate-pulse"
+                    style={{ animationDelay: "0.4s" }}
+                  ></div>
+                  <span className="ml-2 text-sm text-muted-foreground">Thinking...</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </motion.div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 bg-muted/40">
-        {messages.map((message) => (
-          <LearnChatMessage key={message.id} message={message} />
-        ))}
-
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start"
-          >
-            <div className="max-w-[85%] bg-muted rounded-2xl px-4 py-3 shadow-sm">
-              <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">
-                <BookOpen className="w-4 h-4" />
-                Learning Assistant
-              </div>
-              <div className="flex items-center space-x-1">
-                <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
-                <div
-                  className="w-1 h-1 bg-current rounded-full animate-pulse"
-                  style={{ animationDelay: "0.2s" }}
-                ></div>
-                <div
-                  className="w-1 h-1 bg-current rounded-full animate-pulse"
-                  style={{ animationDelay: "0.4s" }}
-                ></div>
-                <span className="ml-2 text-sm text-muted-foreground">Thinking...</span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        <div ref={messagesEndRef} />
+      {/* Input - Fixed at bottom of viewport */}
+      <div className="absolute bottom-0 left-0 right-0 bg-background border-t shadow-lg">
+        <LearnChatInput onSend={onSend} disabled={isLoading} />
       </div>
-
-      {/* Input */}
-      <LearnChatInput onSend={onSend} disabled={isLoading} />
-    </motion.div>
+    </div>
   );
 }

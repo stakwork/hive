@@ -30,10 +30,7 @@ export function LearnChatInput({ onSend, disabled = false }: LearnChatInputProps
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex gap-3 px-6 py-4 border-t bg-background"
-    >
+    <form onSubmit={handleSubmit} className="flex gap-3 px-6 py-4 border-t bg-background" style={{ maxHeight: 70 }}>
       <Input
         placeholder="Ask me anything about code, concepts, or skills you want to learn..."
         value={input}
@@ -43,12 +40,7 @@ export function LearnChatInput({ onSend, disabled = false }: LearnChatInputProps
         autoFocus
         disabled={disabled}
       />
-      <Button
-        type="submit"
-        size="sm"
-        disabled={!input.trim() || disabled}
-        className="px-3"
-      >
+      <Button type="submit" size="sm" disabled={!input.trim() || disabled} className="px-3">
         <Send className="w-4 h-4" />
       </Button>
     </form>

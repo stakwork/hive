@@ -4,3 +4,8 @@ export interface LearnMessage {
   role: "user" | "assistant";
   timestamp: Date;
 }
+
+export interface Learnings {
+  prompts: string[];
+  hints: string[];
+}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LearnChatArea } from "./LearnChatArea";
+import { LearnSidebar } from "./LearnSidebar";
 import type { LearnMessage } from "@/types/learn";
 
 interface LearnChatProps {
@@ -12,7 +13,8 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   const [messages, setMessages] = useState<LearnMessage[]>([
     {
       id: "1",
-      content: "Hello! I'm your learning assistant. I can help you understand concepts, explain code, answer questions, and guide you through learning new skills. What would you like to learn about today?",
+      content:
+        "Hello! I'm your learning assistant. I can help you understand concepts, explain code, answer questions, and guide you through learning new skills. What would you like to learn about today?",
       role: "assistant",
       timestamp: new Date(),
     },
@@ -34,7 +36,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
 
     try {
       const response = await fetch(
-        `/api/ask?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`
+        `/api/ask?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`,
       );
 
       if (!response.ok) {
@@ -65,11 +67,18 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     }
   };
 
+  const handlePromptClick = (prompt: string) => {
+    handleSend(prompt);
+  };
+
   return (
-    <LearnChatArea
-      messages={messages}
-      onSend={handleSend}
-      isLoading={isLoading}
-    />
+    <div className="relative h-full">
+      <div className="h-full pr-80">
+        <LearnChatArea messages={messages} onSend={handleSend} isLoading={isLoading} />
+      </div>
+      <div className="fixed top-1 right-1 h-full">
+        <LearnSidebar workspaceSlug={workspaceSlug} onPromptClick={handlePromptClick} />
+      </div>
+    </div>
   );
 }
