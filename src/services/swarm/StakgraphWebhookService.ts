@@ -1,9 +1,7 @@
 import { db } from "@/lib/db";
-import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { RepositoryStatus, SwarmWizardStep } from "@prisma/client";
-import { mapStatusToStepStatus } from "@/utils/conversions";
 import { computeHmacSha256Hex, timingSafeEqual, EncryptionService } from "@/lib/encryption";
 import { WebhookPayload } from "@/types";
+import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
 
 export class StakgraphWebhookService {
   private encryptionService: EncryptionService;
@@ -40,9 +38,7 @@ export class StakgraphWebhookService {
         };
       }
 
-      await this.processWebhookPayload(swarm, payload, requestIdHeader);
-
-      await this.updateRepositoryStatus(swarm, payload);
+      await updateStakgraphStatus(swarm, payload, requestIdHeader);
 
       console.log("[StakgraphWebhook] processed", {
         requestId: request_id,
@@ -114,61 +110,5 @@ export class StakgraphWebhookService {
       workspaceId: swarm.workspaceId,
       repositoryUrl: swarm.repositoryUrl,
     };
-  }
-
-  private async processWebhookPayload(
-    swarm: { id: string; workspaceId: string; repositoryUrl: string | null },
-    payload: WebhookPayload,
-    requestIdHeader?: string | null,
-  ): Promise<void> {
-    const stepStatus = mapStatusToStepStatus(payload.status);
-
-    const stakgraphData = {
-      requestId: payload.request_id,
-      requestIdHeader,
-      status: payload.status,
-      progress: payload.progress,
-      nodes: payload.result?.nodes,
-      edges: payload.result?.edges,
-      error: payload.error,
-      startedAt: payload.started_at,
-      completedAt: payload.completed_at,
-      durationMs: payload.duration_ms,
-      lastUpdateAt: new Date().toISOString(),
-    };
-
-    await saveOrUpdateSwarm({
-      workspaceId: swarm.workspaceId,
-      wizardStep: SwarmWizardStep.INGEST_CODE,
-      stepStatus,
-      wizardData: { stakgraph: stakgraphData },
-    });
-  }
-
-  private async updateRepositoryStatus(
-    swarm: { id: string; workspaceId: string; repositoryUrl: string | null },
-    payload: WebhookPayload,
-  ): Promise<void> {
-    const stepStatus = mapStatusToStepStatus(payload.status);
-
-    if (stepStatus === "COMPLETED" || stepStatus === "FAILED") {
-      if (swarm.repositoryUrl) {
-        try {
-          await db.repository.update({
-            where: {
-              repositoryUrl_workspaceId: {
-                repositoryUrl: swarm.repositoryUrl,
-                workspaceId: swarm.workspaceId,
-              },
-            },
-            data: {
-              status: stepStatus === "COMPLETED" ? RepositoryStatus.SYNCED : RepositoryStatus.FAILED,
-            },
-          });
-        } catch (repoErr) {
-          console.error("Failed to update repository status:", repoErr);
-        }
-      }
-    }
   }
 }
