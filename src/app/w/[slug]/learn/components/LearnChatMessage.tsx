@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { BookOpen, User } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import type { LearnMessage } from "@/types/learn";
 
 interface LearnChatMessageProps {
@@ -35,10 +36,18 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
             <User className="w-4 h-4" />
           </div>
         )}
-        <div className={`text-sm whitespace-pre-wrap ${
+        <div className={`text-sm ${
           isUser ? "text-primary-foreground" : "text-foreground"
         }`}>
-          {message.content}
+          {isUser ? (
+            <div className="whitespace-pre-wrap">{message.content}</div>
+          ) : (
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <ReactMarkdown>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
