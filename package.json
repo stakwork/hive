@@ -71,7 +71,7 @@
     "d3": "^7.9.0",
     "ecpair": "^3.0.0",
     "framer-motion": "^12.23.0",
-    "gitsee": "^1.0.8",
+    "gitsee": "^1.0.10",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.525.0",
     "next": "^15.4.1",

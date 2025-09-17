@@ -15,7 +15,7 @@ import { formatRelativeTime } from "@/lib/utils";
 import { Database, ExternalLink, GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { GraphComponent } from "./graph";
+import { Gitsee } from "./graph/gitsee";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const [isInstalling, setIsInstalling] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
 
-  console.log(workspace)
+  console.log(workspace);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
@@ -88,7 +88,7 @@ export default function DashboardPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ workspaceId, }),
+        body: JSON.stringify({ workspaceId }),
       });
 
       const data = await response.json();
@@ -282,7 +282,7 @@ export default function DashboardPage() {
         ) : (
           <EmptyState workspaceSlug={slug} />
         ))}
-      <GraphComponent />
+      <Gitsee />
     </div>
   );
 }
