@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
+    const question = searchParams.get("question");
 
     if (!workspaceSlug) {
       return NextResponse.json(
@@ -68,7 +69,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Proxy request to swarm /learnings endpoint
-    const response = await fetch(`${baseSwarmUrl}/learnings`, {
+    let swarmUrl = `${baseSwarmUrl}/learnings`;
+    if (question) {
+      swarmUrl += `?question=${encodeURIComponent(question)}`;
+    }
+
+    const response = await fetch(swarmUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

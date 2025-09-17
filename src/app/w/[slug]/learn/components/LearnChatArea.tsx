@@ -11,9 +11,10 @@ interface LearnChatAreaProps {
   messages: LearnMessage[];
   onSend: (message: string) => Promise<void>;
   isLoading?: boolean;
+  onInputChange?: (input: string) => void;
 }
 
-export function LearnChatArea({ messages, onSend, isLoading = false }: LearnChatAreaProps) {
+export function LearnChatArea({ messages, onSend, isLoading = false, onInputChange }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function LearnChatArea({ messages, onSend, isLoading = false }: LearnChat
 
       {/* Input - Fixed at bottom of viewport */}
       <div className="absolute bottom-0 left-0 right-0 bg-background border-t shadow-lg">
-        <LearnChatInput onSend={onSend} disabled={isLoading} />
+        <LearnChatInput onSend={onSend} disabled={isLoading} onInputChange={onInputChange} />
       </div>
     </div>
   );

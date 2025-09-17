@@ -20,6 +20,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentInput, setCurrentInput] = useState("");
 
   const handleSend = async (content: string) => {
     if (!content.trim()) return;
@@ -74,10 +75,19 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   return (
     <div className="relative h-full">
       <div className="h-full pr-80">
-        <LearnChatArea messages={messages} onSend={handleSend} isLoading={isLoading} />
+        <LearnChatArea
+          messages={messages}
+          onSend={handleSend}
+          isLoading={isLoading}
+          onInputChange={setCurrentInput}
+        />
       </div>
       <div className="fixed top-1 right-1 h-full">
-        <LearnSidebar workspaceSlug={workspaceSlug} onPromptClick={handlePromptClick} />
+        <LearnSidebar
+          workspaceSlug={workspaceSlug}
+          onPromptClick={handlePromptClick}
+          currentQuestion={currentInput.trim() || undefined}
+        />
       </div>
     </div>
   );

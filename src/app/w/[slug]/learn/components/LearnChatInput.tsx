@@ -8,9 +8,10 @@ import { Send } from "lucide-react";
 interface LearnChatInputProps {
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
+  onInputChange?: (input: string) => void;
 }
 
-export function LearnChatInput({ onSend, disabled = false }: LearnChatInputProps) {
+export function LearnChatInput({ onSend, disabled = false, onInputChange }: LearnChatInputProps) {
   const [input, setInput] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,7 +35,10 @@ export function LearnChatInput({ onSend, disabled = false }: LearnChatInputProps
       <Input
         placeholder="Ask me anything about code, concepts, or skills you want to learn..."
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => {
+          setInput(e.target.value);
+          onInputChange?.(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         className="flex-1"
         autoFocus

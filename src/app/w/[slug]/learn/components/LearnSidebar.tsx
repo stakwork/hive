@@ -9,9 +9,10 @@ import type { Learnings } from "@/types/learn";
 interface LearnSidebarProps {
   workspaceSlug: string;
   onPromptClick?: (prompt: string) => void;
+  currentQuestion?: string;
 }
 
-export function LearnSidebar({ workspaceSlug, onPromptClick }: LearnSidebarProps) {
+export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: LearnSidebarProps) {
   const [learnings, setLearnings] = useState<Learnings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +45,12 @@ export function LearnSidebar({ workspaceSlug, onPromptClick }: LearnSidebarProps
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/learnings?workspace=${encodeURIComponent(workspaceSlug)}`);
+      let url = `/api/learnings?workspace=${encodeURIComponent(workspaceSlug)}`;
+      if (currentQuestion) {
+        url += `&question=${encodeURIComponent(currentQuestion)}`;
+      }
+
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch learnings: ${response.status}`);
@@ -87,7 +93,12 @@ export function LearnSidebar({ workspaceSlug, onPromptClick }: LearnSidebarProps
       <div className="w-80 bg-background border-l border-border p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Learning Resources</h2>
-          <Button variant="ghost" size="sm" onClick={refetchLearnings}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refetchLearnings}
+            disabled={!currentQuestion?.trim()}
+          >
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -101,7 +112,12 @@ export function LearnSidebar({ workspaceSlug, onPromptClick }: LearnSidebarProps
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-medium text-muted-foreground">Learning Resources</h2>
-          <Button variant="ghost" size="sm" onClick={refetchLearnings}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refetchLearnings}
+            disabled={!currentQuestion?.trim()}
+          >
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
