@@ -36,12 +36,11 @@ function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
       const interpreterMatch = block.match(/interpreter:\s*["']([^"']+)["']/);
 
       // Extract env variables
-      const envMatch = block.match(/env:\s*\{([^}]*)\}/s);
+      const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
       let port = 3000;
       let installCmd: string | undefined;
       let buildCmd: string | undefined;
       let testCmd: string | undefined;
-      let e2eTestCmd: string | undefined;
       let preStartCmd: string | undefined;
       let postStartCmd: string | undefined;
       let rebuildCmd: string | undefined;
@@ -52,7 +51,6 @@ function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
         const installMatch = envContent.match(/INSTALL_COMMAND:\s*["']([^"']+)["']/);
         const buildMatch = envContent.match(/BUILD_COMMAND:\s*["']([^"']+)["']/);
         const testMatch = envContent.match(/TEST_COMMAND:\s*["']([^"']+)["']/);
-        const e2eTestMatch = envContent.match(/E2E_TEST_COMMAND:\s*["']([^"']+)["']/);
         const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*["']([^"']+)["']/);
         const postStartMatch = envContent.match(/POST_START_COMMAND:\s*["']([^"']+)["']/);
         const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*["']([^"']+)["']/);
@@ -61,7 +59,6 @@ function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
         if (installMatch) installCmd = installMatch[1];
         if (buildMatch) buildCmd = buildMatch[1];
         if (testMatch) testCmd = testMatch[1];
-        if (e2eTestMatch) e2eTestCmd = e2eTestMatch[1];
         if (preStartMatch) preStartCmd = preStartMatch[1];
         if (postStartMatch) postStartCmd = postStartMatch[1];
         if (rebuildMatch) rebuildCmd = rebuildMatch[1];
@@ -90,7 +87,6 @@ function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
             install: installCmd,
             build: buildCmd,
             test: testCmd,
-            e2eTest: e2eTestCmd,
             preStart: preStartCmd,
             postStart: postStartCmd,
             rebuild: rebuildCmd,
