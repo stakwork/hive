@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import {
-  ChatMessage as ChatMessageType,
-  Option,
-  FormContent,
-} from "@/lib/chat";
+import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel } from "../artifacts";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
@@ -15,18 +10,10 @@ import { WorkflowUrlLink } from "./WorkflowUrlLink";
 interface ChatMessageProps {
   message: ChatMessageType;
   replyMessage?: ChatMessageType;
-  onArtifactAction: (
-    messageId: string,
-    action: Option,
-    webhook: string,
-  ) => Promise<void>;
+  onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
 }
 
-export function ChatMessage({
-  message,
-  replyMessage,
-  onArtifactAction,
-}: ChatMessageProps) {
+export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -39,9 +26,7 @@ export function ChatMessage({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div
-        className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}
-      >
+      <div className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
             className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
@@ -52,18 +37,13 @@ export function ChatMessage({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
           >
-            <MarkdownRenderer
-              variant={message.role === "USER" ? "user" : "assistant"}
-            >
+            <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {message.message}
             </MarkdownRenderer>
-            
+
             {/* Workflow URL Link for message bubble */}
             {message.workflowUrl && (
-              <WorkflowUrlLink 
-                workflowUrl={message.workflowUrl}
-                className={isHovered ? "opacity-100" : "opacity-0"}
-              />
+              <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
             )}
           </div>
         )}
@@ -78,22 +58,14 @@ export function ChatMessage({
           if (replyMessage && artifact.content) {
             const formContent = artifact.content as FormContent;
             selectedOption = formContent.options?.find(
-              (option: Option) =>
-                option.optionResponse === replyMessage.message,
+              (option: Option) => option.optionResponse === replyMessage.message,
             );
           }
 
           return (
-            <div
-              key={artifact.id}
-              className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}
-            >
+            <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
               <div className="max-w-md">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                   <FormArtifact
                     messageId={message.id}
                     artifact={artifact}
@@ -109,20 +81,10 @@ export function ChatMessage({
       {message.artifacts
         ?.filter((a) => a.type === "LONGFORM")
         .map((artifact) => (
-          <div
-            key={artifact.id}
-            className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}
-          >
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
             <div className="max-w-md w-full">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-              >
-                <LongformArtifactPanel 
-                  artifacts={[artifact]} 
-                  workflowUrl={message.workflowUrl ?? undefined}
-                />
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <LongformArtifactPanel artifacts={[artifact]} workflowUrl={message.workflowUrl ?? undefined} />
               </motion.div>
             </div>
           </div>

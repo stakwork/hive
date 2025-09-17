@@ -4,33 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
-import {
-  ChatMessage,
-  ChatRole,
-  ChatStatus,
-  WorkflowStatus,
-  createChatMessage,
-  Option,
-  Artifact,
-} from "@/lib/chat";
+import { ChatMessage, ChatRole, ChatStatus, WorkflowStatus, createChatMessage, Option, Artifact } from "@/lib/chat";
 import { useParams } from "next/navigation";
-import {
-  usePusherConnection,
-  WorkflowStatusUpdate,
-  TaskTitleUpdateEvent,
-} from "@/hooks/usePusherConnection";
+import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
-import {
-  useProjectLogWebSocket,
-  LogEntry,
-} from "@/hooks/useProjectLogWebSocket";
+import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
 import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from "@/components/ui/resizable";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -54,27 +35,18 @@ export default function TaskChatPage() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [started, setStarted] = useState(false);
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(
-    taskIdFromUrl,
-  );
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(
-    WorkflowStatus.PENDING,
-  );
-  const [pendingDebugAttachment, setPendingDebugAttachment] =
-    useState<Artifact | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
+  const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
-  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(
-    projectId,
-    currentTaskId,
-    true,
-  );
+  const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
 
   // Handle incoming SSE messages
   const handleSSEMessage = useCallback((message: ChatMessage) => {
@@ -82,21 +54,16 @@ export default function TaskChatPage() {
 
     // Hide thinking logs only when we receive a FORM artifact (action artifacts where user needs to make a decision)
     // Keep thinking logs visible for CODE, BROWSER, IDE, MEDIA, STREAM artifacts
-    const hasActionArtifact = message.artifacts?.some(
-      (artifact) => artifact.type === "FORM",
-    );
+    const hasActionArtifact = message.artifacts?.some((artifact) => artifact.type === "FORM");
 
     if (hasActionArtifact) {
       setIsChainVisible(false);
     }
   }, []);
 
-  const handleWorkflowStatusUpdate = useCallback(
-    (update: WorkflowStatusUpdate) => {
-      setWorkflowStatus(update.workflowStatus);
-    },
-    [],
-  );
+  const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
+    setWorkflowStatus(update.workflowStatus);
+  }, []);
 
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
@@ -122,8 +89,7 @@ export default function TaskChatPage() {
     if (connectionError) {
       toast({
         title: "Connection Error",
-        description:
-          "Lost connection to chat server. Attempting to reconnect...",
+        description: "Lost connection to chat server. Attempting to reconnect...",
         variant: "destructive",
       });
     }
@@ -153,10 +119,7 @@ export default function TaskChatPage() {
 
         // Set project ID for log subscription if available
         if (result.data.task?.stakworkProjectId) {
-          console.log(
-            "Setting project ID from task data:",
-            result.data.task.stakworkProjectId,
-          );
+          console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
           setProjectId(result.data.task.stakworkProjectId.toString());
           setStakworkProjectId(result.data.task.stakworkProjectId);
         }
@@ -236,9 +199,7 @@ export default function TaskChatPage() {
     if (!message.trim() && !pendingDebugAttachment) return;
 
     // For artifact-only messages, provide a default message
-    const messageText =
-      message.trim() ||
-      (pendingDebugAttachment ? "Debug analysis attached" : "");
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
 
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
@@ -308,20 +269,12 @@ export default function TaskChatPage() {
 
       // Update the temporary message status instead of replacing entirely
       // This prevents re-animation since React sees it as the same message
-      setMessages((msgs) =>
-        msgs.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg,
-        ),
-      );
+      setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)));
     } catch (error) {
       console.error("Error sending message:", error);
 
       // Update message status to ERROR
-      setMessages((msgs) =>
-        msgs.map((msg) =>
-          msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg,
-        ),
-      );
+      setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)));
 
       toast({
         title: "Error",
@@ -333,11 +286,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleArtifactAction = async (
-    messageId: string,
-    action: Option,
-    webhook: string,
-  ) => {
+  const handleArtifactAction = async (messageId: string, action: Option, webhook: string) => {
     // console.log("Action triggered:", action);
 
     // Find the original message that contains artifacts
@@ -353,10 +302,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleDebugMessage = async (
-    _message: string,
-    debugArtifact?: Artifact,
-  ) => {
+  const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
     if (debugArtifact) {
       // Set pending attachment instead of sending immediately
       setPendingDebugAttachment(debugArtifact);
@@ -367,9 +313,7 @@ export default function TaskChatPage() {
 
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
-  const hasNonFormArtifacts = allArtifacts.some(
-    (a) => a.type !== "FORM" && a.type !== "LONGFORM",
-  );
+  const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
 
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
@@ -390,11 +334,7 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput
-            onStart={handleStart}
-            taskMode={taskMode}
-            onModeChange={setTaskMode}
-          />
+          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} />
         </motion.div>
       ) : (
         <motion.div
@@ -406,10 +346,7 @@ export default function TaskChatPage() {
           className="h-[92vh] md:h-[97vh] flex"
         >
           {hasNonFormArtifacts ? (
-            <ResizablePanelGroup
-              direction="horizontal"
-              className="flex-1 min-w-0 min-h-0 gap-2"
-            >
+            <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0 min-h-0 gap-2">
               <ResizablePanel defaultSize={40} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
                   <ChatArea
@@ -423,9 +360,7 @@ export default function TaskChatPage() {
                     isChainVisible={isChainVisible}
                     lastLogLine={lastLogLine}
                     pendingDebugAttachment={pendingDebugAttachment}
-                    onRemoveDebugAttachment={() =>
-                      setPendingDebugAttachment(null)
-                    }
+                    onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
                     stakworkProjectId={stakworkProjectId}
@@ -436,10 +371,7 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel
-                    artifacts={allArtifacts}
-                    onDebugMessage={handleDebugMessage}
-                  />
+                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>

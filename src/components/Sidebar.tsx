@@ -9,6 +9,7 @@ import {
   Menu,
   Settings,
   Users,
+  BookOpen,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -60,6 +61,7 @@ const baseNavigationItems = [
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
+  { icon: BookOpen, label: "Learn", href: "/learn" },
   // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
