@@ -10,10 +10,12 @@ const requiredEnvVars = {
   //ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 } as const;
 
-// Validate environment variables
-for (const [key, value] of Object.entries(requiredEnvVars)) {
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
+// Validate environment variables (skip during tests)
+if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+  for (const [key, value] of Object.entries(requiredEnvVars)) {
+    if (!value || value.includes('your-') || value.includes('-here')) {
+      throw new Error(`Missing required environment variable: ${key}`);
+    }
   }
 }
 
