@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { SwarmWizardStep } from "@prisma/client";
 import { stakgraphToStepStatus, stakgraphToRepositoryStatus } from "@/utils/conversions";
 import { WebhookPayload } from "@/types";
 
@@ -29,7 +28,6 @@ export async function updateStakgraphStatus(
   await Promise.all([
     saveOrUpdateSwarm({
       workspaceId: swarm.workspaceId,
-      wizardStep: SwarmWizardStep.INGEST_CODE,
       stepStatus,
       wizardData: { stakgraph: stakgraphData },
     }),

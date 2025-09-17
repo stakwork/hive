@@ -5,8 +5,6 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
-import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
-import { StakgraphStatusResponse } from "@/types";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -55,22 +53,6 @@ export async function GET(request: NextRequest) {
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
-
-    try {
-      const data = apiResult?.data as StakgraphStatusResponse | undefined;
-      if (data?.status) {
-        const payload = {
-          request_id: id,
-          status: data.status,
-          progress: data.progress ?? 0,
-          result: data.result,
-        };
-
-        await updateStakgraphStatus(swarm, payload);
-      }
-    } catch (persistErr) {
-      console.error("Error persisting status snapshot:", persistErr);
-    }
 
     return NextResponse.json({ apiResult }, { status: apiResult.status });
   } catch (error) {
