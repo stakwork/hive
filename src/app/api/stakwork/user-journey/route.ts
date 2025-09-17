@@ -28,9 +28,7 @@ async function callStakwork(
       throw new Error("STAKWORK_API_KEY is required for Stakwork integration");
     }
     if (!config.STAKWORK_USER_JOURNEY_WORKFLOW_ID) {
-      throw new Error(
-        "STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration",
-      );
+      throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
     // stakwork workflow vars
@@ -46,9 +44,7 @@ async function callStakwork(
 
     const workflowId = config.STAKWORK_USER_JOURNEY_WORKFLOW_ID || "";
     if (!workflowId) {
-      throw new Error(
-        "STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration",
-      );
+      throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
     const stakworkPayload: StakworkWorkflowPayload = {
@@ -75,9 +71,7 @@ async function callStakwork(
     });
 
     if (!response.ok) {
-      console.error(
-        `Failed to send message to Stakwork: ${response.statusText}`,
-      );
+      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
@@ -98,10 +92,7 @@ export async function POST(request: NextRequest) {
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -109,31 +100,22 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!message) {
-      return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "Workspace ID is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Workspace ID is required" }, { status: 400 });
     }
 
     // Find the workspace and validate user access
     const workspace = await getWorkspaceById(workspaceId, userId);
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
     // Get user's GitHub profile (access token and username)
     const githubProfile = await getGithubUsernameAndPAT(userId);
-    const accessToken = githubProfile?.pat || null;
+    const accessToken = githubProfile?.appAccessToken || githubProfile?.pat || null;
     const username = githubProfile?.username || null;
 
     // Find the swarm associated with this workspace
@@ -148,15 +130,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (!swarm) {
-      return NextResponse.json(
-        { error: "No swarm found for this workspace" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const swarmUrl = swarm?.swarmUrl
-      ? swarm.swarmUrl.replace("/api", ":8444/api")
-      : "";
+    const swarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":8444/api") : "";
 
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.poolName || swarm?.id || null;
@@ -184,9 +161,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error creating chat message:", error);
-    return NextResponse.json(
-      { error: "Failed to create chat message" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create chat message" }, { status: 500 });
   }
 }
