@@ -166,11 +166,14 @@ export async function POST(request: NextRequest) {
 
     try {
       const reqId = apiResult.data?.request_id;
+      console.log("REQUEST ID FROM ASYNC SYNC STAKGRAPH WEBHOOK", reqId);
       if (reqId) {
         await db.swarm.update({
           where: { id: swarm.id },
           data: { ingestRefId: reqId },
         });
+      } else {
+        console.error("NO REQUEST ID FROM ASYNC SYNC STAKGRAPH WEBHOOK");
       }
     } catch (e) {
       console.error("Failed to persist ingestRefId from async sync", e);
