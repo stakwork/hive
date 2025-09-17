@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  EnvironmentForm,
-  ProjectInfoForm,
-  RepositoryForm,
-  ServicesForm,
-  SwarmForm,
-} from "@/components/stakgraph";
+import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,13 +9,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import { GitVisualizer } from "gitsee/client";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
   const router = useRouter();
+  const vizInitialized = useRef(false);
+
   const {
     formData,
     errors,
@@ -57,6 +54,37 @@ export default function StakgraphPage() {
     refreshCurrentWorkspace();
   };
 
+  useEffect(() => {
+    if (vizInitialized.current) return;
+    if (!id) return;
+    if (!formData.repositoryUrl) return;
+    if (!formData.swarmUrl) return;
+    // rm -rf node_modules/gitsee && yarn add file:../../evanf/gitsee
+    vizInitialized.current = true;
+    let viz: GitVisualizer | null = null;
+    try {
+      const { owner, repo } = parseGithubOwnerRepo(formData.repositoryUrl);
+      console.log("start GitVisualizer", owner, repo);
+      const swarmUrlObj = new URL(formData.swarmUrl || "");
+      let gitseeUrl = `https://${swarmUrlObj.hostname}:3355`;
+      if (formData.swarmUrl?.includes("localhost")) {
+        gitseeUrl = `http://localhost:3355`;
+      }
+      viz = new GitVisualizer(
+        "#vizzy",
+        `/api/gitsee?workspaceId=${id}`, // Nextjs proxy endpoint
+        {}, // custom headers (not needed here since /api adds them)
+        `${gitseeUrl}/gitsee`, // SSE endpoint
+      );
+      setTimeout(() => {
+        viz?.visualize(owner, repo);
+      }, 100);
+    } catch (error) {
+      console.error("Failed to visualize repository", error);
+    }
+    return () => viz?.destroy();
+  }, [id, formData.repositoryUrl, formData.swarmUrl]);
+
   const handleEnsureWebhooks = async () => {
     try {
       if (!id) {
@@ -82,9 +110,7 @@ export default function StakgraphPage() {
         if (data.error === "INSUFFICIENT_PERMISSIONS") {
           toast({
             title: "Permission Required",
-            description:
-              data.message ||
-              "Admin access required to manage webhooks on this repository",
+            description: data.message || "Admin access required to manage webhooks on this repository",
             variant: "destructive",
           });
         } else {
@@ -126,10 +152,7 @@ export default function StakgraphPage() {
   if (initialLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader 
-          title="Stakgraph Configuration"
-          description="Configure your settings for Stakgraph integration"
-        />
+        <PageHeader title="Stakgraph Configuration" description="Configure your settings for Stakgraph integration" />
         <Card className="max-w-2xl">
           <CardContent className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2">
@@ -155,7 +178,7 @@ export default function StakgraphPage() {
           Back to Settings
         </Button>
       </div>
-      <PageHeader 
+      <PageHeader
         title="VM Configuration"
         description="Configure your virtual machine settings for development environment"
       />
@@ -163,16 +186,14 @@ export default function StakgraphPage() {
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>VM Settings</CardTitle>
-          {!formData.webhookEnsured && formData.repositoryUrl ? (
-            <Button
-              type="button"
-              variant="default"
-              onClick={handleEnsureWebhooks}
-            >
-              <Webhook className="mr-2 h-4 w-4" />
-              Add Github Webhooks
-            </Button>
-          ) : null}
+          <div className="flex gap-2">
+            {!formData.webhookEnsured && formData.repositoryUrl ? (
+              <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
+                <Webhook className="mr-2 h-4 w-4" />
+                Add Github Webhooks
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -184,9 +205,7 @@ export default function StakgraphPage() {
 
             {saved && (
               <div className="p-3 rounded-md bg-green-50 border border-green-200">
-                <p className="text-sm text-green-700">
-                  Configuration saved successfully!
-                </p>
+                <p className="text-sm text-green-700">Configuration saved successfully!</p>
               </div>
             )}
 
@@ -232,11 +251,7 @@ export default function StakgraphPage() {
                 onEnvVarsChange={handleEnvVarsChange}
               />
 
-              <ServicesForm
-                data={formData.services}
-                loading={loading}
-                onChange={handleServicesChange}
-              />
+              <ServicesForm data={formData.services} loading={loading} onChange={handleServicesChange} />
 
               <FileTabs
                 fileContents={formData.containerFiles}
@@ -259,6 +274,13 @@ export default function StakgraphPage() {
               )}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Gitsee section */}
+      <Card className="max-w-2xl">
+        <CardContent>
+          <svg width="500" height="500" id="vizzy"></svg>
         </CardContent>
       </Card>
     </div>

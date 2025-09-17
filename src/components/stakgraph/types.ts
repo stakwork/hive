@@ -5,6 +5,7 @@ export interface ServiceDataConfig {
   port: number;
   env: Record<string, string>;
   interpreter?: string;
+  cwd?: string;
   scripts: {
     start: string;
     install?: string;
