@@ -21,6 +21,7 @@ export function getGithubWebhookCallbackUrl(req?: NextRequest): string {
 }
 
 export function getStakgraphWebhookCallbackUrl(req?: NextRequest): string {
+  //
   const full = process.env.STAKGRAPH_WEBHOOK_URL;
   if (full) return full;
   const base = getPublicBaseUrl(req);
