@@ -93,12 +93,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
       <div className="w-80 bg-background border-l border-border p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Learning Resources</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={refetchLearnings}
-            disabled={!currentQuestion?.trim()}
-          >
+          <Button variant="ghost" size="sm" onClick={refetchLearnings} disabled={!currentQuestion?.trim()}>
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -108,16 +103,11 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
   }
 
   return (
-    <div className="w-80 bg-background border-l border-border flex flex-col position-fixed top-0">
+    <div className="w-80 bg-background border-l border-border flex flex-col fixed top-0 right-0 h-full">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-medium text-muted-foreground">Learning Resources</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={refetchLearnings}
-            disabled={!currentQuestion?.trim()}
-          >
+          <Button variant="ghost" size="sm" onClick={refetchLearnings} disabled={!currentQuestion?.trim()}>
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -125,30 +115,6 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Prompts Section */}
-        {learnings?.prompts && learnings.prompts.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <div className="flex items-center gap-2 mb-3">
-              <MessageCircle className="w-4 h-4 text-muted-foreground" />
-              <h3 className="font-medium text-muted-foreground">Previous Questions</h3>
-            </div>
-            <div className="space-y-2">
-              {learnings.prompts.map((prompt, index) => (
-                <motion.button
-                  key={index}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.2, delay: index * 0.05 }}
-                  onClick={() => handlePromptClick(prompt)}
-                  className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
-                >
-                  <div className="text-muted-foreground group-hover:text-foreground transition-colors">{prompt}</div>
-                </motion.button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
         {/* Hints Section */}
         {learnings?.hints && learnings.hints.length > 0 && (
           <motion.div
@@ -171,6 +137,30 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
                   className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
                 >
                   <div className="text-muted-foreground group-hover:text-foreground transition-colors">{hint}</div>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Prompts Section */}
+        {learnings?.prompts && learnings.prompts.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <MessageCircle className="w-4 h-4 text-muted-foreground" />
+              <h3 className="font-medium text-muted-foreground">Previous Prompts</h3>
+            </div>
+            <div className="space-y-2">
+              {learnings.prompts.map((prompt, index) => (
+                <motion.button
+                  key={index}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.2, delay: index * 0.05 }}
+                  onClick={() => handlePromptClick(prompt)}
+                  className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
+                >
+                  <div className="text-muted-foreground group-hover:text-foreground transition-colors">{prompt}</div>
                 </motion.button>
               ))}
             </div>
