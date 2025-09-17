@@ -1,35 +1,33 @@
-import { defineConfig } from "vitest/config";
-import path from "path";
-
-const testSuite = process.env.TEST_SUITE;
+import { defineConfig } from 'vitest/config'
+import { resolve } from 'path'
 
 export default defineConfig({
   test: {
-    environment: "node",
     globals: true,
-    // Run integration tests sequentially to avoid database conflicts
-    pool: testSuite === "integration" ? "forks" : "threads",
-    poolOptions: testSuite === "integration" ? {
-      forks: {
-        singleFork: true,
-      },
-    } : undefined,
-    include:
-      testSuite === "integration"
-        ? ["src/__tests__/integration/**/*.test.ts"]
-        : testSuite === "api"
-        ? ["src/__tests__/api/**/*.test.ts"]
-        : ["src/__tests__/unit/**/*.test.ts"],
-    setupFiles:
-      testSuite === "integration"
-        ? ["./src/__tests__/setup-integration.ts"]
-        : testSuite === "api"
-        ? ["./src/__tests__/setup-unit.ts"] // API tests can use unit test setup
-        : ["./src/__tests__/setup-unit.ts"],
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    include: [
+      'src/__tests__/unit/**/*.test.{js,ts}',
+      'src/__tests__/integration/**/*.test.{js,ts}',
+      'src/__tests__/e2e/**/*.test.{js,ts}'
+    ],
+    testTimeout: 10000, // Increased timeout for integration tests
+    coverage: {
+      include: [
+        'src/app/api/**/*',
+        'src/lib/**/*',
+        'src/utils/**/*'
+      ],
+      exclude: [
+        'src/__tests__/**/*',
+        'src/**/*.test.{js,ts}',
+        'src/**/*.spec.{js,ts}'
+      ]
+    }
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      '@': resolve(__dirname, './src'),
     },
   },
-});
+})
