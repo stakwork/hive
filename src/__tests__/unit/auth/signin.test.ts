@@ -466,26 +466,14 @@ describe("signIn Authentication Logic - Unit Tests", () => {
 
       (db.user.findUnique as any).mockResolvedValue(existingUser);
       (db.account.findFirst as any).mockResolvedValue(null);
-      // Mock encryption to fail only for access_token
-      mockEncryptionService.encryptField.mockImplementation((fieldName: string, value: string) => {
-        if (fieldName === "access_token") {
-          throw new Error("Encryption failed");
-        }
-        return {
-          data: "encrypted_data",
-          iv: "test_iv",
-          tag: "test_tag",
-          keyId: "test_key",
-          version: "1",
-          encryptedAt: "2024-01-01T00:00:00.000Z",
-        };
-      });
+      // Make the entire account.create operation fail to trigger the catch block
+      (db.account.create as any).mockRejectedValue(new Error("Database error during account creation"));
 
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const result = await signInCallback({ user: mockUser, account: mockAccount });
 
-      expect(result).toBe(true); // Should still return true despite encryption error
+      expect(result).toBe(true); // Should still return true despite error
       expect(consoleSpy).toHaveBeenCalledWith(
         "Error handling GitHub re-authentication:",
         expect.any(Error)
@@ -523,6 +511,7 @@ describe("signIn Authentication Logic - Unit Tests", () => {
 
       expect(db.account.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
+          access_token: JSON.stringify(mockEncryptionService.encryptField()),
           refresh_token: null,
           id_token: null,
         }),
