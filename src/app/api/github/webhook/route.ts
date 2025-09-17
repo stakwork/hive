@@ -90,14 +90,6 @@ export async function POST(request: NextRequest) {
         console.log("Pushed branch ", pushedBranch, "not allowed");
         return NextResponse.json({ success: true }, { status: 202 });
       }
-    } else if (event === "pull_request") {
-      const action: string | undefined = payload?.action;
-      const merged: boolean | undefined = payload?.pull_request?.merged;
-      const baseRef: string | undefined = payload?.pull_request?.base?.ref;
-      if (!(action === "closed" && merged && baseRef && allowedBranches.has(baseRef))) {
-        console.log("Pull request not allowed. action:", action);
-        return NextResponse.json({ success: true }, { status: 202 });
-      }
     } else {
       console.log("Event not allowed", event);
       return NextResponse.json({ success: true }, { status: 202 });
