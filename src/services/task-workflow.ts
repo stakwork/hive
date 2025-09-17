@@ -14,7 +14,7 @@ export async function createTaskWithStakworkWorkflow(params: {
   description: string;
   workspaceId: string;
   assigneeId?: string;
-  repositoryId?: string;  
+  repositoryId?: string;
   priority: Priority;
   sourceType?: TaskSourceType;
   userId: string;
@@ -22,18 +22,18 @@ export async function createTaskWithStakworkWorkflow(params: {
   status?: TaskStatus;
   mode?: string;
 }) {
-  const { 
-    title, 
-    description, 
-    workspaceId, 
-    assigneeId, 
-    repositoryId, 
-    priority, 
-    sourceType = "USER", 
-    userId, 
+  const {
+    title,
+    description,
+    workspaceId,
+    assigneeId,
+    repositoryId,
+    priority,
+    sourceType = "USER",
+    userId,
     initialMessage,
     status = "TODO",
-    mode = "default"
+    mode = "default",
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -211,7 +211,7 @@ async function createChatMessageAndTriggerStakwork(params: {
 
   const githubProfile = await getGithubUsernameAndPAT(userId);
   const userName = githubProfile?.username || null;
-  const accessToken = githubProfile?.pat || null;
+  const accessToken = githubProfile?.appAccessToken || githubProfile?.pat || null;
 
   // Prepare Stakwork integration (replicating callStakwork logic)
   const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
@@ -293,18 +293,18 @@ async function callStakworkAPI(params: {
   attachments?: string[];
   mode?: string;
 }) {
-  const { 
-    taskId, 
-    message, 
-    contextTags = [], 
-    userName, 
-    accessToken, 
-    swarmUrl, 
-    swarmSecretAlias, 
-    poolName, 
+  const {
+    taskId,
+    message,
+    contextTags = [],
+    userName,
+    accessToken,
+    swarmUrl,
+    swarmSecretAlias,
+    poolName,
     repo2GraphUrl,
     attachments = [],
-    mode = "default"
+    mode = "default",
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -335,7 +335,7 @@ async function callStakworkAPI(params: {
 
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
-  
+
   let workflowId: string;
   if (mode === "live") {
     workflowId = stakworkWorkflowIds[0];

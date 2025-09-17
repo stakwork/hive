@@ -8,6 +8,8 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export interface ServiceConfig {
   name: string;
   port: number;
+  interpreter?: string;
+  cwd?: string;
   scripts: {
     start: string;
     install?: string;
@@ -43,6 +45,7 @@ interface SaveOrUpdateSwarmParams {
   containerFiles?: Record<string, string>;
   wizardData?: unknown;
   defaultBranch?: string;
+  githubInstallationId?: string;
 }
 
 export const select = {
@@ -73,6 +76,7 @@ export const select = {
   environmentVariables: true,
   containerFiles: true,
   defaultBranch: true,
+  githubInstallationId: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -83,8 +87,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: Record<string, any> = {};
   if (params.name !== undefined) data.name = params.name;
-  if (params.instanceType !== undefined)
-    data.instanceType = params.instanceType;
+  if (params.instanceType !== undefined) data.instanceType = params.instanceType;
   if (params.environmentVariables !== undefined)
     data.environmentVariables = encryptEnvVars(
       params.environmentVariables as unknown as Array<{
@@ -94,28 +97,19 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     );
   if (params.status !== undefined) data.status = params.status;
   if (params.swarmUrl !== undefined) data.swarmUrl = params.swarmUrl;
-  if (params.repositoryName !== undefined)
-    data.repositoryName = params.repositoryName;
-  if (params.repositoryDescription !== undefined)
-    data.repositoryDescription = params.repositoryDescription;
-  if (params.repositoryUrl !== undefined)
-    data.repositoryUrl = params.repositoryUrl;
+  if (params.repositoryName !== undefined) data.repositoryName = params.repositoryName;
+  if (params.repositoryDescription !== undefined) data.repositoryDescription = params.repositoryDescription;
+  if (params.repositoryUrl !== undefined) data.repositoryUrl = params.repositoryUrl;
   if (params.swarmApiKey !== undefined)
-    data.swarmApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
-    );
+    data.swarmApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", params.swarmApiKey));
   if (params.swarmPassword !== undefined)
-    data.swarmPassword = JSON.stringify(
-      encryptionService.encryptField("swarmPassword", params.swarmPassword),
-    );
+    data.swarmPassword = JSON.stringify(encryptionService.encryptField("swarmPassword", params.swarmPassword));
   if (params.poolName !== undefined) data.poolName = params.poolName;
   if (params.poolCpu !== undefined) data.poolCpu = params.poolCpu;
   if (params.poolMemory !== undefined) data.poolMemory = params.poolMemory;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
-  if (params.defaultBranch !== undefined)
-    data.defaultBranch = params.defaultBranch;
-  if (params.swarmSecretAlias !== undefined)
-    data.swarmSecretAlias = params.swarmSecretAlias;
+  if (params.defaultBranch !== undefined) data.defaultBranch = params.defaultBranch;
+  if (params.swarmSecretAlias !== undefined) data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
   if (params.stepStatus !== undefined) data.stepStatus = params.stepStatus;
   if (params.wizardData !== undefined) {
@@ -132,9 +126,9 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.services !== undefined) {
     data.services = params.services;
   }
-  if (params.containerFiles !== undefined)
-    data.containerFiles = params.containerFiles;
+  if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
+  if (params.githubInstallationId !== undefined) data.githubInstallationId = params.githubInstallationId;
   data.updatedAt = new Date();
 
   if (swarm) {
@@ -163,15 +157,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       repositoryUrl: params.repositoryUrl || "",
       swarmApiKey:
         params.swarmApiKey !== undefined
-          ? JSON.stringify(
-              encryptionService.encryptField("swarmApiKey", params.swarmApiKey),
-            )
+          ? JSON.stringify(encryptionService.encryptField("swarmApiKey", params.swarmApiKey))
           : undefined,
       swarmPassword:
         params.swarmPassword !== undefined
-          ? JSON.stringify(
-              encryptionService.encryptField("swarmPassword", params.swarmPassword),
-            )
+          ? JSON.stringify(encryptionService.encryptField("swarmPassword", params.swarmPassword))
           : undefined,
       poolName: params.poolName || "",
       poolCpu: params.poolCpu || "2",
@@ -182,6 +172,10 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       stepStatus: params.stepStatus,
       defaultBranch: params.defaultBranch || "",
       wizardData: params.wizardData,
+      containerFiles: params.containerFiles,
+      githubInstallationId: params.githubInstallationId,
+      swarmId: params.swarmId,
+      ingestRefId: params.ingestRefId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);

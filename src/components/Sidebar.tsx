@@ -16,7 +16,6 @@ import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useTasksStore } from "@/stores/useTasksStore";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -66,10 +65,10 @@ const baseNavigationItems = [
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const { slug: workspaceSlug, workspace } = useWorkspace();
-  const tasksWaitingForInputCount = useTasksStore(state => 
-    workspace?.id ? state.getWaitingForInputCount(workspace.id) : 0
-  );
+  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  
+  // Use global notification count from WorkspaceContext (not affected by pagination)
+  const tasksWaitingForInputCount = waitingForInputCount;
 
   const canAccessInsights = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
@@ -87,6 +86,11 @@ export function Sidebar({ user }: SidebarProps) {
   const isTaskPage = pathname.includes("/task/");
 
   const handleNavigate = (href: string) => {
+    // Refresh notification count when user clicks Tasks menu item
+    if (href === "/tasks") {
+      refreshTaskNotifications();
+    }
+    
     if (workspaceSlug) {
       const fullPath =
         href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
