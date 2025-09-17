@@ -30,6 +30,7 @@ export async function updateStakgraphStatus(
       workspaceId: swarm.workspaceId,
       stepStatus,
       wizardData: { stakgraph: stakgraphData },
+      ingestRefId: payload.request_id,
     }),
 
     swarm.repositoryUrl && (stepStatus === "COMPLETED" || stepStatus === "FAILED")

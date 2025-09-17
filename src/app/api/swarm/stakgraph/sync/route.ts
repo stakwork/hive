@@ -63,6 +63,14 @@ export async function POST(request: NextRequest) {
       username && pat ? { username, pat } : undefined,
       callbackUrl,
     );
+
+    console.log("STAKGRAPH SYNC API RESPONSE", {
+      ok: apiResult.ok,
+      status: apiResult.status,
+      data: apiResult.data,
+      hasRequestId: !!apiResult.data?.request_id,
+    });
+
     const requestId = apiResult.data?.request_id;
     if (requestId) {
       console.log("STAKGRAPH SYNC START", {
@@ -72,7 +80,13 @@ export async function POST(request: NextRequest) {
         repositoryUrl: swarm.repositoryUrl,
       });
       try {
-        await saveOrUpdateSwarm({
+        console.log("ABOUT TO SAVE INGEST REF ID", {
+          requestId,
+          workspaceId: swarm.workspaceId,
+          swarmId: swarm.id,
+        });
+
+        const updatedSwarm = await saveOrUpdateSwarm({
           workspaceId: swarm.workspaceId,
           ingestRefId: requestId,
         });
@@ -80,9 +94,20 @@ export async function POST(request: NextRequest) {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
+          savedIngestRefId: updatedSwarm.ingestRefId,
+          swarmUpdatedAt: updatedSwarm.updatedAt,
         });
       } catch (err) {
-        console.error("Failed to store ingestRefId for sync", err);
+        console.error("Failed to store ingestRefId for sync", err, {
+          requestId,
+          workspaceId: swarm.workspaceId,
+          swarmId: swarm.id,
+        });
+        // Return error instead of success
+        return NextResponse.json(
+          { success: false, message: "Failed to store sync reference", requestId },
+          { status: 500 },
+        );
       }
     }
     if (!apiResult.ok || !requestId) {
