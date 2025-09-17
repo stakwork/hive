@@ -1,13 +1,7 @@
 import { db } from "@/lib/db";
-import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { RepositoryStatus, SwarmWizardStep } from "@prisma/client";
-import { mapStatusToStepStatus } from "@/utils/conversions";
-import {
-  computeHmacSha256Hex,
-  timingSafeEqual,
-  EncryptionService,
-} from "@/lib/encryption";
+import { computeHmacSha256Hex, timingSafeEqual, EncryptionService } from "@/lib/encryption";
 import { WebhookPayload } from "@/types";
+import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
 
 export class StakgraphWebhookService {
   private encryptionService: EncryptionService;
@@ -31,12 +25,11 @@ export class StakgraphWebhookService {
           message: "Missing request_id",
         };
       }
-
-      const swarm = await this.lookupAndVerifySwarm(
-        request_id,
-        signature,
-        rawBody,
-      );
+      console.log("STAKGRAPH WEBHOOK RECEIVED", {
+        requestId: request_id,
+        requestIdHeader,
+      });
+      const swarm = await this.lookupAndVerifySwarm(request_id, signature, rawBody);
       if (!swarm) {
         return {
           success: false,
@@ -45,9 +38,15 @@ export class StakgraphWebhookService {
         };
       }
 
-      await this.processWebhookPayload(swarm, payload, requestIdHeader);
+      await updateStakgraphStatus(swarm, payload, requestIdHeader);
 
-      await this.updateRepositoryStatus(swarm, payload);
+      console.log("[StakgraphWebhook] processed", {
+        requestId: request_id,
+        workspaceId: swarm.workspaceId,
+        swarmId: swarm.id,
+        repositoryUrl: swarm.repositoryUrl,
+        status: payload.status,
+      });
 
       return { success: true, status: 200 };
     } catch (error) {
@@ -92,18 +91,13 @@ export class StakgraphWebhookService {
     // Decrypt and verify the signature
     let secret: string;
     try {
-      secret = this.encryptionService.decryptField(
-        "swarmApiKey",
-        swarm.swarmApiKey,
-      );
+      secret = this.encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     } catch (error) {
       console.error("Failed to decrypt swarm API key:", error);
       return null;
     }
 
-    const sigHeader = signature.startsWith("sha256=")
-      ? signature.slice(7)
-      : signature;
+    const sigHeader = signature.startsWith("sha256=") ? signature.slice(7) : signature;
     const expected = computeHmacSha256Hex(secret, rawBody);
 
     if (!timingSafeEqual(expected, sigHeader)) {
@@ -116,64 +110,5 @@ export class StakgraphWebhookService {
       workspaceId: swarm.workspaceId,
       repositoryUrl: swarm.repositoryUrl,
     };
-  }
-
-  private async processWebhookPayload(
-    swarm: { id: string; workspaceId: string; repositoryUrl: string | null },
-    payload: WebhookPayload,
-    requestIdHeader?: string | null,
-  ): Promise<void> {
-    const stepStatus = mapStatusToStepStatus(payload.status);
-
-    const stakgraphData = {
-      requestId: payload.request_id,
-      requestIdHeader,
-      status: payload.status,
-      progress: payload.progress,
-      nodes: payload.result?.nodes,
-      edges: payload.result?.edges,
-      error: payload.error,
-      startedAt: payload.started_at,
-      completedAt: payload.completed_at,
-      durationMs: payload.duration_ms,
-      lastUpdateAt: new Date().toISOString(),
-    };
-
-    await saveOrUpdateSwarm({
-      workspaceId: swarm.workspaceId,
-      wizardStep: SwarmWizardStep.INGEST_CODE,
-      stepStatus,
-      wizardData: { stakgraph: stakgraphData },
-    });
-  }
-
-  private async updateRepositoryStatus(
-    swarm: { id: string; workspaceId: string; repositoryUrl: string | null },
-    payload: WebhookPayload,
-  ): Promise<void> {
-    const stepStatus = mapStatusToStepStatus(payload.status);
-
-    if (stepStatus === "COMPLETED" || stepStatus === "FAILED") {
-      if (swarm.repositoryUrl) {
-        try {
-          await db.repository.update({
-            where: {
-              repositoryUrl_workspaceId: {
-                repositoryUrl: swarm.repositoryUrl,
-                workspaceId: swarm.workspaceId,
-              },
-            },
-            data: {
-              status:
-                stepStatus === "COMPLETED"
-                  ? RepositoryStatus.SYNCED
-                  : RepositoryStatus.FAILED,
-            },
-          });
-        } catch (repoErr) {
-          console.error("Failed to update repository status:", repoErr);
-        }
-      }
-    }
   }
 }

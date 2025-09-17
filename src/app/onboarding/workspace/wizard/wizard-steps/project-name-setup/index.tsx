@@ -57,6 +57,7 @@ export function ProjectNameSetupStep() {
   const resetWizard = useWizardStore((s) => s.resetWizard);
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
+  const [hasWorkspaceConflict, setHasWorkspaceConflict] = useState<boolean>(false);
   const { refreshWorkspaces, workspaces } = useWorkspace();
   const isPending = currentStepStatus === "PENDING";
 
@@ -68,11 +69,46 @@ export function ProjectNameSetupStep() {
     if (!selectedRepo || projectName) return;
 
     const base = selectedRepo.name.toLowerCase();
-    const pool = workspaces.map(w => w.name.toLowerCase());
+    const pool = workspaces.map(w => w.slug.toLowerCase());
     const nextName = nextIndexedName(base, pool)
 
     setProjectName(nextName);
   }, [selectedRepo, workspaces, setProjectName, projectName]);
+
+  // Check for workspace slug conflicts using API
+  useEffect(() => {
+    if (!projectName.trim()) {
+      setHasWorkspaceConflict(false);
+      setInfoMessage("");
+      return;
+    }
+
+    const checkSlugAvailability = async () => {
+      try {
+        const response = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName.trim().toLowerCase())}`);
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          const isAvailable = data.data.isAvailable;
+          setHasWorkspaceConflict(!isAvailable);
+
+          if (!isAvailable) {
+            setInfoMessage("A workspace with this name already exists. Please choose a different name.");
+          } else {
+            setInfoMessage("");
+          }
+        } else {
+          console.error("Failed to check slug availability:", data.error);
+        }
+      } catch (error) {
+        console.error("Error checking slug availability:", error);
+      }
+    };
+
+    // Debounce the API call to avoid too many requests
+    const timeoutId = setTimeout(checkSlugAvailability, 300);
+    return () => clearTimeout(timeoutId);
+  }, [projectName]);
 
   const handleCreateWorkspace = async () => {
 
@@ -135,12 +171,12 @@ export function ProjectNameSetupStep() {
   }, [repositoryUrlDraft, setSelectedRepo]);
 
   useEffect(() => {
-    const validateUri = async () => {
+    const validateSlug = async () => {
       setIsLookingForAvailableName(true);
-      const res = await fetch(`/api/swarm/validate?uri=${projectName}.sphinx.chat`);
+      const res = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName.trim().toLowerCase())}`);
       const data = await res.json();
       if (data.success) {
-        if (data.data.domain_exists || data.data.swarm_name_exist) {
+        if (!data.data.isAvailable) {
           setInfoMessage("Looking for available project name...");
           const nameEnding = projectName.split("-").pop() || '';
           const nameHasNumber = /^-?\d+$/.test(nameEnding);
@@ -159,12 +195,12 @@ export function ProjectNameSetupStep() {
           setInfoMessage("Available name found");
         }
       } else {
-        setError(data.message);
+        setError(data.error);
       }
     }
 
     if (selectedRepo && projectName && !newNamesIsSettled.current) {
-      validateUri();
+      validateSlug();
     }
   }, [selectedRepo, projectName, setProjectName, router, newNamesIsSettled]);
 
@@ -333,18 +369,18 @@ export function ProjectNameSetupStep() {
                   >
                     Graph Domain
                   </Label>
-                  {isLookingForAvailableName && <p className="text-sm text-muted-foreground">
-                    {infoMessage}
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  </p>}
+                  {(isLookingForAvailableName || hasWorkspaceConflict) && (
+                    <p className={`text-sm ${hasWorkspaceConflict ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      {infoMessage}
+                      {isLookingForAvailableName && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
+                    </p>
+                  )}
                   <Input
                     id="graphDomain"
                     placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
                     value={isLookingForAvailableName ? "" : projectName}
-                    readOnly
-                    tabIndex={-1}
-                    className="mt-2 bg-muted cursor-not-allowed select-all focus:outline-none focus:ring-0 hover:bg-muted"
-                    style={{ pointerEvents: "none" }}
+                    className={`mt-2 ${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
+                    onChange={(e) => setProjectName(e.target.value)}
                   />
                 </div>
 
@@ -356,7 +392,7 @@ export function ProjectNameSetupStep() {
                         Reset
                       </Button>
                       <Button
-                        disabled={swarmIsLoading}
+                        disabled={swarmIsLoading || hasWorkspaceConflict}
                         className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
                         type="button"
                         onClick={handleCreateWorkspace}

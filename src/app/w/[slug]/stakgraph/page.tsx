@@ -9,12 +9,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import { GitVisualizer } from "gitsee/client";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
   const router = useRouter();
+  const vizInitialized = useRef(false);
+
   const {
     formData,
     errors,
@@ -49,6 +53,37 @@ export default function StakgraphPage() {
     await saveSettings(slug, toast);
     refreshCurrentWorkspace();
   };
+
+  useEffect(() => {
+    if (vizInitialized.current) return;
+    if (!id) return;
+    if (!formData.repositoryUrl) return;
+    if (!formData.swarmUrl) return;
+    // rm -rf node_modules/gitsee && yarn add file:../../evanf/gitsee
+    vizInitialized.current = true;
+    let viz: GitVisualizer | null = null;
+    try {
+      const { owner, repo } = parseGithubOwnerRepo(formData.repositoryUrl);
+      console.log("start GitVisualizer", owner, repo);
+      const swarmUrlObj = new URL(formData.swarmUrl || "");
+      let gitseeUrl = `https://${swarmUrlObj.hostname}:3355`;
+      if (formData.swarmUrl?.includes("localhost")) {
+        gitseeUrl = `http://localhost:3355`;
+      }
+      viz = new GitVisualizer(
+        "#vizzy",
+        `/api/gitsee?workspaceId=${id}`, // Nextjs proxy endpoint
+        {}, // custom headers (not needed here since /api adds them)
+        `${gitseeUrl}/gitsee`, // SSE endpoint
+      );
+      setTimeout(() => {
+        viz?.visualize(owner, repo);
+      }, 100);
+    } catch (error) {
+      console.error("Failed to visualize repository", error);
+    }
+    return () => viz?.destroy();
+  }, [id, formData.repositoryUrl, formData.swarmUrl]);
 
   const handleEnsureWebhooks = async () => {
     try {
@@ -239,6 +274,13 @@ export default function StakgraphPage() {
               )}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Gitsee section */}
+      <Card className="max-w-2xl">
+        <CardContent>
+          <svg width="500" height="500" id="vizzy"></svg>
         </CardContent>
       </Card>
     </div>
