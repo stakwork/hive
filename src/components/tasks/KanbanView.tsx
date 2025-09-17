@@ -123,6 +123,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
                         task={task}
                         workspaceSlug={workspaceSlug}
                         hideWorkflowStatus={true}
+                        compactMode={true}
                       />
                     </div>
                   ))
@@ -178,6 +179,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
                             task={task}
                             workspaceSlug={workspaceSlug}
                             hideWorkflowStatus={true}
+                            compactMode={true}
                           />
                         </div>
                       ))
