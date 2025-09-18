@@ -36,13 +36,11 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
             <User className="w-4 h-4" />
           </div>
         )}
-        <div className={`text-sm ${
-          isUser ? "text-primary-foreground" : "text-foreground"
-        }`}>
+        <div className={`text-sm ${isUser ? "text-primary-foreground" : ""}`}>
           {isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="prose prose-sm max-w-none dark:prose-invert prose-gray [&>*]:!text-foreground [&_*]:!text-foreground">
               <ReactMarkdown>
                 {message.content}
               </ReactMarkdown>
