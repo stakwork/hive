@@ -20,7 +20,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userId = (session.user as { id: string }).id;
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        } as WizardStateError,
+        { status: 401 },
+      );
+    }
 
     // Get workspace slug from query parameters
     const { searchParams } = new URL(request.url);
