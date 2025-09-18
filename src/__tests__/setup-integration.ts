@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 
 // Test database URL - should be different from development
 const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  process.env.TEST_DATABASE_URL || "postgresql://test:test@localhost:5433/hive_test";
 
 if (!TEST_DATABASE_URL) {
   throw new Error(
