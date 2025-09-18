@@ -54,6 +54,7 @@ describe("getWorkspaceById", () => {
     swarm: {
       id: "swarm-1",
       status: "ACTIVE" as const,
+      ingestRefId: "ingest-ref-1",
     },
     repositories: [
       {
@@ -84,7 +85,7 @@ describe("getWorkspaceById", () => {
             select: { id: true, name: true, email: true },
           },
           swarm: {
-            select: { id: true, status: true },
+            select: { id: true, status: true, ingestRefId: true },
           },
           repositories: {
             select: {
@@ -126,6 +127,7 @@ describe("getWorkspaceById", () => {
         },
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
+        ingestRefId: "ingest-ref-1",
         repositories: [
           {
             id: "repo-1",
@@ -173,6 +175,7 @@ describe("getWorkspaceById", () => {
         swarm: {
           id: "swarm-1",
           status: "PENDING" as const,
+          ingestRefId: "ingest-ref-1",
         },
       };
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithInactiveSwarm);
@@ -233,6 +236,7 @@ describe("getWorkspaceById", () => {
         hasKey: false, // Mock returns a valid key, so hasKey should be true
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
+        ingestRefId: "ingest-ref-1",
         repositories: [
           {
             id: "repo-1",

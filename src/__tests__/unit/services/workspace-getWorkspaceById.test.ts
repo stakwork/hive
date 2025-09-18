@@ -30,7 +30,7 @@ describe("getWorkspaceById - Unit Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetAllMocks();
-    
+
     // Setup encryption service mock
     mockEncryptionService = {
       decryptField: vi.fn().mockReturnValue(""),
@@ -57,6 +57,7 @@ describe("getWorkspaceById - Unit Tests", () => {
     swarm: {
       id: "swarm-123",
       status: "ACTIVE" as const,
+      ingestRefId: "ingest-123",
     },
     repositories: [
       {
@@ -139,7 +140,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         ...mockWorkspaceData,
         stakworkApiKey: null,
       };
-      
+
       // When an empty string is passed, encryption service returns it as-is (fallback behavior)
       mockEncryptionService.decryptField.mockReturnValue("");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutKey);
@@ -155,7 +156,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         ...mockWorkspaceData,
         swarm: null,
       };
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutSwarm);
 
@@ -174,7 +175,7 @@ describe("getWorkspaceById - Unit Tests", () => {
           status: "FAILED" as const,
         },
       };
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithInactiveSwarm);
 
@@ -190,7 +191,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         ...mockWorkspaceData,
         repositories: [],
       };
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutRepos);
 
@@ -274,7 +275,7 @@ describe("getWorkspaceById - Unit Tests", () => {
       };
 
       const roles = ["ADMIN", "PM", "DEVELOPER", "STAKEHOLDER", "VIEWER"];
-      
+
       for (const role of roles) {
         const mockMembership = {
           id: "membership-123",
@@ -399,7 +400,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         ...mockWorkspaceData,
         description: null,
       };
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithNullDesc);
 
@@ -414,7 +415,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         ...mockWorkspaceData,
         repositories: null,
       };
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithNullRepos);
 
@@ -437,7 +438,7 @@ describe("getWorkspaceById - Unit Tests", () => {
           },
         ],
       };
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithDates);
 
@@ -450,7 +451,7 @@ describe("getWorkspaceById - Unit Tests", () => {
 
     test("should handle empty workspace ID", async () => {
       const userId = "any-user-123";
-      
+
       // Prisma will handle empty ID validation, but we test the function behavior
       (db.workspace.findFirst as Mock).mockResolvedValue(null);
 
@@ -468,7 +469,7 @@ describe("getWorkspaceById - Unit Tests", () => {
 
     test("should handle empty user ID", async () => {
       const userId = "";
-      
+
       mockEncryptionService.decryptField.mockReturnValue("decrypted-api-key");
       (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspaceData);
 
