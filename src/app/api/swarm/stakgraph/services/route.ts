@@ -6,7 +6,7 @@ import { parseEnv } from "@/lib/env-parser";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { fetchStakgraphServices, pollAgentProgress } from "@/services/swarm/stakgraph-services";
-import { parsePM2Content } from "@/utils/devContainerUtils";
+import { parsePM2Content, devcontainerJsonContent } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
 
     let responseData: { services: ServiceConfig[] };
     let environmentVariables: Array<{ name: string; value: string }> | undefined;
+    let containerFiles: Record<string, string> | undefined;
 
     // Always try agent first if repo_url is provided
     if (repo_url) {
@@ -123,6 +124,7 @@ export async function GET(request: NextRequest) {
         const services = parsePM2Content(agentFiles["pm2.config.js"]);
 
         // Parse .env file if present from agent
+        let agentEnvVars: Record<string, string> = {};
         const envContent = agentFiles[".env"];
         if (envContent) {
           try {
@@ -138,15 +140,50 @@ export async function GET(request: NextRequest) {
               // Use as plain text
             }
 
-            const envVars = parseEnv(envText);
-            environmentVariables = Object.entries(envVars).map(([name, value]) => ({
-              name,
-              value
-            }));
+            agentEnvVars = parseEnv(envText);
           } catch (e) {
             console.error("Failed to parse .env file from agent:", e);
           }
         }
+
+        // Now fetch from stakgraph to get any additional env vars
+        const stakgraphResult = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
+          ...(clone === "true" ? { clone } : {}),
+          ...(repo_url ? { repo_url } : {}),
+          ...(githubProfile?.username ? { username: githubProfile.username } : {}),
+          ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+        });
+
+        // Hybrid approach: merge environment variables (agent takes precedence)
+        const mergedEnvVars: Record<string, string> = {};
+
+        // First add stakgraph env vars
+        if (stakgraphResult.environmentVariables) {
+          for (const env of stakgraphResult.environmentVariables) {
+            mergedEnvVars[env.name] = env.value;
+          }
+        }
+
+        // Then overwrite with agent env vars (agent takes precedence)
+        for (const [name, value] of Object.entries(agentEnvVars)) {
+          mergedEnvVars[name] = value;
+        }
+
+        // Convert merged env vars to array format
+        environmentVariables = Object.entries(mergedEnvVars).map(([name, value]) => ({
+          name,
+          value
+        }));
+
+        // Prepare container files
+        // Use swarm's repository name if available, otherwise use the repo name from URL
+        const repoName = swarm.repositoryName || repo;
+        containerFiles = {
+          "Dockerfile": Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString('base64'),
+          "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString('base64'),
+          "docker-compose.yml": Buffer.from(agentFiles["docker-compose.yml"] || "").toString('base64'),
+          "devcontainer.json": Buffer.from(devcontainerJsonContent(repoName)).toString('base64')
+        };
 
         responseData = { services };
 
@@ -175,11 +212,12 @@ export async function GET(request: NextRequest) {
       environmentVariables = result.environmentVariables;
     }
 
-    // Save services and environment variables (only from agent) to database
+    // Save services, environment variables, and container files to database
     await saveOrUpdateSwarm({
       workspaceId: swarm.workspaceId,
       services: responseData.services,
       ...(environmentVariables ? { environmentVariables } : {}),
+      ...(containerFiles ? { containerFiles } : {}),
     });
 
     return NextResponse.json(
