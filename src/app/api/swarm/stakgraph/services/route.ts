@@ -25,7 +25,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
-    const clone = searchParams.get("clone");
     const swarmId = searchParams.get("swarmId");
     const repo_url_param = searchParams.get("repo_url");
 
@@ -51,8 +50,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
-    // Check if services already exist in database
-    if (swarm.services && Array.isArray(swarm.services) && swarm.services.length > 0) {
+    // Check if services already exist in database (services defaults to [] in DB)
+    if (Array.isArray(swarm.services) && swarm.services.length > 0) {
       const services = swarm.services as unknown as ServiceConfig[];
 
       return NextResponse.json(
@@ -148,7 +147,7 @@ export async function GET(request: NextRequest) {
 
         // Now fetch from stakgraph to get any additional env vars
         const stakgraphResult = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
-          ...(clone === "true" ? { clone } : {}),
+          clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
           ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
@@ -191,7 +190,7 @@ export async function GET(request: NextRequest) {
         console.error("Agent mode failed, falling back to stakgraph services endpoint:", error);
         // Fall back to stakgraph services endpoint
         const result = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
-          ...(clone === "true" ? { clone } : {}),
+          clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
           ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
@@ -203,7 +202,7 @@ export async function GET(request: NextRequest) {
     } else {
       // No repo_url provided - call stakgraph services endpoint
       const result = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
-        ...(clone === "true" ? { clone } : {}),
+        clone: "true",  // Always clone to ensure we get the latest code
         ...(githubProfile?.username ? { username: githubProfile.username } : {}),
         ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
       });
