@@ -89,7 +89,7 @@ describe("getWorkspaceById - Unit Tests", () => {
             select: { id: true, name: true, email: true },
           },
           swarm: {
-            select: { id: true, status: true },
+            select: { id: true, status: true, ingestRefId: true },
           },
           repositories: {
             select: {
@@ -119,6 +119,7 @@ describe("getWorkspaceById - Unit Tests", () => {
           name: "Workspace Owner",
           email: "owner@example.com",
         },
+        ingestRefId: "ingest-123",
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         repositories: [
