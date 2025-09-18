@@ -74,8 +74,9 @@ export async function GET(request: NextRequest) {
     let responseData: { services: ServiceConfig[] };
     let environmentVariables: Array<{ name: string; value: string }> | undefined;
     let containerFiles: Record<string, string> | undefined;
+    const cleanSwarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", "") : "";
 
-    let swarmUrl = `https://${swarm.swarmUrl}:3355`;
+    let swarmUrl = `${cleanSwarmUrl}:3355`;
     if (swarm.swarmUrl.includes("localhost")) {
       swarmUrl = `http://localhost:3355`;
     }
