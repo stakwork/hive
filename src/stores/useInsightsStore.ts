@@ -18,7 +18,6 @@ const initialState = {
   janitorConfig: null,
   loading: false,
   recommendationsLoading: false,
-  dismissedSuggestions: new Set<string>(),
   showAll: false,
   runningJanitors: new Set<string>(),
 };
@@ -29,9 +28,9 @@ type InsightsStore = {
   janitorConfig: Record<string, boolean> | null;
   loading: boolean;
   recommendationsLoading: boolean;
-  dismissedSuggestions: Set<string>;
   showAll: boolean;
   runningJanitors: Set<string>;
+  workspaceSlug: string | null;
 
   // Actions
   fetchRecommendations: (slug: string) => Promise<void>;
@@ -41,6 +40,7 @@ type InsightsStore = {
   acceptRecommendation: (id: string) => Promise<any>;
   dismissRecommendation: (id: string) => Promise<void>;
   setShowAll: (show: boolean) => void;
+  setWorkspaceSlug: (slug: string | null) => void;
   reset: () => void;
 };
 
@@ -52,10 +52,10 @@ export const useInsightsStore = create<InsightsStore>()(
     // Fetch recommendations
     fetchRecommendations: async (slug: string) => {
       if (!slug) return;
-      
+
       try {
-        set({ recommendationsLoading: true });
-        const response = await fetch(`/api/workspaces/${slug}/janitors/recommendations?limit=3`);
+        set({ recommendationsLoading: true, workspaceSlug: slug });
+        const response = await fetch(`/api/workspaces/${slug}/janitors/recommendations?limit=10`);
         if (response.ok) {
           const data = await response.json();
           set({ recommendations: data.recommendations || [] });
@@ -153,13 +153,14 @@ export const useInsightsStore = create<InsightsStore>()(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
-        
+
         if (response.ok) {
-          const state = get();
-          set({
-            dismissedSuggestions: new Set([...state.dismissedSuggestions, id])
-          });
           const result = await response.json();
+          // Re-fetch recommendations to get new ones
+          const state = get();
+          if (state.workspaceSlug) {
+            await get().fetchRecommendations(state.workspaceSlug);
+          }
           return result;
         } else {
           const error = await response.json();
@@ -180,12 +181,13 @@ export const useInsightsStore = create<InsightsStore>()(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
-        
+
         if (response.ok) {
+          // Re-fetch recommendations to get new ones
           const state = get();
-          set({
-            dismissedSuggestions: new Set([...state.dismissedSuggestions, id])
-          });
+          if (state.workspaceSlug) {
+            await get().fetchRecommendations(state.workspaceSlug);
+          }
         } else {
           const error = await response.json();
           console.error("Dismiss failed:", error);
@@ -199,6 +201,9 @@ export const useInsightsStore = create<InsightsStore>()(
 
     // Set show all recommendations
     setShowAll: (show: boolean) => set({ showAll: show }),
+
+    // Set workspace slug
+    setWorkspaceSlug: (slug: string | null) => set({ workspaceSlug: slug }),
 
     // Reset store
     reset: () => set(initialState),
