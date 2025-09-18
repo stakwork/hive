@@ -7,9 +7,12 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Clipboard, AlertCircle } from "lucide-react";
 import { useWizardStore } from "@/stores/useWizardStore";
 import { useCallback, useEffect, useState } from "react";
+import { FileDropZone } from "@/components/ui/file-drop-zone";
+import { parseEnv } from "@/lib/env-parser";
+import { useToast } from "@/components/ui/use-toast";
 
 interface EnvironmentSetupStepProps {
   onNext: () => void;
@@ -28,6 +31,8 @@ export function EnvironmentSetupStep({
   const [localVars, setLocalVars] = useState<{ name: string; value: string }[]>(
     [],
   );
+  const [showImportSection, setShowImportSection] = useState(false);
+  const { toast } = useToast();
 
   // Initialize from services[*].env
   useEffect(() => {
@@ -64,6 +69,80 @@ export function EnvironmentSetupStep({
 
   const handleRemove = (index: number) => {
     setLocalVars((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePasteEnv = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = parseEnv(text);
+
+      const count = Object.keys(parsed).length;
+      if (count === 0) {
+        toast({
+          title: "No variables found",
+          description: "The clipboard content doesn't contain valid environment variables.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Merge with existing vars
+      const newVars = Object.entries(parsed).map(([name, value]) => ({ name, value }));
+      setLocalVars(prev => {
+        const existingKeys = new Set(prev.map(v => v.name).filter(Boolean));
+        const filtered = prev.filter(v => v.name || v.value);
+        const toAdd = newVars.filter(v => !existingKeys.has(v.name));
+        return [...filtered, ...toAdd].length > 0 ? [...filtered, ...toAdd] : [{ name: "", value: "" }];
+      });
+
+      toast({
+        title: "Variables imported",
+        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Paste failed",
+        description: "Unable to read from clipboard. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileContent = (content: string, fileName: string) => {
+    try {
+      const parsed = parseEnv(content);
+
+      const count = Object.keys(parsed).length;
+      if (count === 0) {
+        toast({
+          title: "No variables found",
+          description: `The file "${fileName}" doesn't contain valid environment variables.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Merge with existing vars
+      const newVars = Object.entries(parsed).map(([name, value]) => ({ name, value }));
+      setLocalVars(prev => {
+        const existingKeys = new Set(prev.map(v => v.name).filter(Boolean));
+        const filtered = prev.filter(v => v.name || v.value);
+        const toAdd = newVars.filter(v => !existingKeys.has(v.name));
+        return [...filtered, ...toAdd].length > 0 ? [...filtered, ...toAdd] : [{ name: "", value: "" }];
+      });
+
+      toast({
+        title: "Variables imported",
+        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
+      });
+      setShowImportSection(false);
+    } catch (err) {
+      toast({
+        title: "Import failed",
+        description: "Failed to parse the file. Please check the format.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleNext = useCallback(async () => {
@@ -130,7 +209,47 @@ export function EnvironmentSetupStep({
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
+        {/* Import section with better styling */}
+        <div className="border-b pb-4">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mb-3">
+            <span>Quick import:</span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handlePasteEnv}
+              className="h-8"
+            >
+              <Clipboard className="w-3.5 h-3.5 mr-1.5" />
+              Paste ENVs
+            </Button>
+            <span className="text-muted-foreground">or</span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowImportSection(!showImportSection)}
+              className="h-8"
+            >
+              File import
+            </Button>
+          </div>
+
+          {showImportSection && (
+            <div className="animate-in fade-in-0 slide-in-from-top-2 duration-200">
+              <FileDropZone
+                onFileContent={handleFileContent}
+                className="max-w-full"
+              />
+              <div className="mt-2 text-xs text-muted-foreground flex items-start gap-1">
+                <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                <span>Supports .env files with KEY=VALUE format.</span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {localVars.map((env, idx) => (
           <div key={idx} className="flex gap-2 items-center">
             <Input
