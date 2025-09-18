@@ -45,7 +45,10 @@ export async function POST(request: NextRequest) {
             id: true,
             ownerId: true,
             members: {
-              where: { userId },
+              where: { 
+                userId,
+                leftAt: null // Only active members
+              },
               select: { role: true },
             },
           },
@@ -67,8 +70,8 @@ export async function POST(request: NextRequest) {
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    saveOrUpdateSwarm({
-      swarmId,
+    // Save container files to swarm
+    await saveOrUpdateSwarm({
       workspaceId,
       containerFiles: container_files,
     });
@@ -159,8 +162,7 @@ export async function POST(request: NextRequest) {
       container_files,
     });
 
-    saveOrUpdateSwarm({
-      swarmId,
+    await saveOrUpdateSwarm({
       workspaceId,
       poolName: swarmId,
     });
