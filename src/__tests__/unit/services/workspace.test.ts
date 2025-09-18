@@ -318,6 +318,7 @@ describe("Workspace Service - Unit Tests", () => {
       swarm: {
         id: "swarm1",
         status: "ACTIVE",
+        ingestRefId: "ingest-123",
       },
       repositories: [],
     };
@@ -331,7 +332,7 @@ describe("Workspace Service - Unit Tests", () => {
         where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
-          swarm: { select: { id: true, status: true } },
+          swarm: { select: { id: true, status: true, ingestRefId: true } },
           repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
         },
       });
@@ -348,6 +349,7 @@ describe("Workspace Service - Unit Tests", () => {
         owner: mockWorkspace.owner,
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
+        ingestRefId: "ingest-123",
         repositories: [],
       });
     });
@@ -472,7 +474,7 @@ describe("Workspace Service - Unit Tests", () => {
         createdAt: new Date("2024-01-01"),
         updatedAt: new Date("2024-01-01"),
         owner: mockWorkspace.owner,
-        swarm: { id: "swarm1", status: "ACTIVE" },
+        swarm: { id: "swarm1", status: "ACTIVE", ingestRefId: "ingest-123" },
       });
 
       const result = await validateWorkspaceAccess("test-workspace", "user1");
