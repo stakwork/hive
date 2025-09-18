@@ -38,7 +38,7 @@ function hasValidApiKey(stakworkApiKey: string | null): boolean {
   if (!stakworkApiKey) {
     return false;
   }
-  
+
   try {
     const decryptedKey = encryptionService.decryptField("stakworkApiKey", stakworkApiKey);
     return !!decryptedKey && decryptedKey.trim().length > 0;
@@ -142,7 +142,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true },
+        select: { id: true, status: true, ingestRefId: true },
       },
       repositories: {
         select: {
@@ -177,6 +177,7 @@ export async function getWorkspaceById(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+      ingestRefId: workspace.swarm?.ingestRefId || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -211,6 +212,7 @@ export async function getWorkspaceById(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    ingestRefId: workspace.swarm?.ingestRefId || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -236,7 +238,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true },
+        select: { id: true, status: true, ingestRefId: true },
       },
       repositories: {
         select: {
@@ -271,6 +273,7 @@ export async function getWorkspaceBySlug(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+      ingestRefId: workspace.swarm?.ingestRefId || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -305,6 +308,7 @@ export async function getWorkspaceBySlug(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    ingestRefId: workspace.swarm?.ingestRefId || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),

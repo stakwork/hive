@@ -292,24 +292,24 @@ export default function DashboardPage() {
                 <Clock className="w-4 h-4 animate-spin" />
                 <span className="text-sm text-muted-foreground">Loading...</span>
               </div>
-            ) : testCoverage ? (
+            ) : testCoverage?.unit_tests !== null && testCoverage?.integration_tests !== null && testCoverage?.e2e_tests !== null ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Unit</span>
                   <span className="text-sm font-medium">
-                    {testCoverage.unit_tests.percent.toFixed(1)}%
+                    {testCoverage?.unit_tests.percent.toFixed(1)}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Integration</span>
                   <span className="text-sm font-medium">
-                    {testCoverage.integration_tests?.percent.toFixed(1) || 0}%
+                    {testCoverage?.integration_tests?.percent.toFixed(1) || 0}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">E2E</span>
                   <span className="text-sm font-medium">
-                    {testCoverage.e2e_tests?.percent.toFixed(1) || 0}%
+                    {testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%
                   </span>
                 </div>
               </div>

@@ -5,11 +5,10 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SupportedLanguages } from "@/lib/constants";
-import { useWizardStore } from "@/stores/useWizardStore";
 import { AlertCircle, ArrowRight, Github } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 interface WelcomeStepProps {
   onNext: (repositoryUrl?: string) => void;
@@ -17,9 +16,7 @@ interface WelcomeStepProps {
 
 export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
   const [repositoryUrl, setRepositoryUrl] = useState("");
-  const repositoryUrlDraft = useWizardStore((s) => s.repositoryUrlDraft);
   const [error, setError] = useState("");
-  const setRepositoryUrlDraft = useWizardStore((s) => s.setRepositoryUrlDraft);
   const { data: session } = useSession();
 
   const validateGitHubUrl = (url: string): boolean => {
@@ -30,14 +27,9 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
   const handleRepositoryUrlChange = (value: string) => {
     setRepositoryUrl(value);
+    localStorage.setItem("repoUrl", value);
     setError(""); // Clear error when user types
   };
-
-  useEffect(() => {
-    if (repositoryUrlDraft) {
-      setRepositoryUrl(repositoryUrlDraft);
-    }
-  }, [repositoryUrlDraft]);
 
   const handleNext = () => {
     const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
@@ -52,7 +44,6 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
       return;
     }
 
-    setRepositoryUrlDraft(trimmedUrl);
 
     onNext(trimmedUrl);
   };

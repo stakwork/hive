@@ -10,7 +10,7 @@ import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useWizardStore } from "@/stores/useWizardStore";
+import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
@@ -36,34 +36,31 @@ function nextIndexedName(base: string, pool: string[]) {
 export function ProjectNameSetupStep() {
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const swarmId = useWizardStore((s) => s.swarmId);
 
   const newNamesIsSettled = useRef(false);
 
   const router = useRouter();
 
-  const setCurrentStepStatus = useWizardStore((s) => s.setCurrentStepStatus);
-  const currentStepStatus = useWizardStore((s) => s.currentStepStatus);
-  const swarmIsLoading = useWizardStore((s) => s.swarmIsLoading);
-  const repositoryUrlDraft = useWizardStore((s) => s.repositoryUrlDraft);
-  const createSwarm = useWizardStore((s) => s.createSwarm);
-  const selectedRepo = useWizardStore((s) => s.selectedRepo);
-  const projectName = useWizardStore((s) => s.projectName);
-  const setProjectName = useWizardStore((s) => s.setProjectName);
-  const setSelectedRepo = useWizardStore((s) => s.setSelectedRepo);
-  const setWorkspaceSlug = useWizardStore((s) => s.setWorkspaceSlug);
-  const setWorkspaceId = useWizardStore((s) => s.setWorkspaceId);
-  const setHasKey = useWizardStore((s) => s.setHasKey);
-  const resetWizard = useWizardStore((s) => s.resetWizard);
+  const [swarmIsLoading, setSwarmIsLoading] = useState<boolean>(false);
+
+  const [projectName, setProjectName] = useState<string>("");
+  const [workspaceId, setWorkspaceId] = useState<string>("");
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
   const [hasWorkspaceConflict, setHasWorkspaceConflict] = useState<boolean>(false);
   const { refreshWorkspaces, workspaces } = useWorkspace();
-  const isPending = currentStepStatus === "PENDING";
+  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
+  const swarmId = useRef<string>("");
+  const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
 
-  const workspaceSlug = useWizardStore((s) => s.workspaceSlug);
+  const [repositoryUrlDraft, setRepositoryUrlDraft] = useState<string>("");
 
-
+  useEffect(() => {
+    const draft = localStorage.getItem("repoUrl");
+    if (draft) {
+      setRepositoryUrlDraft(draft);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedRepo || projectName) return;
@@ -112,7 +109,6 @@ export function ProjectNameSetupStep() {
 
   const handleCreateWorkspace = async () => {
 
-    setCurrentStepStatus("PENDING");
     try {
       const res = await fetch("/api/workspaces", {
         method: "POST",
@@ -133,13 +129,11 @@ export function ProjectNameSetupStep() {
       if (data?.workspace?.slug && data?.workspace?.id) {
         setWorkspaceSlug(data.workspace.slug);
         setWorkspaceId(data.workspace.id);
-        setHasKey(data.workspace.hasKey);
         await refreshWorkspaces()
       }
 
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unknown error");
-      setCurrentStepStatus("FAILED");
       throw error;
     }
   };
@@ -167,7 +161,10 @@ export function ProjectNameSetupStep() {
       }
     };
 
-    fetchRepositories();
+    if (repositoryUrlDraft) {
+      fetchRepositories();
+    }
+
   }, [repositoryUrlDraft, setSelectedRepo]);
 
   useEffect(() => {
@@ -207,25 +204,77 @@ export function ProjectNameSetupStep() {
   useEffect(() => {
 
     const handleCreateSwarm = async () => {
+
+      setSwarmIsLoading(true);
       try {
-        await createSwarm();
-        localStorage.removeItem("repoUrl");
-        router.push(`/w/${projectName.trim()}/code-graph`);
+
+        const res = await fetch("/api/swarm", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            workspaceId: workspaceId,
+            name: projectName,
+            repositoryName: selectedRepo?.name,
+            repositoryUrl: selectedRepo?.html_url,
+            repositoryDescription: selectedRepo?.description,
+            repositoryDefaultBranch: selectedRepo?.default_branch,
+          }),
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.message || "Failed to create swarm");
+        }
+
+        console.log(json);
+
+        const { swarmId } = json.data;
+
+
+        if (swarmId) {
+          const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspaceId }),
+          });
+
+          if (!ingestRes.ok) {
+            throw new Error(json.message || "Failed to ingest code");
+          }
+
+          const customerRes = await fetch("/api/stakwork/create-customer", {
+            method: "POST",
+            body: JSON.stringify({
+              workspaceId,
+            }),
+          });
+
+          if (!customerRes.ok) {
+            throw new Error(json.message || "Failed to ingest code");
+          }
+
+          localStorage.removeItem("repoUrl");
+          router.push(`/w/${projectName.trim()}`);
+        }
+
       } catch (error) {
         setError(error instanceof Error ? error.message : "Unknown error");
-        setCurrentStepStatus("FAILED");
         throw error;
+      }
+      finally {
+        setSwarmIsLoading(false);
       }
     }
 
-    if (!swarmId && projectName && workspaceSlug) {
+    if (!swarmId.current && projectName && workspaceSlug) {
       handleCreateSwarm();
     }
-  }, [createSwarm, projectName, router, setCurrentStepStatus, swarmId, workspaceSlug]);
+  }, [projectName, router, selectedRepo?.default_branch, selectedRepo?.description, selectedRepo?.html_url, selectedRepo?.name, swarmId, workspaceId, workspaceSlug]);
 
   const resetProgress = () => {
     localStorage.removeItem("repoUrl");
-    resetWizard();
     redirect("/");
   }
 
@@ -319,7 +368,7 @@ export function ProjectNameSetupStep() {
           </svg>
         </div>
         <AnimatePresence mode="wait">
-          {!isPending ? (
+          {!swarmIsLoading ? (
             <motion.div
               key="title-creating"
               initial={{ opacity: 0, y: 10 }}
@@ -385,33 +434,19 @@ export function ProjectNameSetupStep() {
                 </div>
 
                 <div className="flex justify-between pt-4">
-                  {!swarmId ? (
-                    <>
 
-                      <Button variant="outline" type="button" onClick={resetProgress}>
-                        Reset
-                      </Button>
-                      <Button
-                        disabled={swarmIsLoading || hasWorkspaceConflict}
-                        className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                        type="button"
-                        onClick={handleCreateWorkspace}
-                      >
-                        Create
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </Button>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-end gap-2 w-full">
-                      <Button
-                        className="mt-2 ml-auto px-8 bg-muted text-muted-foreground"
-                        type="button"
-                        disabled
-                      >
-                        Generating Swarm...
-                      </Button>
-                    </div>
-                  )}
+                  <Button variant="outline" type="button" onClick={resetProgress}>
+                    Reset
+                  </Button>
+                  <Button
+                    disabled={swarmIsLoading || hasWorkspaceConflict}
+                    className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                    type="button"
+                    onClick={handleCreateWorkspace}
+                  >
+                    Create
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
                 </div>
               </>
             )}
@@ -420,6 +455,6 @@ export function ProjectNameSetupStep() {
 
       </CardContent>
 
-    </Card>
+    </Card >
   );
 }
