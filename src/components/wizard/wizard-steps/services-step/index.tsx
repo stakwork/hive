@@ -29,7 +29,7 @@ export const ServicesStep = ({ onNext, onBack }: ServicesStepProps) => {
       const res = await fetch(
         `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
           workspaceId,
-        )}&swarmId=${encodeURIComponent(swarmId!)}&clone=true&repo_url=${encodeURIComponent(repositoryUrl)}&agent=true`,
+        )}&swarmId=${encodeURIComponent(swarmId!)}&clone=true&repo_url=${encodeURIComponent(repositoryUrl)}`,
       );
       const data = await res.json();
 

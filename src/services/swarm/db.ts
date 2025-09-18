@@ -19,6 +19,7 @@ export interface ServiceConfig {
     postStart?: string;
     rebuild?: string;
   };
+  env?: Record<string, string>;  // Environment variables from stakgraph
 }
 
 interface SaveOrUpdateSwarmParams {
