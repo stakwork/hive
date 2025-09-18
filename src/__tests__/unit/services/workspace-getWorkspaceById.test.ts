@@ -1,7 +1,7 @@
-import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
-import { getWorkspaceById } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { getWorkspaceById } from "@/services/workspace";
+import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
@@ -254,6 +254,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         },
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
+        ingestRefId: "ingest-123",
         repositories: [
           {
             id: "repo-123",
