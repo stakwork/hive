@@ -3,7 +3,7 @@ import { ServiceConfig } from "@/services/swarm/db";
 
 // Helper to call stakgraph services endpoint
 export async function fetchStakgraphServices(
-  swarmVanityAddress: string,
+  swarmUrl: string,
   decryptedApiKey: string,
   params: {
     clone?: string;
@@ -13,7 +13,7 @@ export async function fetchStakgraphServices(
   }
 ): Promise<{ services: ServiceConfig[]; environmentVariables?: Array<{ name: string; value: string }> }> {
   const apiResult = await swarmApiRequestAuth({
-    swarmUrl: `https://${swarmVanityAddress}:3355`,
+    swarmUrl: swarmUrl,
     endpoint: "/services",
     method: "GET",
     params,
@@ -42,12 +42,12 @@ export async function pollAgentProgress(
   swarmUrl: string,
   requestId: string,
   apiKey: string,
-  maxAttempts = 30,
+  maxAttempts = 100,
   delayMs = 2000
 ): Promise<{ ok: boolean; data?: unknown; status: number }> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const progressResult = await swarmApiRequestAuth({
-      swarmUrl: `https://${swarmUrl}:3355`,
+      swarmUrl: swarmUrl,
       endpoint: "/progress",
       method: "GET",
       params: { request_id: requestId },

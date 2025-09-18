@@ -1,5 +1,4 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
@@ -28,11 +27,11 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const repo_url_param = searchParams.get("repo_url");
 
-    if (!workspaceId || !swarmId) {
+    if (!workspaceId && !swarmId) {
       return NextResponse.json(
         {
           success: false,
-          message: "Missing required fields: workspaceId or swarmId",
+          message: "Missing required fields: must provide either workspaceId or swarmId",
         },
         { status: 400 },
       );
@@ -40,12 +39,14 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
-    if (!swarmId && workspaceId) where.workspaceId = workspaceId;
+    else if (workspaceId) where.workspaceId = workspaceId;
+
     const swarm = await db.swarm.findFirst({ where });
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
+
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
@@ -53,7 +54,6 @@ export async function GET(request: NextRequest) {
     // Check if services already exist in database (services defaults to [] in DB)
     if (Array.isArray(swarm.services) && swarm.services.length > 0) {
       const services = swarm.services as unknown as ServiceConfig[];
-
       return NextResponse.json(
         {
           success: true,
@@ -65,7 +65,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Only fetch GitHub profile if we need to make API calls
-    const swarmVanityAddress = getSwarmVanityAddress(swarm.name);
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     const githubProfile = await getGithubUsernameAndPAT(session?.user?.id);
 
@@ -76,6 +75,11 @@ export async function GET(request: NextRequest) {
     let environmentVariables: Array<{ name: string; value: string }> | undefined;
     let containerFiles: Record<string, string> | undefined;
 
+    let swarmUrl = `https://${swarm.swarmUrl}:3355`;
+    if (swarm.swarmUrl.includes("localhost")) {
+      swarmUrl = `http://localhost:3355`;
+    }
+
     // Always try agent first if repo_url is provided
     if (repo_url) {
       // Agent mode - call services_agent endpoint
@@ -84,7 +88,7 @@ export async function GET(request: NextRequest) {
 
         // Start the agent request with proper GitHub authentication
         const agentInitResult = await swarmApiRequestAuth({
-          swarmUrl: `https://${swarmVanityAddress}:3355`,
+          swarmUrl: swarmUrl,
           endpoint: "/services_agent",
           method: "GET",
           params: {
@@ -97,7 +101,6 @@ export async function GET(request: NextRequest) {
         });
 
         if (!agentInitResult.ok) {
-          console.error("Agent init failed:", agentInitResult);
           throw new Error("Failed to initiate agent");
         }
 
@@ -108,7 +111,7 @@ export async function GET(request: NextRequest) {
 
         // Poll for completion
         const agentResult = await pollAgentProgress(
-          swarmVanityAddress,
+          swarmUrl,
           initData.request_id,
           decryptedApiKey
         );
@@ -120,7 +123,8 @@ export async function GET(request: NextRequest) {
         const agentFiles = agentResult.data as Record<string, string>;
 
         // Parse pm2.config.js to extract services
-        const services = parsePM2Content(agentFiles["pm2.config.js"]);
+        const pm2Content = agentFiles["pm2.config.js"];
+        const services = parsePM2Content(pm2Content);
 
         // Parse .env file if present from agent
         let agentEnvVars: Record<string, string> = {};
@@ -146,7 +150,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Now fetch from stakgraph to get any additional env vars
-        const stakgraphResult = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
+        const stakgraphResult = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
           clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
@@ -189,7 +193,7 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         console.error("Agent mode failed, falling back to stakgraph services endpoint:", error);
         // Fall back to stakgraph services endpoint
-        const result = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
+        const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
           clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
@@ -201,7 +205,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // No repo_url provided - call stakgraph services endpoint
-      const result = await fetchStakgraphServices(swarmVanityAddress, decryptedApiKey, {
+      const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
         clone: "true",  // Always clone to ensure we get the latest code
         ...(githubProfile?.username ? { username: githubProfile.username } : {}),
         ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
@@ -227,7 +231,8 @@ export async function GET(request: NextRequest) {
       },
       { status: 200 },
     );
-  } catch {
+  } catch (error) {
+    console.error("Unhandled error:", error);
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }
