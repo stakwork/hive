@@ -347,19 +347,6 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
     console.error("Failed to parse pm2.config.js:", error);
   }
 
-  // Return at least one default service if parsing failed
-  if (services.length === 0) {
-    services.push({
-      name: "app",
-      port: 3000,
-      scripts: {
-        start: "npm run dev",
-        install: "npm install",
-        build: "npm run build"
-      }
-    });
-  }
-
   return services;
 }
 
