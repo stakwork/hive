@@ -1,15 +1,23 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import type { LearnMessage } from '@/types/learn';
 
 interface GeneratePDFOptions {
   question?: string;
   answer: string;
   timestamp: Date;
   elementId?: string;
+  messageElement?: HTMLElement;
+}
+
+interface GenerateConversationPDFOptions {
+  messages: LearnMessage[];
+  timestamp: Date;
+  conversationElement?: HTMLElement;
 }
 
 export async function generateLearningPDF(options: GeneratePDFOptions): Promise<void> {
-  const { question, answer, timestamp, elementId } = options;
+  const { question, answer, timestamp, elementId, messageElement } = options;
 
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
@@ -72,48 +80,75 @@ export async function generateLearningPDF(options: GeneratePDFOptions): Promise<
   pdf.text('Answer:', margin, yPosition);
   yPosition += 7;
 
-  // If elementId is provided, try to capture the rendered HTML
-  if (elementId) {
-    const element = document.getElementById(elementId);
-    if (element) {
-      try {
-        // Temporarily make the element visible if needed
-        const originalDisplay = element.style.display;
-        element.style.display = 'block';
+  // Try to capture the rendered message element first
+  const elementToCapture = messageElement || (elementId ? document.getElementById(elementId) : null);
 
-        const canvas = await html2canvas(element, {
-          useCORS: true,
-          logging: false,
-        });
+  if (elementToCapture) {
+    try {
+      // Create a temporary wrapper to ensure proper styling
+      const tempWrapper = document.createElement('div');
+      tempWrapper.style.position = 'fixed';
+      tempWrapper.style.left = '-9999px';
+      tempWrapper.style.top = '0';
+      tempWrapper.style.width = '800px';
+      tempWrapper.style.backgroundColor = 'white';
+      tempWrapper.style.padding = '20px';
 
-        // Restore original display
-        element.style.display = originalDisplay;
+      // Clone the element to avoid modifying the original
+      const clonedElement = elementToCapture.cloneNode(true) as HTMLElement;
 
-        // Calculate dimensions to fit on page
-        const imgWidth = contentWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // Ensure proper styling for the cloned element
+      clonedElement.style.maxWidth = '100%';
+      clonedElement.style.margin = '0';
 
-        // Check if we need a new page
-        if (yPosition + imgHeight > pageHeight - margin) {
-          pdf.addPage();
-          yPosition = margin;
+      tempWrapper.appendChild(clonedElement);
+      document.body.appendChild(tempWrapper);
+
+      const canvas = await html2canvas(clonedElement, {
+        scale: 2, // Higher quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 800,
+        onclone: (clonedDoc: Document) => {
+          // Ensure styles are properly applied in the clone
+          const clonedEl = clonedDoc.querySelector('[class*="prose"]');
+          if (clonedEl) {
+            // Force text colors for better readability in PDF
+            const allElements = clonedEl.querySelectorAll('*');
+            allElements.forEach((el: Element) => {
+              if (el instanceof HTMLElement) {
+                el.style.color = '#000000';
+              }
+            });
+          }
         }
+      } as any);
 
-        // Add the image
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', margin, yPosition, imgWidth, imgHeight);
+      // Clean up
+      document.body.removeChild(tempWrapper);
 
-      } catch (error) {
-        console.error('Error capturing element:', error);
-        // Fall back to text-based rendering
-        addTextContent(pdf, answer, margin, yPosition, contentWidth);
+      // Calculate dimensions to fit on page
+      const imgWidth = contentWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      // Check if we need a new page
+      if (yPosition + imgHeight > pageHeight - margin) {
+        pdf.addPage();
+        yPosition = margin;
       }
-    } else {
-      // Element not found, use text-based rendering
+
+      // Add the image
+      const imgData = canvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', margin, yPosition, imgWidth, imgHeight);
+
+    } catch (error) {
+      console.error('Error capturing element:', error);
+      // Fall back to text-based rendering
       addTextContent(pdf, answer, margin, yPosition, contentWidth);
     }
   } else {
-    // No element ID provided, use text-based rendering
+    // No element to capture, use text-based rendering
     addTextContent(pdf, answer, margin, yPosition, contentWidth);
   }
 
@@ -135,6 +170,129 @@ export async function generateLearningPDF(options: GeneratePDFOptions): Promise<
 
   // Save the PDF
   pdf.save(filename);
+}
+
+export async function generateConversationPDF(options: GenerateConversationPDFOptions): Promise<void> {
+  const { messages, timestamp } = options;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentWidth = pageWidth - (margin * 2);
+
+  let yPosition = margin;
+
+  // Add title
+  pdf.setFontSize(20);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Learning Assistant Conversation', margin, yPosition);
+  yPosition += 15;
+
+  // Add timestamp
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(100, 100, 100);
+  const formattedDate = timestamp.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  pdf.text(`Exported: ${formattedDate}`, margin, yPosition);
+  yPosition += 10;
+
+  // Add separator line
+  pdf.setLineWidth(0.5);
+  pdf.setDrawColor(200, 200, 200);
+  pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 10;
+
+  // Use text-based rendering
+  addConversationAsText(pdf, messages, margin, yPosition, contentWidth, pageHeight);
+
+  // Generate filename based on the conversation
+  const firstQuestion = messages.find(m => m.role === 'user' && messages.indexOf(m) > 0);
+  let filename: string;
+
+  if (firstQuestion) {
+    const sanitizedQuestion = firstQuestion.content
+      .substring(0, 50) // Shorter limit for cleaner filenames
+      .replace(/[^a-z0-9\s]/gi, '')
+      .trim()
+      .replace(/\s+/g, ' '); // Keep spaces for readability
+    filename = `Hive Learning - ${sanitizedQuestion || 'Export'}.pdf`;
+  } else {
+    filename = 'Hive Learning - Export.pdf';
+  }
+
+  // Save the PDF
+  pdf.save(filename);
+}
+
+function addConversationAsText(
+  pdf: jsPDF,
+  messages: LearnMessage[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  pageHeight: number
+): void {
+  const margin = 20;
+  let currentY = y;
+
+  messages.forEach((message) => {
+    // Check if we need a new page
+    if (currentY + 20 > pageHeight - margin) {
+      pdf.addPage();
+      currentY = margin;
+    }
+
+    // Add role label
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(0, 0, 0);
+    const roleLabel = message.role === 'user' ? 'You:' : 'Learning Assistant:';
+    pdf.text(roleLabel, x, currentY);
+    currentY += 7;
+
+    // Add message content
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+
+    // Basic markdown handling
+    let content = message.content;
+
+    // Handle bullet points
+    content = content.replace(/^[\*\-]\s+/gm, '• ');
+
+    // Handle code blocks
+    content = content.replace(/```[\s\S]*?```/g, (match) => {
+      return match.replace(/```/g, '').trim();
+    });
+
+    // Handle inline code
+    content = content.replace(/`([^`]+)`/g, '$1');
+
+    // Handle bold
+    content = content.replace(/\*\*([^\*]+)\*\*/g, '$1');
+
+    // Remove headers markup
+    content = content.replace(/^#{1,6}\s+(.+)$/gm, '$1');
+
+    const lines = pdf.splitTextToSize(content, maxWidth);
+
+    lines.forEach((line: string) => {
+      if (currentY + 5 > pageHeight - margin) {
+        pdf.addPage();
+        currentY = margin;
+      }
+      pdf.text(line, x, currentY);
+      currentY += 5;
+    });
+
+    currentY += 8; // Add space between messages
+  });
 }
 
 function addTextContent(
