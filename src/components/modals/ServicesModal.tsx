@@ -1,19 +1,38 @@
 "use client";
 
-import * as React from "react";
-import { useState, useCallback, useEffect } from "react";
-import { ServicesForm } from "@/components/stakgraph";
+import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { useWizardStore } from "@/stores/useWizardStore";
-import { ServiceDataConfig } from "@/components/stakgraph/types";
-import { Save, Loader2 } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  devcontainerJsonContent,
+  dockerComposeContent,
+  dockerfileContent,
+  formatPM2Apps,
+  generatePM2Apps,
+} from "../../utils/devContainerUtils";
 import { ModalComponentProps } from "./ModlaProvider";
+
+const getFiles = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+) => {
+  const pm2Apps = generatePM2Apps(repoName, servicesData);
+
+  return {
+    "devcontainer.json": devcontainerJsonContent(repoName),
+    "pm2.config.js": `module.exports = {
+  apps: ${formatPM2Apps(pm2Apps)},
+};
+`,
+    "docker-compose.yml": dockerComposeContent(),
+    Dockerfile: dockerfileContent(),
+  };
+};
 
 type ServicesModalProps = {
   /** optional: anything you might want to pass in future */
@@ -23,50 +42,67 @@ export default function ServicesModal({
   onResolve,
   onReject,
 }: ModalComponentProps<ServicesModalProps>) {
-  const { slug, id: workspaceId } = useWorkspace();
+  const { slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
-  const {
-    formData,
-    loadSettings,
-    handleServicesChange,
-  } = useStakgraphStore();
-
-  // Environment variables state (from wizard store)
-  const services = useWizardStore((s) => s.services);
-  const setEnvVars = useWizardStore((s) => s.setEnvVars);
-  const envVars = useWizardStore((s) => s.envVars);
+  // Local state for services and environment variables
+  const [services, setServices] = useState<ServiceDataConfig[]>([]);
   const [localVars, setLocalVars] = useState<{ name: string; value: string }[]>(
-    [],
+    [{ name: "", value: "" }],
   );
+  const [dataLoading, setDataLoading] = useState(true);
+  const [repoName, setRepoName] = useState<string>("");
 
   // Load settings when modal opens
-  React.useEffect(() => {
-    if (slug) {
-      loadSettings(slug);
-    }
-  }, [slug, loadSettings]);
-
-  // Initialize environment variables from services
   useEffect(() => {
-    if (envVars?.length > 0) {
-      setLocalVars(envVars);
-      return;
-    }
-    const collectedVars: { name: string; value: string }[] = [];
-    services.forEach((service) => {
-      Object.entries(service.env || {}).forEach(([key, value]) => {
-        collectedVars.push({ name: key, value });
-      });
-    });
-    setLocalVars(
-      collectedVars.length > 0 ? collectedVars : [{ name: "", value: "" }],
-    );
-  }, [services, envVars]);
+    const loadData = async () => {
+      if (!slug) return;
+
+      setDataLoading(true);
+      try {
+        const response = await fetch(`/api/workspaces/${slug}/stakgraph`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            const settings = result.data;
+
+            // Set services
+            if (settings.services) {
+              setServices(settings.services);
+            }
+
+            // Set environment variables
+            if (settings.environmentVariables && settings.environmentVariables.length > 0) {
+              setLocalVars(settings.environmentVariables);
+            }
+
+            // Set repo name from swarm data
+            if (settings.repositoryName) {
+              setRepoName(settings.repositoryName);
+            } else {
+              // Fallback to slug if no repo name in swarm
+              setRepoName(slug);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load settings:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load settings",
+          variant: "destructive",
+        });
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    loadData();
+  }, [slug]);
 
   // Close on Escape
-  React.useEffect(() => {
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onReject("esc");
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -109,24 +145,54 @@ export default function ServicesModal({
         .filter((v) => v.name.trim() !== "")
         .map(({ name, value }) => ({ name: name.trim(), value }));
 
-      setEnvVars(cleanedEnvVars);
-
       // Save both services and environment variables
-      await fetch("/api/swarm", {
+      const swarmResponse = await fetch("/api/swarm", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          services: formData.services,
+          services: services,
           envVars: cleanedEnvVars,
+
           workspaceId: workspaceId,
         }),
       });
 
+      if (!swarmResponse.ok) {
+        throw new Error("Failed to update swarm");
+      }
+
+      // Generate container files using the repo name from swarm data
+      const files = getFiles(repoName, services);
+
+      const base64EncodedFiles = Object.entries(files).reduce(
+        (acc, [name, content]) => {
+          acc[name] = Buffer.from(content).toString("base64");
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+
+      // Create pool after swarm update
+      await fetch("/api/pool-manager/create-pool", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          container_files: base64EncodedFiles,
+          workspaceId: workspaceId,
+        }),
+      });
+
+      updateWorkspace({
+        poolState: 'COMPLETE',
+      });
+
       toast({
-        title: "Settings saved",
-        description: "Your services and environment configuration has been saved.",
+        title: "Configuration saved",
+        description: "Your services, environment variables, and pool have been updated.",
       });
       onResolve(true);
     } catch (error) {
@@ -139,14 +205,8 @@ export default function ServicesModal({
     } finally {
       setLoading(false);
     }
-  }, [slug, workspaceId, formData.services, localVars, setEnvVars, toast, onResolve]);
+  }, [slug, workspaceId, services, localVars, repoName, toast, onResolve]);
 
-  const onServicesChange = useCallback(
-    (data: ServiceDataConfig[]) => {
-      handleServicesChange(data);
-    },
-    [handleServicesChange],
-  );
 
   return (
     <>
@@ -169,86 +229,71 @@ export default function ServicesModal({
               <Button variant="outline" onClick={() => onReject("cancel")}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
-                  </>
-                )}
-              </Button>
             </div>
           </CardHeader>
           <CardContent className="overflow-y-auto max-h-[calc(90vh-120px)]">
-            <Tabs defaultValue="environment" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="environment">Environment</TabsTrigger>
-                <TabsTrigger value="services">Services</TabsTrigger>
-              </TabsList>
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold mb-2">Environment Variables</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Add any environment variables your code environment needs.
+              </p>
 
-              <TabsContent value="environment" className="mt-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold mb-2">Environment Variables</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Add any environment variables your code environment needs.
-                  </p>
-
-                  <div className="space-y-3">
-                    {localVars.map((env, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        <Input
-                          placeholder="KEY"
-                          value={env.name}
-                          onChange={(e) => handleEnvChange(idx, "name", e.target.value)}
-                          className="w-1/3"
-                          disabled={loading}
-                        />
-                        <Input
-                          placeholder="VALUE"
-                          value={env.value}
-                          onChange={(e) => handleEnvChange(idx, "value", e.target.value)}
-                          className="w-1/2"
-                          disabled={loading}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => handleRemoveEnv(idx)}
-                          className="px-2"
-                          disabled={localVars.length === 1 || loading}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
-
+              <div className="space-y-3">
+                {localVars.map((env, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <Input
+                      placeholder="KEY"
+                      value={env.name}
+                      onChange={(e) => handleEnvChange(idx, "name", e.target.value)}
+                      className="w-1/3"
+                      disabled={loading}
+                    />
+                    <Input
+                      placeholder="VALUE"
+                      value={env.value}
+                      onChange={(e) => handleEnvChange(idx, "value", e.target.value)}
+                      className="w-1/2"
+                      disabled={loading}
+                    />
                     <Button
                       type="button"
-                      variant="secondary"
-                      onClick={handleAddEnv}
-                      disabled={loading}
-                      className="mt-2"
+                      variant="outline"
+                      onClick={() => handleRemoveEnv(idx)}
+                      className="px-2"
+                      disabled={localVars.length === 1 || loading}
                     >
-                      Add Variable
+                      Remove
                     </Button>
                   </div>
-                </div>
-              </TabsContent>
+                ))}
 
-              <TabsContent value="services" className="mt-6">
-                <ServicesForm
-                  data={formData.services ?? []}
-                  loading={loading}
-                  onChange={onServicesChange}
-                />
-              </TabsContent>
-            </Tabs>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleAddEnv}
+                  disabled={loading || dataLoading}
+                  className="mt-2"
+                >
+                  Add Variable
+                </Button>
+              </div>
+            </div>
           </CardContent>
+          <div className="p-6 border-t">
+            <Button onClick={handleSave} disabled={loading} className="w-full">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Confirm setup
+                </>
+              )}
+            </Button>
+          </div>
         </Card>
       </div>
     </>

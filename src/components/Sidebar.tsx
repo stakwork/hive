@@ -4,23 +4,23 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
+  BookOpen,
   CheckSquare,
   LayoutDashboard,
   Menu,
   Settings,
   Users,
-  BookOpen,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import { Badge } from "@/components/ui/badge";
 
 
 
@@ -68,7 +68,7 @@ const baseNavigationItems = [
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
   const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
-  
+
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
@@ -92,7 +92,7 @@ export function Sidebar({ user }: SidebarProps) {
     if (href === "/tasks") {
       refreshTaskNotifications();
     }
-    
+
     if (workspaceSlug) {
       const fullPath =
         href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
@@ -187,7 +187,7 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-50`}
+        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
           <SidebarContent />

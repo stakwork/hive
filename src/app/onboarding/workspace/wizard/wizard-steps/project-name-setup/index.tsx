@@ -233,7 +233,17 @@ export function ProjectNameSetupStep() {
         const { swarmId } = json.data;
 
 
-        if (swarmId) {
+        if (swarmId && selectedRepo?.html_url) {
+          const servicesRes = await fetch(
+            `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
+              workspaceId,
+            )}&swarmId=${encodeURIComponent(swarmId!)}&repo_url=${encodeURIComponent(selectedRepo?.html_url)}`,
+          );
+
+          const data = await servicesRes.json();
+
+          console.log('services', data);
+
           const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
