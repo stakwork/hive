@@ -282,7 +282,6 @@ describe("POST /api/swarm - Unit Tests", () => {
       
       // Verify password was used in swarm creation
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith({
-        name: "test-swarm-Swarm",
         instance_type: "m6i.xlarge",
         password: "secure-test-password-123",
       });
