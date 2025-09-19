@@ -1,7 +1,7 @@
 // Swarm-specific types and interfaces
 
 export interface CreateSwarmRequest {
-  name: string;
+  // name: string;
   instance_type: string;
   password?: string;
 }
