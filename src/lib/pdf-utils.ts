@@ -82,10 +82,8 @@ export async function generateLearningPDF(options: GeneratePDFOptions): Promise<
         element.style.display = 'block';
 
         const canvas = await html2canvas(element, {
-          scale: 2,
           useCORS: true,
           logging: false,
-          backgroundColor: '#ffffff',
         });
 
         // Restore original display
