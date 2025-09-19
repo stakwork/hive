@@ -30,7 +30,6 @@ export default function ServicesModal({
   const {
     formData,
     loadSettings,
-    saveSettings,
     handleServicesChange,
   } = useStakgraphStore();
 

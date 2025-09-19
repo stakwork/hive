@@ -53,8 +53,8 @@ function ModalRoot({ registry }: { registry: Registry }) {
           <Cmp
             key={inst.id}
             {...(inst.props as any)}
-            onResolve={(v) => resolve(inst.id, v)}
-            onReject={(r) => reject(inst.id, r)}
+            onResolve={(v: unknown) => resolve(inst.id, v)}
+            onReject={(r: unknown) => reject(inst.id, r)}
           />
         );
       })}

@@ -1,7 +1,6 @@
 "use client";
 
 import { ConnectRepository } from "@/components/ConnectRepository";
-import { useModal } from "@/components/modals/ModlaProvider";
 import { EmptyState, TaskCard } from "@/components/tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,8 +31,6 @@ export default function DashboardPage() {
   const [coverageLoading, setCoverageLoading] = useState(false);
   const ingestRefId = workspace?.ingestRefId;
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const open = useModal();
 
   const poolState = workspace?.poolState;
 
@@ -265,7 +262,6 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Welcome to your development workspace." />
-      <div onClick={() => open("ServicesWizard")}>open modal</div>
 
       {/* Show onboarding if needed */}
       {workspace && !workspace.isCodeGraphSetup && <ConnectRepository workspaceSlug={slug} />}
