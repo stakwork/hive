@@ -1,15 +1,19 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { parseEnv } from "@/lib/env-parser";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
+import { fetchStakgraphServices, pollAgentProgress } from "@/services/swarm/stakgraph-services";
+import { parsePM2Content, devcontainerJsonContent } from "@/utils/devContainerUtils";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
+
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,16 +24,14 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
-    const clone = searchParams.get("clone");
-
     const swarmId = searchParams.get("swarmId");
-    const repo_url = searchParams.get("repo_url");
+    const repo_url_param = searchParams.get("repo_url");
 
-    if (!workspaceId || !swarmId) {
+    if (!workspaceId && !swarmId) {
       return NextResponse.json(
         {
           success: false,
-          message: "Missing required fields: workspaceId or swarmId",
+          message: "Missing required fields: must provide either workspaceId or swarmId",
         },
         { status: 400 },
       );
@@ -37,51 +39,201 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
-    if (!swarmId && workspaceId) where.workspaceId = workspaceId;
+    else if (workspaceId) where.workspaceId = workspaceId;
+
     const swarm = await db.swarm.findFirst({ where });
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
+
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
+    // Check if services already exist in database (services defaults to [] in DB)
+    if (Array.isArray(swarm.services) && swarm.services.length > 0) {
+      const services = swarm.services as unknown as ServiceConfig[];
+      return NextResponse.json(
+        {
+          success: true,
+          status: 200,
+          data: { services },
+        },
+        { status: 200 },
+      );
+    }
+
+    // Only fetch GitHub profile if we need to make API calls
+    const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     const githubProfile = await getGithubUsernameAndPAT(session?.user?.id);
 
-    // Proxy to stakgraph microservice
-    const apiResult = await swarmApiRequestAuth({
-      swarmUrl: `https://${getSwarmVanityAddress(swarm.name)}:3355`,
-      endpoint: "/services",
-      method: "GET",
-      params: {
-        ...(clone === "true" ? { clone } : {}),
-        ...(repo_url ? { repo_url } : {}),
-        ...(githubProfile?.username ? { username: githubProfile?.username } : {}),
-        ...(githubProfile?.pat ? { pat: githubProfile?.pat } : {}),
-      },
-      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
-    });
+    // Use repo_url from params or fall back to database
+    const repo_url = repo_url_param || swarm.repositoryUrl;
 
-    // Transform response format: wrap array in {services: [...]} for new format
-    const responseData = Array.isArray(apiResult.data)
-      ? { services: apiResult.data as ServiceConfig[] }
-      : (apiResult.data as { services: ServiceConfig[] });
+    let responseData: { services: ServiceConfig[] };
+    let environmentVariables: Array<{ name: string; value: string }> | undefined;
+    let containerFiles: Record<string, string> | undefined;
+    const cleanSwarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", "") : "";
 
+    let swarmUrl = `${cleanSwarmUrl}:3355`;
+    if (swarm.swarmUrl.includes("localhost")) {
+      swarmUrl = `http://localhost:3355`;
+    }
+
+    // Always try agent first if repo_url is provided
+    if (repo_url) {
+      // Agent mode - call services_agent endpoint
+      try {
+        const { owner, repo } = parseGithubOwnerRepo(repo_url);
+
+        // Start the agent request with proper GitHub authentication
+        const agentInitResult = await swarmApiRequestAuth({
+          swarmUrl: swarmUrl,
+          endpoint: "/services_agent",
+          method: "GET",
+          params: {
+            owner,
+            repo,
+            ...(githubProfile?.username ? { username: githubProfile.username } : {}),
+            ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+          },
+          apiKey: decryptedApiKey,
+        });
+
+        if (!agentInitResult.ok) {
+          throw new Error("Failed to initiate agent");
+        }
+
+        const initData = agentInitResult.data as { request_id: string };
+        if (!initData.request_id) {
+          throw new Error("No request_id received from agent");
+        }
+
+        // Poll for completion
+        const agentResult = await pollAgentProgress(
+          swarmUrl,
+          initData.request_id,
+          decryptedApiKey
+        );
+
+        if (!agentResult.ok) {
+          throw new Error("Agent failed to complete");
+        }
+
+        const agentFiles = agentResult.data as Record<string, string>;
+
+        // Parse pm2.config.js to extract services
+        const pm2Content = agentFiles["pm2.config.js"];
+        const services = parsePM2Content(pm2Content);
+
+        // Parse .env file if present from agent
+        let agentEnvVars: Record<string, string> = {};
+        const envContent = agentFiles[".env"];
+        if (envContent) {
+          try {
+            // Try to parse - could be plain text or base64
+            let envText = envContent;
+            try {
+              // Check if it's base64
+              const decoded = Buffer.from(envContent, 'base64').toString('utf-8');
+              if (decoded.includes('=')) { // Simple check if it looks like env format
+                envText = decoded;
+              }
+            } catch {
+              // Use as plain text
+            }
+
+            agentEnvVars = parseEnv(envText);
+          } catch (e) {
+            console.error("Failed to parse .env file from agent:", e);
+          }
+        }
+
+        // Now fetch from stakgraph to get any additional env vars
+        const stakgraphResult = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
+          clone: "true",  // Always clone to ensure we get the latest code
+          ...(repo_url ? { repo_url } : {}),
+          ...(githubProfile?.username ? { username: githubProfile.username } : {}),
+          ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+        });
+
+        // Hybrid approach: merge environment variables (agent takes precedence)
+        const mergedEnvVars: Record<string, string> = {};
+
+        // First add stakgraph env vars
+        if (stakgraphResult.environmentVariables) {
+          for (const env of stakgraphResult.environmentVariables) {
+            mergedEnvVars[env.name] = env.value;
+          }
+        }
+
+        // Then overwrite with agent env vars (agent takes precedence)
+        for (const [name, value] of Object.entries(agentEnvVars)) {
+          mergedEnvVars[name] = value;
+        }
+
+        // Convert merged env vars to array format
+        environmentVariables = Object.entries(mergedEnvVars).map(([name, value]) => ({
+          name,
+          value
+        }));
+
+        // Prepare container files
+        // Use swarm's repository name if available, otherwise use the repo name from URL
+        const repoName = swarm.repositoryName || repo;
+        containerFiles = {
+          "Dockerfile": Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString('base64'),
+          "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString('base64'),
+          "docker-compose.yml": Buffer.from(agentFiles["docker-compose.yml"] || "").toString('base64'),
+          "devcontainer.json": Buffer.from(devcontainerJsonContent(repoName)).toString('base64')
+        };
+
+        responseData = { services };
+
+      } catch (error) {
+        console.error("Agent mode failed, falling back to stakgraph services endpoint:", error);
+        // Fall back to stakgraph services endpoint
+        const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
+          clone: "true",  // Always clone to ensure we get the latest code
+          ...(repo_url ? { repo_url } : {}),
+          ...(githubProfile?.username ? { username: githubProfile.username } : {}),
+          ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+        });
+
+        responseData = { services: result.services };
+        environmentVariables = result.environmentVariables;
+      }
+    } else {
+      // No repo_url provided - call stakgraph services endpoint
+      const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
+        clone: "true",  // Always clone to ensure we get the latest code
+        ...(githubProfile?.username ? { username: githubProfile.username } : {}),
+        ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+      });
+
+      responseData = { services: result.services };
+      environmentVariables = result.environmentVariables;
+    }
+
+    // Save services, environment variables, and container files to database
     await saveOrUpdateSwarm({
       workspaceId: swarm.workspaceId,
       services: responseData.services,
+      ...(environmentVariables ? { environmentVariables } : {}),
+      ...(containerFiles ? { containerFiles } : {}),
     });
 
     return NextResponse.json(
       {
-        success: apiResult.ok,
-        status: apiResult.status,
+        success: true,
+        status: 200,
         data: responseData,
       },
-      { status: apiResult.status },
+      { status: 200 },
     );
-  } catch {
+  } catch (error) {
+    console.error("Unhandled error:", error);
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }
