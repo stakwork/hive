@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
-import { RepositoryStatus } from "@prisma/client";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import { RepositoryStatus } from "@prisma/client";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,12 +90,13 @@ export async function POST(request: NextRequest) {
           workspaceId: swarm.workspaceId,
           ingestRefId: requestId,
         });
+
         console.log("STAKGRAPH SYNC START SAVED INGEST REF ID", {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
-          savedIngestRefId: updatedSwarm.ingestRefId,
-          swarmUpdatedAt: updatedSwarm.updatedAt,
+          savedIngestRefId: updatedSwarm?.ingestRefId,
+          swarmUpdatedAt: updatedSwarm?.updatedAt,
         });
       } catch (err) {
         console.error("Failed to store ingestRefId for sync", err, {
