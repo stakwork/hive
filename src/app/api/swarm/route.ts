@@ -74,13 +74,11 @@ export async function POST(request: NextRequest) {
     const swarmConfig = getServiceConfig("swarm");
     const swarmService = new SwarmService(swarmConfig);
 
-    const thirdPartyName = `${name.toLowerCase()}-Swarm`;
 
     // Generate a secure password for the swarm
     const swarmPassword = generateSecurePassword(20);
 
     const apiResponse = await swarmService.createSwarm({
-      name: thirdPartyName,
       instance_type,
       password: swarmPassword,
     });

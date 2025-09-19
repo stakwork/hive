@@ -34,13 +34,15 @@ export default function DashboardPage() {
 
   const poolState = workspace?.poolState;
 
+  const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
+
   const isEnvironmentSetup = poolState === "COMPLETE";
 
   console.log(isEnvironmentSetup);
 
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
-    if (!ingestRefId || !workspaceId) return;
+    if (codeIsSynced || !ingestRefId || !workspaceId) return;
 
     let isCancelled = false;
 
@@ -58,6 +60,13 @@ export default function DashboardPage() {
 
         if (data?.status === "Complete") {
           console.log('Ingestion completed');
+
+          updateWorkspace({
+            repositories: workspace?.repositories.map((repo) => ({
+              ...repo,
+              status: "SYNCED",
+            })),
+          });
 
           toast({
             title: "Code Ingestion Complete",
@@ -93,7 +102,7 @@ export default function DashboardPage() {
         pollTimeoutRef.current = null;
       }
     };
-  }, [ingestRefId, workspaceId, toast, updateWorkspace]);
+  }, [ingestRefId, workspaceId, toast, updateWorkspace, codeIsSynced]);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
