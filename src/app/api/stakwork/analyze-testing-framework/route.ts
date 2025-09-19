@@ -39,8 +39,7 @@ export async function POST(request: NextRequest) {
     // Get the repository and swarm data
     const repository = await db.repository.findFirst({
       where: {
-        workspaceId,
-        repositoryUrl: { not: null }
+        workspaceId
       },
       orderBy: { createdAt: 'desc' }
     });
