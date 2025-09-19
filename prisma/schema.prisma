@@ -260,6 +260,10 @@ model Repository {
   githubWebhookId     String? @map("github_webhook_id")
   githubWebhookSecret String? @map("github_webhook_secret")
 
+  // Test setup flags
+  testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
+  playwrightSetup       Boolean @default(false) @map("playwright_setup")
+
   // Repository belongs to workspace
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
