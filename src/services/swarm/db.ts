@@ -67,6 +67,8 @@ export const select = {
   poolName: true,
   poolCpu: true,
   poolMemory: true,
+  poolState: true,
+  codeIngested: true,
   services: true,
   swarmSecretAlias: true,
   wizardStep: true,
