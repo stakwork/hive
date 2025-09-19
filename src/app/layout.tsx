@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import ModalClient from "./ModalClient";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -38,7 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>
               <WorkspaceProvider>
-                {children}
+                <ModalClient>
+                  {children}
+                </ModalClient>
               </WorkspaceProvider>
             </SessionProvider>
           </ThemeProvider>

@@ -1,6 +1,7 @@
 "use client";
 
 import { ConnectRepository } from "@/components/ConnectRepository";
+import { useModal } from "@/components/modals/ModlaProvider";
 import { EmptyState, TaskCard } from "@/components/tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,8 @@ export default function DashboardPage() {
   const ingestRefId = workspace?.ingestRefId;
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const open = useModal();
+
   const poolState = workspace?.poolState;
 
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
@@ -59,7 +62,6 @@ export default function DashboardPage() {
         console.log("Ingest status:", data);
 
         if (data?.status === "Complete") {
-          console.log('Ingestion completed');
 
           updateWorkspace({
             repositories: workspace?.repositories.map((repo) => ({
@@ -68,10 +70,6 @@ export default function DashboardPage() {
             })),
           });
 
-          toast({
-            title: "Code Ingestion Complete",
-            description: "Your codebase has been successfully ingested and is ready for use.",
-          });
           return; // Stop polling
         } else if (data?.status === "Failed") {
           console.log('Ingestion failed');
@@ -267,6 +265,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Welcome to your development workspace." />
+      <div onClick={() => open("ServicesWizard")}>open modal</div>
 
       {/* Show onboarding if needed */}
       {workspace && !workspace.isCodeGraphSetup && <ConnectRepository workspaceSlug={slug} />}
