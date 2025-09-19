@@ -20,7 +20,6 @@ interface LearnChatAreaProps {
 export function LearnChatArea({ messages, onSend, isLoading = false, onInputChange }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  const conversationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,7 +35,6 @@ export function LearnChatArea({ messages, onSend, isLoading = false, onInputChan
       await generateConversationPDF({
         messages,
         timestamp: new Date(),
-        conversationElement: conversationRef.current || undefined,
       });
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -92,7 +90,6 @@ export function LearnChatArea({ messages, onSend, isLoading = false, onInputChan
       {/* Messages - Scrollable area with bottom padding for input */}
       <div className="flex-1 px-6 py-6 pb-24 bg-muted/40 border-l border-r">
         <motion.div
-          ref={conversationRef}
           className="space-y-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
