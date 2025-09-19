@@ -35,7 +35,6 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   };
   isCodeGraphSetup: boolean;
   ingestRefId: string | null;
-  codeIngested: boolean;
   poolState: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE" | null;
   swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
   repositories: Array<{

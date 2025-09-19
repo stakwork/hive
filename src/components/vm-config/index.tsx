@@ -12,14 +12,13 @@ export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
   const swarmStatus = workspace?.swarmStatus;
 
-  const codeIngested = workspace?.codeIngested;
   const poolState = workspace?.poolState;
   const poolStateCompleted = workspace?.poolState === "COMPLETE";
 
   console.log(poolStateCompleted);
 
   // Check if we should show the modal
-  const shouldShowWarning = poolState !== "STARTED" || codeIngested === false;
+  const shouldShowWarning = poolState !== "STARTED";
 
 
   // Determine UI state based on swarm status

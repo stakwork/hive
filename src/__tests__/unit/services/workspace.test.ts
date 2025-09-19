@@ -319,8 +319,7 @@ describe("Workspace Service - Unit Tests", () => {
         id: "swarm1",
         status: "ACTIVE",
         ingestRefId: "ingest-123",
-        codeIngested: true,
-        poolState: "STARTED",
+                poolState: "STARTED",
       },
       repositories: [],
     };
@@ -334,7 +333,7 @@ describe("Workspace Service - Unit Tests", () => {
         where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
-          swarm: { select: { id: true, status: true, ingestRefId: true, codeIngested: true, poolState: true } },
+          swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true } },
           repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
         },
       });
@@ -352,8 +351,7 @@ describe("Workspace Service - Unit Tests", () => {
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         ingestRefId: "ingest-123",
-        codeIngested: true,
-        poolState: "STARTED",
+                poolState: "STARTED",
         repositories: [],
       });
     });

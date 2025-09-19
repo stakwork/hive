@@ -168,25 +168,6 @@ export async function GET(request: NextRequest) {
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 
-    // If the ingest is complete and codeIngested is not already true, update it
-    if (
-      apiResult.ok &&
-      apiResult.data &&
-      typeof apiResult.data === "object" &&
-      "status" in apiResult.data &&
-      apiResult.data.status === "Complete" &&
-      !swarm.codeIngested
-    ) {
-      try {
-        await db.swarm.update({
-          where: { workspaceId },
-          data: { codeIngested: true }
-        });
-        console.log(`Updated codeIngested to true for workspace ${workspaceId}`);
-      } catch (updateError) {
-        console.error("Error updating codeIngested status:", updateError);
-      }
-    }
 
     return NextResponse.json(
       {

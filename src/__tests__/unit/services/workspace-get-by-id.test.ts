@@ -55,7 +55,6 @@ describe("getWorkspaceById", () => {
       id: "swarm-1",
       status: "ACTIVE" as const,
       ingestRefId: "ingest-ref-1",
-      codeIngested: true,
       poolState: "COMPLETE" as const,
     },
     repositories: [
@@ -87,7 +86,7 @@ describe("getWorkspaceById", () => {
             select: { id: true, name: true, email: true },
           },
           swarm: {
-            select: { id: true, status: true, ingestRefId: true, codeIngested: true, poolState: true },
+            select: { id: true, status: true, ingestRefId: true, poolState: true },
           },
           repositories: {
             select: {
@@ -130,8 +129,7 @@ describe("getWorkspaceById", () => {
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         ingestRefId: "ingest-ref-1",
-        codeIngested: true,
-        poolState: "COMPLETE",
+          poolState: "COMPLETE",
         repositories: [
           {
             id: "repo-1",
@@ -180,7 +178,6 @@ describe("getWorkspaceById", () => {
           id: "swarm-1",
           status: "PENDING" as const,
           ingestRefId: "ingest-ref-1",
-          codeIngested: false,
           poolState: "NOT_STARTED" as const,
         },
       };
@@ -243,8 +240,7 @@ describe("getWorkspaceById", () => {
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         ingestRefId: "ingest-ref-1",
-        codeIngested: true,
-        poolState: "COMPLETE",
+          poolState: "COMPLETE",
         repositories: [
           {
             id: "repo-1",
