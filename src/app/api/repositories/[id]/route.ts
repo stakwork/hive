@@ -3,9 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const updateRepositorySchema = z.object({
-  name: z.string().optional(),
-  branch: z.string().optional(),
-  status: z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]).optional(),
   testingFrameworkSetup: z.boolean().optional(),
   playwrightSetup: z.boolean().optional(),
 });
