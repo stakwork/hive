@@ -1,11 +1,14 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Download, Loader2 } from "lucide-react";
 import { LearnChatMessage } from "./LearnChatMessage";
 import { LearnChatInput } from "./LearnChatInput";
 import type { LearnMessage } from "@/types/learn";
+import { generateConversationPDF } from "@/lib/pdf-utils";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface LearnChatAreaProps {
   messages: LearnMessage[];
@@ -16,10 +19,29 @@ interface LearnChatAreaProps {
 
 export function LearnChatArea({ messages, onSend, isLoading = false, onInputChange }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Only show download if there's at least one Q&A exchange (not counting initial greeting)
+  const hasValidConversation = messages.length > 1 &&
+    messages.some(m => m.role === "assistant" && m.id !== "1" && !m.isError);
+
+  const handleDownloadPDF = async () => {
+    try {
+      setIsGeneratingPDF(true);
+      await generateConversationPDF({
+        messages,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col relative">
@@ -30,11 +52,39 @@ export function LearnChatArea({ messages, onSend, isLoading = false, onInputChan
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="flex items-center gap-3">
-          <BookOpen className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-semibold text-foreground">Learning Assistant</h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <BookOpen className="w-5 h-5 text-primary" />
+              <h1 className="text-lg font-semibold text-foreground">Learning Assistant</h1>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">Ask questions, get explanations, and learn new concepts</p>
+          </div>
+          {hasValidConversation && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleDownloadPDF}
+                    disabled={isGeneratingPDF}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {isGeneratingPDF ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    <span className="ml-2">Export</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Download conversation as PDF</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
-        <p className="text-sm text-muted-foreground mt-1">Ask questions, get explanations, and learn new concepts</p>
       </motion.div>
 
       {/* Messages - Scrollable area with bottom padding for input */}
@@ -45,12 +95,8 @@ export function LearnChatArea({ messages, onSend, isLoading = false, onInputChan
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
         >
-          {messages.map((message, index) => (
-            <LearnChatMessage
-              key={message.id}
-              message={message}
-              previousMessage={index > 0 ? messages[index - 1] : undefined}
-            />
+          {messages.map((message) => (
+            <LearnChatMessage key={message.id} message={message} />
           ))}
 
           {isLoading && (
