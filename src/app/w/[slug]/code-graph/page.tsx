@@ -1,13 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { WizardStepRenderer } from "@/components/wizard/WizardStepRenderer";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWizardStore } from "@/stores/useWizardStore";
@@ -93,7 +87,7 @@ export default function CodeGraphPage() {
         console.log("Ingest status:", data);
 
         if (data.status === "Complete") {
-          console.log('ingestion completed');
+          console.log("ingestion completed");
         } else {
           pollTimeoutRef.current = setTimeout(getIngestStatus, 3000);
         }
@@ -141,13 +135,7 @@ export default function CodeGraphPage() {
         setCurrentStepStatus("PENDING");
       }
     }
-  }, [
-    currentStep,
-    swarmId,
-    updateWizardProgress,
-    setCurrentStep,
-    setCurrentStepStatus,
-  ]);
+  }, [currentStep, swarmId, updateWizardProgress, setCurrentStep, setCurrentStepStatus]);
 
   const handleBack = useCallback(async () => {
     const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
@@ -175,13 +163,7 @@ export default function CodeGraphPage() {
         setCurrentStepStatus("COMPLETED");
       }
     }
-  }, [
-    currentStep,
-    swarmId,
-    updateWizardProgress,
-    setCurrentStep,
-    setCurrentStepStatus,
-  ]);
+  }, [currentStep, swarmId, updateWizardProgress, setCurrentStep, setCurrentStepStatus]);
 
   // Loading state
   if (loading || !stepIsSettled) {
@@ -233,29 +215,19 @@ export default function CodeGraphPage() {
 
           {currentStep === "COMPLETION" ? (
             <div className="text-center">
-              <h1 className="text-3xl font-bold text-foreground">
-                CodeGraph Setup Complete
-              </h1>
+              <h1 className="text-3xl font-bold text-foreground">CodeGraph Setup Complete</h1>
             </div>
           ) : (
             <>
               <div className="text-center">
-                <h1 className="text-3xl font-bold text-foreground">
-                  Setting up CodeGraph
-                </h1>
+                <h1 className="text-3xl font-bold text-foreground">Setting up CodeGraph</h1>
               </div>
 
-              <div className="flex justify-center">
-                It will take up to 5 minutes to complete the setup.
-              </div>
+              <div className="flex justify-center">It will take up to 5 minutes to complete the setup.</div>
             </>
           )}
 
-          <WizardStepRenderer
-            onNext={handleNext}
-            onBack={handleBack}
-            step={currentStep}
-          />
+          <WizardStepRenderer onNext={handleNext} onBack={handleBack} step={currentStep} />
         </div>
       </div>
     </div>

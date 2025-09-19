@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { useMemo } from "react";
-import type { UncoveredNodeConcise } from "@/types/stakgraph";
+import type { UncoveredNodeConcise, UncoveredNodeType } from "@/types/stakgraph";
 
 export function CoverageInsights() {
-  const { items, loading, error, page, setPage, setTests, params } = useUncoveredNodes({
+  const { items, loading, error, page, setPage, setTests, setNodeType, params } = useUncoveredNodes({
     nodeType: "endpoint",
     tests: "all",
     limit: 10,
@@ -38,18 +38,35 @@ export function CoverageInsights() {
             <CardTitle className="text-base">Endpoint Coverage</CardTitle>
             <CardDescription>List of uncovered endpoints from stakgraph</CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">Filter: Endpoints</Badge>
-            <select
-              className="border rounded px-2 py-1 text-sm"
-              value={params.tests}
-              onChange={(e) => setTests(e.target.value as "unit" | "integration" | "e2e" | "all")}
-            >
-              <option value="unit">Unit</option>
-              <option value="integration">Integration</option>
-              <option value="e2e">E2E</option>
-              <option value="all">All</option>
-            </select>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="p-2">
+                Node Type
+              </Badge>
+              <select
+                className="border rounded px-2 py-1 text-sm"
+                value={params.nodeType}
+                onChange={(e) => setNodeType(e.target.value as UncoveredNodeType)}
+              >
+                <option value="endpoint">Endpoint</option>
+                <option value="function">Function</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="p-2">
+                Test Type
+              </Badge>
+              <select
+                className="border rounded px-2 py-1 text-sm"
+                value={params.tests}
+                onChange={(e) => setTests(e.target.value as "unit" | "integration" | "e2e" | "all")}
+              >
+                <option value="all">All</option>
+                <option value="unit">Unit</option>
+                <option value="integration">Integration</option>
+                <option value="e2e">E2E</option>
+              </select>
+            </div>
           </div>
         </div>
       </CardHeader>
