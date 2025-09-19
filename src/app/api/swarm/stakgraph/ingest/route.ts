@@ -5,9 +5,9 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
-import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -18,6 +18,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
@@ -121,7 +122,6 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
-  const swarmId = searchParams.get("swarmId");
   const workspaceId = searchParams.get("workspaceId");
 
   try {
@@ -130,8 +130,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
-    if (!id) {
-      return NextResponse.json({ success: false, message: "Missing required fields: id" }, { status: 400 });
+    if (!id || !workspaceId) {
+      return NextResponse.json(
+        { success: false, message: "Missing required fields: id, workspaceId" },
+        { status: 400 },
+      );
     }
 
     const githubCreds = await getGithubUsernameAndPAT(session.user.id);
@@ -144,16 +147,10 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
-    // const { username, pat } = githubCreds;
 
-    const where: Record<string, string> = {};
-    if (swarmId) {
-      where.swarmId = swarmId;
-    }
-    if (!swarmId && workspaceId) {
-      where.workspaceId = workspaceId;
-    }
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarm.findUnique({
+      where: { workspaceId }
+    });
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
@@ -170,6 +167,26 @@ export async function GET(request: NextRequest) {
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
+
+    // If the ingest is complete and codeIngested is not already true, update it
+    if (
+      apiResult.ok &&
+      apiResult.data &&
+      typeof apiResult.data === "object" &&
+      "status" in apiResult.data &&
+      apiResult.data.status === "Complete" &&
+      !swarm.codeIngested
+    ) {
+      try {
+        await db.swarm.update({
+          where: { workspaceId },
+          data: { codeIngested: true }
+        });
+        console.log(`Updated codeIngested to true for workspace ${workspaceId}`);
+      } catch (updateError) {
+        console.error("Error updating codeIngested status:", updateError);
+      }
+    }
 
     return NextResponse.json(
       {

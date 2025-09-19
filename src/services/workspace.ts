@@ -238,7 +238,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true },
+        select: { id: true, status: true, ingestRefId: true, codeIngested: true, poolState: true },
       },
       repositories: {
         select: {
@@ -274,6 +274,8 @@ export async function getWorkspaceBySlug(
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
+      codeIngested: workspace.swarm?.codeIngested || false,
+      poolState: workspace.swarm?.poolState || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),

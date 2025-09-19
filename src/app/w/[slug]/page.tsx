@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { Gitsee } from "./graph/gitsee";
 
 export default function DashboardPage() {
-  const { workspace, slug, id: workspaceId } = useWorkspace();
+  const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp();
   const searchParams = useSearchParams();
@@ -29,8 +29,76 @@ export default function DashboardPage() {
   const [isIngesting, setIsIngesting] = useState(false);
   const [testCoverage, setTestCoverage] = useState<TestCoverageData | null>(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
+  const ingestRefId = workspace?.ingestRefId;
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  console.log(workspace);
+  const codeIngested = workspace?.codeIngested;
+  const poolState = workspace?.poolState;
+
+  const isEnvironmentSetup = codeIngested && poolState === "COMPLETE";
+
+  console.log(isEnvironmentSetup);
+
+  // Poll ingest status if we have an ingestRefId and code is not yet ingested
+  useEffect(() => {
+    if (!ingestRefId || !workspaceId || codeIngested) return;
+
+    let isCancelled = false;
+
+    const getIngestStatus = async () => {
+      if (isCancelled) return;
+
+      try {
+        const res = await fetch(
+          `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
+        );
+        const { apiResult } = await res.json();
+        const { data } = apiResult;
+
+        console.log("Ingest status:", data);
+
+        if (data?.status === "Complete") {
+          console.log('Ingestion completed');
+
+          // Update the workspace context immediately to stop polling
+          updateWorkspace({ codeIngested: true });
+
+          toast({
+            title: "Code Ingestion Complete",
+            description: "Your codebase has been successfully ingested and is ready for use.",
+          });
+          // The database is updated automatically in the GET endpoint
+          return; // Stop polling
+        } else if (data?.status === "Failed") {
+          console.log('Ingestion failed');
+          toast({
+            title: "Code Ingestion Failed",
+            description: "There was an error ingesting your codebase. Please try again.",
+            variant: "destructive",
+          });
+        } else {
+          // Continue polling if still in progress
+          pollTimeoutRef.current = setTimeout(getIngestStatus, 5000);
+        }
+      } catch (error) {
+        console.error("Failed to get ingest status:", error);
+        // Retry after a longer delay on error
+        if (!isCancelled) {
+          pollTimeoutRef.current = setTimeout(getIngestStatus, 10000);
+        }
+      }
+    };
+
+    getIngestStatus();
+
+    return () => {
+      isCancelled = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [ingestRefId, workspaceId, codeIngested, toast, updateWorkspace]);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
