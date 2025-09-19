@@ -45,8 +45,12 @@ export function LearnChatArea({ messages, onSend, isLoading = false, onInputChan
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
         >
-          {messages.map((message) => (
-            <LearnChatMessage key={message.id} message={message} />
+          {messages.map((message, index) => (
+            <LearnChatMessage
+              key={message.id}
+              message={message}
+              previousMessage={index > 0 ? messages[index - 1] : undefined}
+            />
           ))}
 
           {isLoading && (
