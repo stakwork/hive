@@ -189,7 +189,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Swarm updated successfully",
-      data: { id: updatedSwarm.id },
+      data: { id: updatedSwarm?.id },
     });
   } catch (error) {
     console.error("Error creating Swarm:", error);
