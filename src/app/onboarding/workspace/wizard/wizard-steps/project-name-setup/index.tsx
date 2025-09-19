@@ -304,6 +304,22 @@ export function ProjectNameSetupStep() {
             throw new Error(json.message || "Failed to ingest code");
           }
 
+          // Trigger testing framework analysis (non-blocking)
+          try {
+            const testingFrameworkRes = await fetch("/api/stakwork/analyze-testing-framework", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ workspaceId }),
+            });
+
+            if (!testingFrameworkRes.ok) {
+              console.error("Failed to trigger testing framework analysis, continuing anyway");
+            }
+          } catch (error) {
+            console.error("Error triggering testing framework analysis:", error);
+            // Non-blocking - continue with onboarding
+          }
+
           localStorage.removeItem("repoUrl");
           router.push(`/w/${projectName.trim()}`);
         }
