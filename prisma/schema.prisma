@@ -210,6 +210,7 @@ model Swarm {
   updatedAt    DateTime    @updatedAt @map("updated_at")
 
   // Stakgraph configuration fields
+  poolState             PoolState @default(NOT_STARTED) @map("pool_state")
   poolName              String? @map("pool_name")
   poolApiKey            String? @map("pool_api_key") // Pool API Key for Pool Manager
   poolCpu               String? @map("pool_cpu") // CPU allocation for pool tasks
@@ -218,6 +219,7 @@ model Swarm {
   defaultBranch         String? @map("default_branch")
   repositoryDescription String? @map("repository_description")
   repositoryUrl         String? @map("repository_url")
+  codeIngested          Boolean @default(false) @map("code_ingested")
   swarmApiKey           String? @map("swarm_api_key")
   swarmSecretAlias      String? @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
   environmentVariables  Json    @default("[]") @map("environment_variables")
@@ -743,6 +745,13 @@ enum RepositoryStatus {
   PENDING
   SYNCED
   FAILED
+}
+
+enum PoolState {
+  NOT_STARTED
+  STARTED
+  FAILED
+  COMPLETE
 }
 
 enum FeatureStatus {

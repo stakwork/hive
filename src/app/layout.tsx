@@ -5,6 +5,7 @@ import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
+import { GlobalModalProvider } from "@/components/modals/GlobalModalProvider";
 import Script from "next/script";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -37,7 +38,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>
-              <WorkspaceProvider>{children}</WorkspaceProvider>
+              <WorkspaceProvider>
+                {children}
+                <GlobalModalProvider />
+              </WorkspaceProvider>
             </SessionProvider>
           </ThemeProvider>
         </ToastProvider>
