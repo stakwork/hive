@@ -439,7 +439,11 @@ export function ProjectNameSetupStep() {
                     placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
                     value={isLookingForAvailableName ? "" : projectName}
                     className={`mt-2 ${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
-                    onChange={(e) => setProjectName(e.target.value)}
+                    onChange={(e) => {
+                      // Remove spaces and convert to lowercase
+                      const value = e.target.value.replace(/\s+/g, '').toLowerCase();
+                      setProjectName(value);
+                    }}
                   />
                 </div>
 
