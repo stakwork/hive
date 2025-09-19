@@ -61,6 +61,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
         content: "I'm sorry, but I encountered an error while processing your question. Please try again later.",
         role: "assistant",
         timestamp: new Date(),
+        isError: true,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
