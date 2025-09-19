@@ -1,6 +1,6 @@
 import { StepStatus, WorkflowStatus, RepositoryStatus } from "@prisma/client";
 
-function normalizeStatus(status: string): string {
+export function normalizeStatus(status: string): string {
   return status.toLowerCase();
 }
 
