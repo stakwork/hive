@@ -32,16 +32,15 @@ export default function DashboardPage() {
   const ingestRefId = workspace?.ingestRefId;
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const codeIngested = workspace?.codeIngested;
   const poolState = workspace?.poolState;
 
-  const isEnvironmentSetup = codeIngested && poolState === "COMPLETE";
+  const isEnvironmentSetup = poolState === "COMPLETE";
 
   console.log(isEnvironmentSetup);
 
-  // Poll ingest status if we have an ingestRefId and code is not yet ingested
+  // Poll ingest status if we have an ingestRefId
   useEffect(() => {
-    if (!ingestRefId || !workspaceId || codeIngested) return;
+    if (!ingestRefId || !workspaceId) return;
 
     let isCancelled = false;
 
@@ -60,14 +59,10 @@ export default function DashboardPage() {
         if (data?.status === "Complete") {
           console.log('Ingestion completed');
 
-          // Update the workspace context immediately to stop polling
-          updateWorkspace({ codeIngested: true });
-
           toast({
             title: "Code Ingestion Complete",
             description: "Your codebase has been successfully ingested and is ready for use.",
           });
-          // The database is updated automatically in the GET endpoint
           return; // Stop polling
         } else if (data?.status === "Failed") {
           console.log('Ingestion failed');
@@ -98,7 +93,7 @@ export default function DashboardPage() {
         pollTimeoutRef.current = null;
       }
     };
-  }, [ingestRefId, workspaceId, codeIngested, toast, updateWorkspace]);
+  }, [ingestRefId, workspaceId, toast, updateWorkspace]);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);

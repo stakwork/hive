@@ -219,7 +219,6 @@ model Swarm {
   defaultBranch         String? @map("default_branch")
   repositoryDescription String? @map("repository_description")
   repositoryUrl         String? @map("repository_url")
-  codeIngested          Boolean @default(false) @map("code_ingested")
   swarmApiKey           String? @map("swarm_api_key")
   swarmSecretAlias      String? @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
   environmentVariables  Json    @default("[]") @map("environment_variables")
