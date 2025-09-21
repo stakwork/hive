@@ -1,35 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { UncoveredItemsResponse, UncoveredNodeType, UncoveredNodeConcise } from "@/types/stakgraph";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType } from "@/types/stakgraph";
 
-export interface UseUncoveredParams {
+export type StatusFilter = "all" | "tested" | "untested";
+
+export interface UseCoverageParams {
   nodeType?: UncoveredNodeType;
-  tests?: "untested" | "tested" | "all";
   limit?: number;
   offset?: number;
   sort?: string;
   root?: string;
   concise?: boolean;
+  status?: StatusFilter;
 }
 
-export function useUncoveredNodes(initial: UseUncoveredParams = {}) {
+export function useCoverageNodes(initial: UseCoverageParams = {}) {
   const { id: workspaceId } = useWorkspace();
 
   const [nodeType, setNodeType] = useState<UncoveredNodeType>(initial.nodeType || "endpoint");
-  const [tests, setTests] = useState<"unit" | "integration" | "e2e" | "all">("all");
   const [limit, setLimit] = useState<number>(initial.limit ?? 10);
   const [offset, setOffset] = useState<number>(initial.offset ?? 0);
   const [sort, setSort] = useState<string>(initial.sort || "usage");
   const [root, setRoot] = useState<string>(initial.root || "");
   const [concise, setConcise] = useState<boolean>(initial.concise ?? true);
+  const [status, setStatus] = useState<StatusFilter>(initial.status || "all");
 
-  const [items, setItems] = useState<UncoveredNodeConcise[]>([]);
+  const [items, setItems] = useState<CoverageNodeConcise[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const params = useMemo(
-    () => ({ nodeType, tests, limit, offset, sort, root, concise }),
-    [nodeType, tests, limit, offset, sort, root, concise],
+    () => ({ nodeType, limit, offset, sort, root, concise, status }),
+    [nodeType, limit, offset, sort, root, concise, status],
   );
 
   const fetchData = useCallback(async () => {
@@ -40,26 +42,32 @@ export function useUncoveredNodes(initial: UseUncoveredParams = {}) {
       const qp = new URLSearchParams();
       qp.set("workspaceId", workspaceId);
       qp.set("node_type", nodeType);
-      qp.set("tests", tests);
       qp.set("limit", String(limit));
       qp.set("offset", String(offset));
       qp.set("sort", sort);
       if (root) qp.set("root", root);
       qp.set("concise", String(concise));
 
-      const res = await fetch(`/api/tests/uncovered?${qp.toString()}`);
-      const json: UncoveredItemsResponse = await res.json();
+      const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
+      const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
-        throw new Error(json.message || "Failed to fetch uncovered items");
+        throw new Error(json.message || "Failed to fetch coverage nodes");
       }
-      setItems((json.data?.items as UncoveredNodeConcise[]) || []);
+      let list = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
+
+      list.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+
+      if (status === "tested") list = list.filter((n) => (n.weight || 0) > 0);
+      if (status === "untested") list = list.filter((n) => (n.weight || 0) === 0);
+
+      setItems(list);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch uncovered items");
+      setError(err instanceof Error ? err.message : "Failed to fetch coverage nodes");
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, nodeType, tests, limit, offset, sort, root, concise]);
+  }, [workspaceId, nodeType, limit, offset, sort, root, concise, status]);
 
   useEffect(() => {
     fetchData();
@@ -83,12 +91,12 @@ export function useUncoveredNodes(initial: UseUncoveredParams = {}) {
     page,
     setPage,
     setNodeType,
-    setTests,
     setLimit,
     setOffset,
     setSort,
     setRoot,
     setConcise,
+    setStatus,
     refetch: fetchData,
   };
 }

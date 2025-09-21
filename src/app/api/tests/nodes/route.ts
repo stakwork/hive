@@ -2,14 +2,9 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  UncoveredItemsResponse,
-  UncoveredNodeType,
-  UncoveredResponseItem,
-  UncoveredResponseRaw,
-} from "@/types/stakgraph";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType, NodesResponse } from "@/types/stakgraph";
 
 export const runtime = "nodejs";
 
@@ -22,7 +17,6 @@ type ParsedParams = {
   sort: string;
   root: string;
   concise: string;
-  tests: string;
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
@@ -41,8 +35,7 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
   const sort = (searchParams.get("sort") || "usage").toLowerCase();
   const root = searchParams.get("root") || "";
   const concise = (searchParams.get("concise") ?? "true").toString();
-  const tests = (searchParams.get("tests") || "all").toLowerCase();
-  return { nodeType, limit, offset, sort, root, concise, tests };
+  return { nodeType, limit, offset, sort, root, concise };
 }
 
 function buildQueryString(params: ParsedParams): string {
@@ -53,19 +46,38 @@ function buildQueryString(params: ParsedParams): string {
   if (params.sort) q.set("sort", String(params.sort));
   if (params.root) q.set("root", String(params.root));
   if (params.concise) q.set("concise", String(params.concise));
-  if (params.tests) q.set("tests", String(params.tests));
   q.set("output", "json");
   return q.toString();
 }
 
+type ItemsOrNodes = { items?: CoverageNodeConcise[]; nodes?: CoverageNodeConcise[] };
+
+function isItemsOrNodes(payload: unknown): payload is ItemsOrNodes {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as ItemsOrNodes;
+  return Array.isArray(p.items) || Array.isArray(p.nodes);
+}
+
+function isNodesResponse(payload: unknown): payload is NodesResponse {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as NodesResponse;
+  return Array.isArray(p.endpoints) || Array.isArray(p.functions);
+}
+
 function normalizeResponse(
-  payload: UncoveredResponseRaw | undefined,
+  payload: unknown,
   nodeType: UncoveredNodeType,
   limit: string,
   offset: string,
-): UncoveredItemsResponse {
-  const rawItems = nodeType === "endpoint" ? payload?.endpoints : payload?.functions;
-  const items: UncoveredResponseItem[] = Array.isArray(rawItems) ? rawItems : [];
+): CoverageNodesResponse {
+  let items: CoverageNodeConcise[] = [];
+  if (isItemsOrNodes(payload)) {
+    items = payload.items || payload.nodes || [];
+  } else if (isNodesResponse(payload)) {
+    const list = nodeType === "endpoint" ? payload.endpoints : payload.functions;
+    items = (list as CoverageNodeConcise[]) || [];
+  }
+
   return {
     success: true,
     data: {
@@ -85,13 +97,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams, hostname } = new URL(request.url);
-    const workspaceId = searchParams.get("workspaceId");
+    const workspaceId = searchParams.get("workspaceId") || searchParams.get("id");
     const swarmId = searchParams.get("swarmId");
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
     const { nodeType, limit, offset } = parsed;
-    const endpointPath = `/tests/uncovered?${buildQueryString(parsed)}`;
+    const endpointPath = `/tests/nodes?${buildQueryString(parsed)}`;
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
@@ -101,11 +113,11 @@ export async function GET(request: NextRequest) {
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         return NextResponse.json(
-          { success: false, message: "Failed to fetch uncovered data (dev)", details: data },
+          { success: false, message: "Failed to fetch coverage nodes (dev)", details: data },
           { status: resp.status },
         );
       }
-      const response = normalizeResponse((data || {}) as UncoveredResponseRaw, nodeType, limit, offset);
+      const response = normalizeResponse(data as unknown, nodeType, limit, offset);
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -124,9 +136,8 @@ export async function GET(request: NextRequest) {
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
-
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json({ success: false, message: "Uncovered data is not available." }, { status: 400 });
+      return NextResponse.json({ success: false, message: "Coverage data is not available." }, { status: 400 });
     }
 
     const swarmUrlObj = new URL(swarm.swarmUrl);
@@ -141,15 +152,15 @@ export async function GET(request: NextRequest) {
 
     if (!apiResult.ok) {
       return NextResponse.json(
-        { success: false, message: "Failed to fetch uncovered data", details: apiResult.data },
+        { success: false, message: "Failed to fetch coverage nodes", details: apiResult.data },
         { status: apiResult.status },
       );
     }
 
-    const response = normalizeResponse((apiResult.data || {}) as UncoveredResponseRaw, nodeType, limit, offset);
+    const response = normalizeResponse(apiResult.data as unknown, nodeType, limit, offset);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error("Error fetching uncovered data:", error);
-    return NextResponse.json({ success: false, message: "Failed to fetch uncovered data" }, { status: 500 });
+    console.error("Error fetching coverage nodes:", error);
+    return NextResponse.json({ success: false, message: "Failed to fetch coverage nodes" }, { status: 500 });
   }
 }

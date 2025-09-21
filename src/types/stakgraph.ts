@@ -17,33 +17,44 @@ export interface StakgraphStatusResponse {
 
 export type UncoveredNodeType = "function" | "endpoint";
 
-export interface UncoveredNodeConcise {
-  name: string;
-  file: string;
-  weight: number;
-}
+export type TestStatus = "all" | "tested" | "untested";
 
-export interface UncoveredNodeFull {
+export interface NodeFull {
   node_type: string;
   ref_id: string;
   weight: number;
+  covered: boolean;
   properties: Record<string, unknown>;
 }
 
-export type UncoveredResponseItem = UncoveredNodeFull | UncoveredNodeConcise;
-
-export interface UncoveredResponseRaw {
-  functions?: UncoveredResponseItem[];
-  endpoints?: UncoveredResponseItem[];
+export interface NodeConcise {
+  name: string;
+  file: string;
+  weight: number;
+  covered: boolean;
 }
 
-export interface UncoveredItemsResponse {
+export type NodesResponseItem = NodeFull | NodeConcise;
+
+export interface NodesResponse {
+  functions?: NodesResponseItem[];
+  endpoints?: NodesResponseItem[];
+}
+
+export interface CoverageNodeConcise {
+  name: string;
+  file: string;
+  weight: number;
+  covered: boolean;
+}
+
+export interface CoverageNodesResponse {
   success: boolean;
   data?: {
     node_type: UncoveredNodeType;
     limit: number;
     offset: number;
-    items: UncoveredResponseItem[];
+    items: CoverageNodeConcise[];
   };
   message?: string;
   details?: unknown;

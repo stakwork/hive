@@ -1,34 +1,47 @@
 "use client";
 
-import { useUncoveredNodes } from "@/hooks/useUncoveredNodes";
+import { useCoverageNodes } from "@/hooks/useCoverageNodes";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
-import type { UncoveredNodeConcise, UncoveredNodeType } from "@/types/stakgraph";
+import type { CoverageNodeConcise, UncoveredNodeType } from "@/types/stakgraph";
+import type { StatusFilter } from "@/hooks/useCoverageNodes";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function CoverageInsights() {
-  const { items, loading, error, page, setPage, setTests, setNodeType, params } = useUncoveredNodes({
+  const { items, loading, error, page, setPage, params, setNodeType, setStatus } = useCoverageNodes({
     nodeType: "endpoint",
-    tests: "all",
     limit: 10,
     concise: true,
+    status: "all",
   });
 
   const hasItems = items && items.length > 0;
 
   const rows = useMemo(
     () =>
-      (items as UncoveredNodeConcise[]).map((item, idx) => ({
-        key: `${idx}-${item.name}-${item.file}`,
+      (items as CoverageNodeConcise[]).map((item) => ({
+        key: `${item.name}-${item.file}`,
         name: item.name,
         file: item.file,
         weight: item.weight,
+        covered: item.covered,
       })),
     [items],
   );
+
+  const setNodeTypeFilter = (value: UncoveredNodeType) => setNodeType(value);
+  const setStatusFilter = (value: StatusFilter) => setStatus(value);
 
   return (
     <Card>
@@ -36,58 +49,57 @@ export function CoverageInsights() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-base">Endpoint Coverage</CardTitle>
-            <CardDescription>List of uncovered endpoints from stakgraph</CardDescription>
+            <CardDescription>Nodes with coverage degree (weight). Filter untested to focus gaps.</CardDescription>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="p-2">
-                Node Type
-              </Badge>
-              <select
-                className="border rounded px-2 py-1 text-sm"
-                value={params.nodeType}
-                onChange={(e) => setNodeType(e.target.value as UncoveredNodeType)}
-              >
-                <option value="endpoint">Endpoint</option>
-                <option value="function">Function</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="p-2">
-                Test Type
-              </Badge>
-              <select
-                className="border rounded px-2 py-1 text-sm"
-                value={params.tests}
-                onChange={(e) => setTests(e.target.value as "unit" | "integration" | "e2e" | "all")}
-              >
-                <option value="all">All</option>
-                <option value="unit">Unit</option>
-                <option value="integration">Integration</option>
-                <option value="e2e">E2E</option>
-              </select>
-            </div>
-          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <SlidersHorizontal className="h-4 w-4" /> Filters
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Node Type</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setNodeTypeFilter("endpoint")}>
+                {params.nodeType === "endpoint" && <span className="text-green-500">•</span>} Endpoint
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setNodeTypeFilter("function")}>
+                {params.nodeType === "function" && <span className="text-green-500">•</span>} Function
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Status</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setStatusFilter("tested")}>
+                {params.status === "tested" && <span className="text-green-500">•</span>} Tested
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter("untested")}>
+                {params.status === "untested" && <span className="text-green-500">•</span>} Untested
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter("all")}>
+                {params.status === "all" && <span className="text-green-500">•</span>} All
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading uncovered endpoints...
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading nodes...
           </div>
         ) : error ? (
           <div className="text-sm text-red-600">{error}</div>
         ) : !hasItems ? (
-          <div className="text-sm text-muted-foreground">No endpoints found with the selected filters.</div>
+          <div className="text-sm text-muted-foreground">No nodes found with the selected filters.</div>
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40%]">Name</TableHead>
-                    <TableHead className="w-[45%]">File</TableHead>
-                    <TableHead className="w-[15%] text-right">Weight</TableHead>
+                    <TableHead className="w-[35%]">Name</TableHead>
+                    <TableHead className="w-[40%]">File</TableHead>
+                    <TableHead className="w-[10%] text-right">Weight</TableHead>
+                    <TableHead className="w-[15%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -96,6 +108,9 @@ export function CoverageInsights() {
                       <TableCell className="truncate max-w-[320px]">{r.name}</TableCell>
                       <TableCell className="truncate max-w-[360px] text-muted-foreground">{r.file}</TableCell>
                       <TableCell className="text-right">{r.weight}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={r.covered ? "default" : "outline"}>{r.covered ? "Tested" : "Untested"}</Badge>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
