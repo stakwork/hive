@@ -23,6 +23,7 @@ export interface NodeFull {
   node_type: string;
   ref_id: string;
   weight: number;
+  test_count: number;
   covered: boolean;
   properties: Record<string, unknown>;
 }
@@ -31,6 +32,7 @@ export interface NodeConcise {
   name: string;
   file: string;
   weight: number;
+  test_count: number;
   covered: boolean;
 }
 
@@ -45,6 +47,7 @@ export interface CoverageNodeConcise {
   name: string;
   file: string;
   weight: number;
+  test_count: number;
   covered: boolean;
 }
 

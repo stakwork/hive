@@ -48,7 +48,9 @@ export function CoverageInsights() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base">Endpoint Coverage</CardTitle>
+            <CardTitle className="text-base">
+              {params.nodeType === "endpoint" ? "Endpoint" : "Function"} Coverage
+            </CardTitle>
             <CardDescription>Nodes with coverage degree (weight). Filter untested to focus gaps.</CardDescription>
           </div>
 

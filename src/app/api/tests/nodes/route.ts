@@ -46,7 +46,6 @@ function buildQueryString(params: ParsedParams): string {
   if (params.sort) q.set("sort", String(params.sort));
   if (params.root) q.set("root", String(params.root));
   if (params.concise) q.set("concise", String(params.concise));
-  q.set("output", "json");
   return q.toString();
 }
 
@@ -77,6 +76,18 @@ function normalizeResponse(
     const list = nodeType === "endpoint" ? payload.endpoints : payload.functions;
     items = (list as CoverageNodeConcise[]) || [];
   }
+
+  // Ensure default fields exist to avoid undefined in UI
+  items = items.map((n) => {
+    const src = n as Partial<CoverageNodeConcise>;
+    return {
+      name: n.name,
+      file: n.file,
+      weight: typeof n.weight === "number" ? n.weight : 0,
+      test_count: typeof src.test_count === "number" ? src.test_count : 0,
+      covered: Boolean(n.covered),
+    } as CoverageNodeConcise;
+  });
 
   return {
     success: true,
@@ -111,6 +122,17 @@ export async function GET(request: NextRequest) {
       const url = `http://0.0.0.0:7799${endpointPath}`;
       const resp = await fetch(url);
       const data = await resp.json().catch(() => ({}));
+      if (process.env.NODE_ENV === "development") {
+        try {
+          console.log("[tests/nodes][DEV] upstream url:", url);
+          console.log(
+            "[tests/nodes][DEV] upstream raw:",
+            typeof data === "object" ? JSON.stringify(data).slice(0, 4000) : String(data),
+          );
+        } catch {
+          // ignore logging errors
+        }
+      }
       if (!resp.ok) {
         return NextResponse.json(
           { success: false, message: "Failed to fetch coverage nodes (dev)", details: data },
@@ -118,6 +140,11 @@ export async function GET(request: NextRequest) {
         );
       }
       const response = normalizeResponse(data as unknown, nodeType, limit, offset);
+      if (process.env.NODE_ENV === "development") {
+        try {
+          console.log("[tests/nodes][DEV] normalized:", JSON.stringify(response).slice(0, 4000));
+        } catch {}
+      }
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -156,8 +183,22 @@ export async function GET(request: NextRequest) {
         { status: apiResult.status },
       );
     }
+    if (process.env.NODE_ENV === "development") {
+      try {
+        console.log("[tests/nodes] upstream path:", endpointPath);
+        console.log(
+          "[tests/nodes] upstream raw:",
+          typeof apiResult.data === "object" ? JSON.stringify(apiResult.data).slice(0, 4000) : String(apiResult.data),
+        );
+      } catch {}
+    }
 
     const response = normalizeResponse(apiResult.data as unknown, nodeType, limit, offset);
+    if (process.env.NODE_ENV === "development") {
+      try {
+        console.log("[tests/nodes] normalized:", JSON.stringify(response).slice(0, 4000));
+      } catch {}
+    }
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);

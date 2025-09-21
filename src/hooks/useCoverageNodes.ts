@@ -35,12 +35,11 @@ export function useCoverageNodes(initial: UseCoverageParams = {}) {
   );
 
   const fetchData = useCallback(async () => {
-    if (!workspaceId) return;
     setLoading(true);
     setError(null);
     try {
       const qp = new URLSearchParams();
-      qp.set("workspaceId", workspaceId);
+      if (workspaceId) qp.set("workspaceId", workspaceId);
       qp.set("node_type", nodeType);
       qp.set("limit", String(limit));
       qp.set("offset", String(offset));
@@ -55,10 +54,17 @@ export function useCoverageNodes(initial: UseCoverageParams = {}) {
       }
       let list = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
 
-      list.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+      if (status === "tested") list = list.filter((n) => n.covered || (n.test_count || 0) > 0);
+      if (status === "untested") list = list.filter((n) => !n.covered && (n.test_count || 0) === 0);
 
-      if (status === "tested") list = list.filter((n) => (n.weight || 0) > 0);
-      if (status === "untested") list = list.filter((n) => (n.weight || 0) === 0);
+      list.sort((a, b) => {
+        const aCovered = a.covered || (a.test_count || 0) > 0;
+        const bCovered = b.covered || (b.test_count || 0) > 0;
+        if (aCovered !== bCovered) return aCovered ? -1 : 1;
+        const tcDiff = (b.test_count || 0) - (a.test_count || 0);
+        if (tcDiff !== 0) return tcDiff;
+        return (b.weight || 0) - (a.weight || 0);
+      });
 
       setItems(list);
     } catch (err) {
