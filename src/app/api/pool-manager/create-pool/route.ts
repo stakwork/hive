@@ -13,6 +13,27 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+
+  for (let i = 0; i <= retries; i++) {
+    console.log('withRetry-start', delay)
+
+    try {
+      return await fn();
+    } catch (error) {
+      if (i === retries) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error("Retry function failed unexpectedly");
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -159,16 +180,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const pool = await poolManager.createPool({
-      pool_name: swarm.id,
-      minimum_vms: 2,
-      repo_name: repository?.repositoryUrl || "",
-      branch_name: repository?.branch || "",
-      github_pat: github_pat?.appAccessToken || github_pat?.pat || "",
-      github_username: github_pat?.username || "",
-      env_vars: envVars,
-      container_files: finalContainerFiles,
-    });
+    const pool = await withRetry(
+      () => poolManager.createPool({
+        pool_name: swarm.id,
+        minimum_vms: 2,
+        repo_name: repository?.repositoryUrl || "",
+        branch_name: repository?.branch || "",
+        github_pat: github_pat?.appAccessToken || github_pat?.pat || "",
+        github_username: github_pat?.username || "",
+        env_vars: envVars,
+        container_files: finalContainerFiles,
+      }),
+      3,
+      1000
+    );
 
     saveOrUpdateSwarm({
       swarmId,
