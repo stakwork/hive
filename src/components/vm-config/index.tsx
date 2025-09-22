@@ -47,7 +47,7 @@ export function VMConfigSection() {
           buttonText: "Finish setup",
           buttonHref: `/w/${slug}/code-graph`,
           statusBadge: {
-            text: "VM Spinning Up",
+            text: "In progress",
             variant: "secondary" as const,
             icon: Clock,
             className: "bg-orange-100 text-orange-800 border-orange-200"
@@ -122,6 +122,9 @@ export function VMConfigSection() {
                       <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
                     </>
                   )}
+                </div>
+                <div>
+                  <span className="text-sm font-medium">{vmState.statusBadge.text}</span>
                 </div>
               </div>
             ) : (
