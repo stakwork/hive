@@ -25,6 +25,19 @@ vi.mock("@/lib/db", () => ({
     swarm: {
       updateMany: vi.fn(),
     },
+    workspace: {
+      updateMany: vi.fn(),
+    },
+    sourceControlOrg: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    sourceControlToken: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+    },
   },
 }));
 
@@ -315,17 +328,46 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
         githubState: "test_state",
       });
 
-      mockedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          access_token: "sensitive_github_token",
-          refresh_token: "sensitive_refresh_token",
-        }),
-      } as Response);
+      // Mock multiple API calls with different responses
+      mockedFetch.mockImplementation(async (url: string) => {
+        if (url === "https://github.com/login/oauth/access_token") {
+          return {
+            ok: true,
+            json: async () => ({
+              access_token: "sensitive_github_token",
+              refresh_token: "sensitive_refresh_token",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user") {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 12345,
+              login: "testuser",
+              name: "Test User",
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+        } as Response;
+      });
 
       (db.account.findFirst as Mock).mockResolvedValue(null);
       (db.account.create as Mock).mockResolvedValue({ id: "account123" });
       (db.session.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      // Mock the new SourceControlOrg and SourceControlToken operations
+      (db.sourceControlOrg.findUnique as Mock).mockResolvedValue({
+        id: "sourcecontrolorg123",
+        githubLogin: "testuser",
+        type: "user",
+      });
+      (db.sourceControlToken.findUnique as Mock).mockResolvedValue(null);
+      (db.sourceControlToken.create as Mock).mockResolvedValue({
+        id: "sourcecontroltoken123",
+      });
 
       const validState = Buffer.from(JSON.stringify({
         workspaceSlug: "test-workspace",
@@ -339,11 +381,11 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
       await GET(request);
 
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "app_access_token",
+        "source_control_token",
         "sensitive_github_token"
       );
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "app_refresh_token",
+        "source_control_refresh_token",
         "sensitive_refresh_token"
       );
     });
@@ -556,7 +598,7 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
   });
 
   describe("GitHub App installation handling", () => {
-    test("should save installation ID to swarm for install action", async () => {
+    test("should link workspace to SourceControlOrg for install action", async () => {
       mockedGetServerSession.mockResolvedValue({
         user: { id: "user123" },
       });
@@ -567,17 +609,62 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
         githubState: "valid_state",
       });
 
-      mockedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          access_token: "github_access_token",
-        }),
-      } as Response);
+      // Mock multiple API calls with different responses for install
+      mockedFetch.mockImplementation(async (url: string) => {
+        if (url === "https://github.com/login/oauth/access_token") {
+          return {
+            ok: true,
+            json: async () => ({
+              access_token: "github_access_token",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user") {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 12345,
+              login: "testuser",
+              name: "Test User",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user/installations") {
+          return {
+            ok: true,
+            json: async () => ({
+              installations: [
+                {
+                  id: 12345,
+                  account: {
+                    login: "testuser",
+                    type: "User",
+                  },
+                },
+              ],
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+        } as Response;
+      });
 
       (db.account.findFirst as Mock).mockResolvedValue(null);
       (db.account.create as Mock).mockResolvedValue({ id: "account123" });
       (db.session.updateMany as Mock).mockResolvedValue({ count: 1 });
-      (db.swarm.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (db.workspace.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      // Mock the new SourceControlOrg and SourceControlToken operations for install
+      (db.sourceControlOrg.findUnique as Mock).mockResolvedValue(null);
+      (db.sourceControlOrg.create as Mock).mockResolvedValue({
+        id: "sourcecontrolorg123",
+        githubLogin: "testuser",
+        type: "user",
+      });
+      (db.sourceControlToken.findUnique as Mock).mockResolvedValue(null);
+      (db.sourceControlToken.create as Mock).mockResolvedValue({
+        id: "sourcecontroltoken123",
+      });
 
       const validState = Buffer.from(JSON.stringify({
         workspaceSlug: "test-workspace",
@@ -590,13 +677,9 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
 
       await GET(request);
 
-      expect(db.swarm.updateMany).toHaveBeenCalledWith({
-        where: {
-          workspace: {
-            slug: "test-workspace",
-          },
-        },
-        data: { githubInstallationId: "12345" },
+      expect(db.workspace.updateMany).toHaveBeenCalledWith({
+        where: { slug: "test-workspace" },
+        data: { sourceControlOrgId: "sourcecontrolorg123" },
       });
     });
 
@@ -611,17 +694,64 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
         githubState: "valid_state",
       });
 
-      mockedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          access_token: "github_access_token",
-        }),
-      } as Response);
+      // Mock multiple API calls with different responses for uninstall
+      mockedFetch.mockImplementation(async (url: string) => {
+        if (url === "https://github.com/login/oauth/access_token") {
+          return {
+            ok: true,
+            json: async () => ({
+              access_token: "github_access_token",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user") {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 12345,
+              login: "testuser",
+              name: "Test User",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user/installations") {
+          return {
+            ok: true,
+            json: async () => ({
+              installations: [
+                {
+                  id: 12345,
+                  account: {
+                    login: "testuser",
+                    type: "User",
+                  },
+                },
+              ],
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+        } as Response;
+      });
 
       (db.account.findFirst as Mock).mockResolvedValue(null);
       (db.account.create as Mock).mockResolvedValue({ id: "account123" });
       (db.session.updateMany as Mock).mockResolvedValue({ count: 1 });
-      (db.swarm.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (db.workspace.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      // Mock the new SourceControlOrg and SourceControlToken operations for uninstall
+      (db.sourceControlOrg.findUnique as Mock).mockResolvedValue({
+        id: "sourcecontrolorg123",
+        githubLogin: "testuser",
+        type: "user",
+      });
+      (db.sourceControlOrg.update as Mock).mockResolvedValue({
+        id: "sourcecontrolorg123",
+      });
+      (db.sourceControlToken.findUnique as Mock).mockResolvedValue(null);
+      (db.sourceControlToken.create as Mock).mockResolvedValue({
+        id: "sourcecontroltoken123",
+      });
 
       const validState = Buffer.from(JSON.stringify({
         workspaceSlug: "test-workspace",
@@ -634,13 +764,9 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
 
       await GET(request);
 
-      expect(db.swarm.updateMany).toHaveBeenCalledWith({
-        where: {
-          workspace: {
-            slug: "test-workspace",
-          },
-        },
-        data: { githubInstallationId: null },
+      expect(db.workspace.updateMany).toHaveBeenCalledWith({
+        where: { slug: "test-workspace" },
+        data: { sourceControlOrgId: null },
       });
     });
 
@@ -693,16 +819,65 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
         githubState: "valid_state",
       });
 
-      mockedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          access_token: "github_access_token",
-        }),
-      } as Response);
+      // Mock multiple API calls with different responses
+      mockedFetch.mockImplementation(async (url: string) => {
+        if (url === "https://github.com/login/oauth/access_token") {
+          return {
+            ok: true,
+            json: async () => ({
+              access_token: "github_access_token",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user") {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 12345,
+              login: "testuser",
+              name: "Test User",
+            }),
+          } as Response;
+        } else if (url === "https://api.github.com/user/installations") {
+          return {
+            ok: true,
+            json: async () => ({
+              installations: [
+                {
+                  id: 12345,
+                  account: {
+                    login: "testuser",
+                    type: "User",
+                  },
+                },
+              ],
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+        } as Response;
+      });
 
       (db.account.findFirst as Mock).mockResolvedValue(null);
       (db.account.create as Mock).mockResolvedValue({ id: "account123" });
       (db.session.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (db.workspace.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      // Mock the new SourceControlOrg and SourceControlToken operations
+      (db.sourceControlOrg.findUnique as Mock).mockResolvedValue(null);
+      (db.sourceControlOrg.create as Mock).mockResolvedValue({
+        id: "sourcecontrolorg123",
+        githubLogin: "testuser",
+        type: "user",
+      });
+      (db.sourceControlToken.findUnique as Mock).mockResolvedValue(null);
+      (db.sourceControlToken.create as Mock).mockResolvedValue({
+        id: "sourcecontroltoken123",
+      });
+      (db.sourceControlToken.upsert as Mock).mockResolvedValue({
+        id: "sourcecontroltoken123",
+      });
 
       const validState = Buffer.from(JSON.stringify({
         workspaceSlug: "test-workspace",
@@ -710,7 +885,7 @@ describe("GitHub App OAuth Callback - Unit Tests", () => {
       })).toString("base64");
 
       const request = new NextRequest(
-        `http://localhost:3000/api/github/app/callback?state=${validState}&code=test_code&setup_action=install`
+        `http://localhost:3000/api/github/app/callback?state=${validState}&code=test_code&setup_action=install&installation_id=12345`
       );
 
       const response = await GET(request);

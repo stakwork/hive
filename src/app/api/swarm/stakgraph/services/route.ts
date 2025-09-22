@@ -67,20 +67,17 @@ export async function GET(request: NextRequest) {
     // Only fetch GitHub profile if we need to make API calls
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
 
-    // Get user's first workspace as fallback for non-workspace-aware route
-    const firstWorkspace = await db.workspace.findFirst({
-      where: {
-        ownerId: session.user.id,
-        sourceControlOrg: { isNot: null }
-      },
+    // Get the workspace associated with this swarm
+    const workspace = await db.workspace.findUnique({
+      where: { id: swarm.workspaceId },
       select: { slug: true }
     });
 
-    if (!firstWorkspace) {
-      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found for swarm" }, { status: 404 });
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(session.user.id, firstWorkspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
 
     // Use repo_url from params or fall back to database
     const repo_url = repo_url_param || swarm.repositoryUrl;

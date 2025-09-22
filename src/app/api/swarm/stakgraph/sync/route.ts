@@ -36,20 +36,17 @@ export async function POST(request: NextRequest) {
     let pat: string | undefined;
     const userId = session.user.id as string;
 
-    // Get user's first workspace as fallback for non-workspace-aware route
-    const firstWorkspace = await db.workspace.findFirst({
-      where: {
-        ownerId: userId,
-        sourceControlOrg: { isNot: null }
-      },
+    // Get the workspace associated with this swarm for GitHub access
+    const workspace = await db.workspace.findUnique({
+      where: { id: swarm.workspaceId },
       select: { slug: true }
     });
 
-    if (!firstWorkspace) {
-      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found for swarm" }, { status: 404 });
     }
 
-    const creds = await getGithubUsernameAndPAT(userId, firstWorkspace.slug);
+    const creds = await getGithubUsernameAndPAT(userId, workspace.slug);
     if (creds) {
       username = creds.username;
       pat = creds.token;

@@ -72,20 +72,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get user's first workspace as fallback for non-workspace-aware route
-    const firstWorkspace = await db.workspace.findFirst({
-      where: {
-        ownerId: session.user.id,
-        sourceControlOrg: { isNot: null }
-      },
+    // Get the workspace for GitHub access
+    const workspace = await db.workspace.findUnique({
+      where: { id: repoWorkspaceId },
       select: { slug: true }
     });
 
-    if (!firstWorkspace) {
-      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
-    const creds = await getGithubUsernameAndPAT(session.user.id, firstWorkspace.slug);
+    const creds = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     const username = creds?.username ?? "";
     const pat = creds?.token ?? "";
 
@@ -150,20 +147,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user's first workspace as fallback for non-workspace-aware route
-    const firstWorkspace = await db.workspace.findFirst({
-      where: {
-        ownerId: session.user.id,
-        sourceControlOrg: { isNot: null }
-      },
+    // Get the workspace for GitHub access
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
       select: { slug: true }
     });
 
-    if (!firstWorkspace) {
-      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id, firstWorkspace.slug);
+    const githubCreds = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     if (!githubCreds) {
       return NextResponse.json(
         {
