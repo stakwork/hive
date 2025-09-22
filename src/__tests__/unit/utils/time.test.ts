@@ -42,7 +42,7 @@ describe("formatTimestamp", () => {
 
     test("should format different date formats", () => {
       const formats = [
-        "2024-01-15",
+        "2024-01-15T12:00:00", // Add time to avoid UTC timezone issues
         "2024/01/15",
         "Jan 15, 2024",
         "15 Jan 2024",

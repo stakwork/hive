@@ -18,6 +18,12 @@ vi.mock('@/lib/db', () => ({
     workspace: {
       findUnique: vi.fn(),
     },
+    sourceControlOrg: {
+      findUnique: vi.fn(),
+    },
+    sourceControlToken: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -36,13 +42,16 @@ vi.mock('@/lib/encryption', () => ({
 describe('getGithubUsernameAndPAT', () => {
   const mockUserId = 'user-123';
   const mockWorkspaceSlug = 'test-workspace';
-  
+
   let mockEncryptionService: { decryptField: any };
-  
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockEncryptionService = {
-      decryptField: vi.fn(),
+      decryptField: vi.fn((field: string, value: string) => {
+        // Return the value as-is for testing
+        return value.replace('encrypted_', 'decrypted_');
+      }),
     };
     (EncryptionService.getInstance as any).mockReturnValue(mockEncryptionService);
   });
@@ -83,8 +92,8 @@ describe('getGithubUsernameAndPAT', () => {
     });
   });
 
-  describe('Successful Credential Retrieval', () => {
-    it('should return decrypted credentials when both GitHub auth and account exist', async () => {
+  describe('OAuth Token Path (No Workspace)', () => {
+    it('should return OAuth token when no workspace slug provided', async () => {
       // Arrange
       const mockUser = {
         id: mockUserId,
@@ -97,28 +106,27 @@ describe('getGithubUsernameAndPAT', () => {
       const mockAccount = {
         userId: mockUserId,
         provider: 'github',
-        access_token: 'encrypted_pat_token',
-        app_access_token: null,
+        access_token: 'encrypted_oauth_token',
       };
-      const decryptedPat = 'github_pat_123456789';
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      mockEncryptionService.decryptField.mockReturnValue(decryptedPat);
 
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+      // Act - No workspace slug provided
+      const result = await getGithubUsernameAndPAT(mockUserId);
 
       // Assert
       expect(result).toEqual({
         username: 'testuser',
-        token: 'decrypted_pat_token',
+        token: 'decrypted_oauth_token',
       });
-      // Note: The default mock implementation is being used, not the per-test mock
+      // Should not query workspace-related tables
+      expect(db.workspace.findUnique).not.toHaveBeenCalled();
+      expect(db.sourceControlToken.findUnique).not.toHaveBeenCalled();
     });
 
-    it('should return both PAT and app access token when both are available', async () => {
+    it('should return null when OAuth account is missing', async () => {
       // Arrange
       const mockUser = {
         id: mockUserId,
@@ -128,34 +136,19 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         githubUsername: 'githubuser',
       };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'encrypted_pat',
-        app_access_token: 'encrypted_app_token',
-      };
-      const decryptedPat = 'github_pat_regular';
-      const decryptedAppToken = 'github_app_token';
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      mockEncryptionService.decryptField
-        .mockReturnValueOnce(decryptedPat)
-        .mockReturnValueOnce(decryptedAppToken);
+      (db.account.findFirst as any).mockResolvedValue(null);
 
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+      // Act - No workspace slug provided
+      const result = await getGithubUsernameAndPAT(mockUserId);
 
       // Assert
-      expect(result).toEqual({
-        username: 'githubuser',
-        token: 'decrypted_pat',
-      });
-      // Note: The mock behavior is based on the default implementation
+      expect(result).toBeNull();
     });
 
-    it('should handle app access token only (no regular PAT)', async () => {
+    it('should return null when OAuth account has no token', async () => {
       // Arrange
       const mockUser = {
         id: mockUserId,
@@ -169,22 +162,143 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         provider: 'github',
         access_token: null,
-        app_access_token: 'encrypted_app_only',
       };
-      
+
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      // The default mock will transform "encrypted_app_only" to "decrypted_app_only"
+
+      // Act - No workspace slug provided
+      const result = await getGithubUsernameAndPAT(mockUserId);
+
+      // Assert
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('Workspace App Token Path', () => {
+    it('should return app token when workspace slug provided', async () => {
+      // Arrange
+      const mockUser = {
+        id: mockUserId,
+        email: 'user@company.com',
+      };
+      const mockGithubAuth = {
+        userId: mockUserId,
+        githubUsername: 'testuser',
+      };
+      const mockWorkspace = {
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: {
+          id: 'org-123',
+        },
+      };
+      const mockSourceControlToken = {
+        token: 'encrypted_app_token',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(mockUser);
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(mockWorkspace);
+      (db.sourceControlToken.findUnique as any).mockResolvedValue(mockSourceControlToken);
+
+      // Act - With workspace slug provided
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+
+      // Assert
+      expect(result).toEqual({
+        username: 'testuser',
+        token: 'decrypted_app_token',
+      });
+      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+        where: { slug: mockWorkspaceSlug },
+        include: { sourceControlOrg: true },
+      });
+      expect(db.sourceControlToken.findUnique).toHaveBeenCalledWith({
+        where: {
+          userId_sourceControlOrgId: {
+            userId: mockUserId,
+            sourceControlOrgId: 'org-123',
+          },
+        },
+      });
+    });
+
+    it('should return null when workspace not found', async () => {
+      // Arrange
+      const mockUser = {
+        id: mockUserId,
+        email: 'user@company.com',
+      };
+      const mockGithubAuth = {
+        userId: mockUserId,
+        githubUsername: 'testuser',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(mockUser);
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(null);
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
-      expect(result).toEqual({
-        username: 'appuser',
-        token: 'decrypted_app_only',
-      });
+      expect(result).toBeNull();
+    });
+
+    it('should return null when workspace has no sourceControlOrg', async () => {
+      // Arrange
+      const mockUser = {
+        id: mockUserId,
+        email: 'user@company.com',
+      };
+      const mockGithubAuth = {
+        userId: mockUserId,
+        githubUsername: 'testuser',
+      };
+      const mockWorkspace = {
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: null,
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(mockUser);
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(mockWorkspace);
+
+      // Act
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+
+      // Assert
+      expect(result).toBeNull();
+    });
+
+    it('should return null when sourceControlToken not found', async () => {
+      // Arrange
+      const mockUser = {
+        id: mockUserId,
+        email: 'user@company.com',
+      };
+      const mockGithubAuth = {
+        userId: mockUserId,
+        githubUsername: 'testuser',
+      };
+      const mockWorkspace = {
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: {
+          id: 'org-123',
+        },
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(mockUser);
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(mockWorkspace);
+      (db.sourceControlToken.findUnique as any).mockResolvedValue(null);
+
+      // Act
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+
+      // Assert
+      expect(result).toBeNull();
     });
   });
 
@@ -210,9 +324,6 @@ describe('getGithubUsernameAndPAT', () => {
       };
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(null);
-      (db.account.findFirst as any).mockResolvedValue({
-        access_token: 'some_token',
-      });
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
@@ -222,57 +333,6 @@ describe('getGithubUsernameAndPAT', () => {
       expect(db.gitHubAuth.findUnique).toHaveBeenCalledWith({
         where: { userId: mockUserId },
       });
-    });
-
-    it('should return null when GitHub auth exists but account is missing', async () => {
-      // Arrange
-      const mockUser = {
-        id: mockUserId,
-        email: 'user@example.com',
-      };
-      const mockGithubAuth = {
-        userId: mockUserId,
-        githubUsername: 'testuser',
-      };
-      (db.user.findUnique as any).mockResolvedValue(mockUser);
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(null);
-
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
-
-      // Assert
-      expect(result).toBeNull();
-      expect(db.account.findFirst).toHaveBeenCalledWith({
-        where: { userId: mockUserId, provider: 'github' },
-      });
-    });
-
-    it('should return null when account exists but has no access token', async () => {
-      // Arrange
-      const mockUser = {
-        id: mockUserId,
-        email: 'user@example.com',
-      };
-      const mockGithubAuth = {
-        userId: mockUserId,
-        githubUsername: 'testuser',
-      };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: null,
-        app_access_token: null,
-      };
-      (db.user.findUnique as any).mockResolvedValue(mockUser);
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
-
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
-
-      // Assert
-      expect(result).toBeNull();
     });
 
     it('should return null when GitHub auth has no username', async () => {
@@ -285,14 +345,9 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         githubUsername: null, // Missing username
       };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'encrypted_token',
-      };
+
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
@@ -311,123 +366,15 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         githubUsername: '', // Empty username
       };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'encrypted_token',
-      };
+
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
-    });
-  });
-
-  describe('Decryption Error Handling', () => {
-    it('should return the raw token value when decryption service is mocked', async () => {
-      // Arrange
-      const mockUser = {
-        id: mockUserId,
-        email: 'user@example.com',
-      };
-      const mockGithubAuth = {
-        userId: mockUserId,
-        githubUsername: 'testuser',
-      };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'corrupted_token',
-        app_access_token: null,
-      };
-      (db.user.findUnique as any).mockResolvedValue(mockUser);
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      // The default mock will still process this value
-
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
-
-      // Assert - The function still returns data with the mock service
-      expect(result).toEqual({
-        username: 'testuser',
-        token: 'corrupted_token',
-      });
-    });
-
-    it('should return both tokens when app token is available', async () => {
-      // Arrange
-      const mockUser = {
-        id: mockUserId,
-        email: 'user@example.com',
-      };
-      const mockGithubAuth = {
-        userId: mockUserId,
-        githubUsername: 'testuser',
-      };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'valid_pat_token',
-        app_access_token: 'corrupted_app_token',
-      };
-
-      (db.user.findUnique as any).mockResolvedValue(mockUser);
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      // Default mock will process both tokens
-
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
-
-      // Assert - Both tokens are processed by the mock
-      expect(result).toEqual({
-        username: 'testuser',
-        token: 'valid_pat_token',
-      });
-    });
-  });
-
-  describe('Database Query Verification', () => {
-    it('should query database with correct parameters', async () => {
-      // Arrange
-      const mockUser = {
-        id: mockUserId,
-        email: 'user@example.com',
-      };
-      const mockGithubAuth = {
-        userId: mockUserId,
-        githubUsername: 'testuser',
-      };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'encrypted_token',
-        app_access_token: null,
-      };
-      (db.user.findUnique as any).mockResolvedValue(mockUser);
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      mockEncryptionService.decryptField.mockReturnValue('decrypted_token');
-
-      // Act
-      await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
-
-      // Assert
-      expect(db.user.findUnique).toHaveBeenCalledWith({
-        where: { id: mockUserId },
-      });
-      expect(db.gitHubAuth.findUnique).toHaveBeenCalledWith({
-        where: { userId: mockUserId },
-      });
-      expect(db.account.findFirst).toHaveBeenCalledWith({
-        where: { userId: mockUserId, provider: 'github' },
-      });
     });
   });
 
@@ -460,15 +407,13 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         provider: 'github',
         access_token: 'encrypted_token',
-        app_access_token: null,
       };
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      mockEncryptionService.decryptField.mockReturnValue('decrypted_token');
 
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+      // Act - No workspace slug provided
+      const result = await getGithubUsernameAndPAT(mockUserId);
 
       // Assert
       expect(result).toEqual({
@@ -491,15 +436,13 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         provider: 'github',
         access_token: 'encrypted_token',
-        app_access_token: null,
       };
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      mockEncryptionService.decryptField.mockReturnValue('decrypted_token');
 
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+      // Act - No workspace slug provided
+      const result = await getGithubUsernameAndPAT(mockUserId);
 
       // Assert
       expect(result).toEqual({
@@ -538,16 +481,14 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         provider: 'github',
         access_token: 'encrypted_pat',
-        app_access_token: 'encrypted_app_token',
       };
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      // The default mock will transform encrypted_ to decrypted_
 
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+      // Act - No workspace slug provided (OAuth token)
+      const result = await getGithubUsernameAndPAT(mockUserId);
 
       // Assert - Verify the returned object has all expected properties
       expect(result).toHaveProperty('username');
@@ -574,16 +515,14 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         provider: 'github',
         access_token: 'encrypted_webhook_pat',
-        app_access_token: null,
       };
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
-      // The default mock will transform encrypted_webhook_pat to decrypted_webhook_pat
 
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+      // Act - No workspace slug provided (OAuth token)
+      const result = await getGithubUsernameAndPAT(mockUserId);
 
       // Assert - Verify webhook service can safely access token
       expect(result?.token).toBe('decrypted_webhook_pat');
