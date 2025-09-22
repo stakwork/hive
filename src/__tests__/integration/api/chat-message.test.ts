@@ -37,7 +37,7 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn().mockResolvedValue({
     username: "testuser",
-    pat: "github_pat_test_token",
+    token: "github_pat_test_token",
   }),
 }));
 

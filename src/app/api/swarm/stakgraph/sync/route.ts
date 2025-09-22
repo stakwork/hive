@@ -35,10 +35,24 @@ export async function POST(request: NextRequest) {
     let username: string | undefined;
     let pat: string | undefined;
     const userId = session.user.id as string;
-    const creds = await getGithubUsernameAndPAT(userId);
+
+    // Get user's first workspace as fallback for non-workspace-aware route
+    const firstWorkspace = await db.workspace.findFirst({
+      where: {
+        ownerId: userId,
+        sourceControlOrg: { isNot: null }
+      },
+      select: { slug: true }
+    });
+
+    if (!firstWorkspace) {
+      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    }
+
+    const creds = await getGithubUsernameAndPAT(userId, firstWorkspace.slug);
     if (creds) {
       username = creds.username;
-      pat = creds.appAccessToken || creds.pat;
+      pat = creds.token;
     }
     try {
       await db.repository.update({

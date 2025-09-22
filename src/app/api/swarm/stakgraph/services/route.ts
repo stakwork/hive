@@ -66,7 +66,21 @@ export async function GET(request: NextRequest) {
 
     // Only fetch GitHub profile if we need to make API calls
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
-    const githubProfile = await getGithubUsernameAndPAT(session?.user?.id);
+
+    // Get user's first workspace as fallback for non-workspace-aware route
+    const firstWorkspace = await db.workspace.findFirst({
+      where: {
+        ownerId: session.user.id,
+        sourceControlOrg: { isNot: null }
+      },
+      select: { slug: true }
+    });
+
+    if (!firstWorkspace) {
+      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    }
+
+    const githubProfile = await getGithubUsernameAndPAT(session.user.id, firstWorkspace.slug);
 
     // Use repo_url from params or fall back to database
     const repo_url = repo_url_param || swarm.repositoryUrl;
@@ -96,7 +110,7 @@ export async function GET(request: NextRequest) {
             owner,
             repo,
             ...(githubProfile?.username ? { username: githubProfile.username } : {}),
-            ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+            ...(githubProfile ? { pat: githubProfile.token } : {}),
           },
           apiKey: decryptedApiKey,
         });
@@ -155,7 +169,7 @@ export async function GET(request: NextRequest) {
           clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
-          ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+          ...(githubProfile ? { pat: githubProfile.token } : {}),
         });
 
         // Hybrid approach: merge environment variables (agent takes precedence)
@@ -198,7 +212,7 @@ export async function GET(request: NextRequest) {
           clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
-          ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+          ...(githubProfile ? { pat: githubProfile.token } : {}),
         });
 
         responseData = { services: result.services };
@@ -209,7 +223,7 @@ export async function GET(request: NextRequest) {
       const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
         clone: "true",  // Always clone to ensure we get the latest code
         ...(githubProfile?.username ? { username: githubProfile.username } : {}),
-        ...(githubProfile ? { pat: githubProfile.appAccessToken || githubProfile.pat } : {}),
+        ...(githubProfile ? { pat: githubProfile.token } : {}),
       });
 
       responseData = { services: result.services };

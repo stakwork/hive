@@ -72,9 +72,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const creds = await getGithubUsernameAndPAT(session.user.id);
+    // Get user's first workspace as fallback for non-workspace-aware route
+    const firstWorkspace = await db.workspace.findFirst({
+      where: {
+        ownerId: session.user.id,
+        sourceControlOrg: { isNot: null }
+      },
+      select: { slug: true }
+    });
+
+    if (!firstWorkspace) {
+      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    }
+
+    const creds = await getGithubUsernameAndPAT(session.user.id, firstWorkspace.slug);
     const username = creds?.username ?? "";
-    const pat = (creds?.appAccessToken || creds?.pat) ?? "";
+    const pat = creds?.token ?? "";
 
     const apiResult = await triggerIngestAsync(
       getSwarmVanityAddress(swarm.name),
@@ -137,7 +150,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id);
+    // Get user's first workspace as fallback for non-workspace-aware route
+    const firstWorkspace = await db.workspace.findFirst({
+      where: {
+        ownerId: session.user.id,
+        sourceControlOrg: { isNot: null }
+      },
+      select: { slug: true }
+    });
+
+    if (!firstWorkspace) {
+      return NextResponse.json({ success: false, message: "No workspace with GitHub access found" }, { status: 400 });
+    }
+
+    const githubCreds = await getGithubUsernameAndPAT(session.user.id, firstWorkspace.slug);
     if (!githubCreds) {
       return NextResponse.json(
         {

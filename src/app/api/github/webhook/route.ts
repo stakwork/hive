@@ -118,10 +118,18 @@ export async function POST(request: NextRequest) {
     let username: string | undefined;
     let pat: string | undefined;
     if (ownerId) {
-      const creds = await getGithubUsernameAndPAT(ownerId);
-      if (creds) {
-        username = creds.username;
-        pat = creds.appAccessToken || creds.pat;
+      // Get workspace slug for the GitHub credentials
+      const workspaceData = await db.workspace.findUnique({
+        where: { id: repository.workspaceId },
+        select: { slug: true }
+      });
+
+      if (workspaceData) {
+        const creds = await getGithubUsernameAndPAT(ownerId, workspaceData.slug);
+        if (creds) {
+          username = creds.username;
+          pat = creds.token;
+        }
       }
     }
 

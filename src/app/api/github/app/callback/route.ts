@@ -112,8 +112,9 @@ export async function GET(request: NextRequest) {
 
     // Get installation info if available
     let githubOwner: string;
-    let ownerType: 'user' | 'org' = 'user';
+    let ownerType: "user" | "org" = "user";
     let installationIdNumber: number | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let installationAccount: any = null;
 
     if (installationId) {
@@ -127,13 +128,12 @@ export async function GET(request: NextRequest) {
 
       if (installationsResponse.ok) {
         const installationsData = await installationsResponse.json();
-        const installation = installationsData.installations?.find((inst: any) =>
-          inst.id === parseInt(installationId)
-        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const installation = installationsData.installations?.find((inst: any) => inst.id === parseInt(installationId));
 
         if (installation) {
           githubOwner = installation.account.login;
-          ownerType = installation.account.type === 'User' ? 'user' : 'org';
+          ownerType = installation.account.type === "User" ? "user" : "org";
           installationIdNumber = parseInt(installationId);
           // Store installation account details for later use
           installationAccount = installation.account;
@@ -142,18 +142,22 @@ export async function GET(request: NextRequest) {
           console.error(`❌ Installation ${installationId} not found in user's installations`);
           // Fallback to the authenticated user
           githubOwner = githubUser.login;
-          ownerType = 'user';
+          ownerType = "user";
         }
       } else {
-        console.error(`❌ Failed to fetch user installations:`, installationsResponse.status, installationsResponse.statusText);
+        console.error(
+          `❌ Failed to fetch user installations:`,
+          installationsResponse.status,
+          installationsResponse.statusText,
+        );
         // Fallback to the authenticated user
         githubOwner = githubUser.login;
-        ownerType = 'user';
+        ownerType = "user";
       }
     } else {
       // No installation ID - this is just OAuth for existing installation
       githubOwner = githubUser.login;
-      ownerType = 'user';
+      ownerType = "user";
     }
 
     // Decode the state to get workspace information FIRST
@@ -177,11 +181,15 @@ export async function GET(request: NextRequest) {
 
     // Encrypt the tokens before storing
     const encryptionService = EncryptionService.getInstance();
-    const encryptedAccessToken = JSON.stringify(encryptionService.encryptField("source_control_token", userAccessToken));
+    const encryptedAccessToken = JSON.stringify(
+      encryptionService.encryptField("source_control_token", userAccessToken),
+    );
     let encryptedRefreshToken;
     let appExpiresAt;
     if (userRefreshToken) {
-      encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("source_control_refresh_token", userRefreshToken));
+      encryptedRefreshToken = JSON.stringify(
+        encryptionService.encryptField("source_control_refresh_token", userRefreshToken),
+      );
       appExpiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 hours from now
     }
 
@@ -194,7 +202,7 @@ export async function GET(request: NextRequest) {
       // Create new SourceControlOrg (only if we have installation ID)
       sourceControlOrg = await db.sourceControlOrg.create({
         data: {
-          type: ownerType === 'user' ? 'USER' : 'ORG',
+          type: ownerType === "user" ? "USER" : "ORG",
           githubLogin: githubOwner,
           githubInstallationId: installationIdNumber,
           name: installationAccount?.name || installationAccount?.display_name || githubOwner,
@@ -206,7 +214,11 @@ export async function GET(request: NextRequest) {
     } else if (!sourceControlOrg && !installationIdNumber) {
       // OAuth-only flow - SourceControlOrg should already exist
       return NextResponse.redirect(new URL(`/w/${workspaceSlug}?error=no_installation_found`, request.url));
-    } else if (sourceControlOrg && installationIdNumber && sourceControlOrg.githubInstallationId !== installationIdNumber) {
+    } else if (
+      sourceControlOrg &&
+      installationIdNumber &&
+      sourceControlOrg.githubInstallationId !== installationIdNumber
+    ) {
       // Update installation ID if it changed
       sourceControlOrg = await db.sourceControlOrg.update({
         where: { id: sourceControlOrg.id },

@@ -81,7 +81,20 @@ export async function POST(request: NextRequest) {
     // Get poolApiKey from swarm
     let poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
 
-    const github_pat = await getGithubUsernameAndPAT(session?.user.id);
+    // Get user's first workspace as fallback for non-workspace-aware route
+    const firstWorkspace = await db.workspace.findFirst({
+      where: {
+        ownerId: userId,
+        sourceControlOrg: { isNot: null }
+      },
+      select: { slug: true }
+    });
+
+    if (!firstWorkspace) {
+      return NextResponse.json({ error: "No workspace with GitHub access found" }, { status: 400 });
+    }
+
+    const github_pat = await getGithubUsernameAndPAT(userId, firstWorkspace.slug);
 
     if (!poolApiKey) {
       await updateSwarmPoolApiKeyFor(swarm.id);
@@ -186,7 +199,7 @@ export async function POST(request: NextRequest) {
         minimum_vms: 2,
         repo_name: repository?.repositoryUrl || "",
         branch_name: repository?.branch || "",
-        github_pat: github_pat?.appAccessToken || github_pat?.pat || "",
+        github_pat: github_pat?.token || "",
         github_username: github_pat?.username || "",
         env_vars: envVars,
         container_files: finalContainerFiles,

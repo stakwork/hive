@@ -22,11 +22,12 @@ export async function GET(request: Request) {
 
     const userId = (session.user as { id: string }).id;
 
+    // Use user's OAuth token for user search (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);
-    if (!githubProfile?.pat) {
+    if (!githubProfile?.token) {
       return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
-    const pat = githubProfile.appAccessToken || githubProfile.pat;
+    const pat = githubProfile.token;
 
     // Search GitHub users
     const response = await axios.get("https://api.github.com/search/users", {

@@ -108,7 +108,7 @@ describe("POST /api/chat/message", () => {
     
     mockGetGithubUsernameAndPAT.mockResolvedValue({
       username: "testuser",
-      appAccessToken: "token123",
+      token: "token123",
     });
 
     mockGetS3Service.mockReturnValue({
@@ -552,7 +552,7 @@ describe("POST /api/chat/message", () => {
     it("should include GitHub credentials in Stakwork payload", async () => {
       const githubCreds = {
         username: "testuser",
-        appAccessToken: "github-token",
+        token: "github-token",
       };
       mockGetGithubUsernameAndPAT.mockResolvedValue(githubCreds);
 

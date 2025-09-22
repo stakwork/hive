@@ -15,17 +15,6 @@ export async function POST(request: NextRequest) {
     // Get the request body from frontend
     const body = await request.json();
 
-    const githubAuth = await getGithubUsernameAndPAT(session?.user.id);
-
-    // Add authentication to the request if needed
-    if (githubAuth) {
-      body.cloneOptions = {
-        username: githubAuth.username,
-        token: githubAuth.appAccessToken,
-        ...body.cloneOptions, // Allow frontend to override/add branch etc.
-      };
-    }
-
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -43,6 +32,27 @@ export async function POST(request: NextRequest) {
         { error: "Workspace not found or access denied" },
         { status: 403 }
       );
+    }
+
+    // Get workspace slug for GitHub credentials
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
+    const githubAuth = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
+
+    // Add authentication to the request if needed
+    if (githubAuth) {
+      body.cloneOptions = {
+        username: githubAuth.username,
+        token: githubAuth.token,
+        ...body.cloneOptions, // Allow frontend to override/add branch etc.
+      };
     }
 
     const swarm = await db.swarm.findFirst({

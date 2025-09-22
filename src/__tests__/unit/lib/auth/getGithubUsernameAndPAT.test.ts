@@ -15,6 +15,9 @@ vi.mock('@/lib/db', () => ({
     account: {
       findFirst: vi.fn(),
     },
+    workspace: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -32,6 +35,7 @@ vi.mock('@/lib/encryption', () => ({
 
 describe('getGithubUsernameAndPAT', () => {
   const mockUserId = 'user-123';
+  const mockWorkspaceSlug = 'test-workspace';
   
   let mockEncryptionService: { decryptField: any };
   
@@ -52,7 +56,7 @@ describe('getGithubUsernameAndPAT', () => {
       });
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -72,7 +76,7 @@ describe('getGithubUsernameAndPAT', () => {
       });
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -104,13 +108,12 @@ describe('getGithubUsernameAndPAT', () => {
       mockEncryptionService.decryptField.mockReturnValue(decryptedPat);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toEqual({
         username: 'testuser',
-        pat: 'decrypted_pat_token',
-        appAccessToken: null,
+        token: 'decrypted_pat_token',
       });
       // Note: The default mock implementation is being used, not the per-test mock
     });
@@ -142,13 +145,12 @@ describe('getGithubUsernameAndPAT', () => {
         .mockReturnValueOnce(decryptedAppToken);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toEqual({
         username: 'githubuser',
-        pat: 'decrypted_pat',
-        appAccessToken: 'decrypted_app_token',
+        token: 'decrypted_pat',
       });
       // Note: The mock behavior is based on the default implementation
     });
@@ -176,13 +178,12 @@ describe('getGithubUsernameAndPAT', () => {
       // The default mock will transform "encrypted_app_only" to "decrypted_app_only"
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toEqual({
         username: 'appuser',
-        pat: 'decrypted_app_only',
-        appAccessToken: 'decrypted_app_only',
+        token: 'decrypted_app_only',
       });
     });
   });
@@ -193,7 +194,7 @@ describe('getGithubUsernameAndPAT', () => {
       (db.user.findUnique as any).mockResolvedValue(null);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -214,7 +215,7 @@ describe('getGithubUsernameAndPAT', () => {
       });
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -238,7 +239,7 @@ describe('getGithubUsernameAndPAT', () => {
       (db.account.findFirst as any).mockResolvedValue(null);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -268,7 +269,7 @@ describe('getGithubUsernameAndPAT', () => {
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -294,7 +295,7 @@ describe('getGithubUsernameAndPAT', () => {
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -320,7 +321,7 @@ describe('getGithubUsernameAndPAT', () => {
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -350,13 +351,12 @@ describe('getGithubUsernameAndPAT', () => {
       // The default mock will still process this value
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert - The function still returns data with the mock service
       expect(result).toEqual({
         username: 'testuser',
-        pat: 'corrupted_token',
-        appAccessToken: null,
+        token: 'corrupted_token',
       });
     });
 
@@ -383,13 +383,12 @@ describe('getGithubUsernameAndPAT', () => {
       // Default mock will process both tokens
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert - Both tokens are processed by the mock
       expect(result).toEqual({
         username: 'testuser',
-        pat: 'valid_pat_token',
-        appAccessToken: 'corrupted_app_token',
+        token: 'valid_pat_token',
       });
     });
   });
@@ -417,7 +416,7 @@ describe('getGithubUsernameAndPAT', () => {
       mockEncryptionService.decryptField.mockReturnValue('decrypted_token');
 
       // Act
-      await getGithubUsernameAndPAT(mockUserId);
+      await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(db.user.findUnique).toHaveBeenCalledWith({
@@ -441,7 +440,7 @@ describe('getGithubUsernameAndPAT', () => {
       });
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -469,13 +468,12 @@ describe('getGithubUsernameAndPAT', () => {
       mockEncryptionService.decryptField.mockReturnValue('decrypted_token');
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toEqual({
         username: 'testuser',
-        pat: 'decrypted_token',
-        appAccessToken: null,
+        token: 'decrypted_token',
       });
     });
 
@@ -501,13 +499,12 @@ describe('getGithubUsernameAndPAT', () => {
       mockEncryptionService.decryptField.mockReturnValue('decrypted_token');
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toEqual({
         username: 'testuser',
-        pat: 'decrypted_token',
-        appAccessToken: null,
+        token: 'decrypted_token',
       });
     });
 
@@ -519,7 +516,7 @@ describe('getGithubUsernameAndPAT', () => {
       });
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
@@ -550,19 +547,17 @@ describe('getGithubUsernameAndPAT', () => {
       // The default mock will transform encrypted_ to decrypted_
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert - Verify the returned object has all expected properties
       expect(result).toHaveProperty('username');
-      expect(result).toHaveProperty('pat');
-      expect(result).toHaveProperty('appAccessToken');
+      expect(result).toHaveProperty('token');
       expect(result?.username).toBe('apiuser');
-      expect(result?.pat).toBe('decrypted_pat');
-      expect(result?.appAccessToken).toBe('decrypted_app_token');
+      expect(result?.token).toBe('decrypted_pat');
 
-      // Verify API endpoints can use appAccessToken || pat pattern
-      const tokenToUse = result?.appAccessToken || result?.pat;
-      expect(tokenToUse).toBe('decrypted_app_token'); // Should prefer app token
+      // Verify API endpoints can use token
+      const tokenToUse = result?.token;
+      expect(tokenToUse).toBe('decrypted_pat');
     });
 
     it('should handle webhook service integration pattern', async () => {
@@ -588,15 +583,14 @@ describe('getGithubUsernameAndPAT', () => {
       // The default mock will transform encrypted_webhook_pat to decrypted_webhook_pat
 
       // Act
-      const result = await getGithubUsernameAndPAT(mockUserId);
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
-      // Assert - Verify webhook service can safely access pat
-      expect(result?.pat).toBe('decrypted_webhook_pat');
-      expect(result?.appAccessToken).toBeNull();
+      // Assert - Verify webhook service can safely access token
+      expect(result?.token).toBe('decrypted_webhook_pat');
 
-      // Simulate webhook service logic: if (!githubProfile?.pat) throw error
-      expect(result?.pat).toBeTruthy();
-      const tokenForWebhook = result?.appAccessToken || result?.pat;
+      // Simulate webhook service logic: if (!githubProfile?.token) throw error
+      expect(result?.token).toBeTruthy();
+      const tokenForWebhook = result?.token;
       expect(tokenForWebhook).toBe('decrypted_webhook_pat');
     });
   });
