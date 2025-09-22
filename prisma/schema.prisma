@@ -157,8 +157,8 @@ model SourceControlOrg {
   updatedAt            DateTime              @updatedAt @map("updated_at")
 
   // Relationships
-  tokens       SourceControlToken[]
-  repositories Repository[]
+  tokens     SourceControlToken[]
+  workspaces Workspace[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -208,6 +208,10 @@ model Workspace {
   // Members of the workspace
   members WorkspaceMember[]
 
+  // Source control integration
+  sourceControlOrgId String?           @map("source_control_org_id")
+  sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: SetNull)
+
   // Infrastructure
   swarm        Swarm?
   repositories Repository[]
@@ -224,6 +228,7 @@ model Workspace {
 
   @@index([ownerId])
   @@index([deleted])
+  @@index([sourceControlOrgId])
   @@map("workspaces")
 }
 
@@ -312,20 +317,15 @@ model Repository {
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
 
-  // Repository belongs to workspace
+  // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  // Repository belongs to source control org
-  sourceControlOrgId String?           @map("source_control_org_id")
-  sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: SetNull)
 
   // Tasks can be linked to repositories
   tasks Task[]
 
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
   @@index([workspaceId])
-  @@index([sourceControlOrgId])
   @@map("repositories")
 }
 
