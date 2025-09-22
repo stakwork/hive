@@ -1,3 +1,4 @@
+// Create a standalone Gitsee component for onboarding
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,13 +10,35 @@ import {
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useGitVisualizer } from "@/hooks/useGitVisualizer";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { SwarmVisualization } from "./swarm-visualization";
+
+interface OnboardingGitseeProps {
+  workspaceId: string | null;
+  repositoryUrl: string | null;
+  swarmUrl?: string | null;
+}
+
+const OnboardingGitsee = ({ workspaceId, repositoryUrl, swarmUrl }: OnboardingGitseeProps) => {
+  useGitVisualizer({
+    workspaceId,
+    repositoryUrl,
+    swarmUrl: swarmUrl || null
+  });
+
+  return (
+    <Card className="max-w-2xl">
+      <CardContent>
+        <svg width="500" height="500" id="vizzy" style={{ width: "100%", height: "100%" }}></svg>
+      </CardContent>
+    </Card>
+  );
+};
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -52,6 +75,7 @@ export function ProjectNameSetupStep() {
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
   const swarmId = useRef<string>("");
   const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
+  const [swarmUrl, setSwarmUrl] = useState<string>("");
 
   const [repositoryUrlDraft, setRepositoryUrlDraft] = useState<string>("");
 
@@ -232,6 +256,21 @@ export function ProjectNameSetupStep() {
 
         const { swarmId } = json.data;
 
+        // Fetch swarm details to get the swarm URL
+        if (swarmId) {
+          try {
+            const swarmDetailsRes = await fetch(`/api/workspaces/${workspaceSlug}/stakgraph`);
+            if (swarmDetailsRes.ok) {
+              const swarmDetails = await swarmDetailsRes.json();
+              if (swarmDetails.success && swarmDetails.data?.swarmUrl) {
+                setSwarmUrl(swarmDetails.data.swarmUrl);
+              }
+            }
+          } catch (error) {
+            console.error("Failed to fetch swarm URL:", error);
+          }
+        }
+
 
         if (swarmId && selectedRepo?.html_url) {
           const servicesRes = await fetch(
@@ -410,7 +449,13 @@ export function ProjectNameSetupStep() {
 
 
       <CardContent className="space-y-6">
-        {swarmIsLoading ? <SwarmVisualization /> : (
+        {swarmIsLoading ? (
+          <OnboardingGitsee
+            workspaceId={workspaceId || null}
+            repositoryUrl={selectedRepo?.html_url || null}
+            swarmUrl={swarmUrl || null}
+          />
+        ) : (
           <>
             {error ? (
               <>
