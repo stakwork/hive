@@ -59,10 +59,7 @@ export async function POST(request: NextRequest) {
     const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
 
     if (!githubMatch) {
-      return NextResponse.json(
-        { success: false, message: "Invalid GitHub repository URL" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Invalid GitHub repository URL" }, { status: 400 });
     }
 
     const githubOwner = githubMatch[1];
@@ -71,7 +68,7 @@ export async function POST(request: NextRequest) {
     // Use the new installation check logic
     let installed = false;
     let installationId: number | undefined;
-    let ownerType: 'user' | 'org' | undefined;
+    let ownerType: "user" | "org" | undefined;
 
     // Get user's app tokens for this specific GitHub org to make the installation check
     const appTokens = await getUserAppTokens(session.user.id, githubOwner);
@@ -134,11 +131,13 @@ export async function POST(request: NextRequest) {
       authUrl = `https://github.com/login/oauth/authorize?client_id=${config.GITHUB_APP_CLIENT_ID}&state=${state}`;
       flowType = "user_authorization";
     } else {
+      console.log(`👤 App not installed for ${githubOwner}`);
       // App not installed - need full installation flow
-      // Target the specific org/user for installation
-      if (ownerType === "org") {
-        authUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}&suggested_target_id=${githubOwner}`;
+      if (ownerType === "user") {
+        // For user repos, force installation on user account
+        authUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}&target_type=User`;
       } else {
+        // For org repos, let user choose context
         authUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;
       }
       flowType = "installation";

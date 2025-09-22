@@ -114,22 +114,38 @@ export async function GET(request: NextRequest) {
     let githubOwner: string;
     let ownerType: 'user' | 'org' = 'user';
     let installationIdNumber: number | undefined;
+    let installationAccount: any = null;
 
     if (installationId) {
-      // We have an installation - get the installation details
-      const installationResponse = await fetch(`https://api.github.com/app/installations/${installationId}`, {
+      // We have an installation - get the user's installations to find this one
+      const installationsResponse = await fetch("https://api.github.com/user/installations", {
         headers: {
           Authorization: `Bearer ${userAccessToken}`,
           Accept: "application/vnd.github.v3+json",
         },
       });
 
-      if (installationResponse.ok) {
-        const installationData = await installationResponse.json();
-        githubOwner = installationData.account.login;
-        ownerType = installationData.account.type === 'User' ? 'user' : 'org';
-        installationIdNumber = parseInt(installationId);
+      if (installationsResponse.ok) {
+        const installationsData = await installationsResponse.json();
+        const installation = installationsData.installations?.find((inst: any) =>
+          inst.id === parseInt(installationId)
+        );
+
+        if (installation) {
+          githubOwner = installation.account.login;
+          ownerType = installation.account.type === 'User' ? 'user' : 'org';
+          installationIdNumber = parseInt(installationId);
+          // Store installation account details for later use
+          installationAccount = installation.account;
+          console.log(`✅ Found installation: ${githubOwner} (${ownerType}), installation ID: ${installationIdNumber}`);
+        } else {
+          console.error(`❌ Installation ${installationId} not found in user's installations`);
+          // Fallback to the authenticated user
+          githubOwner = githubUser.login;
+          ownerType = 'user';
+        }
       } else {
+        console.error(`❌ Failed to fetch user installations:`, installationsResponse.status, installationsResponse.statusText);
         // Fallback to the authenticated user
         githubOwner = githubUser.login;
         ownerType = 'user';
@@ -181,9 +197,9 @@ export async function GET(request: NextRequest) {
           type: ownerType === 'user' ? 'USER' : 'ORG',
           githubLogin: githubOwner,
           githubInstallationId: installationIdNumber,
-          name: githubUser.name || githubOwner,
-          avatarUrl: githubUser.avatar_url,
-          description: githubUser.bio,
+          name: installationAccount?.name || installationAccount?.display_name || githubOwner,
+          avatarUrl: installationAccount?.avatar_url || null,
+          description: installationAccount?.description || installationAccount?.bio || null,
         },
       });
       console.log(`✅ Created SourceControlOrg for ${githubOwner}`);
