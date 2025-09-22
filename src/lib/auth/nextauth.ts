@@ -320,16 +320,16 @@ export const authOptions: NextAuthOptions = {
               });
             } catch (err) {
               // If GitHub API fails, just skip
-              logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", { 
+              logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", {
                 hasAccount: !!account,
-                userId: user.id 
+                userId: user.id,
               });
             }
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
             logger.authInfo("GitHub account token revoked, re-authentication required", "SESSION_TOKEN_REVOKED", {
               userId: user.id,
-              provider: account.provider
+              provider: account.provider,
             });
           }
         }
@@ -414,7 +414,7 @@ export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUse
   if (!user) {
     return null;
   }
-  
+
   // Check for mock user (case insensitive, supports subdomains)
   if (user.email?.toLowerCase().includes("@mock.dev")) {
     return null;
@@ -425,33 +425,33 @@ export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUse
   if (!githubAuth) {
     return null;
   }
-  
+
   // Check for valid username
-  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === '') {
+  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === "") {
     return null;
   }
-  
+
   // Get PAT from Account
   const githubAccount = await db.account.findFirst({
     where: { userId, provider: "github" },
   });
-  
+
   if (!githubAccount) {
     return null;
   }
-  
+
   // Check if we have any access token (regular PAT or app token)
   if (!githubAccount.access_token && !githubAccount.app_access_token) {
     return null;
   }
-  
+
   let pat: string | undefined;
   let appAccessToken: string | null = null;
-  
+
   // Try regular PAT first
   if (githubAccount.access_token) {
     pat = encryptionService.decryptField("access_token", githubAccount.access_token);
-    
+
     // Also decrypt app token if available
     if (githubAccount.app_access_token) {
       appAccessToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
@@ -464,12 +464,12 @@ export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUse
   } else {
     return null;
   }
-  
+
   // Ensure pat is defined
   if (!pat) {
     return null;
   }
-  
+
   return {
     username: githubAuth.githubUsername,
     pat,

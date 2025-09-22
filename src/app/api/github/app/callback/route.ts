@@ -96,52 +96,51 @@ export async function GET(request: NextRequest) {
     // console.log("userAccessToken", userAccessToken);
     // console.log("userRefreshToken", userRefreshToken);
 
-    // Encrypt the tokens before storing
-    const encryptionService = EncryptionService.getInstance();
-    const encryptedAccessToken = JSON.stringify(encryptionService.encryptField("app_access_token", userAccessToken));
-    let encryptedRefreshToken;
-    let appExpiresAt;
-    if (userRefreshToken) {
-      encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("app_refresh_token", userRefreshToken));
-      appExpiresAt = Math.floor(Date.now() / 1000) + 8 * 60 * 60; // 8 hours from now
-    }
-
-    // Find existing GitHub account for this user
-    const existingAccount = await db.account.findFirst({
-      where: {
-        userId: session.user.id as string,
-        provider: "github",
+    // Get GitHub user info to determine which org/user this token belongs to
+    const userResponse = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${userAccessToken}`,
+        Accept: "application/vnd.github.v3+json",
       },
     });
 
-    if (existingAccount) {
-      // Update existing account with new app tokens
-      await db.account.update({
-        where: {
-          id: existingAccount.id,
-        },
-        data: {
-          app_access_token: encryptedAccessToken,
-          app_refresh_token: encryptedRefreshToken,
-          app_expires_at: appExpiresAt,
-        },
-      });
-    } else {
-      // Create new account with app tokens
-      await db.account.create({
-        data: {
-          userId: session.user.id as string,
-          type: "oauth",
-          provider: "github",
-          providerAccountId: session.user.id as string, // Use session user ID as fallback
-          app_access_token: encryptedAccessToken,
-          app_refresh_token: encryptedRefreshToken,
-          app_expires_at: appExpiresAt,
-        },
-      });
+    if (!userResponse.ok) {
+      return NextResponse.redirect(new URL("/?error=github_user_fetch_failed", request.url));
     }
 
-    // Decode the state to get workspace information
+    const githubUser = await userResponse.json();
+
+    // Get installation info if available
+    let githubOwner: string;
+    let ownerType: 'user' | 'org' = 'user';
+    let installationIdNumber: number | undefined;
+
+    if (installationId) {
+      // We have an installation - get the installation details
+      const installationResponse = await fetch(`https://api.github.com/app/installations/${installationId}`, {
+        headers: {
+          Authorization: `Bearer ${userAccessToken}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      });
+
+      if (installationResponse.ok) {
+        const installationData = await installationResponse.json();
+        githubOwner = installationData.account.login;
+        ownerType = installationData.account.type === 'User' ? 'user' : 'org';
+        installationIdNumber = parseInt(installationId);
+      } else {
+        // Fallback to the authenticated user
+        githubOwner = githubUser.login;
+        ownerType = 'user';
+      }
+    } else {
+      // No installation ID - this is just OAuth for existing installation
+      githubOwner = githubUser.login;
+      ownerType = 'user';
+    }
+
+    // Decode the state to get workspace information FIRST
     let workspaceSlug: string;
     try {
       const stateData = JSON.parse(Buffer.from(state, "base64").toString());
@@ -158,41 +157,116 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     }
 
+    console.log(`📋 Creating tokens for ${githubOwner} (${ownerType})`);
+
+    // Encrypt the tokens before storing
+    const encryptionService = EncryptionService.getInstance();
+    const encryptedAccessToken = JSON.stringify(encryptionService.encryptField("source_control_token", userAccessToken));
+    let encryptedRefreshToken;
+    let appExpiresAt;
+    if (userRefreshToken) {
+      encryptedRefreshToken = JSON.stringify(encryptionService.encryptField("source_control_refresh_token", userRefreshToken));
+      appExpiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 hours from now
+    }
+
+    // Find or create SourceControlOrg
+    let sourceControlOrg = await db.sourceControlOrg.findUnique({
+      where: { githubLogin: githubOwner },
+    });
+
+    if (!sourceControlOrg && installationIdNumber) {
+      // Create new SourceControlOrg (only if we have installation ID)
+      sourceControlOrg = await db.sourceControlOrg.create({
+        data: {
+          type: ownerType === 'user' ? 'USER' : 'ORG',
+          githubLogin: githubOwner,
+          githubInstallationId: installationIdNumber,
+          name: githubUser.name || githubOwner,
+          avatarUrl: githubUser.avatar_url,
+          description: githubUser.bio,
+        },
+      });
+      console.log(`✅ Created SourceControlOrg for ${githubOwner}`);
+    } else if (!sourceControlOrg && !installationIdNumber) {
+      // OAuth-only flow - SourceControlOrg should already exist
+      return NextResponse.redirect(new URL(`/w/${workspaceSlug}?error=no_installation_found`, request.url));
+    } else if (sourceControlOrg && installationIdNumber && sourceControlOrg.githubInstallationId !== installationIdNumber) {
+      // Update installation ID if it changed
+      sourceControlOrg = await db.sourceControlOrg.update({
+        where: { id: sourceControlOrg.id },
+        data: { githubInstallationId: installationIdNumber },
+      });
+      console.log(`🔄 Updated installation ID for ${githubOwner}`);
+    }
+
+    // Ensure we have a sourceControlOrg at this point
+    if (!sourceControlOrg) {
+      console.error(`No SourceControlOrg found or created for ${githubOwner}`);
+      return NextResponse.redirect(new URL(`/w/${workspaceSlug}?error=source_control_org_missing`, request.url));
+    }
+
+    // Create or update SourceControlToken
+    const existingToken = await db.sourceControlToken.findUnique({
+      where: {
+        userId_sourceControlOrgId: {
+          userId: session.user.id as string,
+          sourceControlOrgId: sourceControlOrg.id,
+        },
+      },
+    });
+
+    if (existingToken) {
+      // Update existing token
+      await db.sourceControlToken.update({
+        where: { id: existingToken.id },
+        data: {
+          token: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
+          expiresAt: appExpiresAt,
+        },
+      });
+      console.log(`🔄 Updated SourceControlToken for user ${session.user.id} on ${githubOwner}`);
+    } else {
+      // Create new token
+      await db.sourceControlToken.create({
+        data: {
+          userId: session.user.id as string,
+          sourceControlOrgId: sourceControlOrg.id,
+          token: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
+          expiresAt: appExpiresAt,
+        },
+      });
+      console.log(`✅ Created SourceControlToken for user ${session.user.id} on ${githubOwner}`);
+    }
+
     // Clear the GitHub state from the session after successful validation
     await db.session.updateMany({
       where: { userId: session.user.id as string },
       data: { githubState: null },
     });
 
-    // If we have an installation ID, save it to the swarm
-    if (installationId && (setupAction === "install" || setupAction === "update")) {
-      console.log(`Saving GitHub App installation ID ${installationId} to workspace ${workspaceSlug}`);
+    // Link the workspace to the source control org
+    if (setupAction === "install" || setupAction === "update" || !setupAction) {
+      console.log(`Linking workspace ${workspaceSlug} to SourceControlOrg ${githubOwner}`);
 
-      // Find the workspace by slug and update its swarm
-      const result = await db.swarm.updateMany({
-        where: {
-          workspace: {
-            slug: workspaceSlug,
-          },
-        },
-        data: { githubInstallationId: installationId },
+      // Find the workspace and link it to the source control org
+      const result = await db.workspace.updateMany({
+        where: { slug: workspaceSlug },
+        data: { sourceControlOrgId: sourceControlOrg.id },
       });
 
-      console.log(`Updated ${result.count} swarm(s) with GitHub installation ID`);
+      console.log(`✅ Linked ${result.count} workspace(s) to SourceControlOrg ${githubOwner}`);
     } else if (setupAction === "uninstall") {
-      console.log(`Clearing GitHub App installation ID from workspace ${workspaceSlug}`);
+      console.log(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`);
 
-      // Clear the installation ID if uninstalled
-      const result = await db.swarm.updateMany({
-        where: {
-          workspace: {
-            slug: workspaceSlug,
-          },
-        },
-        data: { githubInstallationId: null },
+      // Unlink the workspace from source control org
+      const result = await db.workspace.updateMany({
+        where: { slug: workspaceSlug },
+        data: { sourceControlOrgId: null },
       });
 
-      console.log(`Cleared GitHub installation ID from ${result.count} swarm(s)`);
+      console.log(`🔗 Unlinked ${result.count} workspace(s) from SourceControlOrg`);
     }
 
     // Redirect to the workspace page with just the setup action

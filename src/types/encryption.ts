@@ -25,7 +25,9 @@ export type EncryptableField =
   | "stakworkApiKey"
   | "githubWebhookSecret"
   | "app_access_token"
-  | "app_refresh_token";
+  | "app_refresh_token"
+  | "source_control_token"
+  | "source_control_refresh_token";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";

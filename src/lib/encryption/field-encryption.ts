@@ -63,6 +63,8 @@ export class FieldEncryptionService {
       "githubWebhookSecret",
       "app_access_token",
       "app_refresh_token",
+      "source_control_token",
+      "source_control_refresh_token",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
