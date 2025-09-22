@@ -263,6 +263,7 @@ model Repository {
   // Test setup flags
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
+  staktrakSetup         Boolean @default(false) @map("staktrak_setup")
 
   // Repository belongs to workspace
   workspaceId String    @map("workspace_id")
