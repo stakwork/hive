@@ -5,12 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
-import { Activity, CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
+import { CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
 import Link from "next/link";
+import { useModal } from "../modals/ModlaProvider";
 
 export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
-  const swarmStatus = workspace?.swarmStatus;
+
+  const open = useModal();
+  console.log(workspace);
+  // const swarmStatus = workspace?.swarmStatus;
 
   const poolState = workspace?.poolState;
   const poolStateCompleted = workspace?.poolState === "COMPLETE";
@@ -18,25 +22,18 @@ export function VMConfigSection() {
   console.log(poolStateCompleted);
 
   // Check if we should show the modal
-  const shouldShowWarning = poolState !== "STARTED";
+
+  const swarmStatus = poolState === "COMPLETE" ? "ACTIVE" : "PENDING";
 
 
   // Determine UI state based on swarm status
   const getVMState = () => {
-    if (!swarmStatus) {
-      return {
-        buttonText: "Setup VM",
-        buttonHref: `/w/${slug}/code-graph`,
-        statusBadge: null,
-        description: "Set up your virtual machine to start developing"
-      };
-    }
 
     switch (swarmStatus) {
       case "ACTIVE":
         return {
           buttonText: "Edit",
-          buttonHref: `/w/${slug}/stakgraph`,
+          buttonHref: ``,
           statusBadge: {
             text: "Active",
             variant: "default" as const,
@@ -47,7 +44,7 @@ export function VMConfigSection() {
         };
       case "PENDING":
         return {
-          buttonText: "View Progress",
+          buttonText: "Finish setup",
           buttonHref: `/w/${slug}/code-graph`,
           statusBadge: {
             text: "VM Spinning Up",
@@ -55,19 +52,21 @@ export function VMConfigSection() {
             icon: Clock,
             className: "bg-orange-100 text-orange-800 border-orange-200"
           },
-          description: "Your graph infrastructure is being spun up, this may take a few minutes."
-        };
-      default:
-        return {
-          buttonText: "Start setup",
-          buttonHref: `/w/${slug}/code-graph`,
-          statusBadge: null,
-          description: "Create a virtual machine environment for your codebase."
+          description: "Finish your setup to get started."
         };
     }
   };
 
   const vmState = getVMState();
+
+  const handleOpenModal = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+
+    open("ServicesWizard");
+
+  }
+
+
 
   return (
     <Card className="relative">
@@ -119,25 +118,10 @@ export function VMConfigSection() {
                   )}
                   {swarmStatus === "PENDING" && (
                     <>
-                      <Clock className="w-6 h-6 animate-spin" />
+                      <Clock className="w-6 h-6" />
                       <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
                     </>
                   )}
-                  {swarmStatus !== "ACTIVE" && swarmStatus !== "PENDING" && (
-                    <Activity className="w-6 h-6" />
-                  )}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">
-                    {swarmStatus === "ACTIVE" ? "Active" :
-                      swarmStatus === "PENDING" ? "In Progress" :
-                        "Set up VM"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {swarmStatus === "ACTIVE" ? "Your VMs are running." :
-                      swarmStatus === "PENDING" ? "Please wait..." :
-                        "Ingest your codebase"}
-                  </span>
                 </div>
               </div>
             ) : (
@@ -156,12 +140,8 @@ export function VMConfigSection() {
           {/* Right side - Action button */}
           {swarmStatus !== "ACTIVE" && (
             <Button asChild>
-              <Link href={slug ? vmState.buttonHref : "#"}>
-                {swarmStatus === "PENDING" ? (
-                  <Clock className="w-4 h-4 mr-2" />
-                ) : (
-                  <Zap className="w-4 h-4 mr-2" />
-                )}
+              <Link onClick={handleOpenModal} href={slug ? vmState.buttonHref : "#"}>
+                <Zap className="w-4 h-4 mr-2" />
                 {vmState.buttonText}
               </Link>
             </Button>
