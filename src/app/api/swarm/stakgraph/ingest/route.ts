@@ -7,6 +7,7 @@ import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/l
 import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,6 +18,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
@@ -71,22 +73,16 @@ export async function POST(request: NextRequest) {
     });
 
     const creds = await getGithubUsernameAndPAT(session.user.id);
-    const dataApi = {
-      repo_url: final_repo_url,
-      username: creds?.username,
-      pat: creds?.appAccessToken || creds?.pat,
-      callback_url: getStakgraphWebhookCallbackUrl(request),
-    };
+    const username = creds?.username ?? "";
+    const pat = (creds?.appAccessToken || creds?.pat) ?? "";
 
-    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
-
-    const apiResult = await swarmApiRequest({
-      swarmUrl: stakgraphUrl,
-      endpoint: "/ingest_async",
-      method: "POST",
-      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
-      data: dataApi,
-    });
+    const apiResult = await triggerIngestAsync(
+      getSwarmVanityAddress(swarm.name),
+      encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
+      final_repo_url,
+      { username, pat },
+      getStakgraphWebhookCallbackUrl(request),
+    );
 
     try {
       const callbackUrl = getGithubWebhookCallbackUrl(request);
@@ -99,20 +95,6 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       console.error(`Error ensuring repo webhook: ${error}`);
-    }
-    let finalStatus = repository.status;
-    if (
-      apiResult.ok &&
-      apiResult.data &&
-      typeof apiResult.data === "object" &&
-      "status" in apiResult.data &&
-      apiResult.data.status === "success"
-    ) {
-      await db.repository.update({
-        where: { id: repository.id },
-        data: { status: RepositoryStatus.SYNCED },
-      });
-      finalStatus = RepositoryStatus.SYNCED;
     }
 
     if (apiResult?.data && typeof apiResult.data === "object" && "request_id" in apiResult.data) {
@@ -127,7 +109,7 @@ export async function POST(request: NextRequest) {
         success: apiResult.ok,
         status: apiResult.status,
         data: apiResult.data,
-        repositoryStatus: finalStatus,
+        repositoryStatus: repository.status,
       },
       { status: apiResult.status },
     );
@@ -140,21 +122,17 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
-  const swarmId = searchParams.get("swarmId");
   const workspaceId = searchParams.get("workspaceId");
 
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
-    if (!id) {
+    if (!id || !workspaceId) {
       return NextResponse.json(
-        { success: false, message: "Missing required fields: id" },
+        { success: false, message: "Missing required fields: id, workspaceId" },
         { status: 400 },
       );
     }
@@ -169,28 +147,16 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
-    // const { username, pat } = githubCreds;
 
-    const where: Record<string, string> = {};
-    if (swarmId) {
-      where.swarmId = swarmId;
-    }
-    if (!swarmId && workspaceId) {
-      where.workspaceId = workspaceId;
-    }
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarm.findUnique({
+      where: { workspaceId }
+    });
 
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL or API key not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
     const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
@@ -202,6 +168,7 @@ export async function GET(request: NextRequest) {
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 
+
     return NextResponse.json(
       {
         apiResult,
@@ -210,9 +177,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error(`Error getting ingest status: ${error}`);
-    return NextResponse.json(
-      { success: false, message: "Failed to ingest code" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }

@@ -12,13 +12,14 @@ import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { formatRelativeTime } from "@/lib/utils";
-import { Database, ExternalLink, GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
+import { TestCoverageData } from "@/types";
+import { Clock, Database, ExternalLink, GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { GraphComponent } from "./graph";
+import { Gitsee } from "./graph/gitsee";
 
 export default function DashboardPage() {
-  const { workspace, slug, id: workspaceId } = useWorkspace();
+  const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp();
   const searchParams = useSearchParams();
@@ -26,8 +27,77 @@ export default function DashboardPage() {
   const processedCallback = useRef(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [testCoverage, setTestCoverage] = useState<TestCoverageData | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const ingestRefId = workspace?.ingestRefId;
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  console.log(workspace)
+  const poolState = workspace?.poolState;
+
+  const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
+
+  const isEnvironmentSetup = poolState === "COMPLETE";
+
+  console.log(isEnvironmentSetup);
+
+  // Poll ingest status if we have an ingestRefId
+  useEffect(() => {
+    if (codeIsSynced || !ingestRefId || !workspaceId) return;
+
+    let isCancelled = false;
+
+    const getIngestStatus = async () => {
+      if (isCancelled) return;
+
+      try {
+        const res = await fetch(
+          `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
+        );
+        const { apiResult } = await res.json();
+        const { data } = apiResult;
+
+        console.log("Ingest status:", data);
+
+        if (data?.status === "Complete") {
+
+          updateWorkspace({
+            repositories: workspace?.repositories.map((repo) => ({
+              ...repo,
+              status: "SYNCED",
+            })),
+          });
+
+          return; // Stop polling
+        } else if (data?.status === "Failed") {
+          console.log('Ingestion failed');
+          toast({
+            title: "Code Ingestion Failed",
+            description: "There was an error ingesting your codebase. Please try again.",
+            variant: "destructive",
+          });
+        } else {
+          // Continue polling if still in progress
+          pollTimeoutRef.current = setTimeout(getIngestStatus, 5000);
+        }
+      } catch (error) {
+        console.error("Failed to get ingest status:", error);
+        // Retry after a longer delay on error
+        if (!isCancelled) {
+          pollTimeoutRef.current = setTimeout(getIngestStatus, 10000);
+        }
+      }
+    };
+
+    getIngestStatus();
+
+    return () => {
+      isCancelled = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [ingestRefId, workspaceId, toast, updateWorkspace, codeIsSynced]);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
@@ -88,7 +158,7 @@ export default function DashboardPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ workspaceId, }),
+        body: JSON.stringify({ workspaceId }),
       });
 
       const data = await response.json();
@@ -116,6 +186,30 @@ export default function DashboardPage() {
       setIsIngesting(false);
     }
   };
+
+  // Fetch test coverage if workspace has a swarm
+  useEffect(() => {
+    const fetchCoverage = async () => {
+      if (!workspace?.swarmStatus || workspace.swarmStatus !== "ACTIVE") return;
+
+      setCoverageLoading(true);
+      try {
+        const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            setTestCoverage(result.data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch test coverage:", error);
+      } finally {
+        setCoverageLoading(false);
+      }
+    };
+
+    fetchCoverage();
+  }, [workspaceId, workspace?.swarmStatus]);
 
   // Handle GitHub App callback
   useEffect(() => {
@@ -259,6 +353,37 @@ export default function DashboardPage() {
               </CardTitle>
             </div>
           </CardHeader>
+          <CardContent>
+            {coverageLoading ? (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Loading...</span>
+              </div>
+            ) : testCoverage?.unit_tests !== null && testCoverage?.integration_tests !== null && testCoverage?.e2e_tests !== null ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Unit</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage?.unit_tests.percent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Integration</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage?.integration_tests?.percent.toFixed(1) || 0}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">E2E</span>
+                  <span className="text-sm font-medium">
+                    {testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">No coverage data</span>
+            )}
+          </CardContent>
         </Card>
       </div>
 
@@ -282,7 +407,7 @@ export default function DashboardPage() {
         ) : (
           <EmptyState workspaceSlug={slug} />
         ))}
-      <GraphComponent />
+      <Gitsee />
     </div>
   );
 }

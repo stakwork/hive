@@ -74,13 +74,11 @@ export async function POST(request: NextRequest) {
     const swarmConfig = getServiceConfig("swarm");
     const swarmService = new SwarmService(swarmConfig);
 
-    const thirdPartyName = `${name.toLowerCase()}-Swarm`;
 
     // Generate a secure password for the swarm
     const swarmPassword = generateSecurePassword(20);
 
     const apiResponse = await swarmService.createSwarm({
-      name: thirdPartyName,
       instance_type,
       password: swarmPassword,
     });
@@ -189,7 +187,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Swarm updated successfully",
-      data: { id: updatedSwarm.id },
+      data: { id: updatedSwarm?.id },
     });
   } catch (error) {
     console.error("Error creating Swarm:", error);

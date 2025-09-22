@@ -67,11 +67,22 @@ export async function POST(request: NextRequest) {
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    saveOrUpdateSwarm({
-      swarmId,
-      workspaceId,
-      containerFiles: container_files,
-    });
+    // Check if swarm already has container files
+    let finalContainerFiles = container_files;
+
+    if (swarm.containerFiles && Object.keys(swarm.containerFiles).length > 0) {
+      // Use existing container files if they exist
+      finalContainerFiles = swarm.containerFiles;
+      console.log("Using existing container files from database");
+    } else {
+      // Save new container files to database if none exist
+      await saveOrUpdateSwarm({
+        swarmId,
+        workspaceId,
+        containerFiles: container_files,
+      });
+      console.log("Saved new container files to database");
+    }
 
     if (!swarm) {
       return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
@@ -156,18 +167,26 @@ export async function POST(request: NextRequest) {
       github_pat: github_pat?.appAccessToken || github_pat?.pat || "",
       github_username: github_pat?.username || "",
       env_vars: envVars,
-      container_files,
+      container_files: finalContainerFiles,
     });
 
     saveOrUpdateSwarm({
       swarmId,
       workspaceId,
       poolName: swarmId,
+      poolState: 'COMPLETE',
     });
 
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
     console.error("Error creating Pool Manager pool:", error);
+    const body = await request.json();
+    const { workspaceId } = body;
+
+    saveOrUpdateSwarm({
+      workspaceId,
+      poolState: 'FAILED',
+    });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

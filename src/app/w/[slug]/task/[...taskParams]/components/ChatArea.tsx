@@ -5,12 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  ChatMessage as ChatMessageType,
-  Option,
-  Artifact,
-  WorkflowStatus,
-} from "@/lib/chat";
+import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
@@ -20,11 +15,7 @@ import { Button } from "@/components/ui/button";
 interface ChatAreaProps {
   messages: ChatMessageType[];
   onSend: (message: string) => Promise<void>;
-  onArtifactAction: (
-    messageId: string,
-    action: Option,
-    webhook: string,
-  ) => Promise<void>;
+  onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
   hasNonFormArtifacts?: boolean;
@@ -45,7 +36,6 @@ export function ChatArea({
   onArtifactAction,
   inputDisabled = false,
   isLoading = false,
-  hasNonFormArtifacts = false,
   isChainVisible = false,
   lastLogLine = "",
   logs = [],
@@ -73,9 +63,7 @@ export function ChatArea({
 
   return (
     <motion.div
-      className={
-        "flex h-full min-w-0 flex-col bg-background rounded-xl border shadow-sm overflow-hidden"
-      }
+      className={"flex h-full min-w-0 flex-col bg-background rounded-xl border shadow-sm overflow-hidden"}
       layout
       initial={{ opacity: 1 }}
       animate={{ opacity: 1 }}
@@ -95,15 +83,10 @@ export function ChatArea({
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 {/* Back Button */}
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={handleBackToTasks}
-                  className="flex-shrink-0"
-                >
+                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
                   <ArrowLeft className="w-4 h-4" />
                 </Button>
-                
+
                 {/* Task Title */}
                 <AnimatePresence mode="wait">
                   <motion.h2
@@ -119,7 +102,7 @@ export function ChatArea({
                   </motion.h2>
                 </AnimatePresence>
               </div>
-              
+
               {/* Stakwork Project Link */}
               {stakworkProjectId && (
                 <Link
@@ -136,7 +119,7 @@ export function ChatArea({
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
         {messages
@@ -146,12 +129,7 @@ export function ChatArea({
             const replyMessage = messages.find((m) => m.replyId === msg.id);
 
             return (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                replyMessage={replyMessage}
-                onArtifactAction={onArtifactAction}
-              />
+              <ChatMessage key={msg.id} message={msg} replyMessage={replyMessage} onArtifactAction={onArtifactAction} />
             );
           })}
 
@@ -167,9 +145,7 @@ export function ChatArea({
                 {getAgentIcon()}
                 Hive
               </div>
-              <div className="text-sm">
-                {lastLogLine ? lastLogLine : `Communicating with workflow...`}
-              </div>
+              <div className="text-sm">{lastLogLine ? lastLogLine : `Communicating with workflow...`}</div>
               {/* Optional: Add a subtle loading indicator */}
               {isChainVisible && (
                 <div className="flex items-center mt-2 text-xs text-muted-foreground">

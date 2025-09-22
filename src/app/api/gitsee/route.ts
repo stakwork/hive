@@ -3,6 +3,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,9 +28,26 @@ export async function POST(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        { error: "Missing required parameter: workspaceId" },
+        { status: 400 }
+      );
+    }
+
+    // Validate workspace access
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 403 }
+      );
+    }
+
     const swarm = await db.swarm.findFirst({
       where: {
-        workspaceId: workspaceId || "",
+        workspaceId: workspaceId,
       },
     });
 

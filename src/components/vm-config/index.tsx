@@ -2,16 +2,24 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Server, CheckCircle, Clock, Zap, Activity, MoreHorizontal } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { Activity, CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
+import Link from "next/link";
 
 export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
   const swarmStatus = workspace?.swarmStatus;
+
+  const poolState = workspace?.poolState;
+  const poolStateCompleted = workspace?.poolState === "COMPLETE";
+
+  console.log(poolStateCompleted);
+
+  // Check if we should show the modal
+  const shouldShowWarning = poolState !== "STARTED";
+
 
   // Determine UI state based on swarm status
   const getVMState = () => {
@@ -100,8 +108,8 @@ export function VMConfigSection() {
                 <div className={cn(
                   "relative flex items-center justify-center w-12 h-12 rounded-full",
                   swarmStatus === "ACTIVE" ? "bg-green-100 text-green-700" :
-                  swarmStatus === "PENDING" ? "bg-orange-100 text-orange-700" :
-                  "bg-gray-100 text-gray-700"
+                    swarmStatus === "PENDING" ? "bg-orange-100 text-orange-700" :
+                      "bg-gray-100 text-gray-700"
                 )}>
                   {swarmStatus === "ACTIVE" && (
                     <>
@@ -122,13 +130,13 @@ export function VMConfigSection() {
                 <div className="flex flex-col">
                   <span className="text-sm font-medium">
                     {swarmStatus === "ACTIVE" ? "Active" :
-                     swarmStatus === "PENDING" ? "In Progress" :
-                     "Set up VM"}
+                      swarmStatus === "PENDING" ? "In Progress" :
+                        "Set up VM"}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {swarmStatus === "ACTIVE" ? "Your VMs are running." :
-                     swarmStatus === "PENDING" ? "Please wait..." :
-                     "Ingest your codebase"}
+                      swarmStatus === "PENDING" ? "Please wait..." :
+                        "Ingest your codebase"}
                   </span>
                 </div>
               </div>
@@ -159,6 +167,8 @@ export function VMConfigSection() {
             </Button>
           )}
         </div>
+
+
       </CardContent>
     </Card>
   );

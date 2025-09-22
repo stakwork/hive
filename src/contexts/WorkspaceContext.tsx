@@ -1,19 +1,19 @@
 "use client";
 
-import React, {
-  createContext,
-  useEffect,
-  useState,
-  useCallback,
-  ReactNode,
-} from "react";
-import { useSession } from "next-auth/react";
-import { useRouter, usePathname } from "next/navigation";
 import type {
+  WorkspaceRole,
   WorkspaceWithAccess,
   WorkspaceWithRole,
-  WorkspaceRole,
 } from "@/types/workspace";
+import { useSession } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  createContext,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 // Context shape as specified in the requirements
 interface WorkspaceContextType {
@@ -39,6 +39,7 @@ interface WorkspaceContextType {
   refreshWorkspaces: () => Promise<void>;
   refreshCurrentWorkspace: () => Promise<void>;
   refreshTaskNotifications: () => Promise<void>;
+  updateWorkspace: (updates: Partial<WorkspaceWithAccess>) => void;
 
   // Helper methods
   hasAccess: boolean;
@@ -69,7 +70,7 @@ export function WorkspaceProvider({
   const [error, setError] = useState<string | null>(null);
   // Don't persist the loaded slug - start fresh on each mount
   const [currentLoadedSlug, setCurrentLoadedSlug] = useState<string>("");
-  
+
   // Task notifications state
   const [waitingForInputCount, setWaitingForInputCount] = useState<number>(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -117,16 +118,16 @@ export function WorkspaceProvider({
   // Fetch task notifications count
   const fetchTaskNotifications = useCallback(async (workspaceSlug: string) => {
     if (!workspaceSlug || status !== "authenticated") return;
-    
+
     setNotificationsLoading(true);
     try {
       const response = await fetch(`/api/workspaces/${workspaceSlug}/tasks/notifications-count`);
       const data = await response.json();
-      
+
       if (response.ok && data.success) {
         const count = data.data.waitingForInputCount || 0;
         setWaitingForInputCount(count);
-        
+
         // Note: Zustand store no longer needed - WorkspaceProvider is the single source of truth
       }
     } catch (err) {
@@ -146,6 +147,14 @@ export function WorkspaceProvider({
   // Refresh current workspace - simplified to just re-trigger the effect
   const refreshCurrentWorkspace = useCallback(async () => {
     setCurrentLoadedSlug(""); // Clear the loaded slug to force refetch
+  }, []);
+
+  // Update workspace data locally
+  const updateWorkspace = useCallback((updates: Partial<WorkspaceWithAccess>) => {
+    setWorkspace(current => {
+      if (!current) return current;
+      return { ...current, ...updates };
+    });
   }, []);
 
   // Switch to a different workspace - SIMPLIFIED to only handle navigation
@@ -194,42 +203,42 @@ export function WorkspaceProvider({
 
     // Only fetch if we have a slug and haven't loaded it yet
     if (currentSlug && currentSlug !== currentLoadedSlug) {
-        const fetchCurrentWorkspace = async () => {
-          setLoading(true);
-          setError(null);
+      const fetchCurrentWorkspace = async () => {
+        setLoading(true);
+        setError(null);
 
-          try {
-            const response = await fetch(`/api/workspaces/${currentSlug}`);
-            const data = await response.json();
+        try {
+          const response = await fetch(`/api/workspaces/${currentSlug}`);
+          const data = await response.json();
 
-            if (!response.ok) {
-              if (response.status === 404 || response.status === 403) {
-                setWorkspace(null);
-                setCurrentLoadedSlug(""); // Clear loaded slug on error
-                setError("Workspace not found or access denied");
-                return;
-              }
-              throw new Error(data.error || "Failed to fetch workspace");
+          if (!response.ok) {
+            if (response.status === 404 || response.status === 403) {
+              setWorkspace(null);
+              setCurrentLoadedSlug(""); // Clear loaded slug on error
+              setError("Workspace not found or access denied");
+              return;
             }
-
-            setWorkspace(data.workspace);
-            setCurrentLoadedSlug(currentSlug); // Track the loaded slug
-            
-            // Fetch task notifications for this workspace
-            await fetchTaskNotifications(currentSlug);
-          } catch (err) {
-            console.error(`Failed to fetch workspace ${currentSlug}:`, err);
-            setError(
-              err instanceof Error ? err.message : "Failed to load workspace",
-            );
-            setWorkspace(null);
-            setCurrentLoadedSlug(""); // Clear loaded slug on error
-          } finally {
-            setLoading(false);
+            throw new Error(data.error || "Failed to fetch workspace");
           }
-        };
 
-        fetchCurrentWorkspace();
+          setWorkspace(data.workspace);
+          setCurrentLoadedSlug(currentSlug); // Track the loaded slug
+
+          // Fetch task notifications for this workspace
+          await fetchTaskNotifications(currentSlug);
+        } catch (err) {
+          console.error(`Failed to fetch workspace ${currentSlug}:`, err);
+          setError(
+            err instanceof Error ? err.message : "Failed to load workspace",
+          );
+          setWorkspace(null);
+          setCurrentLoadedSlug(""); // Clear loaded slug on error
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchCurrentWorkspace();
     }
   }, [pathname, status, initialSlug, currentLoadedSlug]); // Remove workspace from dependencies to prevent loops
 
@@ -256,7 +265,7 @@ export function WorkspaceProvider({
   const slug = workspace?.slug || "";
   const id = workspace?.id || "";
   const role = workspace?.userRole || null;
-  
+
   // Consider access granted if:
   // 1. Workspace is loaded, OR
   // 2. We're still loading (don't show error until load completes)
@@ -287,6 +296,7 @@ export function WorkspaceProvider({
     refreshWorkspaces,
     refreshCurrentWorkspace,
     refreshTaskNotifications,
+    updateWorkspace,
 
     // Helper methods
     hasAccess,

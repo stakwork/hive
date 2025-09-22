@@ -22,7 +22,6 @@ import {
 
 const getFiles = (
   repoName: string,
-  projectName: string,
   servicesData: ServiceDataConfig[],
 ) => {
   const pm2Apps = generatePM2Apps(repoName, servicesData);
@@ -64,12 +63,11 @@ export const ReviewPoolEnvironmentStep = ({
 
   const poolName = useWizardStore((s) => s.poolName);
   const repoName = useWizardStore((s) => s.repoName);
-  const projectName = useWizardStore((s) => s.projectName);
   const services = useWizardStore((s) => s.services);
   const swarmId = useWizardStore((s) => s.swarmId);
   const workspaceId = useWizardStore((s) => s.workspaceId);
 
-  const files = getFiles(repoName, projectName, services);
+  const files = getFiles(repoName, services);
 
   useEffect(() => {
     setOriginalContents(files);

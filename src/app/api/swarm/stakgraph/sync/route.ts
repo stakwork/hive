@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
-import { RepositoryStatus } from "@prisma/client";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import { RepositoryStatus } from "@prisma/client";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,6 +63,14 @@ export async function POST(request: NextRequest) {
       username && pat ? { username, pat } : undefined,
       callbackUrl,
     );
+
+    console.log("STAKGRAPH SYNC API RESPONSE", {
+      ok: apiResult.ok,
+      status: apiResult.status,
+      data: apiResult.data,
+      hasRequestId: !!apiResult.data?.request_id,
+    });
+
     const requestId = apiResult.data?.request_id;
     if (requestId) {
       console.log("STAKGRAPH SYNC START", {
@@ -72,17 +80,35 @@ export async function POST(request: NextRequest) {
         repositoryUrl: swarm.repositoryUrl,
       });
       try {
-        await saveOrUpdateSwarm({
-          workspaceId: swarm.workspaceId,
-          ingestRefId: requestId,
-        });
-        console.log("STAKGRAPH SYNC START SAVED INGEST REF ID", {
+        console.log("ABOUT TO SAVE INGEST REF ID", {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
         });
+
+        const updatedSwarm = await saveOrUpdateSwarm({
+          workspaceId: swarm.workspaceId,
+          ingestRefId: requestId,
+        });
+
+        console.log("STAKGRAPH SYNC START SAVED INGEST REF ID", {
+          requestId,
+          workspaceId: swarm.workspaceId,
+          swarmId: swarm.id,
+          savedIngestRefId: updatedSwarm?.ingestRefId,
+          swarmUpdatedAt: updatedSwarm?.updatedAt,
+        });
       } catch (err) {
-        console.error("Failed to store ingestRefId for sync", err);
+        console.error("Failed to store ingestRefId for sync", err, {
+          requestId,
+          workspaceId: swarm.workspaceId,
+          swarmId: swarm.id,
+        });
+        // Return error instead of success
+        return NextResponse.json(
+          { success: false, message: "Failed to store sync reference", requestId },
+          { status: 500 },
+        );
       }
     }
     if (!apiResult.ok || !requestId) {

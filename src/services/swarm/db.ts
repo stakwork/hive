@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
+import { PoolState, StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -19,6 +19,7 @@ export interface ServiceConfig {
     postStart?: string;
     rebuild?: string;
   };
+  env?: Record<string, string>;  // Environment variables from stakgraph
 }
 
 interface SaveOrUpdateSwarmParams {
@@ -46,6 +47,7 @@ interface SaveOrUpdateSwarmParams {
   wizardData?: unknown;
   defaultBranch?: string;
   githubInstallationId?: string;
+  poolState?: PoolState;
 }
 
 export const select = {
@@ -66,6 +68,7 @@ export const select = {
   poolName: true,
   poolCpu: true,
   poolMemory: true,
+  poolState: true,
   services: true,
   swarmSecretAlias: true,
   wizardStep: true,
@@ -112,6 +115,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.swarmSecretAlias !== undefined) data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
   if (params.stepStatus !== undefined) data.stepStatus = params.stepStatus;
+  if (params.poolState !== undefined) data.poolState = params.poolState;
   if (params.wizardData !== undefined) {
     const previousWizardData = swarm?.wizardData || {};
 
@@ -144,11 +148,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       instanceType: params.instanceType || "",
       environmentVariables: params.environmentVariables
         ? (encryptEnvVars(
-            params.environmentVariables as unknown as Array<{
-              name: string;
-              value: string;
-            }>,
-          ) as unknown)
+          params.environmentVariables as unknown as Array<{
+            name: string;
+            value: string;
+          }>,
+        ) as unknown)
         : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,
@@ -176,6 +180,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       githubInstallationId: params.githubInstallationId,
       swarmId: params.swarmId,
       ingestRefId: params.ingestRefId,
+      poolState: params.poolState || PoolState.NOT_STARTED,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
