@@ -7,6 +7,7 @@ interface GithubAppStatus {
   hasTokens: boolean;
   isLoading: boolean;
   error: string | null;
+  checkAppInstallation: (ownerName: string) => Promise<{ installed: boolean; installationId?: number; type?: 'user' | 'org' }>;
 }
 
 export function useGithubApp(): GithubAppStatus {
@@ -56,9 +57,40 @@ export function useGithubApp(): GithubAppStatus {
     checkGithubAppStatus();
   }, [session?.user?.id, status]);
 
+  const checkAppInstallation = async (ownerName: string) => {
+    console.log(`🔍 Checking GitHub app installation for: ${ownerName}`);
+
+    try {
+      const response = await fetch(`/api/github/app/check-installation?owner=${encodeURIComponent(ownerName)}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.log(`❌ Failed to check installation for ${ownerName}:`, response.status, response.statusText);
+        return { installed: false };
+      }
+
+      const data = await response.json();
+      console.log(`✅ Installation check result for ${ownerName}:`, data);
+
+      return {
+        installed: data.installed || false,
+        installationId: data.installationId,
+        type: data.type
+      };
+    } catch (err) {
+      console.error(`💥 Error checking installation for ${ownerName}:`, err);
+      return { installed: false };
+    }
+  };
+
   return {
     hasTokens,
     isLoading,
     error,
+    checkAppInstallation,
   };
 }
