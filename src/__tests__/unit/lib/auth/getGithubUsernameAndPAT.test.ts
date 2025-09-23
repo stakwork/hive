@@ -177,7 +177,7 @@ describe('getGithubUsernameAndPAT', () => {
   });
 
   describe('Workspace App Token Path', () => {
-    it('should return OAuth token when workspace slug provided (currently hardcoded behavior)', async () => {
+    it('should return app token when workspace has sourceControlOrg', async () => {
       // Arrange
       const mockUser = {
         id: mockUserId,
@@ -187,6 +187,57 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         githubUsername: 'testuser',
       };
+      const mockWorkspace = {
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: {
+          id: 'org-123',
+        },
+      };
+      const mockSourceControlToken = {
+        token: 'encrypted_app_token',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(mockUser);
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(mockWorkspace);
+      (db.sourceControlToken.findUnique as any).mockResolvedValue(mockSourceControlToken);
+
+      // Act
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+
+      // Assert
+      expect(result).toEqual({
+        username: 'testuser',
+        token: 'decrypted_app_token',
+      });
+      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+        where: { slug: mockWorkspaceSlug },
+        include: { sourceControlOrg: true },
+      });
+      expect(db.sourceControlToken.findUnique).toHaveBeenCalledWith({
+        where: {
+          userId_sourceControlOrgId: {
+            userId: mockUserId,
+            sourceControlOrgId: 'org-123',
+          },
+        },
+      });
+    });
+
+    it('should return OAuth token when workspace has no sourceControlOrg', async () => {
+      // Arrange
+      const mockUser = {
+        id: mockUserId,
+        email: 'user@company.com',
+      };
+      const mockGithubAuth = {
+        userId: mockUserId,
+        githubUsername: 'testuser',
+      };
+      const mockWorkspace = {
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: null,
+      };
       const mockAccount = {
         userId: mockUserId,
         provider: 'github',
@@ -195,20 +246,22 @@ describe('getGithubUsernameAndPAT', () => {
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(mockWorkspace);
       (db.account.findFirst as any).mockResolvedValue(mockAccount);
 
-      // Act - With workspace slug provided (but function currently ignores it)
+      // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
-      // Assert - Function currently returns OAuth token regardless of workspace slug
+      // Assert
       expect(result).toEqual({
         username: 'testuser',
         token: 'decrypted_oauth_token',
       });
-      // Should not query workspace-related tables due to hardcoded workspaceSlug = ''
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.sourceControlToken.findUnique).not.toHaveBeenCalled();
-      // Should query account for OAuth token
+      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+        where: { slug: mockWorkspaceSlug },
+        include: { sourceControlOrg: true },
+      });
+      // Should fall back to OAuth when no sourceControlOrg
       expect(db.account.findFirst).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
@@ -217,7 +270,7 @@ describe('getGithubUsernameAndPAT', () => {
       });
     });
 
-    it('should return null when OAuth account not found (workspace slug ignored)', async () => {
+    it('should return null when workspace not found', async () => {
       // Arrange
       const mockUser = {
         id: mockUserId,
@@ -230,6 +283,7 @@ describe('getGithubUsernameAndPAT', () => {
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
+      (db.workspace.findUnique as any).mockResolvedValue(null);
       (db.account.findFirst as any).mockResolvedValue(null);
 
       // Act
@@ -237,11 +291,13 @@ describe('getGithubUsernameAndPAT', () => {
 
       // Assert
       expect(result).toBeNull();
-      // Should not query workspace due to hardcoded workspaceSlug = ''
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
+      expect(db.workspace.findUnique).toHaveBeenCalledWith({
+        where: { slug: mockWorkspaceSlug },
+        include: { sourceControlOrg: true },
+      });
     });
 
-    it('should return null when OAuth account has no token (workspace slug ignored)', async () => {
+    it('should return null when sourceControlToken not found', async () => {
       // Arrange
       const mockUser = {
         id: mockUserId,
@@ -251,56 +307,31 @@ describe('getGithubUsernameAndPAT', () => {
         userId: mockUserId,
         githubUsername: 'testuser',
       };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: null,
+      const mockWorkspace = {
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: {
+          id: 'org-123',
+        },
       };
 
       (db.user.findUnique as any).mockResolvedValue(mockUser);
       (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
+      (db.workspace.findUnique as any).mockResolvedValue(mockWorkspace);
+      (db.sourceControlToken.findUnique as any).mockResolvedValue(null);
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
-      // Should not query workspace due to hardcoded workspaceSlug = ''
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-    });
-
-    it('should return OAuth token even when called with workspace slug (due to hardcoded behavior)', async () => {
-      // Arrange
-      const mockUser = {
-        id: mockUserId,
-        email: 'user@company.com',
-      };
-      const mockGithubAuth = {
-        userId: mockUserId,
-        githubUsername: 'testuser',
-      };
-      const mockAccount = {
-        userId: mockUserId,
-        provider: 'github',
-        access_token: 'encrypted_oauth_token',
-      };
-
-      (db.user.findUnique as any).mockResolvedValue(mockUser);
-      (db.gitHubAuth.findUnique as any).mockResolvedValue(mockGithubAuth);
-      (db.account.findFirst as any).mockResolvedValue(mockAccount);
-
-      // Act
-      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
-
-      // Assert
-      expect(result).toEqual({
-        username: 'testuser',
-        token: 'decrypted_oauth_token',
+      expect(db.sourceControlToken.findUnique).toHaveBeenCalledWith({
+        where: {
+          userId_sourceControlOrgId: {
+            userId: mockUserId,
+            sourceControlOrgId: 'org-123',
+          },
+        },
       });
-      // Should not query workspace due to hardcoded workspaceSlug = ''
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.sourceControlToken.findUnique).not.toHaveBeenCalled();
     });
   });
 
