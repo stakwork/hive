@@ -96,9 +96,18 @@ export async function GET(request: NextRequest) {
     if (repo_url) {
       // Agent mode - call services_agent endpoint
       try {
+        console.log('[stakgraph/services] Starting agent mode for repo:', repo_url);
         const { owner, repo } = parseGithubOwnerRepo(repo_url);
+        console.log('[stakgraph/services] Parsed GitHub:', { owner, repo });
 
         // Start the agent request with proper GitHub authentication
+        console.log('[stakgraph/services] Initiating agent request to:', swarmUrl);
+        console.log('[stakgraph/services] Agent request params:', {
+          owner,
+          repo,
+          hasUsername: !!githubProfile?.username,
+          hasPAT: !!githubProfile?.token
+        });
         const agentInitResult = await swarmApiRequestAuth({
           swarmUrl: swarmUrl,
           endpoint: "/services_agent",
@@ -113,22 +122,28 @@ export async function GET(request: NextRequest) {
         });
 
         if (!agentInitResult.ok) {
+          console.error('[stakgraph/services] Agent init failed:', agentInitResult);
           throw new Error("Failed to initiate agent");
         }
 
         const initData = agentInitResult.data as { request_id: string };
+        console.log('[stakgraph/services] Agent init response:', initData);
         if (!initData.request_id) {
+          console.error('[stakgraph/services] No request_id in response:', initData);
           throw new Error("No request_id received from agent");
         }
 
         // Poll for completion
+        console.log('[stakgraph/services] Starting to poll agent with request_id:', initData.request_id);
         const agentResult = await pollAgentProgress(
           swarmUrl,
           initData.request_id,
           decryptedApiKey
         );
+        console.log('[stakgraph/services] Agent polling completed, result ok:', agentResult.ok);
 
         if (!agentResult.ok) {
+          console.error('[stakgraph/services] Agent failed, full result:', JSON.stringify(agentResult, null, 2));
           throw new Error("Agent failed to complete");
         }
 
@@ -203,8 +218,17 @@ export async function GET(request: NextRequest) {
         responseData = { services };
 
       } catch (error) {
+        console.error('[stakgraph/services] Agent mode failed, detailed error:', error);
+        console.error('[stakgraph/services] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
         console.error("Agent mode failed, falling back to stakgraph services endpoint:", error);
         // Fall back to stakgraph services endpoint
+        console.log('[stakgraph/services] Calling fallback stakgraph services with params:', {
+          swarmUrl,
+          hasApiKey: !!decryptedApiKey,
+          repo_url,
+          hasUsername: !!githubProfile?.username,
+          hasPAT: !!githubProfile?.token
+        });
         const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
           clone: "true",  // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
@@ -244,6 +268,8 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
+    console.error('[stakgraph/services] Unhandled error:', error);
+    console.error('[stakgraph/services] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     console.error("Unhandled error:", error);
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
