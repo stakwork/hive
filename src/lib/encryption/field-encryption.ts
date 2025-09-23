@@ -31,11 +31,12 @@ export class FieldEncryptionService {
           const parsed = JSON.parse(encryptedData);
           if (isEncrypted(parsed)) {
             return decrypt(parsed, this.key);
+          } else {
+            return encryptedData;
           }
         } catch {
           return encryptedData;
         }
-        return encryptedData;
       } else if (isEncrypted(encryptedData)) {
         return decrypt(encryptedData, this.key);
       } else {
