@@ -1,6 +1,7 @@
 // Unit test setup
 import "@testing-library/jest-dom";
 import { beforeAll, afterAll } from "vitest";
+import { expect } from "vitest";
 
 // Add any global test setup here
 beforeAll(() => {

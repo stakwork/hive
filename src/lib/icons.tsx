@@ -1,3 +1,4 @@
+import React from "react";
 import { Code, Bot, Phone, MessageSquare } from "lucide-react";
 
 export const getIcon = (iconType: string, className = "h-4 w-4") => {
