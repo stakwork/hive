@@ -46,7 +46,7 @@ export async function generateConversationPDF(options: GenerateConversationPDFOp
   addConversationAsText(pdf, messages, margin, yPosition, contentWidth, pageHeight);
 
   // Generate filename based on the conversation
-  const firstQuestion = messages.find(m => m.role === 'user' && messages.indexOf(m) > 0);
+  const firstQuestion = messages.find(m => m.role === 'user');
   let filename: string;
 
   if (firstQuestion) {
