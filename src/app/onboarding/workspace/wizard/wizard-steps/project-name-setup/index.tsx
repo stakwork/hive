@@ -24,14 +24,21 @@ interface OnboardingGitseeProps {
   workspaceId: string | null;
   repositoryUrl: string | null;
   swarmUrl?: string | null;
+  onInitialized?: () => void;
 }
 
-const OnboardingGitsee = ({ workspaceId, repositoryUrl, swarmUrl }: OnboardingGitseeProps) => {
-  useGitVisualizer({
+const OnboardingGitsee = ({ workspaceId, repositoryUrl, swarmUrl, onInitialized }: OnboardingGitseeProps) => {
+  const { isInitialized } = useGitVisualizer({
     workspaceId,
     repositoryUrl,
     swarmUrl: swarmUrl || null
   });
+
+  useEffect(() => {
+    if (isInitialized && onInitialized) {
+      onInitialized();
+    }
+  }, [isInitialized, onInitialized]);
 
   return (
     <Card className="max-w-2xl">
@@ -89,45 +96,16 @@ export function ProjectNameSetupStep() {
     }
   }, []);
 
-  // Set gitseeReady after minimum time AND when GitSee is actually ready
+  // Set gitseeReady after minimum time has passed
   useEffect(() => {
     if (swarmUrl && swarmIsLoading) {
-      let minimumTimePassed = false;
-      let gitseeInitialized = false;
-
       // Minimum time to show all loading states (1.5s × 3 = 4.5s)
+      // After this, we'll show GitSee (which will initialize itself when ready)
       const minimumTimer = setTimeout(() => {
-        minimumTimePassed = true;
-        checkIfReady();
+        setGitseeReady(true);
       }, 4500);
 
-      // Check if GitSee is actually initialized
-      const checkIfReady = () => {
-        // Check if GitSee has rendered by looking for the SVG element
-        const gitseeSvg = document.querySelector('#vizzy');
-        if (gitseeSvg && gitseeSvg.children.length > 0) {
-          gitseeInitialized = true;
-        }
-
-        // Only switch to GitSee if both conditions are met
-        if (minimumTimePassed && gitseeInitialized) {
-          setGitseeReady(true);
-        } else if (minimumTimePassed && !gitseeInitialized) {
-          // If minimum time passed but GitSee not ready, check again in 500ms
-          setTimeout(checkIfReady, 500);
-        }
-      };
-
-      // Also start checking for GitSee after a brief delay
-      const gitseeCheckTimer = setTimeout(() => {
-        gitseeInitialized = document.querySelector('#vizzy')?.children.length > 0;
-        checkIfReady();
-      }, 3000);
-
-      return () => {
-        clearTimeout(minimumTimer);
-        clearTimeout(gitseeCheckTimer);
-      };
+      return () => clearTimeout(minimumTimer);
     }
   }, [swarmUrl, swarmIsLoading]);
 
