@@ -17,6 +17,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
+import { GraphNetworkIcon } from "@/components/onboarding/GraphNetworkIcon";
 
 interface OnboardingGitseeProps {
   workspaceId: string | null;
@@ -65,6 +67,7 @@ export function ProjectNameSetupStep() {
   const router = useRouter();
 
   const [swarmIsLoading, setSwarmIsLoading] = useState<boolean>(false);
+  const [gitseeReady, setGitseeReady] = useState<boolean>(false);
 
   const [projectName, setProjectName] = useState<string>("");
   const [workspaceId, setWorkspaceId] = useState<string>("");
@@ -85,6 +88,18 @@ export function ProjectNameSetupStep() {
       setRepositoryUrlDraft(draft);
     }
   }, []);
+
+  // Set gitseeReady after swarmUrl is available and give time for initialization
+  useEffect(() => {
+    if (swarmUrl && swarmIsLoading) {
+      // Give GitSee time to initialize (simulating the white screen delay)
+      const timer = setTimeout(() => {
+        setGitseeReady(true);
+      }, 3000); // 3 seconds for GitSee to initialize
+
+      return () => clearTimeout(timer);
+    }
+  }, [swarmUrl, swarmIsLoading]);
 
   useEffect(() => {
     if (!selectedRepo || projectName) return;
@@ -339,83 +354,86 @@ export function ProjectNameSetupStep() {
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
         <ErrorDisplay error={error} className="mb-4" />
-        <div className="flex items-center justify-center mx-auto mb-4">
-          <svg
-            width="64"
-            height="64"
-            viewBox="0 0 64 64"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <line
-              x1="32"
-              y1="12"
-              x2="12"
-              y2="32"
-              stroke="#60A5FA"
-              strokeWidth="2"
-            />
-            <line
-              x1="32"
-              y1="12"
-              x2="52"
-              y2="32"
-              stroke="#60A5FA"
-              strokeWidth="2"
-            />
-            <line
-              x1="12"
-              y1="32"
-              x2="32"
-              y2="52"
-              stroke="#60A5FA"
-              strokeWidth="2"
-            />
-            <line
-              x1="52"
-              y1="32"
-              x2="32"
-              y2="52"
-              stroke="#60A5FA"
-              strokeWidth="2"
-            />
-            <circle cx="32" cy="12" r="6" fill="#2563EB">
-              <animate
-                attributeName="r"
-                values="6;8;6"
-                dur="1.2s"
-                repeatCount="indefinite"
+        {!swarmIsLoading && (
+          <div className="flex items-center justify-center mx-auto mb-4">
+            {/* Original icon for "Set project name" */}
+            <svg
+              width="64"
+              height="64"
+              viewBox="0 0 64 64"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <line
+                x1="32"
+                y1="12"
+                x2="12"
+                y2="32"
+                stroke="#60A5FA"
+                strokeWidth="2"
               />
-            </circle>
-            <circle cx="12" cy="32" r="5" fill="#3B82F6">
-              <animate
-                attributeName="r"
-                values="5;7;5"
-                dur="1.2s"
-                begin="0.3s"
-                repeatCount="indefinite"
+              <line
+                x1="32"
+                y1="12"
+                x2="52"
+                y2="32"
+                stroke="#60A5FA"
+                strokeWidth="2"
               />
-            </circle>
-            <circle cx="52" cy="32" r="5" fill="#3B82F6">
-              <animate
-                attributeName="r"
-                values="5;7;5"
-                dur="1.2s"
-                begin="0.6s"
-                repeatCount="indefinite"
+              <line
+                x1="12"
+                y1="32"
+                x2="32"
+                y2="52"
+                stroke="#60A5FA"
+                strokeWidth="2"
               />
-            </circle>
-            <circle cx="32" cy="52" r="5" fill="#60A5FA">
-              <animate
-                attributeName="r"
-                values="5;7;5"
-                dur="1.2s"
-                begin="0.9s"
-                repeatCount="indefinite"
+              <line
+                x1="52"
+                y1="32"
+                x2="32"
+                y2="52"
+                stroke="#60A5FA"
+                strokeWidth="2"
               />
-            </circle>
-          </svg>
-        </div>
+              <circle cx="32" cy="12" r="6" fill="#2563EB">
+                <animate
+                  attributeName="r"
+                  values="6;8;6"
+                  dur="1.2s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+              <circle cx="12" cy="32" r="5" fill="#3B82F6">
+                <animate
+                  attributeName="r"
+                  values="5;7;5"
+                  dur="1.2s"
+                  begin="0.3s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+              <circle cx="52" cy="32" r="5" fill="#3B82F6">
+                <animate
+                  attributeName="r"
+                  values="5;7;5"
+                  dur="1.2s"
+                  begin="0.6s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+              <circle cx="32" cy="52" r="5" fill="#60A5FA">
+                <animate
+                  attributeName="r"
+                  values="5;7;5"
+                  dur="1.2s"
+                  begin="0.9s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+            </svg>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           {!swarmIsLoading ? (
             <motion.div
@@ -457,11 +475,15 @@ export function ProjectNameSetupStep() {
 
       <CardContent className="space-y-6">
         {swarmIsLoading ? (
-          <OnboardingGitsee
-            workspaceId={workspaceId || null}
-            repositoryUrl={selectedRepo?.html_url || null}
-            swarmUrl={swarmUrl || null}
-          />
+          gitseeReady ? (
+            <OnboardingGitsee
+              workspaceId={workspaceId || null}
+              repositoryUrl={selectedRepo?.html_url || null}
+              swarmUrl={swarmUrl || null}
+            />
+          ) : (
+            <SwarmSetupLoader />
+          )
         ) : (
           <>
             {error ? (
