@@ -16,7 +16,7 @@ export function SwarmSetupLoader() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentStateIndex((prev) => (prev + 1) % loadingStates.length);
-    }, 2500); // Change state every 2.5 seconds
+    }, 1500); // Change state every 1.5 seconds
 
     return () => clearInterval(interval);
   }, []);
