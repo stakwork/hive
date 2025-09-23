@@ -282,7 +282,7 @@ export const mockData = {
   /**
    * Generates multiple workspaces for testing scenarios
    */
-  workspaces(count: number, overrides: Record<string, unknown> = []) {
+  workspaces(count: number, overrides: Record<string, unknown> = {}) {
     const roles = ["OWNER", "ADMIN", "DEVELOPER", "PM", "STAKEHOLDER", "VIEWER"] as const;
     return Array.from({ length: count }, (_, i) => ({
       id: `ws-${i + 1}`,
