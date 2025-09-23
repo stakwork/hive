@@ -3,10 +3,12 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { Loader2, Save } from "lucide-react";
+import { parseEnv } from "@/lib/env-parser";
+import { Clipboard, Loader2, Save } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   devcontainerJsonContent,
@@ -53,6 +55,7 @@ export default function ServicesModal({
   );
   const [dataLoading, setDataLoading] = useState(true);
   const [repoName, setRepoName] = useState<string>("");
+  const [showImportSection, setShowImportSection] = useState(false);
 
   // Load settings when modal opens
   useEffect(() => {
@@ -126,6 +129,77 @@ export default function ServicesModal({
 
   const handleRemoveEnv = (index: number) => {
     setLocalVars((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const bulkAddEnvVars = (parsed: Record<string, string>) => {
+    const newVars = Object.entries(parsed).map(([name, value]) => ({
+      name,
+      value,
+    }));
+    setLocalVars((prev) => {
+      const filtered = prev.filter((v) => v.name.trim() !== "");
+      return [...filtered, ...newVars];
+    });
+  };
+
+  const handlePasteEnv = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = parseEnv(text);
+
+      const count = Object.keys(parsed).length;
+      if (count === 0) {
+        toast({
+          title: "No variables found",
+          description: "The clipboard content doesn't contain valid environment variables.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      bulkAddEnvVars(parsed);
+      toast({
+        title: "Variables imported",
+        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
+      });
+    } catch (err) {
+      console.error("Failed to paste environment variables:", err);
+      toast({
+        title: "Paste failed",
+        description: "Unable to read from clipboard. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileContent = (content: string, fileName: string) => {
+    try {
+      const parsed = parseEnv(content);
+
+      const count = Object.keys(parsed).length;
+      if (count === 0) {
+        toast({
+          title: "No variables found",
+          description: `The file "${fileName}" doesn't contain valid environment variables.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      bulkAddEnvVars(parsed);
+      toast({
+        title: "Variables imported",
+        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
+      });
+      setShowImportSection(false);
+    } catch (err) {
+      console.error("Failed to parse file:", err);
+      toast({
+        title: "Import failed",
+        description: "Failed to parse the file. Please check the format.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSave = useCallback(async () => {
@@ -237,6 +311,45 @@ export default function ServicesModal({
               <p className="text-sm text-muted-foreground mb-4">
                 Add any environment variables your code environment needs.
               </p>
+
+              {/* Import section */}
+              <div className="bg-muted/30 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-muted-foreground">Quick import:</span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handlePasteEnv}
+                    disabled={loading || dataLoading}
+                    className="h-7"
+                  >
+                    <Clipboard className="w-3.5 h-3.5 mr-1.5" />
+                    Paste ENVs
+                  </Button>
+                  <span className="text-muted-foreground">or</span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowImportSection(!showImportSection)}
+                    disabled={loading || dataLoading}
+                    className="h-7"
+                  >
+                    File import
+                  </Button>
+                </div>
+
+                {showImportSection && (
+                  <div className="mt-3 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                    <FileDropZone
+                      onFileContent={handleFileContent}
+                      disabled={loading || dataLoading}
+                      className="max-w-full"
+                    />
+                  </div>
+                )}
+              </div>
 
               <div className="space-y-3">
                 {localVars.map((env, idx) => (
