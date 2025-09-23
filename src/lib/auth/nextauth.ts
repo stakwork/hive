@@ -319,6 +319,7 @@ export const authOptions: NextAuthOptions = {
                 },
               });
             } catch (err) {
+              console.log(err, 'err')
               // If GitHub API fails, just skip
               logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", {
                 hasAccount: !!account,
@@ -409,10 +410,8 @@ interface GithubUsernameAndPAT {
  * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
  * Returns { username, token } or null if not found.
  */
-export async function getGithubUsernameAndPAT(userId: string, workspaceSlugArg?: string): Promise<GithubUsernameAndPAT | null> {
+export async function getGithubUsernameAndPAT(userId: string, workspaceSlug?: string): Promise<GithubUsernameAndPAT | null> {
 
-  console.log(workspaceSlugArg, 'workspaceSlugArg')
-  const workspaceSlug = '';
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
@@ -471,7 +470,29 @@ export async function getGithubUsernameAndPAT(userId: string, workspaceSlugArg?:
   });
 
   if (!workspace?.sourceControlOrg) {
-    return null;
+    const account = await db.account.findFirst({
+      where: {
+        userId,
+        provider: "github",
+      },
+    });
+
+    if (!account?.access_token) {
+      return null;
+    }
+
+    try {
+      const encryptionService = EncryptionService.getInstance();
+      const token = encryptionService.decryptField("access_token", account.access_token);
+
+      return {
+        username: githubAuth.githubUsername,
+        token: token,
+      };
+    } catch (error) {
+      console.error("Failed to decrypt OAuth access token:", error);
+      return null;
+    }
   }
 
   // Get user's token for this source control org
