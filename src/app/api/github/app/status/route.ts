@@ -46,8 +46,33 @@ export async function GET(request: Request) {
 
         if (githubMatch) {
           const githubOwner = githubMatch[1];
-          const apptokens = await getUserAppTokens(session.user.id, githubOwner);
-          hasTokens = !!apptokens?.accessToken;
+
+          // Check if there's already a SourceControlOrg for this GitHub owner
+          const sourceControlOrg = await db.sourceControlOrg.findUnique({
+            where: { githubLogin: githubOwner }
+          });
+
+          if (sourceControlOrg) {
+            // SourceControlOrg exists - automatically link this workspace to it
+            await db.workspace.update({
+              where: { slug: workspaceSlug },
+              data: { sourceControlOrgId: sourceControlOrg.id }
+            });
+
+            // Now check if user has tokens for it
+            const sourceControlToken = await db.sourceControlToken.findUnique({
+              where: {
+                userId_sourceControlOrgId: {
+                  userId: session.user.id,
+                  sourceControlOrgId: sourceControlOrg.id,
+                },
+              },
+            });
+            hasTokens = !!sourceControlToken;
+          } else {
+            // SourceControlOrg doesn't exist yet - user needs to go through OAuth
+            hasTokens = false;
+          }
         }
       }
     } else {

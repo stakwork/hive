@@ -96,10 +96,10 @@ export const authOptions: NextAuthOptions = {
           // Create or find the mock user in the database
           const existingUser = user.email
             ? await db.user.findUnique({
-              where: {
-                email: user.email,
-              },
-            })
+                where: {
+                  email: user.email,
+                },
+              })
             : null;
 
           if (!existingUser) {
@@ -131,10 +131,10 @@ export const authOptions: NextAuthOptions = {
           // Check if there's an existing user with the same email
           const existingUser = user.email
             ? await db.user.findUnique({
-              where: {
-                email: user.email,
-              },
-            })
+                where: {
+                  email: user.email,
+                },
+              })
             : null;
 
           if (existingUser) {
@@ -224,7 +224,7 @@ export const authOptions: NextAuthOptions = {
             if (ws?.slug) {
               (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = ws.slug;
             }
-          } catch { }
+          } catch {}
           return session;
         }
 
@@ -319,7 +319,7 @@ export const authOptions: NextAuthOptions = {
                 },
               });
             } catch (err) {
-              console.log(err, 'err')
+              console.log(err, "err");
               // If GitHub API fails, just skip
               logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", {
                 hasAccount: !!account,
@@ -410,8 +410,10 @@ interface GithubUsernameAndPAT {
  * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
  * Returns { username, token } or null if not found.
  */
-export async function getGithubUsernameAndPAT(userId: string, workspaceSlug?: string): Promise<GithubUsernameAndPAT | null> {
-
+export async function getGithubUsernameAndPAT(
+  userId: string,
+  workspaceSlug?: string,
+): Promise<GithubUsernameAndPAT | null> {
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
@@ -484,7 +486,7 @@ export async function getGithubUsernameAndPAT(userId: string, workspaceSlug?: st
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
-
+      console.error("=> falling back to personal access token!!! Not good");
       return {
         username: githubAuth.githubUsername,
         token: token,
