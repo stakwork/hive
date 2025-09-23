@@ -1,7 +1,10 @@
+import { getServiceConfig } from "@/config/services";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
+import { getGithubWebhookCallbackUrl } from "@/lib/url";
+import { WebhookService } from "@/services/github/WebhookService";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
@@ -12,9 +15,6 @@ import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { WebhookService } from "@/services/github/WebhookService";
-import { getServiceConfig } from "@/config/services";
-import { getGithubWebhookCallbackUrl } from "@/lib/url";
 
 import { z } from "zod";
 
@@ -68,6 +68,7 @@ const stakgraphSettingsSchema = z.object({
         env: z.record(z.string()).optional(),
         language: z.string().optional(),
         interpreter: z.string().optional(),
+        cwd: z.string().optional(),
       }),
     )
     .optional()
@@ -147,33 +148,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         environmentVariables:
           typeof environmentVariables === "string"
             ? (() => {
-                try {
-                  const parsed = JSON.parse(environmentVariables);
-                  if (Array.isArray(parsed)) {
-                    try {
-                      return decryptEnvVars(parsed as Array<{ name: string; value: unknown }>);
-                    } catch {
-                      return parsed;
-                    }
+              try {
+                const parsed = JSON.parse(environmentVariables);
+                if (Array.isArray(parsed)) {
+                  try {
+                    return decryptEnvVars(parsed as Array<{ name: string; value: unknown }>);
+                  } catch {
+                    return parsed;
                   }
-                  return parsed;
+                }
+                return parsed;
+              } catch {
+                return environmentVariables;
+              }
+            })()
+            : Array.isArray(environmentVariables)
+              ? (() => {
+                try {
+                  return decryptEnvVars(
+                    environmentVariables as Array<{
+                      name: string;
+                      value: unknown;
+                    }>,
+                  );
                 } catch {
                   return environmentVariables;
                 }
               })()
-            : Array.isArray(environmentVariables)
-              ? (() => {
-                  try {
-                    return decryptEnvVars(
-                      environmentVariables as Array<{
-                        name: string;
-                        value: unknown;
-                      }>,
-                    );
-                  } catch {
-                    return environmentVariables;
-                  }
-                })()
               : environmentVariables,
         services: typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services || [],
         status: swarm.status,
@@ -206,6 +207,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  console.log('PUT request received');
+
   try {
     const session = await getServerSession(authOptions);
     const { slug } = await params;
