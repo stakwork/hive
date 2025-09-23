@@ -70,57 +70,72 @@ export async function POST(request: NextRequest) {
     let installationId: number | undefined;
     let ownerType: "user" | "org" | undefined;
 
-    // Get user's app tokens for this specific GitHub org to make the installation check
-    const appTokens = await getUserAppTokens(session.user.id, githubOwner);
-    if (appTokens?.accessToken) {
-      // User has app tokens, so we can check installation status
-      try {
-        // Check if owner is user or org
-        const userResponse = await fetch(`https://api.github.com/users/${githubOwner}`, {
-          headers: {
-            Authorization: `Bearer ${appTokens.accessToken}`,
-            Accept: "application/vnd.github.v3+json",
-          },
-        });
+    // First, check if we have a SourceControlOrg record for this GitHub owner
+    // This tells us if ANY user has installed the app for this org/user
+    const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
+      where: { githubLogin: githubOwner },
+    });
 
-        if (userResponse.ok) {
-          const userData = await userResponse.json();
-          ownerType = userData.type === "User" ? "user" : "org";
-          console.log(`📋 ${githubOwner} is a ${userData.type}`);
-
-          // Check installation based on type
-          let installationResponse;
-          if (ownerType === "org") {
-            installationResponse = await fetch(`https://api.github.com/orgs/${githubOwner}/installation`, {
-              headers: {
-                Authorization: `Bearer ${appTokens.accessToken}`,
-                Accept: "application/vnd.github.v3+json",
-              },
-            });
-          } else {
-            installationResponse = await fetch(`https://api.github.com/users/${githubOwner}/installation`, {
-              headers: {
-                Authorization: `Bearer ${appTokens.accessToken}`,
-                Accept: "application/vnd.github.v3+json",
-              },
-            });
-          }
-
-          if (installationResponse?.ok) {
-            const installationData = await installationResponse.json();
-            installed = true;
-            installationId = installationData.id;
-            console.log(`✅ App installed on ${githubOwner}! Installation ID: ${installationId}`);
-          } else {
-            console.log(`❌ App not installed on ${githubOwner} (status: ${installationResponse?.status})`);
-          }
-        }
-      } catch (error) {
-        console.error(`Error checking installation for ${githubOwner}:`, error);
-      }
+    if (existingSourceControlOrg?.githubInstallationId) {
+      // App is already installed by some user
+      installed = true;
+      installationId = existingSourceControlOrg.githubInstallationId;
+      ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
+      console.log(`✅ App already installed on ${githubOwner}! Installation ID: ${installationId} (from database)`);
     } else {
-      // User has no app tokens yet, so we assume app is not installed
-      console.log(`👤 User has no app tokens, assuming app not installed for ${githubOwner}`);
+      // No installation record found, try to check via API if this user has tokens
+      const appTokens = await getUserAppTokens(session.user.id, githubOwner);
+      if (appTokens?.accessToken) {
+        // User has app tokens, so we can check installation status via API
+        try {
+          // Check if owner is user or org
+          const userResponse = await fetch(`https://api.github.com/users/${githubOwner}`, {
+            headers: {
+              Authorization: `Bearer ${appTokens.accessToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          });
+
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            ownerType = userData.type === "User" ? "user" : "org";
+            console.log(`📋 ${githubOwner} is a ${userData.type}`);
+
+            // Check installation based on type
+            let installationResponse;
+            if (ownerType === "org") {
+              installationResponse = await fetch(`https://api.github.com/orgs/${githubOwner}/installation`, {
+                headers: {
+                  Authorization: `Bearer ${appTokens.accessToken}`,
+                  Accept: "application/vnd.github.v3+json",
+                },
+              });
+            } else {
+              installationResponse = await fetch(`https://api.github.com/users/${githubOwner}/installation`, {
+                headers: {
+                  Authorization: `Bearer ${appTokens.accessToken}`,
+                  Accept: "application/vnd.github.v3+json",
+                },
+              });
+            }
+
+            if (installationResponse?.ok) {
+              const installationData = await installationResponse.json();
+              installed = true;
+              installationId = installationData.id;
+              console.log(`✅ App installed on ${githubOwner}! Installation ID: ${installationId} (from API)`);
+            } else {
+              console.log(`❌ App not installed on ${githubOwner} (status: ${installationResponse?.status})`);
+            }
+          }
+        } catch (error) {
+          console.error(`Error checking installation for ${githubOwner}:`, error);
+        }
+      } else {
+        // This is a new user with no tokens yet, but that doesn't mean the app isn't installed
+        // We just couldn't verify it. For safety, we'll assume it needs installation
+        console.log(`👤 User has no app tokens for ${githubOwner}, cannot verify installation status`);
+      }
     }
 
     let authUrl: string;
