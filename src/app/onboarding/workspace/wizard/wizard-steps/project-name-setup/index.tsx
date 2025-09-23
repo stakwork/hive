@@ -443,13 +443,11 @@ export function ProjectNameSetupStep() {
               className="flex flex-col gap-1.5"
             >
               <CardTitle className="text-2xl">
-                {swarmIsLoading ? "Setting up your workspace…" : "Setting up your new Project name"}
+                Setting up your workspace…
               </CardTitle>
-              {swarmIsLoading && (
-                <CardDescription className="text-lg">
-                  This may take a few minutes
-                </CardDescription>
-              )}
+              <CardDescription className="text-lg">
+                This may take a few minutes
+              </CardDescription>
             </motion.div>
           )}
         </AnimatePresence>
