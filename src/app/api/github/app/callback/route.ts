@@ -110,6 +110,23 @@ export async function GET(request: NextRequest) {
 
     const githubUser = await userResponse.json();
 
+    // Decode the state to get workspace information FIRST
+    let workspaceSlug: string;
+    try {
+      const stateData = JSON.parse(Buffer.from(state, "base64").toString());
+      workspaceSlug = stateData.workspaceSlug;
+
+      // Optional: Validate timestamp (e.g., state not older than 1 hour)
+      const stateAge = Date.now() - stateData.timestamp;
+      if (stateAge > 60 * 60 * 1000) {
+        // 1 hour
+        return NextResponse.redirect(new URL(`/?error=state_expired`, request.url));
+      }
+    } catch (error) {
+      console.error("Failed to decode state:", error);
+      return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
+    }
+
     // Get installation info if available
     let githubOwner: string;
     let ownerType: "user" | "org" = "user";
@@ -156,25 +173,62 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // No installation ID - this is just OAuth for existing installation
-      githubOwner = githubUser.login;
-      ownerType = "user";
-    }
+      // Look up the workspace to see which SourceControlOrg it's linked to
+      const workspace = await db.workspace.findUnique({
+        where: { slug: workspaceSlug },
+        include: { sourceControlOrg: true }
+      });
 
-    // Decode the state to get workspace information FIRST
-    let workspaceSlug: string;
-    try {
-      const stateData = JSON.parse(Buffer.from(state, "base64").toString());
-      workspaceSlug = stateData.workspaceSlug;
+      if (workspace?.sourceControlOrg) {
+        // Use the existing SourceControlOrg that the workspace is linked to
+        githubOwner = workspace.sourceControlOrg.githubLogin;
+        ownerType = workspace.sourceControlOrg.type === "USER" ? "user" : "org";
+        console.log(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`);
+      } else {
+        // Workspace not linked yet - extract GitHub org from repository URL
+        const workspaceWithSwarm = await db.workspace.findUnique({
+          where: { slug: workspaceSlug },
+          include: { swarm: true }
+        });
 
-      // Optional: Validate timestamp (e.g., state not older than 1 hour)
-      const stateAge = Date.now() - stateData.timestamp;
-      if (stateAge > 60 * 60 * 1000) {
-        // 1 hour
-        return NextResponse.redirect(new URL(`/w/${workspaceSlug}?error=state_expired`, request.url));
+        if (workspaceWithSwarm?.swarm?.repositoryUrl) {
+          // Extract GitHub org/user from repository URL (same logic as install route)
+          const repoUrl = workspaceWithSwarm.swarm.repositoryUrl;
+          const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
+
+          if (githubMatch) {
+            const repoGithubOwner = githubMatch[1];
+            console.log(`📂 Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
+
+            // Check if user already has tokens for this GitHub owner
+            const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
+              where: { githubLogin: repoGithubOwner }
+            });
+
+            if (existingSourceControlOrg) {
+              // User already has access to this GitHub org - use it
+              githubOwner = repoGithubOwner;
+              ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
+              console.log(`♻️ Found existing SourceControlOrg for ${repoGithubOwner}, reusing for workspace ${workspaceSlug}`);
+            } else {
+              // No existing SourceControlOrg for this GitHub owner - this shouldn't happen in OAuth flow
+              console.log(`⚠️ No SourceControlOrg found for ${repoGithubOwner}, falling back to authenticated user`);
+              githubOwner = githubUser.login;
+              ownerType = "user";
+            }
+          } else {
+            // Invalid repository URL - fallback to authenticated user
+            console.log(`⚠️ Could not extract GitHub owner from repo URL: ${repoUrl}`);
+            githubOwner = githubUser.login;
+            ownerType = "user";
+          }
+        } else {
+          // No repository URL - fallback to authenticated user
+          console.log(`⚠️ Workspace ${workspaceSlug} has no repository URL, using authenticated user: ${githubUser.login}`);
+          githubOwner = githubUser.login;
+          ownerType = "user";
+        }
       }
-    } catch (error) {
-      console.error("Failed to decode state:", error);
-      return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     }
 
     console.log(`📋 Creating tokens for ${githubOwner} (${ownerType})`);
