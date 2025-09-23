@@ -1,5 +1,6 @@
 "use client";
 
+import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,12 +17,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Copy, Check, Loader2, ExternalLink } from "lucide-react";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
-import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
+import { Check, Copy, ExternalLink, Loader2, Plus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useModal } from "./modals/ModlaProvider";
 
 interface E2eTest {
   node_type: string;
@@ -39,28 +40,29 @@ interface E2eTest {
 }
 
 export default function UserJourneys() {
-  const { id, slug } = useWorkspace();
+  const { id, slug, workspace } = useWorkspace();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [e2eTests, setE2eTests] = useState<E2eTest[]>([]);
   const [fetchingTests, setFetchingTests] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const open = useModal();
 
   const fetchE2eTests = useCallback(async () => {
     if (!slug) return;
-    
+
     try {
       setFetchingTests(true);
       const response = await fetch(
         `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
       );
-      
+
       if (!response.ok) {
         console.error("Failed to fetch e2e tests");
         return;
       }
-      
+
       const result = await response.json();
       if (result.success && result.data) {
         setE2eTests(result.data);
@@ -85,6 +87,12 @@ export default function UserJourneys() {
   };
 
   const handleCreateUserJourney = async () => {
+
+    if (workspace?.poolState !== "COMPLETE") {
+      open("ServicesWizard");
+      return;
+    }
+
     try {
       setIsLoading(true);
       const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
@@ -97,7 +105,7 @@ export default function UserJourneys() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
-        
+
         // Show error message to user
         toast({
           variant: "destructive",
@@ -109,7 +117,7 @@ export default function UserJourneys() {
 
       const data = await response.json();
       console.log("Pod claimed successfully:", data);
-      
+
       if (data.frontend) {
         setFrontend(data.frontend);
       }
@@ -162,16 +170,16 @@ export default function UserJourneys() {
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
   const browserArtifacts: Artifact[] = frontend
     ? [
-        {
-          id: "frontend-preview",
-          messageId: "",
-          type: "BROWSER",
-          content: { url: frontend } as BrowserContent,
-          icon: "Code",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ]
+      {
+        id: "frontend-preview",
+        messageId: "",
+        type: "BROWSER",
+        content: { url: frontend } as BrowserContent,
+        icon: "Code",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]
     : [];
 
   return (
