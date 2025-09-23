@@ -21,7 +21,7 @@ import { Gitsee } from "./graph/gitsee";
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
-  const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp();
+  const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const processedCallback = useRef(false);

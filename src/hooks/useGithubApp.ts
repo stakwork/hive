@@ -9,7 +9,7 @@ interface GithubAppStatus {
   error: string | null;
 }
 
-export function useGithubApp(): GithubAppStatus {
+export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
   const { data: session, status } = useSession();
   const [hasTokens, setHasTokens] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,7 +31,11 @@ export function useGithubApp(): GithubAppStatus {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch("/api/github/app/status", {
+        const url = workspaceSlug
+          ? `/api/github/app/status?workspaceSlug=${workspaceSlug}`
+          : "/api/github/app/status";
+
+        const response = await fetch(url, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -54,7 +58,7 @@ export function useGithubApp(): GithubAppStatus {
     }
 
     checkGithubAppStatus();
-  }, [session?.user?.id, status]);
+  }, [session?.user?.id, status, workspaceSlug]);
 
   return {
     hasTokens,
