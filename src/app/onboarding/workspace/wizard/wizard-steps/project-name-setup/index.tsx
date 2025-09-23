@@ -440,8 +440,16 @@ export function ProjectNameSetupStep() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
+              className="flex flex-col gap-1.5"
             >
-              <CardTitle className="text-2xl">{swarmIsLoading ? "Your swarm is being set up. This may take a few minutes." : "Setting up your new Project name"}</CardTitle>
+              <CardTitle className="text-2xl">
+                {swarmIsLoading ? "Setting up your workspace…" : "Setting up your new Project name"}
+              </CardTitle>
+              {swarmIsLoading && (
+                <CardDescription className="text-lg">
+                  This may take a few minutes
+                </CardDescription>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
