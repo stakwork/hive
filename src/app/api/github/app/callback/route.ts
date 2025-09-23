@@ -185,10 +185,49 @@ export async function GET(request: NextRequest) {
         ownerType = workspace.sourceControlOrg.type === "USER" ? "user" : "org";
         console.log(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`);
       } else {
-        // Fallback to authenticated user if workspace has no SourceControlOrg
-        githubOwner = githubUser.login;
-        ownerType = "user";
-        console.log(`⚠️ Workspace ${workspaceSlug} has no SourceControlOrg, using authenticated user: ${githubOwner}`);
+        // Workspace not linked yet - extract GitHub org from repository URL
+        const workspaceWithSwarm = await db.workspace.findUnique({
+          where: { slug: workspaceSlug },
+          include: { swarm: true }
+        });
+
+        if (workspaceWithSwarm?.swarm?.repositoryUrl) {
+          // Extract GitHub org/user from repository URL (same logic as install route)
+          const repoUrl = workspaceWithSwarm.swarm.repositoryUrl;
+          const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
+
+          if (githubMatch) {
+            const repoGithubOwner = githubMatch[1];
+            console.log(`📂 Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
+
+            // Check if user already has tokens for this GitHub owner
+            const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
+              where: { githubLogin: repoGithubOwner }
+            });
+
+            if (existingSourceControlOrg) {
+              // User already has access to this GitHub org - use it
+              githubOwner = repoGithubOwner;
+              ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
+              console.log(`♻️ Found existing SourceControlOrg for ${repoGithubOwner}, reusing for workspace ${workspaceSlug}`);
+            } else {
+              // No existing SourceControlOrg for this GitHub owner - this shouldn't happen in OAuth flow
+              console.log(`⚠️ No SourceControlOrg found for ${repoGithubOwner}, falling back to authenticated user`);
+              githubOwner = githubUser.login;
+              ownerType = "user";
+            }
+          } else {
+            // Invalid repository URL - fallback to authenticated user
+            console.log(`⚠️ Could not extract GitHub owner from repo URL: ${repoUrl}`);
+            githubOwner = githubUser.login;
+            ownerType = "user";
+          }
+        } else {
+          // No repository URL - fallback to authenticated user
+          console.log(`⚠️ Workspace ${workspaceSlug} has no repository URL, using authenticated user: ${githubUser.login}`);
+          githubOwner = githubUser.login;
+          ownerType = "user";
+        }
       }
     }
 
