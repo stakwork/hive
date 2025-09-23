@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseEnv } from "@/lib/env-parser";
-import { Clipboard, Loader2, Save } from "lucide-react";
+import { Clipboard, Loader2, Save, Settings, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
 import {
   devcontainerJsonContent,
   dockerComposeContent,
@@ -56,6 +57,7 @@ export default function ServicesModal({
   const [dataLoading, setDataLoading] = useState(true);
   const [repoName, setRepoName] = useState<string>("");
   const [showImportSection, setShowImportSection] = useState(false);
+  const [showAdvancedSection, setShowAdvancedSection] = useState(false);
 
   // Load settings when modal opens
   useEffect(() => {
@@ -200,6 +202,10 @@ export default function ServicesModal({
         variant: "destructive",
       });
     }
+  };
+
+  const handleServicesChange = (updatedServices: ServiceDataConfig[]) => {
+    setServices(updatedServices);
   };
 
   const handleSave = useCallback(async () => {
@@ -389,6 +395,40 @@ export default function ServicesModal({
                 >
                   Add Variable
                 </Button>
+              </div>
+
+              {/* Advanced Services Section */}
+              <div className="border-t pt-4 mt-6">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setShowAdvancedSection(!showAdvancedSection)}
+                  disabled={loading || dataLoading}
+                  className="flex items-center space-x-2 p-0 h-auto text-sm font-medium hover:bg-transparent mb-4"
+                >
+                  {showAdvancedSection ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                  <Settings className="w-4 h-4" />
+                  <span>Advanced Services Configuration</span>
+                </Button>
+
+                {showAdvancedSection && (
+                  <div className="animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Configure services, ports, and scripts for your development environment.
+                      </p>
+                      <ServicesForm
+                        data={services}
+                        loading={loading || dataLoading}
+                        onChange={handleServicesChange}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
