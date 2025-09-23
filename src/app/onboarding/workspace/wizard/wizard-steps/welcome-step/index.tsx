@@ -1,11 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SupportedLanguages } from "@/lib/constants";
-import { AlertCircle, ArrowRight, Github } from "lucide-react";
+import { AlertCircle, ArrowRight } from "lucide-react";
+import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { useState } from "react";
@@ -67,80 +66,77 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
-      <CardHeader className="text-center">
-        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Github className="w-8 h-8 text-blue-600 dark:text-blue-300" />
-        </div>
-        <CardTitle className="text-2xl">Welcome to Code Graph</CardTitle>
-        <CardDescription className="text-lg">Enter your GitHub repository URL to get started</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+        <CardHeader className="text-center">
+          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Image src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
+          </div>
+          <CardTitle className="text-2xl">Welcome to Hive</CardTitle>
+          <CardDescription className="text-lg">Paste your GitHub repository to get started</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
         {/* Repository URL Input */}
         <div className="max-w-md mx-auto">
-          <Label htmlFor="repository-url" className="text-sm font-medium mb-2 block text-left">
-            GitHub Repository URL
-          </Label>
-          <div className="relative">
-            <Input
-              id="repository-url"
-              type="url"
-              placeholder="https://github.com/username/repository"
-              value={repositoryUrl}
-              onChange={(e) => handleRepositoryUrlChange(e.target.value)}
-              onKeyPress={handleKeyPress}
-              className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
-            />
-            {error && (
-              <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
+          <Input
+            id="repository-url"
+            type="url"
+            placeholder="https://github.com/username/repository"
+            value={repositoryUrl}
+            onChange={(e) => handleRepositoryUrlChange(e.target.value)}
+            onKeyPress={handleKeyPress}
+            className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
+          />
+          {error && (
+            <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-3">
           <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()}>
             Get Started
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
+          {!session?.user ? (
+            <button
+              onClick={redirectToLogin}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Already have an account? Sign in
+            </button>
+          ) : (
+            <button
+              onClick={logoutAndRedirectToLogin}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Switch account
+            </button>
+          )}
         </div>
 
-        {/* Language Support - at bottom */}
-        <div className="text-center mb-4">
-          <Separator className="w-16 mx-auto mb-4" />
-          <p className="text-xs text-muted-foreground mb-3">Language support</p>
-          <TooltipProvider delayDuration={0}>
-            <div className="flex justify-center items-center space-x-4">
-              {SupportedLanguages.map((language, index) => {
-                const IconComponent = language.icon;
+        {/* Language Support - subtle at bottom */}
+        <TooltipProvider delayDuration={0}>
+          <div className="flex justify-center items-center gap-3 pt-4">
+            {SupportedLanguages.map((language, index) => {
+              const IconComponent = language.icon;
+              return (
+                <Tooltip key={index}>
+                  <TooltipTrigger asChild>
+                    <div className="opacity-40 hover:opacity-70 transition-opacity">
+                      <IconComponent className={`w-4 h-4 ${language.color}`} />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{language.name}</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
 
-                return (
-                  <Tooltip key={index}>
-                    <TooltipTrigger asChild>
-                      <div className="opacity-60 hover:opacity-100 transition-opacity">
-                        <IconComponent className={`w-5 h-5 ${language.color}`} />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{language.name}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </TooltipProvider>
-        </div>
       </CardContent>
-      {!session?.user ? (
-        <Button className="self-center" variant="outline" onClick={redirectToLogin}>
-          I have an account
-        </Button>
-      ) : (
-        <Button className="self-center" variant="outline" onClick={logoutAndRedirectToLogin}>
-          Switch account
-        </Button>
-      )}
     </Card>
   );
 };
