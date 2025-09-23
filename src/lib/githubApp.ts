@@ -68,34 +68,50 @@ async function refreshUserToken(refreshToken: string): Promise<RefreshTokenRespo
 }
 
 /**
- * Get and decrypt GitHub App tokens for a user
+ * Get and decrypt GitHub App tokens for a user for a specific GitHub org/user
  */
 export async function getUserAppTokens(
   userId: string,
+  githubOwner?: string,
 ): Promise<{ accessToken?: string; refreshToken?: string } | null> {
-  const account = await db.account.findFirst({
-    where: {
-      userId,
-      provider: "github",
-      app_access_token: { not: null },
-    },
-    select: {
-      app_access_token: true,
-      app_refresh_token: true,
-    },
-  });
+  let sourceControlToken;
 
-  if (!account?.app_access_token) {
+  if (githubOwner) {
+    // Get tokens for specific GitHub org/user
+    sourceControlToken = await db.sourceControlToken.findFirst({
+      where: {
+        userId,
+        sourceControlOrg: {
+          githubLogin: githubOwner,
+        },
+      },
+      select: {
+        token: true,
+        refreshToken: true,
+      },
+    });
+  } else {
+    // Get any token for this user (fallback for checking installation status)
+    sourceControlToken = await db.sourceControlToken.findFirst({
+      where: { userId },
+      select: {
+        token: true,
+        refreshToken: true,
+      },
+    });
+  }
+
+  if (!sourceControlToken?.token) {
     return null;
   }
 
   try {
     const encryptionService = EncryptionService.getInstance();
-    const accessToken = encryptionService.decryptField("app_access_token", account.app_access_token);
+    const accessToken = encryptionService.decryptField("source_control_token", sourceControlToken.token);
 
     let refreshToken;
-    if (account.app_refresh_token) {
-      refreshToken = encryptionService.decryptField("app_refresh_token", account.app_refresh_token);
+    if (sourceControlToken.refreshToken) {
+      refreshToken = encryptionService.decryptField("source_control_refresh_token", sourceControlToken.refreshToken);
     }
 
     return { accessToken, refreshToken };

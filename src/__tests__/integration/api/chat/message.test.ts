@@ -166,7 +166,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     
     mockGetGithubUsernameAndPAT.mockResolvedValue({
       username: "testuser",
-      pat: "github_pat_test_token",
+      token: "github_pat_test_token",
     });
 
     // Mock fetch responses for external APIs

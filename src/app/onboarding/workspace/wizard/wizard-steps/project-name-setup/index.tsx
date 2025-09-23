@@ -1,3 +1,4 @@
+// Create a standalone Gitsee component for onboarding
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,13 +10,35 @@ import {
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useGitVisualizer } from "@/hooks/useGitVisualizer";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { SwarmVisualization } from "./swarm-visualization";
+
+interface OnboardingGitseeProps {
+  workspaceId: string | null;
+  repositoryUrl: string | null;
+  swarmUrl?: string | null;
+}
+
+const OnboardingGitsee = ({ workspaceId, repositoryUrl, swarmUrl }: OnboardingGitseeProps) => {
+  useGitVisualizer({
+    workspaceId,
+    repositoryUrl,
+    swarmUrl: swarmUrl || null
+  });
+
+  return (
+    <Card className="max-w-2xl">
+      <CardContent>
+        <svg width="500" height="500" id="vizzy" style={{ width: "100%", height: "100%" }}></svg>
+      </CardContent>
+    </Card>
+  );
+};
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -52,6 +75,7 @@ export function ProjectNameSetupStep() {
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
   const swarmId = useRef<string>("");
   const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
+  const [swarmUrl, setSwarmUrl] = useState<string>("");
 
   const [repositoryUrlDraft, setRepositoryUrlDraft] = useState<string>("");
 
@@ -232,6 +256,21 @@ export function ProjectNameSetupStep() {
 
         const { swarmId } = json.data;
 
+        // Fetch swarm details to get the swarm URL
+        if (swarmId) {
+          try {
+            const swarmDetailsRes = await fetch(`/api/workspaces/${workspaceSlug}/stakgraph`);
+            if (swarmDetailsRes.ok) {
+              const swarmDetails = await swarmDetailsRes.json();
+              if (swarmDetails.success && swarmDetails.data?.swarmUrl) {
+                setSwarmUrl(swarmDetails.data.swarmUrl);
+              }
+            }
+          } catch (error) {
+            console.error("Failed to fetch swarm URL:", error);
+          }
+        }
+
 
         if (swarmId && selectedRepo?.html_url) {
           const servicesRes = await fetch(
@@ -385,12 +424,13 @@ export function ProjectNameSetupStep() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
+              className="flex flex-col gap-1.5"
             >
               <CardTitle className="text-2xl">
-                Creating Graph Infrastructure
+                Set project name
               </CardTitle>
-              <CardDescription>
-                Your project name will be:
+              <CardDescription className="text-lg">
+                Choose a name for your workspace.
               </CardDescription>
             </motion.div>
           ) : (
@@ -400,8 +440,14 @@ export function ProjectNameSetupStep() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
+              className="flex flex-col gap-1.5"
             >
-              <CardTitle className="text-2xl">{swarmIsLoading ? "Your swarm is being set up. This may take a few minutes." : "Setting up your new Project name"}</CardTitle>
+              <CardTitle className="text-2xl">
+                Setting up your workspace…
+              </CardTitle>
+              <CardDescription className="text-lg">
+                This may take a few minutes
+              </CardDescription>
             </motion.div>
           )}
         </AnimatePresence>
@@ -410,47 +456,56 @@ export function ProjectNameSetupStep() {
 
 
       <CardContent className="space-y-6">
-        {swarmIsLoading ? <SwarmVisualization /> : (
+        {swarmIsLoading ? (
+          <OnboardingGitsee
+            workspaceId={workspaceId || null}
+            repositoryUrl={selectedRepo?.html_url || null}
+            swarmUrl={swarmUrl || null}
+          />
+        ) : (
           <>
             {error ? (
               <>
                 <div className="flex justify-center items-center text-red-500">{error}</div>
-                <Button className="mt-2 m-auto px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
-                  Reset
-                </Button>
+                <div className="flex justify-center pt-4">
+                  <Button className="px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
+                    Try Again
+                  </Button>
+                </div>
               </>
             ) : (
               <>
                 <div>
-                  <Label
-                    htmlFor="graphDomain"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Graph Domain
-                  </Label>
                   {(isLookingForAvailableName || hasWorkspaceConflict) && (
-                    <p className={`text-sm ${hasWorkspaceConflict ? 'text-red-500' : 'text-muted-foreground'}`}>
+                    <p className={`text-sm mb-2 ${hasWorkspaceConflict ? 'text-red-500' : 'text-muted-foreground'}`}>
                       {infoMessage}
                       {isLookingForAvailableName && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
                     </p>
                   )}
                   <Input
                     id="graphDomain"
-                    placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
+                    placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter workspace name"}
                     value={isLookingForAvailableName ? "" : projectName}
-                    className={`mt-2 ${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
+                    className={`${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
                     onChange={(e) => {
                       // Remove spaces and convert to lowercase
                       const value = e.target.value.replace(/\s+/g, '').toLowerCase();
                       setProjectName(value);
                     }}
                   />
+                  <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
+                    This will be the unique name for your workspace
+                  </p>
                 </div>
 
-                <div className="flex justify-between pt-4">
-
-                  <Button variant="outline" type="button" onClick={resetProgress}>
-                    Reset
+                <div className="flex justify-between items-center pt-6">
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={resetProgress}
+                    className="text-muted-foreground"
+                  >
+                    Cancel
                   </Button>
                   <Button
                     disabled={swarmIsLoading || hasWorkspaceConflict}

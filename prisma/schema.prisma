@@ -92,6 +92,9 @@ model User {
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
   dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
 
+  // Source control tokens
+  sourceControlTokens SourceControlToken[]
+
   @@index([createdAt])
   @@index([deleted])
   @@index([email])
@@ -139,6 +142,51 @@ model GitHubAuth {
 }
 
 // =============================================
+// SOURCE CONTROL INTEGRATION
+// =============================================
+
+model SourceControlOrg {
+  id                   String                @id @default(cuid())
+  type                 SourceControlOrgType  @default(ORG)
+  githubLogin          String                @unique // e.g. "anthropic", "evanfeenstra"
+  githubInstallationId Int                   @unique @map("github_installation_id")
+  name                 String?               // Display name
+  avatarUrl            String?               @map("avatar_url")
+  description          String?
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  // Relationships
+  tokens     SourceControlToken[]
+  workspaces Workspace[]
+
+  @@index([githubLogin])
+  @@index([githubInstallationId])
+  @@map("source_control_orgs")
+}
+
+model SourceControlToken {
+  id                  String           @id @default(cuid())
+  userId              String           @map("user_id")
+  sourceControlOrgId  String           @map("source_control_org_id")
+  token               String           // Encrypted app access token
+  refreshToken        String?          @map("refresh_token") // Encrypted refresh token
+  expiresAt           DateTime?        @map("expires_at")
+  scopes              String[]         @default([])
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  // Relationships
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceControlOrg SourceControlOrg @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceControlOrgId])
+  @@index([userId])
+  @@index([sourceControlOrgId])
+  @@map("source_control_tokens")
+}
+
+// =============================================
 // WORKSPACE & ORGANIZATION
 // =============================================
 
@@ -160,6 +208,10 @@ model Workspace {
   // Members of the workspace
   members WorkspaceMember[]
 
+  // Source control integration
+  sourceControlOrgId String?           @map("source_control_org_id")
+  sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: SetNull)
+
   // Infrastructure
   swarm        Swarm?
   repositories Repository[]
@@ -176,6 +228,7 @@ model Workspace {
 
   @@index([ownerId])
   @@index([deleted])
+  @@index([sourceControlOrgId])
   @@map("workspaces")
 }
 
@@ -264,7 +317,7 @@ model Repository {
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
 
-  // Repository belongs to workspace
+  // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -885,4 +938,9 @@ enum TaskSourceType {
   USER
   JANITOR
   SYSTEM
+}
+
+enum SourceControlOrgType {
+  ORG
+  USER
 }

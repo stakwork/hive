@@ -323,9 +323,19 @@ export async function POST(request: NextRequest) {
 
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
 
-    const githubProfile = await getGithubUsernameAndPAT(userId);
+    // Get workspace slug for GitHub credentials
+    const workspace = await db.workspace.findUnique({
+      where: { id: task.workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
+    const githubProfile = await getGithubUsernameAndPAT(userId, workspace.slug);
     const userName = githubProfile?.username || null;
-    const accessToken = githubProfile?.appAccessToken || githubProfile?.pat || null;
+    const accessToken = githubProfile?.token || null;
     const swarm = task.workspace.swarm;
     const swarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":8444/api") : "";
 

@@ -35,10 +35,21 @@ export async function POST(request: NextRequest) {
     let username: string | undefined;
     let pat: string | undefined;
     const userId = session.user.id as string;
-    const creds = await getGithubUsernameAndPAT(userId);
+
+    // Get the workspace associated with this swarm for GitHub access
+    const workspace = await db.workspace.findUnique({
+      where: { id: swarm.workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found for swarm" }, { status: 404 });
+    }
+
+    const creds = await getGithubUsernameAndPAT(userId, workspace.slug);
     if (creds) {
       username = creds.username;
-      pat = creds.appAccessToken || creds.pat;
+      pat = creds.token;
     }
     try {
       await db.repository.update({

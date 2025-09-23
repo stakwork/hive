@@ -345,7 +345,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           // TODO: This is a solution to preserve data structure.
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
-          const github_pat = await getGithubUsernameAndPAT(session?.user.id);
+          const github_pat = await getGithubUsernameAndPAT(userId, slug);
           await poolManager.updatePoolData(
             swarm.id,
             decryptedPoolApiKey,
@@ -361,7 +361,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             files,
             settings.poolCpu,
             settings.poolMemory,
-            github_pat?.appAccessToken || github_pat?.pat || "",
+            github_pat?.token || "",
             github_pat?.username || "",
           );
         }

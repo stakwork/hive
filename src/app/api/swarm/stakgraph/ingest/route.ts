@@ -72,9 +72,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const creds = await getGithubUsernameAndPAT(session.user.id);
+    // Get the workspace for GitHub access
+    const workspace = await db.workspace.findUnique({
+      where: { id: repoWorkspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
+    }
+
+    const creds = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     const username = creds?.username ?? "";
-    const pat = (creds?.appAccessToken || creds?.pat) ?? "";
+    const pat = creds?.token ?? "";
 
     const apiResult = await triggerIngestAsync(
       getSwarmVanityAddress(swarm.name),
@@ -137,7 +147,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id);
+    // Get the workspace for GitHub access
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
+    }
+
+    const githubCreds = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     if (!githubCreds) {
       return NextResponse.json(
         {

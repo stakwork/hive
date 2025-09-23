@@ -32,3 +32,21 @@ export function parseEnv(envContent: string): Record<string, string> {
 
   return result;
 }
+
+export function validateEnvKey(key: string): boolean {
+  // ENV keys should start with a letter or underscore,
+  // and contain only letters, numbers, and underscores
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
+}
+
+export function formatEnvForExport(vars: Record<string, string>): string {
+  return Object.entries(vars)
+    .map(([key, value]) => {
+      // Quote values that contain spaces or special characters
+      if (value.includes(' ') || value.includes('\n') || value.includes('"')) {
+        return `${key}="${value.replace(/"/g, '\\"')}"`;
+      }
+      return `${key}=${value}`;
+    })
+    .join('\n');
+}

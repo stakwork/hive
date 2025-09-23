@@ -120,8 +120,11 @@ export default function DashboardPage() {
 
       if (data.success && data.data?.link) {
         // Redirect to GitHub App installation
+        // Keep spinner running during navigation
         window.location.href = data.data.link;
+        // Don't set isInstalling to false - let the page navigate
       } else {
+        setIsInstalling(false);
         toast({
           title: "Installation Failed",
           description: data.message || "Failed to generate GitHub App installation link",
@@ -130,13 +133,12 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error("Failed to install GitHub App:", error);
+      setIsInstalling(false);
       toast({
         title: "Installation Failed",
         description: "An error occurred while trying to install the GitHub App",
         variant: "destructive",
       });
-    } finally {
-      setIsInstalling(false);
     }
   };
 

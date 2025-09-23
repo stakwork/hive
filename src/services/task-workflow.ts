@@ -209,9 +209,9 @@ async function createChatMessageAndTriggerStakwork(params: {
     throw new Error("User not found");
   }
 
-  const githubProfile = await getGithubUsernameAndPAT(userId);
+  const githubProfile = await getGithubUsernameAndPAT(userId, task.workspace.slug);
   const userName = githubProfile?.username || null;
-  const accessToken = githubProfile?.appAccessToken || githubProfile?.pat || null;
+  const accessToken = githubProfile?.token || null;
 
   // Prepare Stakwork integration (replicating callStakwork logic)
   const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;

@@ -320,16 +320,16 @@ export const authOptions: NextAuthOptions = {
               });
             } catch (err) {
               // If GitHub API fails, just skip
-              logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", { 
+              logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", {
                 hasAccount: !!account,
-                userId: user.id 
+                userId: user.id,
               });
             }
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
             logger.authInfo("GitHub account token revoked, re-authentication required", "SESSION_TOKEN_REVOKED", {
               userId: user.id,
-              provider: account.provider
+              provider: account.provider,
             });
           }
         }
@@ -400,21 +400,22 @@ export const authOptions: NextAuthOptions = {
 
 interface GithubUsernameAndPAT {
   username: string;
-  pat: string;
-  appAccessToken: string | null;
+  token: string;
 }
 
 /**
- * Fetches the GitHub username and PAT (accessToken) for a given userId.
- * Returns { username, pat } or null if not found.
+ * Fetches the GitHub username and token for a given userId.
+ * If workspaceSlug is provided, uses workspace-specific app token.
+ * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
+ * Returns { username, token } or null if not found.
  */
-export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUsernameAndPAT | null> {
+export async function getGithubUsernameAndPAT(userId: string, workspaceSlug?: string): Promise<GithubUsernameAndPAT | null> {
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
     return null;
   }
-  
+
   // Check for mock user (case insensitive, supports subdomains)
   if (user.email?.toLowerCase().includes("@mock.dev")) {
     return null;
@@ -425,54 +426,75 @@ export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUse
   if (!githubAuth) {
     return null;
   }
-  
+
   // Check for valid username
-  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === '') {
+  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === "") {
     return null;
   }
-  
-  // Get PAT from Account
-  const githubAccount = await db.account.findFirst({
-    where: { userId, provider: "github" },
-  });
-  
-  if (!githubAccount) {
-    return null;
-  }
-  
-  // Check if we have any access token (regular PAT or app token)
-  if (!githubAccount.access_token && !githubAccount.app_access_token) {
-    return null;
-  }
-  
-  let pat: string | undefined;
-  let appAccessToken: string | null = null;
-  
-  // Try regular PAT first
-  if (githubAccount.access_token) {
-    pat = encryptionService.decryptField("access_token", githubAccount.access_token);
-    
-    // Also decrypt app token if available
-    if (githubAccount.app_access_token) {
-      appAccessToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
+
+  // If no workspace provided, use user's OAuth token from Account table
+  if (!workspaceSlug) {
+    const account = await db.account.findFirst({
+      where: {
+        userId,
+        provider: "github",
+      },
+    });
+
+    if (!account?.access_token) {
+      return null;
     }
-  } else if (githubAccount.app_access_token) {
-    // Only app token available, use it as PAT too
-    const decryptedAppToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
-    pat = decryptedAppToken;
-    appAccessToken = decryptedAppToken;
-  } else {
+
+    try {
+      const encryptionService = EncryptionService.getInstance();
+      const token = encryptionService.decryptField("access_token", account.access_token);
+
+      return {
+        username: githubAuth.githubUsername,
+        token: token,
+      };
+    } catch (error) {
+      console.error("Failed to decrypt OAuth access token:", error);
+      return null;
+    }
+  }
+
+  // Get workspace and its source control org
+  const workspace = await db.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    include: {
+      sourceControlOrg: true,
+    },
+  });
+
+  if (!workspace?.sourceControlOrg) {
     return null;
   }
-  
-  // Ensure pat is defined
-  if (!pat) {
+
+  // Get user's token for this source control org
+  const sourceControlToken = await db.sourceControlToken.findUnique({
+    where: {
+      userId_sourceControlOrgId: {
+        userId,
+        sourceControlOrgId: workspace.sourceControlOrg.id,
+      },
+    },
+  });
+
+  if (!sourceControlToken?.token) {
     return null;
   }
-  
-  return {
-    username: githubAuth.githubUsername,
-    pat,
-    appAccessToken,
-  };
+
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    const token = encryptionService.decryptField("source_control_token", sourceControlToken.token);
+
+    return {
+      username: githubAuth.githubUsername,
+      token: token,
+    };
+  } catch (error) {
+    console.error("Failed to decrypt source control token:", error);
+    return null;
+  }
 }
