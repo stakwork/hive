@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SupportedLanguages } from "@/lib/constants";
 import { AlertCircle, ArrowRight } from "lucide-react";
@@ -115,9 +116,11 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           )}
         </div>
 
+        <Separator className="w-24 mx-auto" />
+
         {/* Language Support - subtle at bottom */}
         <TooltipProvider delayDuration={0}>
-          <div className="flex justify-center items-center gap-3 pt-4">
+          <div className="flex justify-center items-center gap-3">
             {SupportedLanguages.map((language, index) => {
               const IconComponent = language.icon;
               return (
