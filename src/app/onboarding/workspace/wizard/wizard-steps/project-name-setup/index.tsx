@@ -329,11 +329,11 @@ export function ProjectNameSetupStep() {
 
 
   return isLoading ? (
-    <div className="flex justify-center items-center h-full">
-      <Loader2 className="w-8 h-8 animate-spin" />
-      <p className="text-muted-foreground">
-        Syncing repository...
-      </p>
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+      <div className="text-center">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
     </div>
   ) : (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
