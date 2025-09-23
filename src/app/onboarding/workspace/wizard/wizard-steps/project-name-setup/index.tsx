@@ -424,12 +424,13 @@ export function ProjectNameSetupStep() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
+              className="flex flex-col gap-1.5"
             >
               <CardTitle className="text-2xl">
-                Creating Graph Infrastructure
+                Set project name
               </CardTitle>
-              <CardDescription>
-                Your project name will be:
+              <CardDescription className="text-lg">
+                Choose a name for your workspace.
               </CardDescription>
             </motion.div>
           ) : (
@@ -460,42 +461,45 @@ export function ProjectNameSetupStep() {
             {error ? (
               <>
                 <div className="flex justify-center items-center text-red-500">{error}</div>
-                <Button className="mt-2 m-auto px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
-                  Reset
-                </Button>
+                <div className="flex justify-center pt-4">
+                  <Button className="px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
+                    Try Again
+                  </Button>
+                </div>
               </>
             ) : (
               <>
                 <div>
-                  <Label
-                    htmlFor="graphDomain"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Graph Domain
-                  </Label>
                   {(isLookingForAvailableName || hasWorkspaceConflict) && (
-                    <p className={`text-sm ${hasWorkspaceConflict ? 'text-red-500' : 'text-muted-foreground'}`}>
+                    <p className={`text-sm mb-2 ${hasWorkspaceConflict ? 'text-red-500' : 'text-muted-foreground'}`}>
                       {infoMessage}
                       {isLookingForAvailableName && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
                     </p>
                   )}
                   <Input
                     id="graphDomain"
-                    placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter your project name"}
+                    placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter workspace name"}
                     value={isLookingForAvailableName ? "" : projectName}
-                    className={`mt-2 ${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
+                    className={`${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
                     onChange={(e) => {
                       // Remove spaces and convert to lowercase
                       const value = e.target.value.replace(/\s+/g, '').toLowerCase();
                       setProjectName(value);
                     }}
                   />
+                  <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
+                    This will be the unique name for your workspace
+                  </p>
                 </div>
 
-                <div className="flex justify-between pt-4">
-
-                  <Button variant="outline" type="button" onClick={resetProgress}>
-                    Reset
+                <div className="flex justify-between items-center pt-6">
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={resetProgress}
+                    className="text-muted-foreground"
+                  >
+                    Cancel
                   </Button>
                   <Button
                     disabled={swarmIsLoading || hasWorkspaceConflict}
