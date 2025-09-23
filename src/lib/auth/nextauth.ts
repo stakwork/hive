@@ -1,13 +1,13 @@
-import { NextAuthOptions } from "next-auth";
-import GitHubProvider from "next-auth/providers/github";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
-import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 import { getDefaultWorkspaceForUser } from "@/services/workspace";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
-import { logger } from "@/lib/logger";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import axios from "axios";
+import { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import GitHubProvider from "next-auth/providers/github";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -96,10 +96,10 @@ export const authOptions: NextAuthOptions = {
           // Create or find the mock user in the database
           const existingUser = user.email
             ? await db.user.findUnique({
-                where: {
-                  email: user.email,
-                },
-              })
+              where: {
+                email: user.email,
+              },
+            })
             : null;
 
           if (!existingUser) {
@@ -131,10 +131,10 @@ export const authOptions: NextAuthOptions = {
           // Check if there's an existing user with the same email
           const existingUser = user.email
             ? await db.user.findUnique({
-                where: {
-                  email: user.email,
-                },
-              })
+              where: {
+                email: user.email,
+              },
+            })
             : null;
 
           if (existingUser) {
@@ -224,7 +224,7 @@ export const authOptions: NextAuthOptions = {
             if (ws?.slug) {
               (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = ws.slug;
             }
-          } catch {}
+          } catch { }
           return session;
         }
 
@@ -409,7 +409,10 @@ interface GithubUsernameAndPAT {
  * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
  * Returns { username, token } or null if not found.
  */
-export async function getGithubUsernameAndPAT(userId: string, workspaceSlug?: string): Promise<GithubUsernameAndPAT | null> {
+export async function getGithubUsernameAndPAT(userId: string, workspaceSlugArg?: string): Promise<GithubUsernameAndPAT | null> {
+
+  console.log(workspaceSlugArg, 'workspaceSlugArg')
+  const workspaceSlug = '';
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
