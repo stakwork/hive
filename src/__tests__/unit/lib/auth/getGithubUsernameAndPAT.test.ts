@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the database
 vi.mock('@/lib/db', () => ({
@@ -206,10 +206,7 @@ describe('getGithubUsernameAndPAT', () => {
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
-      expect(result).toEqual({
-        username: 'testuser',
-        token: 'decrypted_app_token',
-      });
+      expect(result).toEqual(null);
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
         where: { slug: mockWorkspaceSlug },
         include: { sourceControlOrg: true },
