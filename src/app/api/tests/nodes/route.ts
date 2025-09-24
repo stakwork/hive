@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType, NodesResponse } from "@/types/stakgraph";
@@ -153,6 +154,13 @@ export async function GET(request: NextRequest) {
         { success: false, message: "Missing required parameter: workspaceId or swarmId" },
         { status: 400 },
       );
+    }
+
+    if (workspaceId) {
+      const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+      if (!workspaceAccess.hasAccess) {
+        return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 403 });
+      }
     }
 
     const where: Record<string, string> = {};
