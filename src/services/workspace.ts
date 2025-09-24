@@ -7,6 +7,7 @@ import {
 } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { deletePool } from "@/services/pool-manager/helpers";
 import {
   createWorkspaceMember,
   findActiveMember,
@@ -573,7 +574,6 @@ export async function deleteWorkspaceBySlug(
   // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
-
   if (!workspace) {
     throw new Error("Workspace not found or access denied");
   }
@@ -582,6 +582,31 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
+  // Check if workspace has an associated Swarm with pool configuration
+  const swarm = await db.swarm.findFirst({
+    where: {
+      workspaceId: workspace.id,
+    },
+    select: {
+      id: true,
+      poolName: true,
+      poolApiKey: true,
+    },
+  });
+
+  // If Swarm exists with pool configuration, attempt to delete the pool
+  if (swarm && swarm.poolApiKey) {
+    // Use swarm.id as the pool_name for deletion
+    const poolName = swarm.id;
+
+    try {
+      await deletePool(poolName, swarm.poolApiKey);
+    } catch (error) {
+      // Log the error but don't block workspace deletion
+      console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
+      // Continue with workspace deletion even if pool deletion fails
+    }
+  }
 
   // Soft delete the workspace
   await softDeleteWorkspace(workspace.id);
