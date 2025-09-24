@@ -581,6 +581,7 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
+  // Check for associated Swarm infrastructure
   const swarm = await db.swarm.findFirst({
     where: {
       workspaceId: workspace.id,
@@ -591,6 +592,7 @@ export async function deleteWorkspaceBySlug(
     },
   });
 
+  // Delete associated pool in Pool Manager if it exists
   if (swarm && swarm.poolApiKey) {
     const poolName = swarm.id;
 
@@ -612,10 +614,12 @@ export async function deleteWorkspaceBySlug(
         }
       }
     } catch (error) {
+      // Log error but don't block workspace deletion
       console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
     }
   }
 
+  // Proceed with soft delete of workspace
   await softDeleteWorkspace(workspace.id);
 }
 
