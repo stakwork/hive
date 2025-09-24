@@ -1,6 +1,4 @@
 "use client";
-
-
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { WizardStepRenderer } from "./WizardStepRenderer";
@@ -10,6 +8,8 @@ export const STEPS_ARRAY = [
   "GITHUB_AUTH",
   "PROJECT_NAME",
 ];
+
+export type TWizardStep = (typeof STEPS_ARRAY)[number];
 
 export default function WorkspaceWizard() {
   const { data: session } = useSession();

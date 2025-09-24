@@ -174,12 +174,6 @@ async function seedForUser(userId: string) {
       // poolApiKey,
       environmentVariables,
       services,
-      wizardStep: "COMPLETION",
-      stepStatus: "COMPLETED",
-      wizardData: {
-        seeded: true,
-        seededAt: new Date().toISOString(),
-      },
       workspaceId: workspace.id,
     },
   });
@@ -222,8 +216,6 @@ async function main() {
       repositoryUrl: result.swarm.repositoryUrl,
       poolApiKey: result.swarm.poolApiKey,
       swarmApiKey: result.swarm.swarmApiKey,
-      wizardStep: result.swarm.wizardStep,
-      stepStatus: result.swarm.stepStatus,
     },
   });
 

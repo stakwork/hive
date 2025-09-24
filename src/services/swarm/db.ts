@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
-import { PoolState, StepStatus, SwarmStatus, SwarmWizardStep } from "@prisma/client";
+import { PoolState, SwarmStatus } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -41,10 +41,7 @@ interface SaveOrUpdateSwarmParams {
   swarmId?: string;
   swarmSecretAlias?: string;
   ingestRefId?: string;
-  wizardStep?: SwarmWizardStep;
-  stepStatus?: StepStatus;
   containerFiles?: Record<string, string>;
-  wizardData?: unknown;
   defaultBranch?: string;
   githubInstallationId?: string;
   poolState?: PoolState;
@@ -71,9 +68,6 @@ export const select = {
   poolState: true,
   services: true,
   swarmSecretAlias: true,
-  wizardStep: true,
-  stepStatus: true,
-  wizardData: true,
   swarmId: true,
   ingestRefId: true,
   environmentVariables: true,
@@ -113,19 +107,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.defaultBranch !== undefined) data.defaultBranch = params.defaultBranch;
   if (params.swarmSecretAlias !== undefined) data.swarmSecretAlias = params.swarmSecretAlias;
-  if (params.wizardStep !== undefined) data.wizardStep = params.wizardStep;
-  if (params.stepStatus !== undefined) data.stepStatus = params.stepStatus;
   if (params.poolState !== undefined) data.poolState = params.poolState;
-  if (params.wizardData !== undefined) {
-    const previousWizardData = swarm?.wizardData || {};
-
-    const newWizardData = {
-      ...(previousWizardData as object),
-      ...params.wizardData,
-    } as unknown;
-
-    data.wizardData = newWizardData;
-  }
 
   if (params.services !== undefined) {
     data.services = params.services;
@@ -172,10 +154,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolMemory: params.poolMemory || "4Gi",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",
-      wizardStep: params.wizardStep,
-      stepStatus: params.stepStatus,
       defaultBranch: params.defaultBranch || "",
-      wizardData: params.wizardData,
       containerFiles: params.containerFiles,
       githubInstallationId: params.githubInstallationId,
       swarmId: params.swarmId,

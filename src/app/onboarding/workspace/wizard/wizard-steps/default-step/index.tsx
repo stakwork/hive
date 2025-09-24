@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -5,8 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { TWizardStep } from "@/stores/useWizardStore";
+import { TWizardStep } from "../..";
 
 interface WelcomeStepProps {
   step: TWizardStep;
