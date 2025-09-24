@@ -71,7 +71,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error("Swarm server error:", response);
       throw new Error(`Swarm server error: ${response.status}`);
     }
 
