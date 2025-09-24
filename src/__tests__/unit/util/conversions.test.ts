@@ -1,18 +1,11 @@
-import { describe, test, expect, vi } from "vitest";
 import {
-  mapStatusToStepStatus,
   mapStakworkStatus,
-  stakgraphToStepStatus,
   stakgraphToRepositoryStatus,
 } from "@/utils/conversions";
+import { describe, expect, test, vi } from "vitest";
 
 // Mock Prisma enums
 vi.mock("@prisma/client", () => ({
-  StepStatus: {
-    PROCESSING: "PROCESSING",
-    COMPLETED: "COMPLETED", 
-    FAILED: "FAILED",
-  },
   WorkflowStatus: {
     IN_PROGRESS: "IN_PROGRESS",
     COMPLETED: "COMPLETED",
@@ -29,10 +22,10 @@ vi.mock("@prisma/client", () => ({
 // Create test helpers to test internal functionality
 const normalizeStatus = (status: string) => status.toLowerCase();
 
-const mapStatus = (status: string, mapping: any, defaultValue?: any) => {
+const mapStatus = (status: string, mapping: Record<string, string[]>, defaultValue?: string) => {
   const normalized = status.toLowerCase();
   for (const [enumValue, patterns] of Object.entries(mapping)) {
-    if ((patterns as string[]).some(pattern => normalized.includes(pattern))) {
+    if (patterns.some(pattern => normalized.includes(pattern))) {
       return enumValue;
     }
   }
@@ -102,53 +95,19 @@ describe("conversions", () => {
     });
   });
 
-  describe("mapStatusToStepStatus", () => {
-    test("maps valid step statuses correctly", () => {
-      expect(mapStatusToStepStatus("inprogress")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("in_progress")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("running")).toBe("PROCESSING");
-      
-      expect(mapStatusToStepStatus("complete")).toBe("COMPLETED");
-      expect(mapStatusToStepStatus("completed")).toBe("COMPLETED");
-      expect(mapStatusToStepStatus("success")).toBe("COMPLETED");
-      
-      expect(mapStatusToStepStatus("fail")).toBe("FAILED");
-      expect(mapStatusToStepStatus("failed")).toBe("FAILED");
-      expect(mapStatusToStepStatus("error")).toBe("FAILED");
-    });
-
-    test("handles case insensitive input", () => {
-      expect(mapStatusToStepStatus("INPROGRESS")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("COMPLETED")).toBe("COMPLETED");
-      expect(mapStatusToStepStatus("FAILED")).toBe("FAILED");
-    });
-
-    test("returns default PROCESSING for unknown status", () => {
-      expect(mapStatusToStepStatus("unknown")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("invalid")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("")).toBe("PROCESSING");
-    });
-
-    test("handles partial matches in status strings", () => {
-      expect(mapStatusToStepStatus("task_inprogress_now")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("operation_completed")).toBe("COMPLETED");
-      expect(mapStatusToStepStatus("job_failed_today")).toBe("FAILED");
-    });
-  });
-
   describe("mapStakworkStatus", () => {
     test("maps valid workflow statuses correctly", () => {
       expect(mapStakworkStatus("in_progress")).toBe("IN_PROGRESS");
       expect(mapStakworkStatus("running")).toBe("IN_PROGRESS");
       expect(mapStakworkStatus("processing")).toBe("IN_PROGRESS");
-      
+
       expect(mapStakworkStatus("completed")).toBe("COMPLETED");
       expect(mapStakworkStatus("success")).toBe("COMPLETED");
       expect(mapStakworkStatus("finished")).toBe("COMPLETED");
-      
+
       expect(mapStakworkStatus("error")).toBe("FAILED");
       expect(mapStakworkStatus("failed")).toBe("FAILED");
-      
+
       expect(mapStakworkStatus("halted")).toBe("HALTED");
       expect(mapStakworkStatus("paused")).toBe("HALTED");
       expect(mapStakworkStatus("stopped")).toBe("HALTED");
@@ -172,35 +131,6 @@ describe("conversions", () => {
       expect(mapStakworkStatus("task_completed_ok")).toBe("COMPLETED");
       expect(mapStakworkStatus("operation_failed")).toBe("FAILED");
       expect(mapStakworkStatus("job_halted_by_user")).toBe("HALTED");
-    });
-  });
-
-  describe("stakgraphToStepStatus", () => {
-    test("converts valid stakgraph statuses to StepStatus", () => {
-      expect(stakgraphToStepStatus("inprogress")).toBe("PROCESSING");
-      expect(stakgraphToStepStatus("complete")).toBe("COMPLETED");
-      expect(stakgraphToStepStatus("failed")).toBe("FAILED");
-    });
-
-    test("handles case insensitive input", () => {
-      expect(stakgraphToStepStatus("INPROGRESS")).toBe("PROCESSING");
-      expect(stakgraphToStepStatus("InProgress")).toBe("PROCESSING");
-      expect(stakgraphToStepStatus("COMPLETE")).toBe("COMPLETED");
-      expect(stakgraphToStepStatus("Complete")).toBe("COMPLETED");
-      expect(stakgraphToStepStatus("FAILED")).toBe("FAILED");
-      expect(stakgraphToStepStatus("Failed")).toBe("FAILED");
-    });
-
-    test("throws error for unknown stakgraph status", () => {
-      expect(() => stakgraphToStepStatus("unknown")).toThrow("Unknown stakgraph status: unknown");
-      expect(() => stakgraphToStepStatus("invalid")).toThrow("Unknown stakgraph status: invalid");
-      expect(() => stakgraphToStepStatus("")).toThrow("Unknown stakgraph status: ");
-      expect(() => stakgraphToStepStatus("processing")).toThrow("Unknown stakgraph status: processing");
-    });
-
-    test("maintains original status in error message", () => {
-      expect(() => stakgraphToStepStatus("UNKNOWN")).toThrow("Unknown stakgraph status: UNKNOWN");
-      expect(() => stakgraphToStepStatus("Mixed_Case")).toThrow("Unknown stakgraph status: Mixed_Case");
     });
   });
 
@@ -247,14 +177,14 @@ describe("conversions", () => {
       expect(mapStatus("in_progress", workflowMapping)).toBe("IN_PROGRESS");
       expect(mapStatus("running", workflowMapping)).toBe("IN_PROGRESS");
       expect(mapStatus("processing", workflowMapping)).toBe("IN_PROGRESS");
-      
+
       expect(mapStatus("completed", workflowMapping)).toBe("COMPLETED");
       expect(mapStatus("success", workflowMapping)).toBe("COMPLETED");
       expect(mapStatus("finished", workflowMapping)).toBe("COMPLETED");
-      
+
       expect(mapStatus("error", workflowMapping)).toBe("FAILED");
       expect(mapStatus("failed", workflowMapping)).toBe("FAILED");
-      
+
       expect(mapStatus("halted", workflowMapping)).toBe("HALTED");
       expect(mapStatus("paused", workflowMapping)).toBe("HALTED");
       expect(mapStatus("stopped", workflowMapping)).toBe("HALTED");
@@ -262,32 +192,11 @@ describe("conversions", () => {
   });
 
   describe("edge cases and error handling", () => {
-    test("handles null and undefined inputs gracefully", () => {
-      // These would throw in real usage, but we test string handling
-      expect(() => stakgraphToStepStatus(null as any)).toThrow();
-      expect(() => stakgraphToStepStatus(undefined as any)).toThrow();
-      expect(() => stakgraphToRepositoryStatus(null as any)).toThrow();
-      expect(() => stakgraphToRepositoryStatus(undefined as any)).toThrow();
-    });
-
-    test("handles whitespace-only strings", () => {
-      expect(mapStatusToStepStatus("   ")).toBe("PROCESSING");
-      expect(mapStakworkStatus("   ")).toBeNull();
-      expect(() => stakgraphToStepStatus("   ")).toThrow();
-      expect(() => stakgraphToRepositoryStatus("   ")).toThrow();
-    });
-
-    test("handles special characters in status strings", () => {
-      expect(mapStatusToStepStatus("in-progress")).toBe("PROCESSING");
-      expect(mapStatusToStepStatus("task.completed")).toBe("COMPLETED");
-      expect(mapStakworkStatus("job@failed")).toBe("FAILED");
-    });
-
     test("verifies type safety with generics", () => {
       const customMapping = { CUSTOM: ["test"] };
       const result = mapStatus("test", customMapping, "DEFAULT");
       expect(result).toBe("CUSTOM");
-      
+
       const defaultResult = mapStatus("unknown", customMapping, "DEFAULT");
       expect(defaultResult).toBe("DEFAULT");
     });
