@@ -14,6 +14,7 @@ export interface UseCoverageParams {
   status?: StatusFilter;
 }
 
+
 export function useCoverageNodes(initial: UseCoverageParams = {}) {
   const { id: workspaceId } = useWorkspace();
 
@@ -35,11 +36,14 @@ export function useCoverageNodes(initial: UseCoverageParams = {}) {
   );
 
   const fetchData = useCallback(async () => {
+    if (!workspaceId) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const qp = new URLSearchParams();
-      if (workspaceId) qp.set("workspaceId", workspaceId);
+      qp.set("workspaceId", workspaceId);
       qp.set("node_type", nodeType);
       qp.set("limit", String(limit));
       qp.set("offset", String(offset));
@@ -76,8 +80,9 @@ export function useCoverageNodes(initial: UseCoverageParams = {}) {
   }, [workspaceId, nodeType, limit, offset, sort, root, concise, status]);
 
   useEffect(() => {
+    if (!workspaceId) return;
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, workspaceId]);
 
   const setPage = useCallback(
     (page: number) => {
