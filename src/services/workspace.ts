@@ -7,7 +7,6 @@ import {
 } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { deletePool } from "@/services/pool-manager/helpers";
 import {
   createWorkspaceMember,
   findActiveMember,
@@ -582,33 +581,41 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
-  // Check if workspace has an associated Swarm with pool configuration
   const swarm = await db.swarm.findFirst({
     where: {
       workspaceId: workspace.id,
     },
     select: {
       id: true,
-      poolName: true,
       poolApiKey: true,
     },
   });
 
-  // If Swarm exists with pool configuration, attempt to delete the pool
   if (swarm && swarm.poolApiKey) {
-    // Use swarm.id as the pool_name for deletion
     const poolName = swarm.id;
 
     try {
-      await deletePool(poolName, swarm.poolApiKey);
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
+
+      if (decryptedApiKey) {
+        const poolManagerUrl = process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api";
+        const response = await fetch(`${poolManagerUrl}/pools/${poolName}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${decryptedApiKey}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Pool deletion failed with status ${response.status}`);
+        }
+      }
     } catch (error) {
-      // Log the error but don't block workspace deletion
       console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
-      // Continue with workspace deletion even if pool deletion fails
     }
   }
 
-  // Soft delete the workspace
   await softDeleteWorkspace(workspace.id);
 }
 
