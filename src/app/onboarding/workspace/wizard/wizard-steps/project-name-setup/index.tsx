@@ -1,4 +1,5 @@
 // Create a standalone Gitsee component for onboarding
+import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,7 +10,6 @@ import {
 } from "@/components/ui/card";
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useGitVisualizer } from "@/hooks/useGitVisualizer";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Repository } from "@/types";
@@ -17,8 +17,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
-import { GraphNetworkIcon } from "@/components/onboarding/GraphNetworkIcon";
 
 interface OnboardingGitseeProps {
   workspaceId: string | null;
@@ -253,6 +251,7 @@ export function ProjectNameSetupStep() {
     const handleCreateSwarm = async () => {
 
       setSwarmIsLoading(true);
+      let shouldNavigate = false;
       try {
 
         const res = await fetch("/api/swarm", {
@@ -328,7 +327,7 @@ export function ProjectNameSetupStep() {
           }
 
           localStorage.removeItem("repoUrl");
-          router.push(`/w/${projectName.trim()}`);
+          shouldNavigate = true;
         }
 
       } catch (error) {
@@ -336,7 +335,9 @@ export function ProjectNameSetupStep() {
         throw error;
       }
       finally {
-        setSwarmIsLoading(false);
+        if (shouldNavigate) {
+          router.push(`/w/${projectName.trim()}`);
+        }
       }
     }
 
