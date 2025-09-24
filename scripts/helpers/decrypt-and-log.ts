@@ -108,8 +108,6 @@ async function logSwarms() {
       swarmUrl: true,
       swarmSecretAlias: true,
       ingestRefId: true,
-      wizardStep: true,
-      stepStatus: true,
       swarmApiKey: true,
       poolApiKey: true,
       environmentVariables: true,
@@ -165,7 +163,7 @@ async function logSwarms() {
         `  repo: ${s.repositoryName || "(none)"} url=${s.repositoryUrl || "(none)"} branch=${s.defaultBranch || "(none)"}`,
       );
       console.log(
-        `  wizard: step=${s.wizardStep} status=${s.stepStatus} swarmUrl=${s.swarmUrl || "(none)"} secretAlias=${s.swarmSecretAlias || "(none)"} ingestRefId=${s.ingestRefId || "(none)"}`,
+        `  swarm: swarmUrl=${s.swarmUrl || "(none)"} secretAlias=${s.swarmSecretAlias || "(none)"} ingestRefId=${s.ingestRefId || "(none)"}`,
       );
       console.log(`  swarmApiKey (decrypted): ${decryptedKey}`);
       console.log(`  poolApiKey (decrypted): ${decryptedPoolKey}`);

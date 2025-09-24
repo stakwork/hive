@@ -38,7 +38,7 @@ export class StakgraphWebhookService {
         };
       }
 
-      await updateStakgraphStatus(swarm, payload, requestIdHeader);
+      await updateStakgraphStatus(swarm, payload);
 
       console.log("[StakgraphWebhook] processed", {
         requestId: request_id,

@@ -44,6 +44,9 @@ vi.mock("@/lib/db", () => ({
       update: vi.fn(),
       count: vi.fn(),
     },
+    swarm: {
+      findFirst: vi.fn(),
+    },
     workspaceMember: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -595,6 +598,8 @@ describe("Workspace Service - Unit Tests", () => {
       (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
       (db.workspace.findUnique as Mock).mockResolvedValue(mockWorkspace);
       (db.workspace.update as Mock).mockResolvedValue({});
+      // Mock swarm lookup - no swarm exists for this workspace
+      (db.swarm.findFirst as Mock).mockResolvedValue(null);
 
       await deleteWorkspaceBySlug("test-workspace", "user1");
 
