@@ -337,6 +337,8 @@ export function ProjectNameSetupStep() {
       finally {
         if (shouldNavigate) {
           router.push(`/w/${projectName.trim()}`);
+        } else {
+          setSwarmIsLoading(false);
         }
       }
     }
