@@ -277,10 +277,7 @@ model Swarm {
   environmentVariables  Json    @default("[]") @map("environment_variables")
   services              Json    @default("[]")
 
-  // Wizard progress tracking
-  wizardStep  SwarmWizardStep @default(WELCOME) @map("wizard_step")
-  stepStatus  StepStatus      @default(PENDING) @map("step_status")
-  wizardData  Json            @default("{}") @map("wizard_data")
+  // ingestion status tracking
   ingestRefId String?         @map("ingest_ref_id")
 
   // Generated container files
