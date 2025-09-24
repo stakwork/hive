@@ -588,19 +588,20 @@ export async function deleteWorkspaceBySlug(
     },
     select: {
       id: true,
+      name: true,
       poolApiKey: true,
     },
   });
 
-  // Delete associated pool in Pool Manager if it exists
+  // Delete associated pool and pool user in Pool Manager if it exists
   if (swarm && swarm.poolApiKey) {
     const poolName = swarm.id;
+    const poolManagerUrl = process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api";
 
     try {
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
 
       if (decryptedApiKey) {
-        const poolManagerUrl = process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api";
         const response = await fetch(`${poolManagerUrl}/pools/${poolName}`, {
           method: "DELETE",
           headers: {
@@ -616,6 +617,45 @@ export async function deleteWorkspaceBySlug(
     } catch (error) {
       // Log error but don't block workspace deletion
       console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
+    }
+
+    // Delete the pool user using admin authentication
+    if (swarm.name) {
+      try {
+        // First authenticate with Pool Manager admin credentials
+        const authResponse = await fetch(`${poolManagerUrl}/auth/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: process.env.POOL_MANAGER_API_USERNAME,
+            password: process.env.POOL_MANAGER_API_PASSWORD,
+          }),
+        });
+
+        if (authResponse.ok) {
+          const authData = await authResponse.json();
+
+          if (authData.success && authData.token) {
+            // Delete the user using the admin token
+            const deleteResponse = await fetch(`${poolManagerUrl}/users/${swarm.name}`, {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${authData.token}`,
+                "Content-Type": "application/json",
+              },
+            });
+
+            if (!deleteResponse.ok) {
+              throw new Error(`Pool user deletion failed with status ${deleteResponse.status}`);
+            }
+          }
+        }
+      } catch (error) {
+        // Log error but don't block workspace deletion
+        console.error(`Failed to delete pool user ${swarm.name} for workspace ${slug}:`, error);
+      }
     }
   }
 
