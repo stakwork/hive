@@ -34,6 +34,7 @@ export function CoverageInsights() {
         key: `${item.name}-${item.file}`,
         name: item.name,
         file: item.file,
+        coverage: item.test_count,
         weight: item.weight,
         covered: item.covered,
       })),
@@ -48,10 +49,10 @@ export function CoverageInsights() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base">
-              {params.nodeType === "endpoint" ? "Endpoint" : "Function"} Coverage
-            </CardTitle>
-            <CardDescription>Nodes with coverage degree (weight). Filter untested to focus gaps.</CardDescription>
+            <CardTitle className="text-base">Test Coverage Insights</CardTitle>
+            <CardDescription>
+              Nodes with coverage degree (number of tests that cover the node). Filter untested to focus gaps.
+            </CardDescription>
           </div>
 
           <DropdownMenu>
@@ -84,6 +85,7 @@ export function CoverageInsights() {
         </div>
       </CardHeader>
       <CardContent>
+        <CardTitle className="pb-2">{params.nodeType === "endpoint" ? "Endpoints" : "Functions"}</CardTitle>
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading nodes...
@@ -100,7 +102,7 @@ export function CoverageInsights() {
                   <TableRow>
                     <TableHead className="w-[35%]">Name</TableHead>
                     <TableHead className="w-[40%]">File</TableHead>
-                    <TableHead className="w-[10%] text-right">Weight</TableHead>
+                    <TableHead className="w-[10%] text-right">Coverage</TableHead>
                     <TableHead className="w-[15%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -109,7 +111,7 @@ export function CoverageInsights() {
                     <TableRow key={r.key}>
                       <TableCell className="truncate max-w-[320px]">{r.name}</TableCell>
                       <TableCell className="truncate max-w-[360px] text-muted-foreground">{r.file}</TableCell>
-                      <TableCell className="text-right">{r.weight}</TableCell>
+                      <TableCell className="text-right">{r.coverage}</TableCell>
                       <TableCell className="text-right">
                         <Badge variant={r.covered ? "default" : "outline"}>{r.covered ? "Tested" : "Untested"}</Badge>
                       </TableCell>
