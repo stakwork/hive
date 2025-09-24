@@ -109,9 +109,6 @@ describe("POST /api/chat/message Integration Tests", () => {
           poolName: "test-pool",
           environmentVariables: [],
           services: [],
-          wizardStep: "COMPLETION",
-          stepStatus: "COMPLETED",
-          wizardData: {},
           workspaceId: testWorkspace.id,
         },
       });

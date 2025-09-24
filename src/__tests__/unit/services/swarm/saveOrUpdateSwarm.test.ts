@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { SwarmStatus, SwarmWizardStep, StepStatus } from "@prisma/client";
+import { SwarmStatus } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
@@ -242,26 +242,6 @@ describe("saveOrUpdateSwarm", () => {
       });
     });
 
-    it("should create a swarm with all wizard-related fields", async () => {
-      const params = {
-        workspaceId: mockWorkspaceId,
-        name: "test-swarm",
-        wizardStep: SwarmWizardStep.REPOSITORY_SELECTION,
-        stepStatus: StepStatus.COMPLETED,
-        wizardData: { selectedRepo: "test/repo", branch: "main" },
-      };
-
-      await saveOrUpdateSwarm(params);
-
-      expect(db.swarm.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          wizardStep: SwarmWizardStep.REPOSITORY_SELECTION,
-          stepStatus: StepStatus.COMPLETED,
-          wizardData: { selectedRepo: "test/repo", branch: "main" },
-        }),
-        select: expect.any(Object),
-      });
-    });
   });
 
   describe("when updating an existing swarm", () => {
@@ -270,7 +250,6 @@ describe("saveOrUpdateSwarm", () => {
       workspaceId: mockWorkspaceId,
       name: "existing-swarm",
       status: SwarmStatus.PENDING,
-      wizardData: { existingField: "value" },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -307,27 +286,6 @@ describe("saveOrUpdateSwarm", () => {
       });
     });
 
-    it("should merge wizard data when updating", async () => {
-      const params = {
-        workspaceId: mockWorkspaceId,
-        wizardData: { newField: "newValue", anotherField: 123 },
-      };
-
-      await saveOrUpdateSwarm(params);
-
-      expect(db.swarm.update).toHaveBeenCalledWith({
-        where: { workspaceId: mockWorkspaceId },
-        data: expect.objectContaining({
-          wizardData: {
-            existingField: "value", // preserved from existing
-            newField: "newValue", // added from params
-            anotherField: 123, // added from params
-          },
-          updatedAt: expect.any(Date),
-        }),
-        select: expect.any(Object),
-      });
-    });
 
     it("should update encrypted fields properly", async () => {
       const params = {
@@ -510,14 +468,11 @@ describe("saveOrUpdateSwarm", () => {
         poolName: "test-pool",
         poolCpu: "4",
         poolMemory: "8Gi",
-        services: [{ baseURL: "https://service.com", apiKey: "key" }],
+        services: [{ name: "test-service", port: 3000, scripts: { start: "npm start" } }],
         swarmId: "custom-swarm-id",
         swarmSecretAlias: "secret-alias",
         ingestRefId: "ingest-ref-123",
-        wizardStep: SwarmWizardStep.ENVIRONMENT_SETUP,
-        stepStatus: StepStatus.IN_PROGRESS,
         containerFiles: { "Dockerfile": "FROM node:18" },
-        wizardData: { customField: "value" },
         defaultBranch: "main",
         githubInstallationId: "github-install-123",
       };
@@ -538,10 +493,7 @@ describe("saveOrUpdateSwarm", () => {
           poolCpu: "4",
           poolMemory: "8Gi",
           swarmSecretAlias: "secret-alias",
-          wizardStep: SwarmWizardStep.ENVIRONMENT_SETUP,
-          stepStatus: StepStatus.IN_PROGRESS,
           containerFiles: { "Dockerfile": "FROM node:18" },
-          wizardData: { customField: "value" },
           defaultBranch: "main",
           githubInstallationId: "github-install-123",
           swarmId: "custom-swarm-id",
@@ -563,7 +515,7 @@ describe("saveOrUpdateSwarm", () => {
               }),
             }),
           ]),
-          services: [{ baseURL: "https://service.com", apiKey: "key" }],
+          services: [{ name: "test-service", port: 3000, scripts: { start: "npm start" } }],
         }),
         select: expect.any(Object),
       });

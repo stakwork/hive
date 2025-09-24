@@ -234,26 +234,6 @@ describe("conversions", () => {
   });
 
   describe("status mapping integration", () => {
-    test("stepStatusMapping patterns work with mapStatus", () => {
-      const stepMapping = {
-        PROCESSING: ["inprogress", "in_progress", "running"],
-        COMPLETED: ["complete", "completed", "success"],
-        FAILED: ["fail", "error", "failed"],
-      };
-
-      // Test all patterns in stepStatusMapping
-      expect(mapStatus("inprogress", stepMapping)).toBe("PROCESSING");
-      expect(mapStatus("in_progress", stepMapping)).toBe("PROCESSING");
-      expect(mapStatus("running", stepMapping)).toBe("PROCESSING");
-      
-      expect(mapStatus("complete", stepMapping)).toBe("COMPLETED");
-      expect(mapStatus("completed", stepMapping)).toBe("COMPLETED");
-      expect(mapStatus("success", stepMapping)).toBe("COMPLETED");
-      
-      expect(mapStatus("fail", stepMapping)).toBe("FAILED");
-      expect(mapStatus("error", stepMapping)).toBe("FAILED");
-      expect(mapStatus("failed", stepMapping)).toBe("FAILED");
-    });
 
     test("workflowStatusMapping patterns work with mapStatus", () => {
       const workflowMapping = {
