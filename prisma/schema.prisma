@@ -78,15 +78,8 @@ model User {
   assignedTasks Task[] @relation("TaskAssignee")
 
   // Audit trail
-  createdFeatures    Feature[]   @relation("FeatureCreator")
-  updatedFeatures    Feature[]   @relation("FeatureUpdater")
-  createdUserStories UserStory[] @relation("UserStoryCreator")
-  updatedUserStories UserStory[] @relation("UserStoryUpdater")
   createdTasks       Task[]      @relation("TaskCreator")
   updatedTasks       Task[]      @relation("TaskUpdater")
-
-  // Comments and discussions
-  comments Comment[]
 
   // Janitor recommendations
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
@@ -99,15 +92,6 @@ model User {
   @@index([deleted])
   @@index([email])
   @@map("users")
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@map("verification_tokens")
 }
 
 
@@ -216,8 +200,7 @@ model Workspace {
   swarm        Swarm?
   repositories Repository[]
 
-  // PM Structure
-  products Product[]
+  // Tasks
   tasks    Task[]
 
   // Stakwork credentials
@@ -329,133 +312,6 @@ model Repository {
   @@map("repositories")
 }
 
-// =============================================
-// PRODUCT MANAGEMENT HIERARCHY
-// =============================================
-
-model Product {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-  vision      String?
-
-  workspaceId String    @map("workspace_id")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  features Feature[]
-  roadmaps Roadmap[]
-
-  @@index([workspaceId])
-  @@index([deleted])
-  @@map("products")
-}
-
-// Goal / Objective
-model Feature {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-
-  productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // Phase support - 0 for main feature, 1,2,3... for phases
-  phase    Int       @default(0)
-  parentId String?   @map("parent_id")
-  parent   Feature?  @relation("FeaturePhases", fields: [parentId], references: [id])
-  phases   Feature[] @relation("FeaturePhases")
-
-  status   FeatureStatus @default(IDEA)
-  priority Priority      @default(MEDIUM)
-
-  // Audit fields
-  createdById String @map("created_by_id")
-  createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedById String @map("updated_by_id")
-  updatedBy   User   @relation("FeatureUpdater", fields: [updatedById], references: [id])
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  userStories  UserStory[]
-  requirements Requirement[]
-  roadmapItems RoadmapItem[]
-  comments     Comment[]     @relation("FeatureComments")
-
-  @@index([productId])
-  @@index([parentId])
-  @@index([status])
-  @@index([priority])
-  @@index([deleted])
-  @@map("features")
-}
-
-model UserStory {
-  id                 String  @id @default(cuid())
-  title              String
-  description        String?
-  acceptanceCriteria String? @map("acceptance_criteria")
-
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  priority    Priority    @default(MEDIUM)
-  storyPoints Int?        @map("story_points")
-  status      StoryStatus @default(BACKLOG)
-
-  // Audit fields
-  createdById String @map("created_by_id")
-  createdBy   User   @relation("UserStoryCreator", fields: [createdById], references: [id])
-  updatedById String @map("updated_by_id")
-  updatedBy   User   @relation("UserStoryUpdater", fields: [updatedById], references: [id])
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  comments Comment[] @relation("UserStoryComments")
-
-  @@index([featureId])
-  @@index([status])
-  @@index([priority])
-  @@index([deleted])
-  @@map("user_stories")
-}
-
-model Requirement {
-  id          String          @id @default(cuid())
-  title       String
-  description String?
-  type        RequirementType @default(FUNCTIONAL)
-
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  priority MoSCoWPriority    @default(SHOULD_HAVE)
-  status   RequirementStatus @default(DRAFT)
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  comments Comment[] @relation("RequirementComments")
-
-  @@index([featureId])
-  @@index([type])
-  @@index([status])
-  @@index([deleted])
-  @@map("requirements")
-}
-
 // Chat
 model Task {
   id          String  @id @default(cuid())
@@ -499,7 +355,6 @@ model Task {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  comments     Comment[]     @relation("TaskComments")
   chatMessages ChatMessage[]
 
   @@index([workspaceId])
@@ -596,100 +451,6 @@ enum ArtifactType {
   STREAM
   LONGFORM
   BUG_REPORT
-}
-
-// =============================================
-// ROADMAP MANAGEMENT
-// =============================================
-
-model Roadmap {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-
-  productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  timeHorizon TimeHorizon @default(QUARTER) @map("time_horizon")
-  startDate   DateTime    @map("start_date")
-  endDate     DateTime    @map("end_date")
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  items RoadmapItem[]
-
-  @@index([productId])
-  @@index([deleted])
-  @@map("roadmaps")
-}
-
-model RoadmapItem {
-  id        String  @id @default(cuid())
-  roadmapId String  @map("roadmap_id")
-  roadmap   Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  plannedStartDate DateTime  @map("planned_start_date")
-  plannedEndDate   DateTime  @map("planned_end_date")
-  actualStartDate  DateTime? @map("actual_start_date")
-  actualEndDate    DateTime? @map("actual_end_date")
-
-  // Dependencies stored as array of roadmap item IDs
-  dependencies String[] @default([])
-  milestone    Boolean  @default(false)
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([roadmapId, featureId])
-  @@index([roadmapId])
-  @@index([featureId])
-  @@map("roadmap_items")
-}
-
-// =============================================
-// COMMUNICATION & COLLABORATION
-// =============================================
-
-model Comment {
-  id      String @id @default(cuid())
-  content String
-
-  // Polymorphic relationship - can comment on different entity types
-  entityType    CommentEntity @map("entity_type")
-  featureId     String?       @map("feature_id")
-  feature       Feature?      @relation("FeatureComments", fields: [featureId], references: [id], onDelete: Cascade)
-  userStoryId   String?       @map("user_story_id")
-  userStory     UserStory?    @relation("UserStoryComments", fields: [userStoryId], references: [id], onDelete: Cascade)
-  taskId        String?       @map("task_id")
-  task          Task?         @relation("TaskComments", fields: [taskId], references: [id], onDelete: Cascade)
-  requirementId String?       @map("requirement_id")
-  requirement   Requirement?  @relation("RequirementComments", fields: [requirementId], references: [id], onDelete: Cascade)
-
-  // Threading support
-  parentId String?   @map("parent_id")
-  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id])
-  replies  Comment[] @relation("CommentThread")
-
-  authorId String @map("author_id")
-  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  @@index([featureId])
-  @@index([userStoryId])
-  @@index([taskId])
-  @@index([requirementId])
-  @@index([authorId])
-  @@index([deleted])
-  @@map("comments")
 }
 
 // =============================================
@@ -810,21 +571,6 @@ enum PoolState {
   COMPLETE
 }
 
-enum FeatureStatus {
-  IDEA
-  PLANNED
-  IN_PROGRESS
-  DONE
-  CANCELLED
-}
-
-enum StoryStatus {
-  BACKLOG
-  IN_PROGRESS
-  DONE
-  CANCELLED
-}
-
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -846,41 +592,6 @@ enum Priority {
   MEDIUM
   HIGH
   CRITICAL
-}
-
-enum RequirementType {
-  FUNCTIONAL
-  NON_FUNCTIONAL
-  TECHNICAL
-  BUSINESS
-}
-
-enum MoSCoWPriority {
-  MUST_HAVE
-  SHOULD_HAVE
-  COULD_HAVE
-  WONT_HAVE
-}
-
-enum RequirementStatus {
-  DRAFT
-  APPROVED
-  IMPLEMENTED
-  REJECTED
-}
-
-enum TimeHorizon {
-  QUARTER
-  HALF_YEAR
-  YEAR
-  CUSTOM
-}
-
-enum CommentEntity {
-  FEATURE
-  USER_STORY
-  TASK
-  REQUIREMENT
 }
 
 enum SwarmWizardStep {
