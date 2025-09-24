@@ -15,6 +15,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspaceSlug");
+    const repositoryUrl = searchParams.get("repositoryUrl");
 
     let hasTokens = false;
 
@@ -22,10 +23,13 @@ export async function GET(request: Request) {
       // Check if user has tokens for this specific workspace's GitHub org
       const { db } = await import("@/lib/db");
 
-      // Get workspace and its repository URL
+      // Get workspace and optionally its swarm (only if repositoryUrl param not provided)
       const workspace = await db.workspace.findUnique({
         where: { slug: workspaceSlug },
-        include: { swarm: true, sourceControlOrg: true }
+        include: {
+          swarm: !repositoryUrl, // Only include swarm if repositoryUrl not provided
+          sourceControlOrg: true,
+        },
       });
 
       if (workspace?.sourceControlOrg) {
@@ -39,9 +43,13 @@ export async function GET(request: Request) {
           },
         });
         hasTokens = !!sourceControlToken;
-      } else if (workspace?.swarm?.repositoryUrl) {
+      } else if (repositoryUrl || workspace?.swarm?.repositoryUrl) {
         // Workspace not linked yet - extract GitHub org from repo URL and check
-        const repoUrl = workspace.swarm.repositoryUrl;
+        const repoUrl = repositoryUrl || workspace?.swarm?.repositoryUrl;
+        if (!repoUrl) {
+          console.warn("No repository URL found for workspace", workspaceSlug);
+          return NextResponse.json({ hasTokens: false }, { status: 200 });
+        }
         const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
 
         if (githubMatch) {
@@ -49,14 +57,14 @@ export async function GET(request: Request) {
 
           // Check if there's already a SourceControlOrg for this GitHub owner
           const sourceControlOrg = await db.sourceControlOrg.findUnique({
-            where: { githubLogin: githubOwner }
+            where: { githubLogin: githubOwner },
           });
 
           if (sourceControlOrg) {
             // SourceControlOrg exists - automatically link this workspace to it
             await db.workspace.update({
               where: { slug: workspaceSlug },
-              data: { sourceControlOrgId: sourceControlOrg.id }
+              data: { sourceControlOrgId: sourceControlOrg.id },
             });
 
             // Now check if user has tokens for it
