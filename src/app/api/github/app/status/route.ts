@@ -57,14 +57,14 @@ export async function GET(request: Request) {
 
           // Check if there's already a SourceControlOrg for this GitHub owner
           const sourceControlOrg = await db.sourceControlOrg.findUnique({
-            where: { githubLogin: githubOwner },
+            where: { githubLogin: githubOwner }
           });
 
           if (sourceControlOrg) {
             // SourceControlOrg exists - automatically link this workspace to it
             await db.workspace.update({
               where: { slug: workspaceSlug },
-              data: { sourceControlOrgId: sourceControlOrg.id },
+              data: { sourceControlOrgId: sourceControlOrg.id }
             });
 
             // Now check if user has tokens for it

@@ -30,11 +30,6 @@ async function cleanupTestDatabase() {
     console.log("🗑️  Removing all test data...");
 
     // Clean up tables if they exist (handle gracefully if they don't)
-    try {
-      await prisma.verificationToken.deleteMany();
-    } catch (error) {
-      console.log("⚠️  VerificationToken table does not exist, skipping...");
-    }
 
     try {
       await prisma.session.deleteMany();

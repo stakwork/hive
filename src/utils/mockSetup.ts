@@ -2,8 +2,6 @@ import { db } from "@/lib/db";
 import {
   RepositoryStatus,
   SwarmStatus,
-  SwarmWizardStep,
-  StepStatus,
 } from "@prisma/client";
 
 function slugify(input: string): string {
@@ -69,9 +67,6 @@ export async function ensureMockWorkspaceForUser(
         { name: "stakgraph", port: 7799, scripts: { start: "start" } },
         { name: "repo2graph", port: 3355, scripts: { start: "start" } },
       ],
-      wizardStep: SwarmWizardStep.COMPLETION,
-      stepStatus: StepStatus.COMPLETED,
-      wizardData: { seeded: true, seededAt: new Date().toISOString() },
       workspaceId: workspace.id,
       swarmUrl: "http://localhost",
     },

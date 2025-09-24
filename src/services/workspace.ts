@@ -573,7 +573,6 @@ export async function deleteWorkspaceBySlug(
   // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
-
   if (!workspace) {
     throw new Error("Workspace not found or access denied");
   }
@@ -582,8 +581,45 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
+  // Check for associated Swarm infrastructure
+  const swarm = await db.swarm.findFirst({
+    where: {
+      workspaceId: workspace.id,
+    },
+    select: {
+      id: true,
+      poolApiKey: true,
+    },
+  });
 
-  // Soft delete the workspace
+  // Delete associated pool in Pool Manager if it exists
+  if (swarm && swarm.poolApiKey) {
+    const poolName = swarm.id;
+
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
+
+      if (decryptedApiKey) {
+        const poolManagerUrl = process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api";
+        const response = await fetch(`${poolManagerUrl}/pools/${poolName}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${decryptedApiKey}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Pool deletion failed with status ${response.status}`);
+        }
+      }
+    } catch (error) {
+      // Log error but don't block workspace deletion
+      console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
+    }
+  }
+
+  // Proceed with soft delete of workspace
   await softDeleteWorkspace(workspace.id);
 }
 

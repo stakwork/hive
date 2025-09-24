@@ -93,16 +93,11 @@ async function cleanDatabase() {
     // Level 5: Most dependent entities (no other entities depend on them)
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
-    await db.comment.deleteMany();
-    await db.roadmapItem.deleteMany();
-    
+
     // Level 4: Entities that depend on Level 5+ entities
     await db.chatMessage.deleteMany();
-    await db.roadmap.deleteMany();
-    await db.requirement.deleteMany();
-    
-    // Level 3: Entities that depend on Level 4+ entities  
-    await db.userStory.deleteMany();
+
+    // Level 3: Entities that depend on Level 4+ entities
     await db.task.deleteMany();
     
     // Janitor system cleanup
@@ -111,9 +106,7 @@ async function cleanDatabase() {
     await db.janitorConfig.deleteMany();
     
     // Level 2: Entities that depend on Level 3+ entities
-    await db.feature.deleteMany();
     await db.repository.deleteMany();
-    await db.product.deleteMany();
     await db.swarm.deleteMany();
     
     // Level 1: Workspace-related entities
@@ -123,8 +116,9 @@ async function cleanDatabase() {
     // Level 0: Authentication and user entities (most fundamental)
     await db.session.deleteMany();
     await db.account.deleteMany();
-    await db.verificationToken.deleteMany();
     await db.gitHubAuth.deleteMany();
+    await db.sourceControlToken.deleteMany();
+    await db.sourceControlOrg.deleteMany();
     await db.user.deleteMany();
     
   } catch (error) {
@@ -143,12 +137,11 @@ async function aggressiveCleanup() {
   
   try {
     const tableNames = [
-      'attachments', 'artifacts', 'comments', 'roadmap_items',
-      'chat_messages', 'roadmaps', 'requirements', 'user_stories', 
+      'attachments', 'artifacts', 'chat_messages',
       'tasks', 'janitor_recommendations', 'janitor_runs', 'janitor_configs',
-      'features', 'repositories', 'products', 'swarms',
-      'workspace_members', 'workspaces', 'sessions', 'accounts', 
-      'verification_tokens', 'github_auth', 'users'
+      'repositories', 'swarms',
+      'workspace_members', 'workspaces', 'sessions', 'accounts',
+      'github_auth', 'users', 'source_control_tokens', 'source_control_orgs'
     ];
     
     for (const tableName of tableNames) {

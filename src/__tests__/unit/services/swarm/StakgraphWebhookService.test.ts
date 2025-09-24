@@ -83,7 +83,7 @@ describe("StakgraphWebhookService", () => {
       const result = await service.processWebhook(signature, rawBody, validPayload, "header-123");
 
       expect(result).toEqual({ success: true, status: 200 });
-      expect(mockedUpdateStakgraphStatus).toHaveBeenCalledWith(mockSwarm, validPayload, "header-123");
+      expect(mockedUpdateStakgraphStatus).toHaveBeenCalledWith(mockSwarm, validPayload);
     });
 
     test("should return error for missing request_id", async () => {

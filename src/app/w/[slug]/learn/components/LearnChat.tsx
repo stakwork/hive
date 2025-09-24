@@ -10,6 +10,7 @@ interface LearnChatProps {
 }
 
 export function LearnChat({ workspaceSlug }: LearnChatProps) {
+  const [mode, setMode] = useState<"learn" | "chat">("learn");
   const [messages, setMessages] = useState<LearnMessage[]>([
     {
       id: "1",
@@ -81,6 +82,8 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           onSend={handleSend}
           isLoading={isLoading}
           onInputChange={setCurrentInput}
+          mode={mode}
+          onModeChange={setMode}
         />
       </div>
       <div className="fixed top-1 right-1 h-full">
