@@ -8,16 +8,20 @@ import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function SignInPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
   const [mockUsername, setMockUsername] = useState("");
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
+
+  // Check if there's a redirect parameter
+  const redirectPath = searchParams.get("redirect");
 
   // Fetch available providers
   useEffect(() => {
@@ -35,7 +39,10 @@ export default function SignInPage() {
     if (session?.user) {
       const user = session.user as { defaultWorkspaceSlug?: string };
 
-      if (user.defaultWorkspaceSlug) {
+      // If there's a specific redirect path, use it
+      if (redirectPath) {
+        router.push(redirectPath);
+      } else if (user.defaultWorkspaceSlug) {
         // User has a default workspace, redirect to their workspace
         router.push(`/w/${user.defaultWorkspaceSlug}`);
       } else {
@@ -44,7 +51,7 @@ export default function SignInPage() {
         router.push("/onboarding/workspace");
       }
     }
-  }, [session, router]);
+  }, [session, router, redirectPath]);
 
   if (status === "loading") {
     return (
@@ -64,7 +71,7 @@ export default function SignInPage() {
       setIsSigningIn(true);
       const result = await signIn("github", {
         redirect: false, // Handle redirect manually for better UX
-        callbackUrl: "/", // Always go through onboarding to avoid direct workspace access
+        callbackUrl: redirectPath || "/", // Use redirect parameter if available
       });
 
       if (result?.error) {
@@ -85,7 +92,7 @@ export default function SignInPage() {
       const result = await signIn("mock", {
         username: mockUsername || "dev-user",
         redirect: false,
-        callbackUrl: "/",
+        callbackUrl: redirectPath || "/",
       });
 
       if (result?.error) {

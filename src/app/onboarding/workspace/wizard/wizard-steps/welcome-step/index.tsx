@@ -4,10 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SupportedLanguages } from "@/lib/constants";
-import { AlertCircle, ArrowRight } from "lucide-react";
+import { AlertCircle, ArrowRight, UserPlus } from "lucide-react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import { useState } from "react";
 
 interface WelcomeStepProps {
@@ -18,6 +18,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [error, setError] = useState("");
   const { data: session } = useSession();
+  const router = useRouter();
 
   const validateGitHubUrl = (url: string): boolean => {
     // Basic GitHub URL validation
@@ -58,6 +59,10 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
     redirect("/auth/signin");
   };
 
+  const createAccountOnly = () => {
+    router.push("/auth/signin?redirect=/workspaces");
+  };
+
   const logoutAndRedirectToLogin = async () => {
     await signOut({
       callbackUrl: "/auth/signin",
@@ -66,7 +71,8 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
   };
 
   return (
-    <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
+    <div className="max-w-2xl mx-auto">
+      <Card className="bg-card text-card-foreground">
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
             <Image src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
@@ -104,7 +110,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
               onClick={redirectToLogin}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Already have an account? Sign in
+              Already have an account?
             </button>
           ) : (
             <button
@@ -141,5 +147,21 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
       </CardContent>
     </Card>
+
+    {/* Account-only option outside the card */}
+    {!session?.user && (
+      <div className="text-center mt-6">
+        <p className="text-sm text-muted-foreground mb-2">
+          Joining a workspace?
+        </p>
+        <button
+          onClick={createAccountOnly}
+          className="text-sm text-primary hover:underline"
+        >
+          Create account →
+        </button>
+      </div>
+    )}
+    </div>
   );
 };

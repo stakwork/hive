@@ -1,30 +1,72 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
-import { redirect } from "next/navigation";
-import { getUserWorkspaces } from "@/services/workspace";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Building2, Plus, Users, Calendar, ArrowRight, Lock } from "lucide-react";
+import { Building2, Plus, Users, Calendar, ArrowRight, Lock, UserPlus, Github } from "lucide-react";
 import Link from "next/link";
 import { LogoutButton } from "./LogoutButton";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
 
-export default async function WorkspacesPage() {
-  const session = await getServerSession(authOptions);
+interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  userRole: string;
+  memberCount: number;
+  createdAt: string;
+}
 
-  if (!session?.user) {
-    redirect("/auth/signin");
+export default function WorkspacesPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [userWorkspaces, setUserWorkspaces] = useState<Workspace[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (status === "loading") return;
+
+    if (!session?.user) {
+      router.push("/auth/signin");
+      return;
+    }
+
+    // Fetch workspaces
+    fetchWorkspaces();
+  }, [session, status, router]);
+
+  const fetchWorkspaces = async () => {
+    try {
+      const response = await fetch("/api/workspaces");
+      if (response.ok) {
+        const data = await response.json();
+        setUserWorkspaces(data.workspaces || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch workspaces:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  if (status === "loading" || loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading workspaces...</p>
+        </div>
+      </div>
+    );
   }
 
-  const userId = (session.user as { id: string }).id;
-  const userWorkspaces = await getUserWorkspaces(userId);
-
-  if (userWorkspaces.length === 0) {
-    redirect("/onboarding/workspace");
-  }
-
-  // Check if user is at workspace limit
+  const hasWorkspaces = userWorkspaces.length > 0;
   const isAtLimit = userWorkspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
 
   return (
@@ -37,14 +79,26 @@ export default async function WorkspacesPage() {
               <Building2 className="w-6 h-6 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold mb-2">Choose Your Workspace</h1>
+          <h1 className="text-3xl font-bold mb-2">
+            {hasWorkspaces ? "Choose Your Workspace" : "Your Workspaces"}
+          </h1>
           <p className="text-muted-foreground">
-            Welcome back, {session.user.name || session.user.email}
+            Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}
           </p>
         </div>
 
         {/* Workspaces List */}
         <div className="space-y-3 mb-8">
+          {!hasWorkspaces && (
+            <>
+              {/* Empty State Message */}
+              <div className="text-center mb-6">
+                <p className="text-muted-foreground">
+                  No workspaces yet. Ask an admin to add you or create your own.
+                </p>
+              </div>
+            </>
+          )}
           {userWorkspaces.map((workspace) => (
             <Card key={workspace.id} className="group hover:shadow-md transition-all duration-200">
               <Link href={`/w/${workspace.slug}`} className="block">
