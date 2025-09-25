@@ -9,7 +9,6 @@ import {
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
@@ -30,11 +29,23 @@ function nextIndexedName(base: string, pool: string[]) {
   return next === 0 ? base : `${base}-${next}`;
 }
 
+function extractRepoNameFromUrl(url: string): string | null {
+  try {
+    // Handle various GitHub URL formats
+    const githubMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    if (githubMatch) {
+      return githubMatch[2]; // Return the repository name
+    }
+    return null;
+  } catch (error) {
+    console.error("Error extracting repo name from URL:", error);
+    return null;
+  }
+}
+
 
 export function ProjectNameSetupStep() {
   const [error, setError] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
-
   const newNamesIsSettled = useRef(false);
 
   const router = useRouter();
@@ -46,7 +57,7 @@ export function ProjectNameSetupStep() {
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
   const [hasWorkspaceConflict, setHasWorkspaceConflict] = useState<boolean>(false);
   const { refreshWorkspaces, workspaces } = useWorkspace();
-  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
+  const [repoName, setRepoName] = useState<string>("");
 
   const [repositoryUrlDraft, setRepositoryUrlDraft] = useState<string>("");
 
@@ -54,19 +65,24 @@ export function ProjectNameSetupStep() {
     const draft = localStorage.getItem("repoUrl");
     if (draft) {
       setRepositoryUrlDraft(draft);
+      // Extract repository name directly from URL
+      const extractedRepoName = extractRepoNameFromUrl(draft);
+      if (extractedRepoName) {
+        setRepoName(extractedRepoName);
+      }
     }
   }, []);
 
 
   useEffect(() => {
-    if (!selectedRepo || projectName) return;
+    if (!repoName || projectName) return;
 
-    const base = selectedRepo.name.toLowerCase();
+    const base = repoName.toLowerCase();
     const pool = workspaces.map(w => w.slug.toLowerCase());
     const nextName = nextIndexedName(base, pool)
 
     setProjectName(nextName);
-  }, [selectedRepo, workspaces, setProjectName, projectName]);
+  }, [repoName, workspaces, setProjectName, projectName]);
 
   // Check for workspace slug conflicts using API
   useEffect(() => {
@@ -158,34 +174,6 @@ export function ProjectNameSetupStep() {
     }
   };
 
-  useEffect(() => {
-    const fetchRepositories = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/github/repository?repoUrl=${repositoryUrlDraft}`);
-        console.log('response', response)
-        const { data, error } = await response.json();
-        if (response.ok) {
-          if (data) {
-            setSelectedRepo(data);
-          }
-        } else {
-          const message = error;
-          const err = new Error(message) as Error
-          throw err;
-        }
-      } catch (error) {
-        setError(error instanceof Error ? error.message : "Unknown error");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (repositoryUrlDraft) {
-      fetchRepositories();
-    }
-
-  }, [repositoryUrlDraft, setSelectedRepo]);
 
   useEffect(() => {
     const validateSlug = async () => {
@@ -216,10 +204,10 @@ export function ProjectNameSetupStep() {
       }
     }
 
-    if (selectedRepo && projectName && !newNamesIsSettled.current) {
+    if (repoName && projectName && !newNamesIsSettled.current) {
       validateSlug();
     }
-  }, [selectedRepo, projectName, setProjectName, router, newNamesIsSettled]);
+  }, [repoName, projectName, setProjectName, router, newNamesIsSettled]);
 
 
   const resetProgress = () => {
@@ -228,14 +216,7 @@ export function ProjectNameSetupStep() {
   }
 
 
-  return isLoading ? (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-      <div className="text-center">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    </div>
-  ) : (
+  return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
         <ErrorDisplay error={error} className="mb-4" />

@@ -58,6 +58,11 @@ export async function GET(request: NextRequest) {
     console.log("setupAction", setupAction);
     console.log("code", code);
 
+
+    console.log('state--state--state')
+    console.log(state)
+    console.log('state--state--state')
+
     // Validate required parameters
     if (!state) {
       return NextResponse.redirect(new URL("/?error=missing_state", request.url));
