@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
+import { getServerSession } from "next-auth/next";
+import { NextResponse } from "next/server";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
@@ -101,3 +101,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ hasTokens: false }, { status: 200 });
   }
 }
+
+
+
+// GITHUB_APP_ID = "2013421"
+// GITHUB_APP_CLIENT_ID = "Iv23li6LTsvEzlgOCizd"
+// GITHUB_APP_CLIENT_SECRET = "40defc8fe11d20089daadff8999d664e4ef3c67c"
+// GITHUB_APP_SLUG = "PMHIVERSL"

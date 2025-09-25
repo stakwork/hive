@@ -213,6 +213,100 @@ export default function DashboardPage() {
     fetchCoverage();
   }, [workspaceId, workspace?.swarmStatus]);
 
+  // Complete swarm setup after GitHub App installation
+  const completeSwarmSetup = async () => {
+    if (!workspaceId || !workspace) return;
+
+    try {
+      // Get repository URL from localStorage if available
+      const repositoryUrl = localStorage.getItem("repoUrl");
+
+      if (!repositoryUrl) {
+        console.error("No repository URL found for setup");
+        return;
+      }
+
+      // 1. First, create the swarm if it doesn't exist
+      let swarm = workspace.swarm;
+      if (!swarm?.swarmId) {
+        const swarmRes = await fetch("/api/swarm", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            workspaceId: workspaceId,
+            name: workspace.slug,
+            repositoryUrl: repositoryUrl,
+          }),
+        });
+
+        const swarmData = await swarmRes.json();
+        if (!swarmRes.ok || !swarmData.success) {
+          throw new Error(swarmData.message || "Failed to create swarm");
+        }
+
+        // Update workspace reference
+        await updateWorkspace();
+        swarm = { swarmId: swarmData.data.swarmId };
+      }
+
+      if (!swarm?.swarmId) {
+        throw new Error("Failed to get swarm ID");
+      }
+
+      // 1. Call stakgraph services endpoint
+      const servicesRes = await fetch(
+        `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
+          workspaceId,
+        )}&swarmId=${encodeURIComponent(swarm.swarmId)}&repo_url=${encodeURIComponent(repositoryUrl)}`,
+      );
+
+      if (!servicesRes.ok) {
+        throw new Error("Failed to fetch services");
+      }
+
+      const servicesData = await servicesRes.json();
+      console.log('services', servicesData);
+
+      // 2. Start code ingestion
+      const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (!ingestRes.ok) {
+        throw new Error("Failed to start code ingestion");
+      }
+
+      // 3. Create Stakwork customer
+      const customerRes = await fetch("/api/stakwork/create-customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (!customerRes.ok) {
+        throw new Error("Failed to create Stakwork customer");
+      }
+
+      toast({
+        title: "Workspace Setup Complete",
+        description: "Your workspace is now being configured. Code ingestion has started.",
+        variant: "default",
+      });
+
+    } catch (error) {
+      console.error("Failed to complete swarm setup:", error);
+      toast({
+        title: "Setup Error",
+        description: error instanceof Error ? error.message : "Failed to complete workspace setup",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Handle GitHub App callback
   useEffect(() => {
     const setupAction = searchParams.get("github_setup_action");
@@ -228,6 +322,8 @@ export default function DashboardPage() {
         case "install":
           title = "GitHub App Installed";
           description = "Successfully installed GitHub App";
+          // Complete swarm setup after GitHub App installation
+          completeSwarmSetup();
           break;
         case "update":
           title = "GitHub App Updated";

@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -145,6 +145,8 @@ export async function GET(request: NextRequest) {
 
       if (installationsResponse.ok) {
         const installationsData = await installationsResponse.json();
+
+        console.log('installationsData', installationsData)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const installation = installationsData.installations?.find((inst: any) => inst.id === parseInt(installationId));
 

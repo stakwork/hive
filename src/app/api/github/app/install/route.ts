@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { config } from "@/lib/env";
 import { db } from "@/lib/db";
+import { config } from "@/lib/env";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const workspaceSlug = body?.workspaceSlug;
+    const repositoryUrl = body?.repositoryUrl;
 
     if (!workspaceSlug) {
       return NextResponse.json({ success: false, message: "Workspace slug is required" }, { status: 400 });
@@ -41,21 +42,31 @@ export async function POST(request: NextRequest) {
       data: { githubState: state },
     });
 
-    // Get workspace's repository URL to determine which GitHub org to check
+    // Get workspace and optionally its swarm (only if repositoryUrl param not provided)
     const workspace = await db.workspace.findUnique({
       where: { slug: workspaceSlug },
-      include: { swarm: true },
+      include: {
+        swarm: !repositoryUrl, // Only include swarm if repositoryUrl not provided
+        sourceControlOrg: true,
+      },
     });
 
-    if (!workspace?.swarm?.repositoryUrl) {
+    if (!workspace) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found" },
+        { status: 404 },
+      );
+    }
+
+    // Get repository URL from parameter or workspace swarm
+    const repoUrl = repositoryUrl || workspace?.swarm?.repositoryUrl;
+
+    if (!repoUrl) {
       return NextResponse.json(
         { success: false, message: "No repository URL found for this workspace" },
         { status: 400 },
       );
     }
-
-    // Extract GitHub org/user from repository URL
-    const repoUrl = workspace.swarm.repositoryUrl;
     const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
 
     if (!githubMatch) {
@@ -75,6 +86,10 @@ export async function POST(request: NextRequest) {
     const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
       where: { githubLogin: githubOwner },
     });
+
+    console.log('existingSourceControlOrg--existingSourceControlOrg')
+    console.log(existingSourceControlOrg)
+    console.log('existingSourceControlOrg--existingSourceControlOrg')
 
     if (existingSourceControlOrg?.githubInstallationId) {
       // App is already installed by some user
