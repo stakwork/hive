@@ -56,6 +56,7 @@
     "@sentry/nextjs": "^9.34.0",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-query": "^5.81.5",
+    "@testing-library/user-event": "^14.6.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/bitcoinjs-lib": "^4.0.1",
     "@types/crypto-js": "^4.2.2",
