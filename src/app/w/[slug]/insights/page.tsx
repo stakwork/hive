@@ -5,6 +5,7 @@ import { RecommendationsSection } from "@/components/insights/RecommendationsSec
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
+import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { RecommendationsUpdatedEvent, usePusherConnection } from "@/hooks/usePusherConnection";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -18,10 +19,16 @@ import { useCallback, useEffect } from "react";
 // Get all janitor items and separate them by category
 const allJanitors = getAllJanitorItems();
 const testingJanitors: JanitorItem[] = [
-  ...allJanitors.filter(j => j.id !== "SECURITY_REVIEW"),
-  { id: "pr-reviews", name: "PR Reviews", icon: GitPullRequest, description: "Enable automatic PR reviews.", comingSoon: true },
+  ...allJanitors.filter((j) => j.id !== "SECURITY_REVIEW"),
+  {
+    id: "pr-reviews",
+    name: "PR Reviews",
+    icon: GitPullRequest,
+    description: "Enable automatic PR reviews.",
+    comingSoon: true,
+  },
 ];
-const securityReviewJanitor = allJanitors.find(j => j.id === "SECURITY_REVIEW");
+const securityReviewJanitor = allJanitors.find((j) => j.id === "SECURITY_REVIEW");
 
 // Maintainability janitors - coming soon
 const maintainabilityJanitors: JanitorItem[] = [
@@ -33,7 +40,13 @@ const maintainabilityJanitors: JanitorItem[] = [
 // Security janitors
 const securityJanitors: JanitorItem[] = [
   ...(securityReviewJanitor ? [securityReviewJanitor] : []),
-  { id: "supply-chain", name: "Supply Chain", icon: Package, description: "Check dependencies risk.", comingSoon: true },
+  {
+    id: "supply-chain",
+    name: "Supply Chain",
+    icon: Package,
+    description: "Check dependencies risk.",
+    comingSoon: true,
+  },
 ];
 
 export default function InsightsPage() {
@@ -47,19 +60,22 @@ export default function InsightsPage() {
   }
 
   // Handle recommendations updated events
-  const handleRecommendationsUpdated = useCallback((update: RecommendationsUpdatedEvent) => {
-    if (workspace?.slug && update.workspaceSlug === workspace.slug) {
-      // Show toast notification for new recommendations
-      toast({
-        title: "New recommendations available",
-        description: `${update.newRecommendationCount} new recommendations found`,
-        duration: 5000,
-      });
+  const handleRecommendationsUpdated = useCallback(
+    (update: RecommendationsUpdatedEvent) => {
+      if (workspace?.slug && update.workspaceSlug === workspace.slug) {
+        // Show toast notification for new recommendations
+        toast({
+          title: "New recommendations available",
+          description: `${update.newRecommendationCount} new recommendations found`,
+          duration: 5000,
+        });
 
-      // Simply refetch recommendations to get the latest data
-      fetchRecommendations(workspace.slug);
-    }
-  }, [workspace?.slug, toast, fetchRecommendations]);
+        // Simply refetch recommendations to get the latest data
+        fetchRecommendations(workspace.slug);
+      }
+    },
+    [workspace?.slug, toast, fetchRecommendations],
+  );
 
   // Set up workspace Pusher connection
   const { isConnected, error: pusherError } = usePusherConnection({
@@ -91,18 +107,16 @@ export default function InsightsPage() {
     };
   }, [workspace?.slug, fetchRecommendations, fetchJanitorConfig, reset]);
 
-
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Insights"
-        description="Automated codebase analysis and recommendations"
-      />
+      <PageHeader title="Insights" description="Automated codebase analysis and recommendations" />
 
-      <div className="max-w-4xl space-y-6">{/* Content container */}
+      <div className="max-w-4xl space-y-6">
+        {/* Content container */}
 
         <TestCoverageCard />
+
+        <CoverageInsights />
 
         <RecommendationsSection />
 
@@ -127,7 +141,8 @@ export default function InsightsPage() {
           icon={<Shield className="h-5 w-5 text-red-500" />}
           janitors={securityJanitors}
         />
-      </div>{/* End content container */}
+      </div>
+      {/* End content container */}
     </div>
   );
 }
