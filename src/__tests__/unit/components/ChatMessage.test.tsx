@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ChatMessage } from "@/app/w/[slug]/task/[...taskParams]/components/ChatMessage";
