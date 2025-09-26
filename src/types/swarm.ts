@@ -6,6 +6,10 @@ export interface CreateSwarmRequest {
   password?: string;
 }
 
+export interface StopSwarmRequest {
+  instance_id: string;
+}
+
 export interface Swarm {
   swarm_id: string;
   name: string;
@@ -21,7 +25,13 @@ export interface CreateSwarmResponse {
     swarm_id: string;
     address: string;
     x_api_key: string;
+    ec2_id: string;
   };
+}
+
+export interface StopSwarmResponse {
+  success: boolean;
+  message: string;
 }
 
 export interface ValidateUriResponse {

@@ -28,6 +28,8 @@ import {
   WorkspaceWithRole,
 } from "@/types/workspace";
 import { WorkspaceRole } from "@prisma/client";
+import { getServiceConfig } from "@/config/services";
+import { SwarmService } from "@/services/swarm";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -590,6 +592,7 @@ export async function deleteWorkspaceBySlug(
       id: true,
       name: true,
       poolApiKey: true,
+      ec2Id: true,
     },
   });
 
@@ -684,6 +687,28 @@ export async function deleteWorkspaceBySlug(
       } catch (error) {
         // Log error but don't block workspace deletion
         console.error(`Failed to delete pool user ${swarm.name} for workspace ${slug}:`, error);
+      }
+    }
+
+    // Deletes the ec2 instance
+    if (swarm.ec2Id) {
+      try {
+        console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
+
+        const swarmConfig = getServiceConfig("swarm");
+        const swarmService = new SwarmService(swarmConfig);
+        const apiResponse = await swarmService.stopSwarm({
+          instance_id: swarm.ec2Id,
+        });
+
+        if (!apiResponse?.success) {
+          throw new Error(`EC2 instance ${swarm.ec2Id} failed to delete`);
+        }
+
+        console.log(`Successfully deleted EC2 instance ${swarm.ec2Id}`);
+      } catch (error) {
+        // Log error but don't block workspace deletion
+        console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${slug}:`, error);
       }
     }
   }

@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
     const swarm_id = apiResponse?.data?.swarm_id;
     const swarm_address = apiResponse?.data?.address;
     const x_api_key = apiResponse?.data?.x_api_key;
+    const ec2_id = apiResponse?.data?.ec2_id;
 
     const match = typeof swarm_id === "string" ? swarm_id.match(/(\d+)/) : null;
     const swarm_id_num = match ? match[1] : swarm_id;
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
       workspaceId,
       swarmUrl: `https://${swarm_address}/api`,
       name: swarm_id,
+      ec2_id: ec2_id,
       swarmApiKey: x_api_key,
       swarmSecretAlias: swarmSecretAlias,
       status: SwarmStatus.ACTIVE,
