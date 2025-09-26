@@ -22,10 +22,10 @@ export default defineConfig({
         : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
-        ? ["./src/__tests__/setup-integration.ts"]
+        ? ["./src/__tests__/setup/integration.ts"]
         : testSuite === "api"
-        ? ["./src/__tests__/setup-unit.ts"] // API tests can use unit test setup
-        : ["./src/__tests__/setup-unit.ts"],
+        ? ["./src/__tests__/setup/unit.ts"] // API tests can use unit test setup
+        : ["./src/__tests__/setup/unit.ts"],
   },
   resolve: {
     alias: {
