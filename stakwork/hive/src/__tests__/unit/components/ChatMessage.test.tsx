@@ -100,7 +100,7 @@ describe("ChatMessage Component", () => {
   });
 
   describe("Message Rendering", () => {
-    test("should render user message with correct properties", () => {
+    test("should render user message with correct styling", () => {
       const userMessage = createMessage("USER", "Hello, this is a user message");
 
       render(
@@ -110,15 +110,17 @@ describe("ChatMessage Component", () => {
         />
       );
 
-      const markdownRenderer = screen.getByTestId("markdown-renderer");
-      expect(markdownRenderer).toBeInTheDocument();
-      expect(markdownRenderer).toHaveAttribute("data-variant", "user");
+      const messageContainer = screen.getByText("Hello, this is a user message").closest("div");
+      expect(messageContainer).toHaveClass("bg-primary", "text-primary-foreground", "rounded-br-md");
       
-      // Verify message content is rendered
-      expect(screen.getByText("Hello, this is a user message")).toBeInTheDocument();
+      const flexContainer = messageContainer?.closest(".flex");
+      expect(flexContainer).toHaveClass("justify-end");
+
+      const markdownRenderer = screen.getByTestId("markdown-renderer");
+      expect(markdownRenderer).toHaveAttribute("data-variant", "user");
     });
 
-    test("should render assistant message with correct properties", () => {
+    test("should render assistant message with correct styling", () => {
       const assistantMessage = createMessage("ASSISTANT", "Hello, this is an assistant message");
 
       render(
@@ -128,17 +130,15 @@ describe("ChatMessage Component", () => {
         />
       );
 
-      const markdownRenderer = screen.getByTestId("markdown-renderer");
-      expect(markdownRenderer).toBeInTheDocument();
-      expect(markdownRenderer).toHaveAttribute("data-variant", "assistant");
+      const messageContainer = screen.getByText("Hello, this is an assistant message").closest("div");
+      expect(messageContainer).toHaveClass("bg-background", "text-foreground", "rounded-bl-md", "border");
       
-      // Verify message content is rendered
-      expect(screen.getByText("Hello, this is an assistant message")).toBeInTheDocument();
-    });
+      const flexContainer = messageContainer?.closest(".flex");
+      expect(flexContainer).toHaveClass("justify-start");
 
-    // Note: CSS styling tests commented out because mocked MarkdownRenderer doesn't preserve parent styling
-    // The component uses Tailwind classes for styling (bg-primary, text-primary-foreground, etc.)
-    // but these are not accessible through the mocked component structure
+      const markdownRenderer = screen.getByTestId("markdown-renderer");
+      expect(markdownRenderer).toHaveAttribute("data-variant", "assistant");
+    });
 
     test("should not render message bubble when message is empty", () => {
       const emptyMessage = createMessage("USER", "");
