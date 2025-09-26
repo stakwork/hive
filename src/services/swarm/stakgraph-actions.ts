@@ -5,15 +5,10 @@ type Creds = { username?: string; pat?: string };
 export interface AsyncSyncResult {
   ok: boolean;
   status: number;
-  data?: { request_id?: string;[k: string]: unknown };
+  data?: { request_id?: string; [k: string]: unknown };
 }
 
-export async function triggerSync(
-  swarmName: string,
-  apiKey: string,
-  repoUrl: string,
-  creds?: Creds,
-) {
+export async function triggerSync(swarmName: string, apiKey: string, repoUrl: string, creds?: Creds) {
   console.log("===Trigger Sync was hit");
   const stakgraphUrl = `https://${swarmName}:7799`;
   const data: Record<string, string> = { repo_url: repoUrl };
@@ -53,7 +48,7 @@ export async function triggerAsyncSync(
   return {
     ok: result.ok,
     status: result.status,
-    data: result.data as { request_id?: string;[k: string]: unknown } | undefined,
+    data: result.data as { request_id?: string; [k: string]: unknown } | undefined,
   };
 }
 
@@ -63,13 +58,15 @@ export async function triggerIngestAsync(
   repoUrl: string,
   creds: { username: string; pat: string },
   callbackUrl?: string,
+  useLsp: boolean = false,
 ) {
-  console.log("===Trigger IngestAsync was hit");
+  console.log("===Trigger IngestAsync was hit. useLsp:", useLsp);
   const stakgraphUrl = `https://${swarmName}:7799`;
-  const data: Record<string, string> = {
+  const data: Record<string, string | boolean> = {
     repo_url: repoUrl,
     username: creds.username,
     pat: creds.pat,
+    use_lsp: useLsp,
   };
   if (callbackUrl) data.callback_url = callbackUrl;
   return swarmApiRequest({
