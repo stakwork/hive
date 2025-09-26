@@ -143,27 +143,36 @@ export function ProjectNameSetupStep() {
       if (data?.workspace?.slug && data?.workspace?.id) {
         await refreshWorkspaces();
 
-        // 2. Immediately start GitHub App installation
-        const installResponse = await fetch("/api/github/app/install", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            workspaceSlug: data.workspace.slug,
-            repositoryUrl: repositoryUrlDraft
-          }),
-        });
+        // 2. Check GitHub App status for this workspace/repository
+        const statusResponse = await fetch(`/api/github/app/status?workspaceSlug=${data.workspace.slug}&repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
+        const statusData = await statusResponse.json();
 
-        const installData = await installResponse.json();
-
-        if (installData.success && installData.data?.link) {
-          localStorage.removeItem("repoUrl");
-          // Navigate to GitHub App installation
-          window.location.href = installData.data.link;
-          return; // Don't reset loading state since we're redirecting
+        if (statusData.hasTokens) {
+          // GitHub App is already installed and has tokens, redirect to dashboard
+          window.location.href = `/w/${data.workspace.slug}?github_setup_action=existing_installation`;
+          return;
         } else {
-          throw new Error(installData.message || "Failed to generate GitHub App installation link");
+          // GitHub App not installed or no tokens, proceed with installation
+          const installResponse = await fetch("/api/github/app/install", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              workspaceSlug: data.workspace.slug,
+              repositoryUrl: repositoryUrlDraft
+            }),
+          });
+
+          const installData = await installResponse.json();
+
+          if (installData.success && installData.data?.link) {
+            // Navigate to GitHub App installation
+            window.location.href = installData.data.link;
+            return; // Don't reset loading state since we're redirecting
+          } else {
+            throw new Error(installData.message || "Failed to generate GitHub App installation link");
+          }
         }
       }
 

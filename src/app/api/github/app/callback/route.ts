@@ -7,6 +7,70 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+async function checkRepositoryAccess(accessToken: string, repoUrl: string): Promise<{
+  hasAccess: boolean;
+  canPush: boolean;
+  repositoryData?: {
+    name: string;
+    full_name: string;
+    private: boolean;
+    default_branch: string;
+    permissions?: Record<string, boolean>;
+  };
+  error?: string;
+}> {
+  try {
+    // Extract owner/repo from URL
+    const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    if (!githubMatch) {
+      return { hasAccess: false, canPush: false, error: 'invalid_repository_url' };
+    }
+
+    const [, owner, repo] = githubMatch;
+
+    // Check if we can access the repository
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (response.ok) {
+      const repositoryData = await response.json();
+
+      // Check push permissions
+      const canPush = repositoryData.permissions?.push === true ||
+                     repositoryData.permissions?.admin === true ||
+                     repositoryData.permissions?.maintain === true;
+
+      console.log(`Repository permissions for ${owner}/${repo}:`, repositoryData.permissions);
+      console.log(`Can push: ${canPush}`);
+
+      return {
+        hasAccess: true,
+        canPush: canPush,
+        repositoryData: {
+          name: repositoryData.name,
+          full_name: repositoryData.full_name,
+          private: repositoryData.private,
+          default_branch: repositoryData.default_branch,
+          permissions: repositoryData.permissions
+        }
+      };
+    } else if (response.status === 404) {
+      return { hasAccess: false, canPush: false, error: 'repository_not_found_or_no_access' };
+    } else if (response.status === 403) {
+      return { hasAccess: false, canPush: false, error: 'access_forbidden' };
+    } else {
+      return { hasAccess: false, canPush: false, error: `http_error_${response.status}` };
+    }
+  } catch (error) {
+    console.error('Error checking repository access:', error);
+    return { hasAccess: false, canPush: false, error: 'network_error' };
+  }
+}
+
 async function getAccessToken(code: string, state: string) {
   // console.log("getAccessToken", code, state);
   // 2. Exchange the temporary code for an OAuth token
@@ -335,7 +399,9 @@ export async function GET(request: NextRequest) {
       data: { githubState: null },
     });
 
-    // Link the workspace to the source control org
+    // Link the workspace to the source control org and check repository access
+    let repositoryAccessStatus = 'unknown';
+
     if (setupAction === "install" || setupAction === "update" || !setupAction) {
       console.log(`Linking workspace ${workspaceSlug} to SourceControlOrg ${githubOwner}`);
 
@@ -346,6 +412,55 @@ export async function GET(request: NextRequest) {
       });
 
       console.log(`✅ Linked ${result.count} workspace(s) to SourceControlOrg ${githubOwner}`);
+
+      // Check repository access after linking
+      const workspace = await db.workspace.findUnique({
+        where: { slug: workspaceSlug },
+        include: { swarm: true }
+      });
+
+      // Try to get repository URL from localStorage data or from existing swarm
+      let targetRepositoryUrl = workspace?.swarm?.repositoryUrl;
+
+      // If no swarm yet, try to reconstruct from the state data
+      if (!targetRepositoryUrl) {
+        try {
+          const stateData = JSON.parse(Buffer.from(state, "base64").toString());
+          // If we stored repositoryUrl in state, use it (we should enhance the install route to include this)
+          targetRepositoryUrl = stateData.repositoryUrl;
+        } catch (error) {
+          console.log("Could not extract repository URL from state", error);
+        }
+      }
+
+      if (targetRepositoryUrl) {
+        try {
+          const repositoryAccess = await checkRepositoryAccess(userAccessToken, targetRepositoryUrl);
+
+          if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
+            console.log(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);
+            repositoryAccessStatus = 'accessible';
+          } else if (repositoryAccess.hasAccess && !repositoryAccess.canPush) {
+            console.log(`❌ GitHub App has read-only access to repository: ${targetRepositoryUrl}`);
+            console.log('🚫 Blocking swarm setup - push permissions required');
+            repositoryAccessStatus = 'read_only_blocked';
+          } else {
+            console.log(`❌ GitHub App does not have access to repository: ${targetRepositoryUrl}`);
+            console.log(`Error: ${repositoryAccess.error}`);
+            console.log('🚫 Blocking swarm setup - no repository access');
+            repositoryAccessStatus = repositoryAccess.error || 'no_access';
+          }
+        } catch (error) {
+          console.error('Error checking repository access:', error);
+          console.log('🚫 Blocking swarm setup - permission check failed');
+          repositoryAccessStatus = 'check_failed';
+        }
+      } else {
+        console.log('⚠️ No repository URL found to check access');
+        console.log('🚫 Blocking swarm setup - no repository URL');
+        repositoryAccessStatus = 'no_repository_url';
+      }
+
     } else if (setupAction === "uninstall") {
       console.log(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`);
 
@@ -358,8 +473,14 @@ export async function GET(request: NextRequest) {
       console.log(`🔗 Unlinked ${result.count} workspace(s) from SourceControlOrg`);
     }
 
-    // Redirect to the workspace page with just the setup action
-    return NextResponse.redirect(new URL(`/w/${workspaceSlug}?github_setup_action=${setupAction}`, request.url));
+    // Redirect to the workspace page with setup action and repository access status
+    const redirectUrl = new URL(`/w/${workspaceSlug}`, request.url);
+    redirectUrl.searchParams.set('github_setup_action', setupAction || 'connected');
+    if (repositoryAccessStatus !== 'unknown') {
+      redirectUrl.searchParams.set('repository_access', repositoryAccessStatus);
+    }
+
+    return NextResponse.redirect(redirectUrl);
   } catch (error) {
     console.error("GitHub App callback error:", error);
     return NextResponse.redirect(new URL("/?error=github_app_callback_error", request.url));

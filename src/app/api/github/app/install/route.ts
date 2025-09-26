@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     const randomState = randomBytes(32).toString("hex");
     const stateData = {
       workspaceSlug,
+      repositoryUrl, // Include repository URL in state for callback
       randomState,
       timestamp: Date.now(),
     };
