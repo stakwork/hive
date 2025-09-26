@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       workspaceId,
       swarmUrl: `https://${swarm_address}/api`,
       name: swarm_id,
-      ec2_id: ec2_id,
+      ec2Id: ec2_id,
       swarmApiKey: x_api_key,
       swarmSecretAlias: swarmSecretAlias,
       status: SwarmStatus.ACTIVE,

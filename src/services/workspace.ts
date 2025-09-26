@@ -689,27 +689,27 @@ export async function deleteWorkspaceBySlug(
         console.error(`Failed to delete pool user ${swarm.name} for workspace ${slug}:`, error);
       }
     }
+  }
 
-    // Deletes the ec2 instance
-    if (swarm.ec2Id) {
-      try {
-        console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
+  // Deletes the ec2 instance
+  if (swarm.ec2Id) {
+    try {
+      console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
 
-        const swarmConfig = getServiceConfig("swarm");
-        const swarmService = new SwarmService(swarmConfig);
-        const apiResponse = await swarmService.stopSwarm({
-          instance_id: swarm.ec2Id,
-        });
+      const swarmConfig = getServiceConfig("swarm");
+      const swarmService = new SwarmService(swarmConfig);
+      const apiResponse = await swarmService.stopSwarm({
+        instance_id: swarm.ec2Id,
+      });
 
-        if (!apiResponse?.success) {
-          throw new Error(`EC2 instance ${swarm.ec2Id} failed to delete`);
-        }
-
-        console.log(`Successfully deleted EC2 instance ${swarm.ec2Id}`);
-      } catch (error) {
-        // Log error but don't block workspace deletion
-        console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${slug}:`, error);
+      if (!apiResponse?.success) {
+        throw new Error(`EC2 instance ${swarm.ec2Id} failed to delete`);
       }
+
+      console.log(`Successfully deleted EC2 instance ${swarm.ec2Id}`);
+    } catch (error) {
+      // Log error but don't block workspace deletion
+      console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${slug}:`, error);
     }
   }
 

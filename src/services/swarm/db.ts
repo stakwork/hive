@@ -32,7 +32,7 @@ interface SaveOrUpdateSwarmParams {
   repositoryName?: string;
   repositoryDescription?: string;
   repositoryUrl?: string;
-  ec2_id?: string;
+  ec2Id?: string;
   swarmApiKey?: string;
   swarmPassword?: string;
   poolName?: string;
@@ -98,7 +98,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.repositoryName !== undefined) data.repositoryName = params.repositoryName;
   if (params.repositoryDescription !== undefined) data.repositoryDescription = params.repositoryDescription;
   if (params.repositoryUrl !== undefined) data.repositoryUrl = params.repositoryUrl;
-  if (params.ec2_id !== undefined) data.ec2_id = params.ec2_id;
+  if (params.ec2Id !== undefined) data.ec2Id = params.ec2Id;
   if (params.swarmApiKey !== undefined)
     data.swarmApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", params.swarmApiKey));
   if (params.swarmPassword !== undefined)
@@ -143,7 +143,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       repositoryName: params.repositoryName || "",
       repositoryDescription: params.repositoryDescription || "",
       repositoryUrl: params.repositoryUrl || "",
-      ec2_id: params.ec2_id || null,
+      ec2Id: params.ec2Id || null,
       swarmApiKey:
         params.swarmApiKey !== undefined
           ? JSON.stringify(encryptionService.encryptField("swarmApiKey", params.swarmApiKey))
