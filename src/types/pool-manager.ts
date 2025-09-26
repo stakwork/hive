@@ -87,6 +87,10 @@ export interface DeletePoolRequest {
   name: string;
 }
 
+export interface DeleteUserRequest {
+  username: string;
+}
+
 export interface PoolUser {
   email: string;
   username: string;

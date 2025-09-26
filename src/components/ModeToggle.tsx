@@ -15,7 +15,7 @@ export function ModeToggle({ mode, onModeChange, className }: ModeToggleProps) {
     <div
       className={cn(
         "flex items-center gap-2 bg-background/80 border border-border shadow-md rounded-xl px-2 py-1",
-        className
+        className,
       )}
     >
       <Toggle
@@ -24,8 +24,9 @@ export function ModeToggle({ mode, onModeChange, className }: ModeToggleProps) {
         variant={mode === "learn" ? "outline" : "default"}
         size="lg"
         aria-label="Learn mode"
+        className={cn(mode === "learn" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground")}
       >
-        <BookOpen className="mr-1 w-4 h-4" />
+        <BookOpen className={cn("mr-1 w-4 h-4", mode === "learn" ? "text-foreground" : "text-muted-foreground")} />
         Learn
       </Toggle>
       <Toggle
@@ -34,8 +35,9 @@ export function ModeToggle({ mode, onModeChange, className }: ModeToggleProps) {
         variant={mode === "chat" ? "outline" : "default"}
         size="lg"
         aria-label="Chat mode"
+        className={cn(mode === "chat" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground")}
       >
-        <MessageCircle className="mr-1 w-4 h-4" />
+        <MessageCircle className={cn("mr-1 w-4 h-4", mode === "chat" ? "text-foreground" : "text-muted-foreground")} />
         Chat
       </Toggle>
     </div>
