@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { RepoAnalyzer } from "gitsee/server";
+import { GitSeeHandler, CommitsResource, GitSeeCache } from "gitsee/server";
+import { Octokit } from "@octokit/rest";
 import { parseOwnerRepo } from "./utils";
 
 async function fetchLearnings(swarmUrl: string, swarmApiKey: string, q: string) {
@@ -41,13 +42,13 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       inputSchema: z.object({}),
       execute: async () => {
         try {
-          const analyzer = new RepoAnalyzer({
-            githubToken: pat,
+          const octokit = new Octokit({
+            auth: pat,
           });
-          const coms = await analyzer.getRecentCommitsWithFiles(repoOwner, repoName, {
-            limit: 7,
-          });
-          return coms;
+          const cache = new GitSeeCache();
+          const commitsResource = new CommitsResource(octokit, cache);
+          const commits = await commitsResource.getCommits(repoOwner, repoName);
+          return commits.slice(0, 7);
         } catch (e) {
           console.error("Error retrieving recent commits:", e);
           return "Could not retrieve recent commits";
@@ -60,11 +61,8 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       inputSchema: z.object({ user: z.string() }),
       execute: async ({ user }: { user: string }) => {
         try {
-          const analyzer = new RepoAnalyzer({
-            githubToken: pat,
-          });
-          const output = await analyzer.getContributorPRs(repoOwner, repoName, user, 5);
-          return output;
+          // For now, just return a placeholder as we need to implement proper PR fetching with the new gitsee API
+          return "Recent contributions feature is not implemented yet with the new gitsee API.";
         } catch (e) {
           console.error("Error retrieving recent contributions:", e);
           return "Could not retrieve repository map";
