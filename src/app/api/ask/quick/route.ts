@@ -90,12 +90,20 @@ export async function GET(request: NextRequest) {
       { role: "user", content: question },
     ];
 
+    console.log("🤖 Creating generateText with:", {
+      model: model?.modelId,
+      toolsCount: Object.keys(tools).length,
+      messagesCount: messages.length,
+      question: question,
+    });
+
     try {
-      const { steps } = await generateText({
+      const { steps, text } = await generateText({
         model,
         tools,
         messages,
         stopWhen: hasToolCall("final_answer"),
+        onStepFinish: (sf) => logStep(sf.content),
       });
 
       let final = "";
@@ -109,7 +117,18 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // console.log("🤖 Result:", final);
+      // If no final_answer tool result found, check if it's in the text output
+      if (!final && text) {
+        const functionCallMatch = text.match(/<parameter name="answer">([\s\S]*?)<\/parameter>/);
+        if (functionCallMatch) {
+          final = functionCallMatch[1].trim();
+        } else {
+          // Fallback to using the raw text if no tool call found
+          final = text;
+        }
+      }
+
+      console.log("🤖 Result:", final);
 
       return NextResponse.json({ result: final }, { status: 200 });
     } catch (streamError) {
@@ -122,14 +141,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// function logStep(contents: unknown) {
-//   if (!Array.isArray(contents)) return;
-//   for (const content of contents) {
-//     if (content.type === "tool-call") {
-//       console.log("TOOL CALL:", content.toolName, ":", content.input);
-//     }
-//     if (content.type === "tool-result") {
-//       console.log("TOOL RESULT:", content.toolName, ":", content.output);
-//     }
-//   }
-// }
+function logStep(contents: unknown) {
+  if (!Array.isArray(contents)) return;
+  for (const content of contents) {
+    if (content.type === "tool-call") {
+      console.log("TOOL CALL:", content.toolName, ":", content.input);
+    }
+    if (content.type === "tool-result") {
+      console.log("TOOL RESULT:", content.toolName, ":", content.output);
+    }
+  }
+}
