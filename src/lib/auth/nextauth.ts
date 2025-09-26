@@ -44,7 +44,7 @@ const getProviders = () => {
         clientSecret: process.env.GITHUB_CLIENT_SECRET!,
         authorization: {
           params: {
-            scope: "read:user user:email read:org repo admin:repo_hook admin:org_hook",
+            scope: "read:user user:email",
           },
         },
       }),
