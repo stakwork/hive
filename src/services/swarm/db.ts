@@ -40,7 +40,7 @@ interface SaveOrUpdateSwarmParams {
   services?: ServiceConfig[]; // Use ServiceConfig[]
   swarmId?: string;
   swarmSecretAlias?: string;
-  ingestRefId?: string;
+  ingestRefId?: string | null;
   containerFiles?: Record<string, string>;
   defaultBranch?: string;
   githubInstallationId?: string;

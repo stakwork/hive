@@ -200,3 +200,47 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    }
+
+    const { workspaceId, action } = await request.json();
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        { success: false, message: "Missing workspaceId" },
+        { status: 400 }
+      );
+    }
+
+    if (action === "clearIngestRefId") {
+      await saveOrUpdateSwarm({
+        workspaceId,
+        ingestRefId: null,
+      });
+
+      console.log(`Cleared ingestRefId for workspace ${workspaceId} due to repeated failures`);
+
+      return NextResponse.json(
+        { success: true, message: "IngestRefId cleared successfully" },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, message: "Invalid action" },
+      { status: 400 }
+    );
+
+  } catch (error) {
+    console.error(`Error in PATCH ingest: ${error}`);
+    return NextResponse.json(
+      { success: false, message: "Failed to update ingest configuration" },
+      { status: 500 }
+    );
+  }
+}
