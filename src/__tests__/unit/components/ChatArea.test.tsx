@@ -1,478 +1,607 @@
+import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
-describe('ChatArea', () => {
-  it('renders without crashing', () => {
-    expect(true).toBe(true);
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useRouter } from "next/navigation";
+import { ChatArea } from "@/app/w/[slug]/task/[...taskParams]/components/ChatArea";
+import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+
+// Mock Next.js router
+vi.mock("next/navigation", () => ({
+  useRouter: vi.fn(),
+}));
+
+// Mock framer-motion
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children, className, ...props }: any) => (
+      <div className={className} {...props}>{children}</div>
+    ),
+    h2: ({ children, className, ...props }: any) => (
+      <h2 className={className} {...props}>{children}</h2>
+    ),
+    p: ({ children, className, ...props }: any) => (
+      <p className={className} {...props}>{children}</p>
+    ),
+  },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}));
+
+// Mock child components
+vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
+  ChatMessage: ({ message, replyMessage, onArtifactAction }: any) => (
+    <div data-testid={`chat-message-${message.id}`}>
+      <div>{message.message}</div>
+      <div>{message.role}</div>
+      {replyMessage && <div data-testid="reply-message">{replyMessage.message}</div>}
+      {message.artifacts?.map((artifact: any, index: number) => (
+        <div key={index} data-testid={`artifact-${index}`}>{artifact.type}</div>
+      ))}
+      <button onClick={() => onArtifactAction(message.id, { id: 'test-action' }, 'webhook')}>
+        Artifact Action
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
+  ChatInput: ({ onSend, disabled, isLoading, logs, pendingDebugAttachment, onRemoveDebugAttachment, workflowStatus }: any) => (
+    <div data-testid="chat-input">
+      <input
+        data-testid="message-input"
+        disabled={disabled}
+        placeholder={isLoading ? "Loading..." : "Type a message..."}
+      />
+      <button
+        data-testid="send-button"
+        onClick={() => onSend("test message")}
+        disabled={disabled || isLoading}
+      >
+        Send
+      </button>
+      {pendingDebugAttachment && (
+        <div data-testid="debug-attachment">
+          <span>{pendingDebugAttachment.type}</span>
+          <button onClick={onRemoveDebugAttachment}>Remove</button>
+        </div>
+      )}
+      {workflowStatus && (
+        <div data-testid="workflow-status">{workflowStatus}</div>
+      )}
+      {logs && logs.length > 0 && (
+        <div data-testid="logs-count">{logs.length}</div>
+      )}
+    </div>
+  ),
+}));
+
+// Mock UI components
+vi.mock("@/components/ui/button", () => ({
+  Button: ({ children, onClick, variant, size, className, disabled, ...props }: any) => (
+    <button
+      onClick={onClick}
+      className={`btn ${variant || 'default'} ${size || 'default'} ${className || ''}`}
+      disabled={disabled}
+      {...props}
+    >
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...props }: any) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
+// Mock icons
+vi.mock("lucide-react", () => ({
+  ArrowLeft: () => <span data-testid="arrow-left-icon">←</span>,
+  ExternalLink: () => <span data-testid="external-link-icon">↗</span>,
+}));
+
+vi.mock("@/lib/icons", () => ({
+  getAgentIcon: () => <span data-testid="agent-icon">🤖</span>,
+}));
+
+// Test data factories
+const TestDataFactories = {
+  message: (overrides: Partial<ChatMessageType> = {}): ChatMessageType => ({
+    id: "message-1",
+    message: "Test message content",
+    role: "user",
+    timestamp: new Date("2024-01-01T12:00:00Z"),
+    status: "sent",
+    contextTags: [],
+    artifacts: [],
+    attachments: [],
+    replyId: null,
+    sourceWebsocketID: null,
+    task: { id: "task-1", title: "Test Task" },
+    ...overrides,
+  }),
+
+  logEntry: (overrides: Partial<LogEntry> = {}): LogEntry => ({
+    id: "log-1",
+    timestamp: "2024-01-01T12:00:00Z",
+    level: "info",
+    message: "Test log message",
+    source: "test",
+    ...overrides,
+  }),
+
+  artifact: (overrides: Partial<Artifact> = {}): Artifact => ({
+    type: "code",
+    content: { language: "javascript", code: "console.log('test')" },
+    ...overrides,
+  }),
+
+  chatAreaProps: (props: Partial<any> = {}) => ({
+    messages: [TestDataFactories.message()],
+    onSend: vi.fn().mockResolvedValue(undefined),
+    onArtifactAction: vi.fn().mockResolvedValue(undefined),
+    inputDisabled: false,
+    isLoading: false,
+    isChainVisible: false,
+    lastLogLine: "",
+    logs: [],
+    pendingDebugAttachment: null,
+    onRemoveDebugAttachment: vi.fn(),
+    workflowStatus: null,
+    taskTitle: null,
+    stakworkProjectId: null,
+    workspaceSlug: null,
+    ...props,
+  }),
+
+  mockRouter: () => ({
+    push: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  })
+};
+
+// Test utilities
+const TestUtils = {
+  setupRouter: () => {
+    const mockRouter = TestDataFactories.mockRouter();
+    (useRouter as any).mockReturnValue(mockRouter);
+    return mockRouter;
+  },
+
+  renderChatArea: (props: Partial<any> = {}) => {
+    const defaultProps = TestDataFactories.chatAreaProps(props);
+    const router = TestUtils.setupRouter();
+    const component = render(<ChatArea {...defaultProps} />);
+    return { component, props: defaultProps, router };
+  },
+
+  findBackButton: () => screen.getByTestId("arrow-left-icon").closest("button"),
+  
+  findMessageById: (id: string) => screen.getByTestId(`chat-message-${id}`),
+
+  expectElementsToBePresent: (testIds: string[]) => {
+    testIds.forEach(testId => {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+    });
+  }
+};
+
+// Helper functions for creating test data (kept for backward compatibility)
+const createTestMessage = TestDataFactories.message;
+const createTestLogEntry = TestDataFactories.logEntry;
+const createTestArtifact = TestDataFactories.artifact;
+
+// Test setup helper (refactored to use factories)
+const setupChatAreaTest = (props: Partial<any> = {}) => {
+  const defaultProps = TestDataFactories.chatAreaProps(props);
+  const mockRouter = TestDataFactories.mockRouter();
+  (useRouter as any).mockReturnValue(mockRouter);
+  return { props: defaultProps, router: mockRouter };
+};
+
+describe("ChatArea", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("Basic Rendering", () => {
+    test("renders chat area with messages", () => {
+      const { props } = setupChatAreaTest();
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("chat-message-message-1")).toBeInTheDocument();
+      expect(screen.getByText("Test message content")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+    });
+
+    test("renders without task title header when taskTitle is not provided", () => {
+      const { props } = setupChatAreaTest();
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryByRole("button", { name: /arrow-left-icon/i })).not.toBeInTheDocument();
+    });
+
+    test("renders with task title header when taskTitle is provided", () => {
+      const { props } = setupChatAreaTest({
+        taskTitle: "Sample Task Title",
+      });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText("Sample Task Title")).toBeInTheDocument();
+      expect(screen.getByTestId("arrow-left-icon")).toBeInTheDocument();
+    });
+
+    test("truncates long task titles", () => {
+      const longTitle = "This is a very long task title that should be truncated because it exceeds the 60 character limit";
+      const { props } = setupChatAreaTest({
+        taskTitle: longTitle,
+      });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText(`${longTitle.slice(0, 60)}...`)).toBeInTheDocument();
+    });
+  });
+
+  describe("Message Rendering", () => {
+    test("renders multiple messages", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", message: "First message" }),
+        createTestMessage({ id: "msg-2", message: "Second message" }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText("First message")).toBeInTheDocument();
+      expect(screen.getByText("Second message")).toBeInTheDocument();
+    });
+
+    test("filters out reply messages from main display", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", message: "Original message" }),
+        createTestMessage({ id: "msg-2", message: "Reply message", replyId: "msg-1" }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-message-msg-2")).not.toBeInTheDocument();
+    });
+
+    test("displays reply messages with their parent messages", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", message: "Original message" }),
+        createTestMessage({ id: "msg-2", message: "Reply message", replyId: "msg-1" }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("reply-message")).toBeInTheDocument();
+      expect(screen.getByText("Reply message")).toBeInTheDocument();
+    });
+
+    test("renders messages with artifacts", () => {
+      const messages = [
+        createTestMessage({
+          id: "msg-1",
+          artifacts: [createTestArtifact({ type: "code" })],
+        }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("artifact-0")).toBeInTheDocument();
+      expect(screen.getByText("code")).toBeInTheDocument();
+    });
+  });
+
+  describe("Navigation Handling", () => {
+    test("navigates back to tasks when workspace slug is provided", async () => {
+      const user = userEvent.setup();
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+      });
+      render(<ChatArea {...props} />);
+
+      // Find the back button by the arrow icon testid within it
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/tasks");
+    });
+
+    test("navigates back when no workspace slug is provided", async () => {
+      const user = userEvent.setup();
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+      });
+      render(<ChatArea {...props} />);
+
+      // Find the back button by the arrow icon testid within it
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.back).toHaveBeenCalled();
+    });
+  });
+
+  describe("Workflow Status Display", () => {
+    test("displays loading state when chain is visible", () => {
+      const { props } = setupChatAreaTest({
+        isChainVisible: true,
+        lastLogLine: "Processing your request...",
+      });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText("Processing your request...")).toBeInTheDocument();
+      expect(screen.getByText("Processing...")).toBeInTheDocument();
+    });
+
+    test("shows default message when chain is visible but no log line", () => {
+      const { props } = setupChatAreaTest({
+        isChainVisible: true,
+      });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText("Communicating with workflow...")).toBeInTheDocument();
+    });
+
+    test("displays Stakwork project link when stakworkProjectId is provided", () => {
+      const { props } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        stakworkProjectId: 12345,
+      });
+      render(<ChatArea {...props} />);
+
+      const link = screen.getByRole("link", { name: /workflow/i });
+      expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/12345");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(screen.getByTestId("external-link-icon")).toBeInTheDocument();
+    });
+  });
+
+  describe("ChatInput Integration", () => {
+    test("passes correct props to ChatInput", () => {
+      const logs = [createTestLogEntry()];
+      const debugAttachment = createTestArtifact();
+      const onSend = vi.fn();
+      const onRemoveDebugAttachment = vi.fn();
+
+      const { props } = setupChatAreaTest({
+        logs,
+        onSend,
+        inputDisabled: true,
+        isLoading: true,
+        pendingDebugAttachment: debugAttachment,
+        onRemoveDebugAttachment,
+        workflowStatus: "IN_PROGRESS" as WorkflowStatus,
+      });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Loading...")).toBeInTheDocument();
+      expect(screen.getByTestId("debug-attachment")).toBeInTheDocument();
+      expect(screen.getByTestId("workflow-status")).toBeInTheDocument();
+      expect(screen.getByTestId("logs-count")).toBeInTheDocument();
+    });
+
+    test("handles send message from ChatInput", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({ onSend });
+
+      render(<ChatArea {...props} />);
+
+      const sendButton = screen.getByTestId("send-button");
+      await user.click(sendButton);
+
+      expect(onSend).toHaveBeenCalledWith("test message");
+    });
+
+    test("handles debug attachment removal", async () => {
+      const user = userEvent.setup();
+      const onRemoveDebugAttachment = vi.fn();
+      const { props } = setupChatAreaTest({
+        pendingDebugAttachment: createTestArtifact(),
+        onRemoveDebugAttachment,
+      });
+
+      render(<ChatArea {...props} />);
+
+      const removeButton = screen.getByText("Remove");
+      await user.click(removeButton);
+
+      expect(onRemoveDebugAttachment).toHaveBeenCalled();
+    });
+  });
+
+  describe("Component Lifecycle", () => {
+    test("scrolls to bottom when messages change", async () => {
+      const scrollIntoViewMock = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+      const { props } = setupChatAreaTest();
+      const { rerender } = render(<ChatArea {...props} />);
+
+      const newMessages = [
+        ...props.messages,
+        createTestMessage({ id: "new-msg", message: "New message" }),
+      ];
+
+      rerender(<ChatArea {...props} messages={newMessages} />);
+
+      // Wait for useEffect to trigger
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth' });
+      });
+    });
+
+    test("handles missing scrollIntoView gracefully", async () => {
+      const originalScrollIntoView = Element.prototype.scrollIntoView;
+      delete (Element.prototype as any).scrollIntoView;
+
+      const { props } = setupChatAreaTest();
+      
+      // Should not throw an error
+      expect(() => render(<ChatArea {...props} />)).not.toThrow();
+
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    });
+  });
+
+  describe("User Interactions", () => {
+    test("handles artifact actions", async () => {
+      const user = userEvent.setup();
+      const onArtifactAction = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({ onArtifactAction });
+
+      render(<ChatArea {...props} />);
+
+      const artifactButton = screen.getByText("Artifact Action");
+      await user.click(artifactButton);
+
+      expect(onArtifactAction).toHaveBeenCalledWith(
+        "message-1",
+        { id: 'test-action' },
+        'webhook'
+      );
+    });
+
+    test("disables input when inputDisabled is true", () => {
+      const { props } = setupChatAreaTest({ inputDisabled: true });
+      render(<ChatArea {...props} />);
+
+      const input = screen.getByTestId("message-input");
+      expect(input).toBeDisabled();
+    });
+
+    test("shows loading state in input when isLoading is true", () => {
+      const { props } = setupChatAreaTest({ isLoading: true });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByPlaceholderText("Loading...")).toBeInTheDocument();
+    });
+  });
+
+  describe("Error Handling", () => {
+    test("handles onSend errors gracefully", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockRejectedValue(new Error("Send failed"));
+      const { props } = setupChatAreaTest({ onSend });
+
+      render(<ChatArea {...props} />);
+
+      const sendButton = screen.getByTestId("send-button");
+      await user.click(sendButton);
+
+      expect(onSend).toHaveBeenCalled();
+      // Component should still be rendered despite error
+      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+    });
+
+    test("handles onArtifactAction errors gracefully", async () => {
+      const user = userEvent.setup();
+      const onArtifactAction = vi.fn().mockRejectedValue(new Error("Action failed"));
+      const { props } = setupChatAreaTest({ onArtifactAction });
+
+      render(<ChatArea {...props} />);
+
+      const artifactButton = screen.getByText("Artifact Action");
+      await user.click(artifactButton);
+
+      expect(onArtifactAction).toHaveBeenCalled();
+      // Component should still be rendered despite error
+      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+    });
+  });
+
+  describe("Edge Cases", () => {
+    test("renders with empty messages array", () => {
+      const { props } = setupChatAreaTest({ messages: [] });
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+      expect(screen.queryByTestId(/chat-message-/)).not.toBeInTheDocument();
+    });
+
+    test("renders with null values for optional props", () => {
+      const { props } = setupChatAreaTest({
+        lastLogLine: null,
+        logs: null,
+        pendingDebugAttachment: null,
+        workflowStatus: null,
+        taskTitle: null,
+        stakworkProjectId: null,
+        workspaceSlug: null,
+      });
+
+      expect(() => render(<ChatArea {...props} />)).not.toThrow();
+    });
+
+    test("handles undefined onRemoveDebugAttachment", () => {
+      const { props } = setupChatAreaTest({
+        onRemoveDebugAttachment: undefined,
+        pendingDebugAttachment: createTestArtifact(),
+      });
+
+      expect(() => render(<ChatArea {...props} />)).not.toThrow();
+    });
+
+    test("renders with very long message content", () => {
+      const longMessage = "a".repeat(10000);
+      const messages = [createTestMessage({ message: longMessage })];
+      const { props } = setupChatAreaTest({ messages });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText(longMessage)).toBeInTheDocument();
+    });
+
+    test("handles special characters in messages", () => {
+      const specialMessage = "Test with 🚀 emojis and special chars: àáâäåæçèéêë & <html> tags";
+      const messages = [createTestMessage({ message: specialMessage })];
+      const { props } = setupChatAreaTest({ messages });
+
+      render(<ChatArea {...props} />);
+
+      expect(screen.getByText(specialMessage)).toBeInTheDocument();
+    });
+  });
+
+  describe("Accessibility", () => {
+    test("has proper button roles and labels", () => {
+      const { props } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        stakworkProjectId: 12345,
+      });
+      render(<ChatArea {...props} />);
+
+      // Find the back button by the arrow icon testid within it
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      expect(backButton).toBeInTheDocument();
+
+      const workflowLink = screen.getByRole("link", { name: /workflow/i });
+      expect(workflowLink).toBeInTheDocument();
+    });
+
+    test("maintains focus management during interactions", async () => {
+      const user = userEvent.setup();
+      const { props } = setupChatAreaTest({ taskTitle: "Test Task" });
+      render(<ChatArea {...props} />);
+
+      // Find the back button by the arrow icon testid within it
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      // Focus should be maintained properly (tested indirectly through no errors)
+      expect(backButton).toBeInTheDocument();
+    });
   });
 });
-//import React from 'react';
-//import { render, screen, fireEvent } from "@testing-library/react";
-//import "@testing-library/jest-dom";
-//import { ChatArea } from "@/app/w/[slug]/task/[...taskParams]/components/ChatArea";
-//import { ChatMessage as ChatMessageType, WorkflowStatus, Artifact } from "@/lib/chat";
-//import type { LogEntry } from "@/hooks/useProjectLogWebSocket";
-//
-//// Mock Next.js router
-//const mockPush = vi.fn();
-//const mockBack = vi.fn();
-//vi.mock("next/navigation", () => ({
-//  useRouter: () => ({
-//    push: mockPush,
-//    back: mockBack,
-//  }),
-//}));
-//
-//// Mock framer-motion components
-//vi.mock("framer-motion", () => ({
-//  motion: {
-//    div: ({ children, className, ...props }: any) => (
-//      <div className={className} {...props}>
-//        {children}
-//      </div>
-//    ),
-//    h2: ({ children, className, ...props }: any) => (
-//      <h2 className={className} {...props}>
-//        {children}
-//      </h2>
-//    ),
-//  },
-//  AnimatePresence: ({ children }: any) => <div>{children}</div>,
-//}));
-//
-//// Mock child components
-//vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
-//  ChatMessage: ({ message, replyMessage, onArtifactAction }: any) => (
-//    <div data-testid={`chat-message-${message.id}`}>
-//      <div data-testid="message-content">{message.message}</div>
-//      <div data-testid="message-role">{message.role}</div>
-//      {replyMessage && (
-//        <div data-testid="reply-message">{replyMessage.message}</div>
-//      )}
-//    </div>
-//  ),
-//}));
-//
-//vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
-//  ChatInput: ({ onSend, disabled, isLoading, workflowStatus, logs, pendingDebugAttachment, onRemoveDebugAttachment }: any) => (
-//    <div data-testid="chat-input">
-//      <div data-testid="workflow-status">
-//        {workflowStatus || "no-status"}
-//      </div>
-//      <div data-testid="input-disabled">{disabled ? "disabled" : "enabled"}</div>
-//      <div data-testid="input-loading">{isLoading ? "loading" : "not-loading"}</div>
-//      <div data-testid="logs-count">{logs ? logs.length : 0}</div>
-//      {pendingDebugAttachment && (
-//        <div data-testid="debug-attachment">{pendingDebugAttachment.id}</div>
-//      )}
-//      <button onClick={() => onSend("test message")} data-testid="send-button">
-//        Send
-//      </button>
-//    </div>
-//  ),
-//}));
-//
-//// Mock UI components
-//vi.mock("@/components/ui/button", () => ({
-//  Button: ({ children, onClick, variant, size, className, ...props }: any) => (
-//    <button
-//      onClick={onClick}
-//      className={className}
-//      data-variant={variant}
-//      data-size={size}
-//      {...props}
-//    >
-//      {children}
-//    </button>
-//  ),
-//}));
-//
-//vi.mock("next/link", () => ({
-//  default: ({ children, href, ...props }: any) => (
-//    <a href={href} {...props}>
-//      {children}
-//    </a>
-//  ),
-//}));
-//
-//// Mock icons
-//vi.mock("lucide-react", () => ({
-//  ArrowLeft: () => <div data-testid="arrow-left-icon" />,
-//  ExternalLink: () => <div data-testid="external-link-icon" />,
-//}));
-//
-//vi.mock("@/lib/icons", () => ({
-//  getAgentIcon: () => <div data-testid="agent-icon" />,
-//}));
-//
-//describe("ChatArea Component", () => {
-//  const mockOnSend = vi.fn();
-//  const mockOnArtifactAction = vi.fn();
-//  const mockOnRemoveDebugAttachment = vi.fn();
-//
-//  const defaultProps = {
-//    messages: [],
-//    onSend: mockOnSend,
-//    onArtifactAction: mockOnArtifactAction,
-//    inputDisabled: false,
-//    isLoading: false,
-//    hasNonFormArtifacts: false,
-//    isChainVisible: false,
-//    lastLogLine: "",
-//    logs: [],
-//    pendingDebugAttachment: null,
-//    onRemoveDebugAttachment: mockOnRemoveDebugAttachment,
-//    workflowStatus: null,
-//    taskTitle: null,
-//    stakworkProjectId: null,
-//    workspaceSlug: null,
-//  };
-//
-//  const createMockMessage = (id: string, message: string, role: "USER" | "ASSISTANT", replyId?: string): ChatMessageType => ({
-//    id,
-//    message,
-//    role,
-//    replyId,
-//    timestamp: new Date().toISOString(),
-//    artifacts: [],
-//    workflowUrl: null,
-//  });
-//
-//  const createMockLogEntry = (message: string): LogEntry => ({
-//    id: `log-${Math.random()}`,
-//    message,
-//    timestamp: new Date().toISOString(),
-//    level: "info",
-//  });
-//
-//  const createMockArtifact = (id: string): Artifact => ({
-//    id,
-//    type: "DEBUG",
-//    content: {
-//      method: "click",
-//      coordinates: { x: 100, y: 200, width: 50, height: 25 },
-//    },
-//    icon: "bug",
-//  });
-//
-//  beforeEach(() => {
-//    vi.clearAllMocks();
-//  });
-//
-//  describe("Message Rendering", () => {
-//    test("should render messages correctly", () => {
-//      const messages = [
-//        createMockMessage("msg-1", "Hello world", "USER"),
-//        createMockMessage("msg-2", "How can I help you?", "ASSISTANT"),
-//      ];
-//
-//      render(<ChatArea {...defaultProps} messages={messages} />);
-//
-//      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
-//      expect(screen.getByTestId("chat-message-msg-2")).toBeInTheDocument();
-//
-//      // Check message content is rendered
-//      const messageContents = screen.getAllByTestId("message-content");
-//      expect(messageContents).toHaveLength(2);
-//      expect(messageContents[0]).toHaveTextContent("Hello world");
-//      expect(messageContents[1]).toHaveTextContent("How can I help you?");
-//    });
-//
-//    test("should filter out reply messages from main display", () => {
-//      const messages = [
-//        createMockMessage("msg-1", "Original message", "USER"),
-//        createMockMessage("msg-2", "Reply message", "USER", "msg-1"), // This should be filtered out
-//        createMockMessage("msg-3", "Another message", "ASSISTANT"),
-//      ];
-//
-//      render(<ChatArea {...defaultProps} messages={messages} />);
-//
-//      // Should only render 2 messages (msg-1 and msg-3), not the reply
-//      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
-//      expect(screen.queryByTestId("chat-message-msg-2")).not.toBeInTheDocument();
-//      expect(screen.getByTestId("chat-message-msg-3")).toBeInTheDocument();
-//    });
-//
-//    test("should find and pass reply messages to ChatMessage component", () => {
-//      const messages = [
-//        createMockMessage("msg-1", "Original message", "USER"),
-//        createMockMessage("msg-2", "Reply to msg-1", "ASSISTANT", "msg-1"),
-//      ];
-//
-//      render(<ChatArea {...defaultProps} messages={messages} />);
-//
-//      // Only original message should be rendered as main message
-//      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
-//      expect(screen.queryByTestId("chat-message-msg-2")).not.toBeInTheDocument();
-//
-//      // Reply message should be passed to ChatMessage component
-//      expect(screen.getByTestId("reply-message")).toHaveTextContent("Reply to msg-1");
-//    });
-//
-//    test("should handle empty messages array", () => {
-//      render(<ChatArea {...defaultProps} messages={[]} />);
-//
-//      expect(screen.queryByTestId(/chat-message-/)).not.toBeInTheDocument();
-//      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
-//    });
-//
-//    test("should render chain visible indicator when isChainVisible is true", () => {
-//      render(
-//        <ChatArea
-//          {...defaultProps}
-//          isChainVisible={true}
-//          lastLogLine="Processing workflow..."
-//        />
-//      );
-//
-//      expect(screen.getByText("Hive")).toBeInTheDocument();
-//      expect(screen.getByText("Processing workflow...")).toBeInTheDocument();
-//      expect(screen.getByTestId("agent-icon")).toBeInTheDocument();
-//    });
-//
-//    test("should show default chain message when lastLogLine is empty", () => {
-//      render(<ChatArea {...defaultProps} isChainVisible={true} lastLogLine="" />);
-//
-//      expect(screen.getByText("Communicating with workflow...")).toBeInTheDocument();
-//    });
-//  });
-//
-//  describe("Navigation Handling", () => {
-//    test("should navigate to tasks page when workspaceSlug is provided", () => {
-//      render(
-//        <ChatArea
-//          {...defaultProps}
-//          taskTitle="Test Task"
-//          workspaceSlug="test-workspace"
-//        />
-//      );
-//
-//      const backButton = screen.getByRole("button");
-//      fireEvent.click(backButton);
-//
-//      expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/tasks");
-//      expect(mockBack).not.toHaveBeenCalled();
-//    });
-//
-//    test("should use router.back() when workspaceSlug is not provided", () => {
-//      render(<ChatArea {...defaultProps} taskTitle="Test Task" />);
-//
-//      const backButton = screen.getByRole("button");
-//      fireEvent.click(backButton);
-//
-//      expect(mockBack).toHaveBeenCalled();
-//      expect(mockPush).not.toHaveBeenCalled();
-//    });
-//
-//    test("should render back button when taskTitle is provided", () => {
-//      render(<ChatArea {...defaultProps} taskTitle="Test Task Title" />);
-//
-//      const backButton = screen.getByRole("button");
-//      expect(backButton).toBeInTheDocument();
-//      expect(screen.getByTestId("arrow-left-icon")).toBeInTheDocument();
-//    });
-//
-//    test("should not render back button when taskTitle is not provided", () => {
-//      render(<ChatArea {...defaultProps} />);
-//
-//      expect(screen.queryByTestId("arrow-left-icon")).not.toBeInTheDocument();
-//    });
-//
-//    test("should render task title with truncation for long titles", () => {
-//      const longTitle = "This is a very long task title that should be truncated because it exceeds the 60 character limit";
-//
-//      render(<ChatArea {...defaultProps} taskTitle={longTitle} />);
-//
-//      const titleElement = screen.getByText(/This is a very long task title that should be truncated.../);
-//      expect(titleElement).toBeInTheDocument();
-//      expect(titleElement).toHaveAttribute("title", longTitle);
-//    });
-//
-//    test("should render short task titles without truncation", () => {
-//      const shortTitle = "Short Title";
-//
-//      render(<ChatArea {...defaultProps} taskTitle={shortTitle} />);
-//
-//      expect(screen.getByText(shortTitle)).toBeInTheDocument();
-//    });
-//
-//    test("should render stakwork project link when stakworkProjectId is provided", () => {
-//      render(
-//        <ChatArea
-//          {...defaultProps}
-//          taskTitle="Test Task"
-//          stakworkProjectId={12345}
-//        />
-//      );
-//
-//      const workflowLink = screen.getByRole("link");
-//      expect(workflowLink).toHaveAttribute(
-//        "href",
-//        "https://jobs.stakwork.com/admin/projects/12345"
-//      );
-//      expect(workflowLink).toHaveAttribute("target", "_blank");
-//      expect(screen.getByText("Workflow")).toBeInTheDocument();
-//      expect(screen.getByTestId("external-link-icon")).toBeInTheDocument();
-//    });
-//  });
-//
-//  describe("Workflow Status Display", () => {
-//    test("should pass workflowStatus to ChatInput component", () => {
-//      render(
-//        <ChatArea
-//          {...defaultProps}
-//          workflowStatus={WorkflowStatus.IN_PROGRESS}
-//        />
-//      );
-//
-//      expect(screen.getByTestId("workflow-status")).toHaveTextContent("IN_PROGRESS");
-//    });
-//
-//    test("should handle null workflowStatus", () => {
-//      render(<ChatArea {...defaultProps} workflowStatus={null} />);
-//
-//      expect(screen.getByTestId("workflow-status")).toHaveTextContent("no-status");
-//    });
-//
-//    test("should pass different workflow status values", () => {
-//      const statuses = [
-//        WorkflowStatus.PENDING,
-//        WorkflowStatus.COMPLETED,
-//        WorkflowStatus.ERROR,
-//        WorkflowStatus.FAILED,
-//        WorkflowStatus.HALTED,
-//      ];
-//
-//      statuses.forEach((status) => {
-//        const { rerender } = render(
-//          <ChatArea {...defaultProps} workflowStatus={status} />
-//        );
-//
-//        expect(screen.getByTestId("workflow-status")).toHaveTextContent(status);
-//
-//        rerender(<div />); // Clean up before next iteration
-//      });
-//    });
-//
-//    test("should pass logs to ChatInput component", () => {
-//      const logs = [
-//        createMockLogEntry("First log entry"),
-//        createMockLogEntry("Second log entry"),
-//      ];
-//
-//      render(<ChatArea {...defaultProps} logs={logs} />);
-//
-//      expect(screen.getByTestId("logs-count")).toHaveTextContent("2");
-//    });
-//
-//    test("should handle empty logs array", () => {
-//      render(<ChatArea {...defaultProps} logs={[]} />);
-//
-//      expect(screen.getByTestId("logs-count")).toHaveTextContent("0");
-//    });
-//  });
-//
-//  describe("ChatInput Integration", () => {
-//    test("should pass all relevant props to ChatInput", () => {
-//      const logs = [createMockLogEntry("Test log")];
-//      const artifact = createMockArtifact("test-artifact");
-//
-//      render(
-//        <ChatArea
-//          {...defaultProps}
-//          inputDisabled={true}
-//          isLoading={true}
-//          workflowStatus={WorkflowStatus.PENDING}
-//          logs={logs}
-//          pendingDebugAttachment={artifact}
-//        />
-//      );
-//
-//      expect(screen.getByTestId("input-disabled")).toHaveTextContent("disabled");
-//      expect(screen.getByTestId("input-loading")).toHaveTextContent("loading");
-//      expect(screen.getByTestId("workflow-status")).toHaveTextContent("PENDING");
-//      expect(screen.getByTestId("logs-count")).toHaveTextContent("1");
-//      expect(screen.getByTestId("debug-attachment")).toHaveTextContent("test-artifact");
-//    });
-//
-//    test("should handle ChatInput onSend callback", () => {
-//      render(<ChatArea {...defaultProps} />);
-//
-//      const sendButton = screen.getByTestId("send-button");
-//      fireEvent.click(sendButton);
-//
-//      expect(mockOnSend).toHaveBeenCalledWith("test message");
-//    });
-//
-//    test("should pass onRemoveDebugAttachment callback", () => {
-//      const artifact = createMockArtifact("test-artifact");
-//
-//      render(
-//        <ChatArea
-//          {...defaultProps}
-//          pendingDebugAttachment={artifact}
-//          onRemoveDebugAttachment={mockOnRemoveDebugAttachment}
-//        />
-//      );
-//
-//      // The actual callback testing would happen in ChatInput component tests
-//      // Here we just verify the prop is passed
-//      expect(screen.getByTestId("debug-attachment")).toBeInTheDocument();
-//    });
-//  });
-//
-//  describe("Component Lifecycle", () => {
-//    test("should handle message updates and auto-scroll", () => {
-//      const { rerender } = render(<ChatArea {...defaultProps} messages={[]} />);
-//
-//      const newMessages = [createMockMessage("msg-1", "New message", "USER")];
-//      rerender(<ChatArea {...defaultProps} messages={newMessages} />);
-//
-//      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
-//    });
-//
-//    test("should render with default prop values", () => {
-//      const minimalProps = {
-//        messages: [],
-//        onSend: mockOnSend,
-//        onArtifactAction: mockOnArtifactAction,
-//      };
-//
-//      render(<ChatArea {...minimalProps} />);
-//
-//      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
-//      expect(screen.getByTestId("input-disabled")).toHaveTextContent("enabled");
-//      expect(screen.getByTestId("input-loading")).toHaveTextContent("not-loading");
-//    });
-//  });
-//
-//  describe("Error Handling", () => {
-//    test("should handle malformed messages gracefully", () => {
-//      const messages = [
-//        // Message with missing required fields
-//        {
-//          id: "msg-1",
-//          message: "Valid message",
-//          role: "USER" as const,
-//          timestamp: new Date().toISOString(),
-//          artifacts: [],
-//          workflowUrl: null,
-//        },
-//      ];
-//
-//      expect(() => {
-//        render(<ChatArea {...defaultProps} messages={messages} />);
-//      }).not.toThrow();
-//
-//      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
-//    });
-//
-//    test("should handle onArtifactAction callback", () => {
-//      const messages = [createMockMessage("msg-1", "Test message", "ASSISTANT")];
-//
-//      render(<ChatArea {...defaultProps} messages={messages} />);
-//
-//      // The onArtifactAction would be tested through ChatMessage component
-//      // Here we verify the prop is passed correctly
-//      expect(screen.getByTestId("chat-message-msg-1")).toBeInTheDocument();
-//    });
-//  });
-//});
