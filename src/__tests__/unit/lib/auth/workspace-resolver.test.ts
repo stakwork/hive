@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { mockData } from "@/__tests__/utils/test-helpers";
 import {
   resolveUserWorkspaceRedirect,
 } from "@/lib/auth/workspace-resolver";
@@ -7,7 +7,7 @@ import {
   getUserWorkspaces,
 } from "@/services/workspace";
 import { Session } from "next-auth";
-import { mockData } from "@/__tests__/utils/test-helpers";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@/services/workspace", () => ({
   getDefaultWorkspaceForUser: vi.fn(),
@@ -56,7 +56,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/test-workspace/tasks",
+        redirectUrl: "/w/test-workspace",
         workspaceCount: 1,
         defaultWorkspaceSlug: "test-workspace",
       });
@@ -80,7 +80,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-2/tasks",
+        redirectUrl: "/w/workspace-2",
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-2",
       });
@@ -101,7 +101,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-1/tasks",
+        redirectUrl: "/w/workspace-1",
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-1",
       });
@@ -135,7 +135,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/test-workspace/tasks",
+        redirectUrl: "/w/test-workspace",
         workspaceCount: 1,
         defaultWorkspaceSlug: "test-workspace",
       });
@@ -160,7 +160,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-2/tasks",
+        redirectUrl: "/w/workspace-2",
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-2",
       });
@@ -181,7 +181,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-1/tasks",
+        redirectUrl: "/w/workspace-1",
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-1",
       });
@@ -191,8 +191,8 @@ describe("resolveUserWorkspaceRedirect", () => {
   describe("error handling", () => {
     test("should redirect to onboarding on getUserWorkspaces error", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
       mockedGetUserWorkspaces.mockRejectedValue(new Error("Database connection failed"));
 
       const result = await resolveUserWorkspaceRedirect(session);
@@ -212,8 +212,8 @@ describe("resolveUserWorkspaceRedirect", () => {
 
     test("should handle network timeout errors gracefully", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
       const timeoutError = new Error("Network timeout");
       timeoutError.name = "TimeoutError";
       mockedGetUserWorkspaces.mockRejectedValue(timeoutError);
@@ -235,8 +235,8 @@ describe("resolveUserWorkspaceRedirect", () => {
 
     test("should redirect to onboarding on getDefaultWorkspaceForUser error", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
         { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
@@ -292,7 +292,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-50/tasks",
+        redirectUrl: "/w/workspace-50",
         workspaceCount: 100,
         defaultWorkspaceSlug: "workspace-50",
       });
@@ -310,7 +310,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/test-workspace-123/tasks",
+        redirectUrl: "/w/test-workspace-123",
         workspaceCount: 1,
         defaultWorkspaceSlug: "test-workspace-123",
       });
@@ -318,8 +318,8 @@ describe("resolveUserWorkspaceRedirect", () => {
 
     test("should handle null/undefined workspace data gracefully", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
       // Mock service returning malformed data
       mockedGetUserWorkspaces.mockResolvedValue(null as never);
 
