@@ -37,24 +37,176 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(
-        `/api/ask?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`,
-      );
+      // Choose API endpoint based on mode
+      const apiEndpoint =
+        mode === "chat"
+          ? `/api/ask/quick?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`
+          : `/api/ask?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`;
+
+      const response = await fetch(apiEndpoint);
+
+      console.log("🌐 Response details:", {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: response.body,
+        bodyUsed: response.bodyUsed,
+        url: response.url,
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      if (mode === "chat") {
+        console.log("🚀 Starting chat mode streaming...");
 
-      const assistantMessage: LearnMessage = {
-        id: (Date.now() + 1).toString(),
-        content: data.answer || data.message || "I apologize, but I couldn't generate a response at this time.",
-        role: "assistant",
-        timestamp: new Date(),
-      };
+        // Handle streaming response for chat mode
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("No response body");
+        }
 
-      setMessages((prev) => [...prev, assistantMessage]);
+        console.log("✅ Got response reader");
+
+        const assistantMessage: LearnMessage = {
+          id: (Date.now() + 1).toString(),
+          content: "",
+          role: "assistant",
+          timestamp: new Date(),
+        };
+
+        // Add the empty assistant message first
+        setMessages((prev) => [...prev, assistantMessage]);
+        console.log("📝 Added empty assistant message with ID:", assistantMessage.id);
+
+        const decoder = new TextDecoder();
+        let done = false;
+        let buffer = "";
+        let chunkCount = 0;
+
+        try {
+          while (!done) {
+            const { value, done: readerDone } = await reader.read();
+            done = readerDone;
+            chunkCount++;
+
+            console.log(`📦 Chunk ${chunkCount}:`, {
+              hasValue: !!value,
+              valueLength: value?.length,
+              done: readerDone,
+            });
+
+            if (value) {
+              const decodedChunk = decoder.decode(value, { stream: true });
+              console.log(`🔤 Decoded chunk ${chunkCount}:`, decodedChunk);
+
+              buffer += decodedChunk;
+              const lines = buffer.split("\n");
+
+              // Keep the last incomplete line in buffer
+              buffer = lines.pop() || "";
+              console.log(`📄 Processing ${lines.length} lines, buffer remaining:`, buffer);
+
+              for (const line of lines) {
+                if (line.trim() === "") {
+                  console.log("⏭️ Skipping empty line");
+                  continue;
+                }
+
+                console.log("🔍 Processing line:", JSON.stringify(line));
+
+                try {
+                  // Handle different streaming formats
+                  if (line.startsWith("0:")) {
+                    console.log("✅ AI SDK format detected (0:)");
+                    const text = line.slice(2);
+                    console.log("📝 Adding text:", JSON.stringify(text));
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMessage.id ? { ...msg, content: msg.content + text } : msg,
+                      ),
+                    );
+                  } else if (line.startsWith("data: ")) {
+                    console.log("✅ Server-sent events format detected (data:)");
+                    const data = line.slice(6);
+                    if (data === "[DONE]") {
+                      console.log("🏁 Stream complete");
+                      break;
+                    }
+
+                    try {
+                      const parsed = JSON.parse(data);
+                      console.log("📊 Parsed JSON:", parsed);
+                      if (parsed.choices?.[0]?.delta?.content) {
+                        const text = parsed.choices[0].delta.content;
+                        console.log("📝 Adding text from choices:", JSON.stringify(text));
+                        setMessages((prev) =>
+                          prev.map((msg) =>
+                            msg.id === assistantMessage.id ? { ...msg, content: msg.content + text } : msg,
+                          ),
+                        );
+                      }
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    } catch (e) {
+                      console.log("⚠️ JSON parse failed, treating as plain text:", data);
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === assistantMessage.id ? { ...msg, content: msg.content + data } : msg,
+                        ),
+                      );
+                    }
+                  } else {
+                    console.log("📝 Plain text streaming - adding line directly");
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMessage.id ? { ...msg, content: msg.content + line } : msg,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  console.error("❌ Error parsing streaming line:", line, e);
+                }
+              }
+
+              // Handle any remaining text in buffer that doesn't end with newline
+              if (buffer && !done) {
+                console.log("📝 Adding remaining buffer text:", JSON.stringify(buffer));
+                setMessages((prev) =>
+                  prev.map((msg) => (msg.id === assistantMessage.id ? { ...msg, content: msg.content + buffer } : msg)),
+                );
+                buffer = ""; // Clear buffer after adding
+              }
+            }
+          }
+
+          console.log("🏁 Stream reading complete. Total chunks:", chunkCount);
+        } catch (error) {
+          console.error("❌ Error reading stream:", error);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: msg.content + "\n\n[Streaming error occurred]" }
+                : msg,
+            ),
+          );
+        } finally {
+          reader.releaseLock();
+          console.log("🔓 Reader released");
+        }
+      } else {
+        // Handle regular JSON response for learn mode
+        const data = await response.json();
+
+        const assistantMessage: LearnMessage = {
+          id: (Date.now() + 1).toString(),
+          content: data.answer || data.message || "I apologize, but I couldn't generate a response at this time.",
+          role: "assistant",
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
     } catch (error) {
       console.error("Error calling ask API:", error);
       const errorMessage: LearnMessage = {
