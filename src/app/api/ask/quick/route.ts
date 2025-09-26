@@ -6,15 +6,13 @@ import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
 import { askTools } from "@/lib/ai/askTools";
-import { generateText, hasToolCall, ModelMessage, streamText } from "ai";
+import { generateText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("🚀 Quick Ask API called");
-
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       console.log("❌ Unauthorized");
@@ -25,8 +23,8 @@ export async function GET(request: NextRequest) {
     const question = searchParams.get("question");
     const workspaceSlug = searchParams.get("workspace");
 
-    console.log("📝 Question:", question);
-    console.log("🏢 Workspace:", workspaceSlug);
+    // console.log("📝 Question:", question);
+    // console.log("🏢 Workspace:", workspaceSlug);
 
     if (!question) {
       return NextResponse.json({ error: "Missing required parameter: question" }, { status: 400 });
@@ -75,67 +73,45 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    console.log("🔧 Getting GitHub PAT for workspace:", workspace.slug);
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
-    console.log("🔧 GitHub PAT found for workspace:", repoUrl, pat);
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
     const model = await getModel(provider, apiKey, workspaceSlug);
     const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat);
 
-    console.log("🔧 Tools created:", Object.keys(tools).length, "tools");
-
     const messages: ModelMessage[] = [
       { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
       { role: "user", content: question },
     ];
 
-    console.log("🤖 Creating streamText with:", {
-      model: model?.modelId,
-      toolsCount: Object.keys(tools).length,
-      messagesCount: messages.length,
-      question: question,
-    });
-
     try {
-      // const { steps } = await generateText({
-      //   model,
-      //   tools,
-      //   messages,
-      //   stopWhen: hasToolCall("final_answer"),
-      //   // onStepFinish: (sf) => logStep(sf.content),
-      // });
-
-      // let final = "";
-      // steps.reverse();
-      // for (const step of steps) {
-      //   // console.log("step", JSON.stringify(step.content, null, 2));
-      //   const final_answer = step.content.find((c) => {
-      //     return c.type === "tool-result" && c.toolName === "final_answer";
-      //   });
-      //   if (final_answer) {
-      //     final = (final_answer as unknown as { output: string }).output;
-      //   }
-      // }
-
-      // console.log("🤖 Result:", final);
-
-      // return NextResponse.json({ result: final }, { status: 200 });
-
-      const result = await streamText({
+      const { steps } = await generateText({
         model,
         tools,
         messages,
         stopWhen: hasToolCall("final_answer"),
       });
-      // console.log("📡 Returning stream response");
-      return result.toTextStreamResponse();
+
+      let final = "";
+      steps.reverse();
+      for (const step of steps) {
+        const final_answer = step.content.find((c) => {
+          return c.type === "tool-result" && c.toolName === "final_answer";
+        });
+        if (final_answer) {
+          final = (final_answer as unknown as { output: string }).output;
+        }
+      }
+
+      // console.log("🤖 Result:", final);
+
+      return NextResponse.json({ result: final }, { status: 200 });
     } catch (streamError) {
       console.error("❌ Error in streamText:", streamError);
       return NextResponse.json({ error: "Failed to create stream" }, { status: 500 });
