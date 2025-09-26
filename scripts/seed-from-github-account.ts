@@ -62,10 +62,7 @@ async function resolveSeedUser(args: SeedArgs) {
       where: { githubUsername: args.githubUsername },
       include: { user: true },
     });
-    if (!gh || !gh.user)
-      throw new Error(
-        `No GitHubAuth/User found for username ${args.githubUsername}`,
-      );
+    if (!gh || !gh.user) throw new Error(`No GitHubAuth/User found for username ${args.githubUsername}`);
     return gh.user;
   }
 
@@ -127,9 +124,7 @@ async function seedForUser(userId: string) {
   // Create Repository linked to workspace
   const repoBaseName = slugify(`${displayName}-app`) || "sample-app";
   const repositoryName = `${repoBaseName}`;
-  const repositoryUrl = `https://github.com/${
-    user.githubAuth?.githubUsername || "example"
-  }/${repositoryName}`;
+  const repositoryUrl = `https://github.com/${user.githubAuth?.githubUsername || "example"}/${repositoryName}`;
 
   const repository = await prisma.repository.create({
     data: {
@@ -165,6 +160,7 @@ async function seedForUser(userId: string) {
     data: {
       swarmId: "swarm-id-123",
       name: swarmName,
+      swarmUrl: "http://localhost",
       status: SwarmStatus.ACTIVE,
       instanceType: "XL",
       repositoryName: repository.name,
