@@ -1,514 +1,285 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+import { ChatMessage } from '@/app/w/[slug]/task/[...taskParams]/components/ChatMessage';
+import { ChatMessage as ChatMessageType, ChatRole, ChatStatus, FormContent, LongformContent, Option, Artifact } from '@/lib/chat';
+
+// Mock framer-motion
+vi.mock('framer-motion', () => ({
+  motion: {
+    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+  },
+}));
+
+// Mock MarkdownRenderer
+vi.mock('@/components/MarkdownRenderer', () => ({
+  MarkdownRenderer: ({ children }: { children: React.ReactNode }) => <div data-testid="markdown">{children}</div>,
+}));
+
+// Mock WorkflowUrlLink
+vi.mock('@/app/w/[slug]/task/[...taskParams]/components/WorkflowUrlLink', () => ({
+  WorkflowUrlLink: ({ workflowUrl, className }: any) => (
+    <div data-testid="workflow-link" data-url={workflowUrl} className={className}>
+      Workflow Link
+    </div>
+  ),
+}));
+
+// Mock artifacts module
+vi.mock('@/app/w/[slug]/task/[...taskParams]/artifacts', () => ({
+  ...vi.importActual('@/app/w/[slug]/task/[...taskParams]/artifacts'),
+  FormArtifact: ({ 
+    messageId, 
+    artifact, 
+    onAction, 
+    selectedOption, 
+    isDisabled 
+  }: any) => (
+    <div 
+      data-testid="form-artifact"
+      data-message-id={messageId}
+      data-artifact-id={artifact.id}
+      data-selected-option={selectedOption?.optionResponse}
+      data-disabled={isDisabled}
+    >
+      <div data-testid="form-content">{(artifact.content as FormContent).actionText}</div>
+      {(artifact.content as FormContent).options.filter(opt => opt.actionType === 'button').map((option: Option, index: number) => (
+        <button
+          key={index}
+          data-testid={`form-button-${index}`}
+          onClick={() => onAction(messageId, option, (artifact.content as FormContent).webhook)}
+          disabled={isDisabled}
+        >
+          {option.optionLabel}
+        </button>
+      ))}
+    </div>
+  ),
+  LongformArtifactPanel: ({ artifacts, workflowUrl }: any) => (
+    <div data-testid="longform-artifact-panel" data-workflow-url={workflowUrl}>
+      {artifacts.map((artifact: any) => (
+        <div key={artifact.id} data-testid={`longform-${artifact.id}`}>
+          {(artifact.content as LongformContent).title && (
+            <div data-testid="longform-title">{(artifact.content as LongformContent).title}</div>
+          )}
+          <div data-testid="longform-text">{(artifact.content as LongformContent).text}</div>
+        </div>
+      ))}
+    </div>
+  ),
+}));
+
+// Test Factories
+const createMessage = (
+  role: ChatRole,
+  message: string,
+  artifacts: Artifact[] = []
+): ChatMessageType => ({
+  id: 'test-message-1',
+  message,
+  role,
+  status: ChatStatus.COMPLETE,
+  taskId: 'task-123',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  artifacts,
+  contextTags: [],
+  attachments: [],
+});
+
+const createFormArtifact = (options: Option[] = [
+  { optionLabel: 'Yes', optionResponse: 'yes', actionType: 'button' },
+  { optionLabel: 'No', optionResponse: 'no', actionType: 'button' }
+]): Artifact => ({
+  id: 'form-artifact-1',
+  messageId: 'test-message-1',
+  type: 'FORM' as any,
+  content: {
+    actionText: 'Please choose an option:',
+    webhook: 'https://webhook.url',
+    options,
+  } as FormContent,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
+const createLongformArtifact = (): Artifact => ({
+  id: 'longform-artifact-1',
+  messageId: 'test-message-1',
+  type: 'LONGFORM' as any,
+  content: {
+    title: 'Test Title',
+    text: 'Test longform content',
+  } as LongformContent,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
 describe('ChatMessage', () => {
-  it('renders without crashing', () => {
-    expect(true).toBe(true);
+  const mockOnArtifactAction = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Basic Rendering', () => {
+    it('should render user message correctly', () => {
+      const message = createMessage('USER', 'Hello world');
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('markdown')).toHaveTextContent('Hello world');
+    });
+
+    it('should render assistant message correctly', () => {
+      const message = createMessage('ASSISTANT', 'Hello! How can I help?');
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('markdown')).toHaveTextContent('Hello! How can I help?');
+    });
+
+    it('should render workflow URL link when present', () => {
+      const message = createMessage('ASSISTANT', 'Check this out');
+      message.workflowUrl = 'https://workflow.example.com';
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const workflowLink = screen.getByTestId('workflow-link');
+      expect(workflowLink).toHaveAttribute('data-url', 'https://workflow.example.com');
+    });
+  });
+
+  describe('Artifact Rendering', () => {
+    it('should render form artifacts correctly', () => {
+      const formArtifact = createFormArtifact();
+      const message = createMessage('ASSISTANT', 'Choose:', [formArtifact]);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const formElement = screen.getByTestId('form-artifact');
+      expect(formElement).toBeInTheDocument();
+      expect(formElement).toHaveAttribute('data-message-id', 'test-message-1');
+      expect(formElement).toHaveAttribute('data-artifact-id', 'form-artifact-1');
+      
+      expect(screen.getByTestId('form-content')).toHaveTextContent('Please choose an option:');
+      expect(screen.getByTestId('form-button-0')).toHaveTextContent('Yes');
+      expect(screen.getByTestId('form-button-1')).toHaveTextContent('No');
+    });
+
+    it('should render longform artifacts correctly', () => {
+      const longformArtifact = createLongformArtifact();
+      const message = createMessage('ASSISTANT', '', [longformArtifact]);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const longformPanel = screen.getByTestId('longform-artifact-panel');
+      expect(longformPanel).toBeInTheDocument();
+      
+      expect(screen.getByTestId('longform-title')).toHaveTextContent('Test Title');
+      expect(screen.getByTestId('longform-text')).toHaveTextContent('Test longform content');
+    });
+  });
+
+  describe('Interaction Handling', () => {
+    it('should handle form button clicks', () => {
+      const formArtifact = createFormArtifact();
+      const message = createMessage('ASSISTANT', 'Choose:', [formArtifact]);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const yesButton = screen.getByTestId('form-button-0');
+      fireEvent.click(yesButton);
+
+      expect(mockOnArtifactAction).toHaveBeenCalledWith(
+        'test-message-1',
+        { optionLabel: 'Yes', optionResponse: 'yes', actionType: 'button' },
+        'https://webhook.url'
+      );
+    });
+
+    it('should disable form when reply message exists', () => {
+      const formArtifact = createFormArtifact();
+      const message = createMessage('ASSISTANT', 'Choose:', [formArtifact]);
+      const replyMessage = createMessage('USER', 'yes');
+
+      render(
+        <ChatMessage
+          message={message}
+          replyMessage={replyMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const formElement = screen.getByTestId('form-artifact');
+      expect(formElement).toHaveAttribute('data-disabled', 'true');
+      
+      const buttons = screen.getAllByTestId(/form-button-/);
+      buttons.forEach(button => {
+        expect(button).toBeDisabled();
+      });
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle messages without content', () => {
+      const message = createMessage('ASSISTANT', '');
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Should render the container but not the message bubble
+      expect(screen.queryByTestId('markdown')).not.toBeInTheDocument();
+    });
+
+    it('should handle multiple artifacts', () => {
+      const formArtifact = createFormArtifact();
+      const longformArtifact = createLongformArtifact();
+      const message = createMessage('ASSISTANT', 'Multiple artifacts', [formArtifact, longformArtifact]);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('form-artifact')).toBeInTheDocument();
+      expect(screen.getByTestId('longform-artifact-panel')).toBeInTheDocument();
+    });
   });
 });
-//import React from 'react';
-//import { describe, test, expect, vi, beforeEach } from "vitest";
-//import { render, screen } from "@testing-library/react";
-//import { ChatMessage } from "@/app/w/[slug]/task/[...taskParams]/components/ChatMessage";
-//import { ChatMessage as ChatMessageType, Option, FormContent, LongformContent, Artifact } from "@/lib/chat";
-//
-//// Mock external dependencies
-//vi.mock("@/components/MarkdownRenderer", () => ({
-//  MarkdownRenderer: ({ children, variant }: { children: string; variant?: string }) => (
-//    <div data-testid="markdown-renderer" data-variant={variant}>
-//      {children}
-//    </div>
-//  ),
-//}));
-//
-//vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/form", () => ({
-//  FormArtifact: ({ messageId, artifact, selectedOption, isDisabled, onAction }: any) => (
-//    <div 
-//      data-testid="form-artifact"
-//      data-message-id={messageId}
-//      data-artifact-id={artifact.id}
-//      data-selected={selectedOption?.optionLabel || "none"}
-//      data-disabled={isDisabled}
-//    >
-//      Form Artifact
-//    </div>
-//  ),
-//}));
-//
-//vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/longform", () => ({
-//  LongformArtifactPanel: ({ artifacts, workflowUrl }: any) => (
-//    <div 
-//      data-testid="longform-artifact"
-//      data-artifact-count={artifacts.length}
-//      data-workflow-url={workflowUrl || "none"}
-//    >
-//      Longform Artifact Panel
-//    </div>
-//  ),
-//}));
-//
-//vi.mock("@/app/w/[slug]/task/[...taskParams]/components/WorkflowUrlLink", () => ({
-//  WorkflowUrlLink: ({ workflowUrl, className }: { workflowUrl: string; className?: string }) => (
-//    <div 
-//      data-testid="workflow-url-link"
-//      data-workflow-url={workflowUrl}
-//      className={className}
-//    >
-//      Workflow Link
-//    </div>
-//  ),
-//}));
-//
-//vi.mock("framer-motion", () => ({
-//  motion: {
-//    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-//  },
-//}));
-//
-//describe("ChatMessage Component", () => {
-//  const mockOnArtifactAction = vi.fn();
-//
-//  beforeEach(() => {
-//    vi.clearAllMocks();
-//  });
-//
-//  // Helper function to create test messages
-//  const createMessage = (
-//    role: "USER" | "ASSISTANT",
-//    message?: string,
-//    artifacts?: Artifact[],
-//    workflowUrl?: string
-//  ): ChatMessageType => ({
-//    id: "test-message-1",
-//    role,
-//    message: message || "",
-//    artifacts: artifacts || [],
-//    workflowUrl,
-//    createdAt: new Date("2024-01-01"),
-//    updatedAt: new Date("2024-01-01"),
-//  });
-//
-//  const createFormArtifact = (options: Option[] = []): Artifact => ({
-//    id: "form-artifact-1",
-//    type: "FORM",
-//    content: {
-//      actionText: "Choose an option",
-//      webhook: "https://example.com/webhook",
-//      options,
-//    } as FormContent,
-//  });
-//
-//  const createLongformArtifact = (title?: string, text?: string): Artifact => ({
-//    id: "longform-artifact-1",
-//    type: "LONGFORM",
-//    content: {
-//      title: title || "Document Title",
-//      text: text || "Document content",
-//    } as LongformContent,
-//  });
-//
-//  describe("Message Rendering", () => {
-//    test("should render user message with correct styling", () => {
-//      const userMessage = createMessage("USER", "Hello, this is a user message");
-//
-//      render(
-//        <ChatMessage
-//          message={userMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const messageContainer = screen.getByText("Hello, this is a user message").closest("div");
-//      expect(messageContainer).toHaveClass("bg-primary", "text-primary-foreground", "rounded-br-md");
-//      
-//      const flexContainer = messageContainer?.closest(".flex");
-//      expect(flexContainer).toHaveClass("justify-end");
-//
-//      const markdownRenderer = screen.getByTestId("markdown-renderer");
-//      expect(markdownRenderer).toHaveAttribute("data-variant", "user");
-//    });
-//
-//    test("should render assistant message with correct styling", () => {
-//      const assistantMessage = createMessage("ASSISTANT", "Hello, this is an assistant message");
-//
-//      render(
-//        <ChatMessage
-//          message={assistantMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const messageContainer = screen.getByText("Hello, this is an assistant message").closest("div");
-//      expect(messageContainer).toHaveClass("bg-background", "text-foreground", "rounded-bl-md", "border");
-//      
-//      const flexContainer = messageContainer?.closest(".flex");
-//      expect(flexContainer).toHaveClass("justify-start");
-//
-//      const markdownRenderer = screen.getByTestId("markdown-renderer");
-//      expect(markdownRenderer).toHaveAttribute("data-variant", "assistant");
-//    });
-//
-//    test("should not render message bubble when message is empty", () => {
-//      const emptyMessage = createMessage("USER", "");
-//
-//      render(
-//        <ChatMessage
-//          message={emptyMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      expect(screen.queryByTestId("markdown-renderer")).not.toBeInTheDocument();
-//    });
-//
-//    test("should render workflow URL link when workflowUrl is provided", () => {
-//      const messageWithWorkflow = createMessage("USER", "Message with workflow", [], "https://workflow.example.com");
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithWorkflow}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const workflowLink = screen.getByTestId("workflow-url-link");
-//      expect(workflowLink).toBeInTheDocument();
-//      expect(workflowLink).toHaveAttribute("data-workflow-url", "https://workflow.example.com");
-//    });
-//
-//    test("should not render workflow URL link when workflowUrl is not provided", () => {
-//      const messageWithoutWorkflow = createMessage("USER", "Message without workflow");
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithoutWorkflow}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      expect(screen.queryByTestId("workflow-url-link")).not.toBeInTheDocument();
-//    });
-//  });
-//
-//  describe("Form Artifacts", () => {
-//    test("should render form artifacts correctly", () => {
-//      const formOptions: Option[] = [
-//        { optionLabel: "Option 1", optionResponse: "response1", actionType: "button" },
-//        { optionLabel: "Option 2", optionResponse: "response2", actionType: "button" },
-//      ];
-//      const formArtifact = createFormArtifact(formOptions);
-//      const messageWithForm = createMessage("ASSISTANT", "Choose an option", [formArtifact]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithForm}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const formArtifactElement = screen.getByTestId("form-artifact");
-//      expect(formArtifactElement).toBeInTheDocument();
-//      expect(formArtifactElement).toHaveAttribute("data-message-id", "test-message-1");
-//      expect(formArtifactElement).toHaveAttribute("data-artifact-id", "form-artifact-1");
-//      expect(formArtifactElement).toHaveAttribute("data-selected", "none");
-//      expect(formArtifactElement).toHaveAttribute("data-disabled", "false");
-//    });
-//
-//    test("should handle selected option in form artifact", () => {
-//      const selectedOption: Option = { optionLabel: "Selected Option", optionResponse: "selected", actionType: "button" };
-//      const formArtifact = createFormArtifact([selectedOption]);
-//      const messageWithForm = createMessage("ASSISTANT", "Choose an option", [formArtifact]);
-//      const replyMessage = createMessage("USER", "selected");
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithForm}
-//          replyMessage={replyMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const formArtifactElement = screen.getByTestId("form-artifact");
-//      expect(formArtifactElement).toHaveAttribute("data-selected", "Selected Option");
-//      expect(formArtifactElement).toHaveAttribute("data-disabled", "true");
-//    });
-//
-//    test("should position form artifact according to message role", () => {
-//      const formArtifact = createFormArtifact();
-//      
-//      // Test assistant message (left aligned)
-//      const assistantMessage = createMessage("ASSISTANT", "Assistant with form", [formArtifact]);
-//      const { rerender } = render(
-//        <ChatMessage
-//          message={assistantMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      let artifactContainer = screen.getByTestId("form-artifact").closest(".flex");
-//      expect(artifactContainer).toHaveClass("justify-start");
-//
-//      // Test user message (right aligned)
-//      const userMessage = createMessage("USER", "User with form", [formArtifact]);
-//      rerender(
-//        <ChatMessage
-//          message={userMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      artifactContainer = screen.getByTestId("form-artifact").closest(".flex");
-//      expect(artifactContainer).toHaveClass("justify-end");
-//    });
-//  });
-//
-//  describe("Longform Artifacts", () => {
-//    test("should render longform artifacts correctly", () => {
-//      const longformArtifact = createLongformArtifact("Test Document", "Document content here");
-//      const messageWithLongform = createMessage("ASSISTANT", "Here's a document", [longformArtifact], "https://workflow.example.com");
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithLongform}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const longformElement = screen.getByTestId("longform-artifact");
-//      expect(longformElement).toBeInTheDocument();
-//      expect(longformElement).toHaveAttribute("data-artifact-count", "1");
-//      expect(longformElement).toHaveAttribute("data-workflow-url", "https://workflow.example.com");
-//    });
-//
-//    test("should position longform artifact according to message role", () => {
-//      const longformArtifact = createLongformArtifact();
-//      
-//      // Test assistant message (left aligned)
-//      const assistantMessage = createMessage("ASSISTANT", "Assistant with document", [longformArtifact]);
-//      const { rerender } = render(
-//        <ChatMessage
-//          message={assistantMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      let artifactContainer = screen.getByTestId("longform-artifact").closest(".flex");
-//      expect(artifactContainer).toHaveClass("justify-start");
-//
-//      // Test user message (right aligned)
-//      const userMessage = createMessage("USER", "User with document", [longformArtifact]);
-//      rerender(
-//        <ChatMessage
-//          message={userMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      artifactContainer = screen.getByTestId("longform-artifact").closest(".flex");
-//      expect(artifactContainer).toHaveClass("justify-end");
-//    });
-//
-//    test("should handle longform artifacts without workflow URL", () => {
-//      const longformArtifact = createLongformArtifact();
-//      const messageWithLongform = createMessage("ASSISTANT", "Document without workflow", [longformArtifact]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithLongform}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const longformElement = screen.getByTestId("longform-artifact");
-//      expect(longformElement).toHaveAttribute("data-workflow-url", "none");
-//    });
-//  });
-//
-//  describe("Mixed Content", () => {
-//    test("should render both message and artifacts together", () => {
-//      const formArtifact = createFormArtifact();
-//      const longformArtifact = createLongformArtifact();
-//      const messageWithBoth = createMessage("ASSISTANT", "Message with both artifacts", [formArtifact, longformArtifact]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithBoth}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      expect(screen.getByTestId("markdown-renderer")).toBeInTheDocument();
-//      expect(screen.getByTestId("form-artifact")).toBeInTheDocument();
-//      expect(screen.getByTestId("longform-artifact")).toBeInTheDocument();
-//    });
-//
-//    test("should filter and render only form artifacts in form section", () => {
-//      const formArtifact = createFormArtifact();
-//      const longformArtifact = createLongformArtifact();
-//      // Create a mixed artifact that shouldn't appear in form section
-//      const otherArtifact = { ...formArtifact, id: "other-1", type: "OTHER" as any };
-//      
-//      const messageWithMixed = createMessage("ASSISTANT", "Mixed artifacts", [formArtifact, longformArtifact, otherArtifact]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithMixed}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      // Should render only one form artifact (the other types are filtered out)
-//      const formArtifacts = screen.getAllByTestId("form-artifact");
-//      expect(formArtifacts).toHaveLength(1);
-//    });
-//
-//    test("should filter and render only longform artifacts in longform section", () => {
-//      const formArtifact = createFormArtifact();
-//      const longformArtifact1 = createLongformArtifact("Doc 1", "Content 1");
-//      const longformArtifact2 = { ...longformArtifact1, id: "longform-2" };
-//      
-//      const messageWithMultiple = createMessage("ASSISTANT", "Multiple longform", [formArtifact, longformArtifact1, longformArtifact2]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithMultiple}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      // Should render longform artifacts (both passed to the panel)
-//      const longformElements = screen.getAllByTestId("longform-artifact");
-//      expect(longformElements).toHaveLength(2);
-//    });
-//  });
-//
-//  describe("Edge Cases", () => {
-//    test("should handle message with no content and no artifacts", () => {
-//      const emptyMessage = createMessage("USER", "", []);
-//
-//      render(
-//        <ChatMessage
-//          message={emptyMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      // Should render the container but no content
-//      expect(screen.queryByTestId("markdown-renderer")).not.toBeInTheDocument();
-//      expect(screen.queryByTestId("form-artifact")).not.toBeInTheDocument();
-//      expect(screen.queryByTestId("longform-artifact")).not.toBeInTheDocument();
-//    });
-//
-//    test("should handle reply message without matching form option", () => {
-//      const formOptions: Option[] = [
-//        { optionLabel: "Option 1", optionResponse: "response1", actionType: "button" },
-//      ];
-//      const formArtifact = createFormArtifact(formOptions);
-//      const messageWithForm = createMessage("ASSISTANT", "Choose", [formArtifact]);
-//      const unmatchedReply = createMessage("USER", "unmatched-response");
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithForm}
-//          replyMessage={unmatchedReply}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const formArtifactElement = screen.getByTestId("form-artifact");
-//      expect(formArtifactElement).toHaveAttribute("data-selected", "none");
-//      expect(formArtifactElement).toHaveAttribute("data-disabled", "true");
-//    });
-//
-//    test("should handle null/undefined artifacts gracefully", () => {
-//      const messageWithUndefinedArtifacts = {
-//        ...createMessage("ASSISTANT", "Test message"),
-//        artifacts: undefined,
-//      };
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithUndefinedArtifacts as any}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      expect(screen.getByTestId("markdown-renderer")).toBeInTheDocument();
-//      expect(screen.queryByTestId("form-artifact")).not.toBeInTheDocument();
-//      expect(screen.queryByTestId("longform-artifact")).not.toBeInTheDocument();
-//    });
-//
-//    test("should handle artifacts without content", () => {
-//      const artifactWithoutContent = {
-//        id: "empty-artifact",
-//        type: "FORM" as const,
-//        content: null,
-//      };
-//
-//      const messageWithEmptyArtifact = createMessage("ASSISTANT", "Empty artifact", [artifactWithoutContent as any]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithEmptyArtifact}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      // Should still render the form artifact (component handles null content)
-//      expect(screen.getByTestId("form-artifact")).toBeInTheDocument();
-//    });
-//  });
-//
-//  describe("Interaction Handling", () => {
-//    test("should pass correct props to FormArtifact", () => {
-//      const formArtifact = createFormArtifact();
-//      const messageWithForm = createMessage("ASSISTANT", "Test", [formArtifact]);
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithForm}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const formElement = screen.getByTestId("form-artifact");
-//      expect(formElement).toHaveAttribute("data-message-id", "test-message-1");
-//      expect(formElement).toHaveAttribute("data-artifact-id", "form-artifact-1");
-//      expect(formElement).toHaveAttribute("data-disabled", "false");
-//    });
-//
-//    test("should handle form artifact with reply message", () => {
-//      const selectedOption: Option = { optionLabel: "Yes", optionResponse: "yes", actionType: "button" };
-//      const formArtifact = createFormArtifact([selectedOption]);
-//      const messageWithForm = createMessage("ASSISTANT", "Confirm?", [formArtifact]);
-//      const replyMessage = createMessage("USER", "yes");
-//
-//      render(
-//        <ChatMessage
-//          message={messageWithForm}
-//          replyMessage={replyMessage}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      const formElement = screen.getByTestId("form-artifact");
-//      expect(formElement).toHaveAttribute("data-selected", "Yes");
-//      expect(formElement).toHaveAttribute("data-disabled", "true");
-//    });
-//  });
-//
-//  describe("Animation and Motion", () => {
-//    test("should render motion wrapper with correct props", () => {
-//      const message = createMessage("USER", "Test motion");
-//
-//      render(
-//        <ChatMessage
-//          message={message}
-//          onArtifactAction={mockOnArtifactAction}
-//        />
-//      );
-//
-//      // The motion.div should be rendered (mocked as regular div)
-//      const container = screen.getByText("Test motion").closest('[class*="space-y-3"]');
-//      expect(container).toBeInTheDocument();
-//    });
-//  });
-//});
