@@ -37,24 +37,52 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(
-        `/api/ask?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`,
-      );
+      // Choose API endpoint based on mode
+      const apiEndpoint =
+        mode === "chat"
+          ? `/api/ask/quick?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`
+          : `/api/ask?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`;
+
+      const response = await fetch(apiEndpoint);
+
+      // console.log("🌐 Response details:", {
+      //   status: response.status,
+      //   statusText: response.statusText,
+      //   headers: Object.fromEntries(response.headers.entries()),
+      //   body: response.body,
+      //   bodyUsed: response.bodyUsed,
+      //   url: response.url,
+      // });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      if (mode === "chat") {
+        // Handle JSON response for chat mode
+        const data = await response.json();
 
-      const assistantMessage: LearnMessage = {
-        id: (Date.now() + 1).toString(),
-        content: data.answer || data.message || "I apologize, but I couldn't generate a response at this time.",
-        role: "assistant",
-        timestamp: new Date(),
-      };
+        const assistantMessage: LearnMessage = {
+          id: (Date.now() + 1).toString(),
+          content: data.result || data.message || "I apologize, but I couldn't generate a response at this time.",
+          role: "assistant",
+          timestamp: new Date(),
+        };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        // Handle regular JSON response for learn mode
+        const data = await response.json();
+
+        const assistantMessage: LearnMessage = {
+          id: (Date.now() + 1).toString(),
+          content: data.answer || data.message || "I apologize, but I couldn't generate a response at this time.",
+          role: "assistant",
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
     } catch (error) {
       console.error("Error calling ask API:", error);
       const errorMessage: LearnMessage = {

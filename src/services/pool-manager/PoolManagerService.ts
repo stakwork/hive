@@ -1,8 +1,8 @@
 import { BaseServiceClass } from "@/lib/base-service";
 import { PoolUserResponse, ServiceConfig } from "@/types";
-import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, Pool } from "@/types";
+import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
-import { createUserApi, createPoolApi, deletePoolApi } from "@/services/pool-manager/api/pool";
+import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
 import { DevContainerFile } from "@/utils/devContainerUtils";
 import { EncryptionService } from "@/lib/encryption";
 
@@ -10,6 +10,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 interface IPoolManagerService {
   createUser: (user: CreateUserRequest) => Promise<PoolUserResponse>;
+  deleteUser: (user: DeleteUserRequest) => Promise<void>;
   createPool: (pool: CreatePoolRequest) => Promise<Pool>;
   deletePool: (pool: DeletePoolRequest) => Promise<Pool>;
   getPoolEnvVars: (poolName: string, poolApiKey: string) => Promise<Array<{ key: string; value: string }>>;
@@ -39,6 +40,10 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
 
   async createUser(user: CreateUserRequest): Promise<PoolUserResponse> {
     return createUserApi(this.getClient(), user, this.serviceName);
+  }
+
+  async deleteUser(user: DeleteUserRequest): Promise<void> {
+    return deleteUserApi(this.getClient(), user, this.serviceName);
   }
 
   async deletePool(pool: DeletePoolRequest): Promise<Pool> {

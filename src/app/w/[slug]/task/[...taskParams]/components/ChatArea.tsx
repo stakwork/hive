@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -50,7 +50,16 @@ export function ChatArea({
   const router = useRouter();
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = () => {
+      const ref = messagesEndRef.current;
+      if (ref && typeof ref.scrollIntoView === 'function') {
+        ref.scrollIntoView({ behavior: 'smooth' });
+      }
+    };
+  
+    // Use setTimeout for next tick; requestAnimationFrame is another option for smoother perf
+    const timer = setTimeout(scrollToBottom, 0);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   const handleBackToTasks = () => {
