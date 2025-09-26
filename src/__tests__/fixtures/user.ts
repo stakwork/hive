@@ -1,0 +1,37 @@
+import { db } from "@/lib/db";
+import type { User } from "@prisma/client";
+
+export interface CreateTestUserOptions {
+  name?: string;
+  email?: string;
+  role?: "USER" | "ADMIN";
+}
+
+export async function createTestUser(
+  options: CreateTestUserOptions = {},
+): Promise<User> {
+  const timestamp = Date.now();
+
+  return db.user.create({
+    data: {
+      name: options.name || `Test User ${timestamp}`,
+      email: options.email || `test-${timestamp}@example.com`,
+      role: options.role || "USER",
+    },
+  });
+}
+
+export async function createTestUsers(count: number): Promise<User[]> {
+  const users: User[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const user = await createTestUser({
+      name: `Test User ${i + 1}`,
+      email: `test-user-${i + 1}@example.com`,
+    });
+
+    users.push(user);
+  }
+
+  return users;
+}
