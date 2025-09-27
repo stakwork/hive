@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspaceId, swarmId } = body;
+    const { workspaceId, swarmId, useLsp } = body;
 
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     // Get the workspace for GitHub access
     const workspace = await db.workspace.findUnique({
       where: { id: repoWorkspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
@@ -86,12 +86,14 @@ export async function POST(request: NextRequest) {
     const username = creds?.username ?? "";
     const pat = creds?.token ?? "";
 
+    const use_lsp = useLsp === "true" || useLsp === true;
     const apiResult = await triggerIngestAsync(
       getSwarmVanityAddress(swarm.name),
       encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
       final_repo_url,
       { username, pat },
       getStakgraphWebhookCallbackUrl(request),
+      use_lsp,
     );
 
     try {
@@ -150,7 +152,7 @@ export async function GET(request: NextRequest) {
     // Get the workspace for GitHub access
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
@@ -169,7 +171,7 @@ export async function GET(request: NextRequest) {
     }
 
     const swarm = await db.swarm.findUnique({
-      where: { workspaceId }
+      where: { workspaceId },
     });
 
     if (!swarm) {
@@ -187,7 +189,6 @@ export async function GET(request: NextRequest) {
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
-
 
     return NextResponse.json(
       {
