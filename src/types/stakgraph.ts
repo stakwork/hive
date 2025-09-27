@@ -48,15 +48,15 @@ export interface CoverageNodeConcise {
   file: string;
   weight: number;
   test_count: number;
-  covered: boolean;
 }
 
 export interface CoverageNodesResponse {
   success: boolean;
   data?: {
     node_type: UncoveredNodeType;
-    limit: number;
-    offset: number;
+    page: number;
+    pageSize: number;
+    hasNextPage: boolean;
     items: CoverageNodeConcise[];
   };
   message?: string;

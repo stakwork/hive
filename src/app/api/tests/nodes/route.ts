@@ -13,11 +13,11 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 type ParsedParams = {
   nodeType: UncoveredNodeType;
-  limit: string;
-  offset: string;
+  page: number;
+  pageSize: number;
   sort: string;
   root: string;
-  concise: string;
+  status?: string;
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
@@ -31,22 +31,36 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
     } as const;
   }
   const nodeType = nodeTypeParam as UncoveredNodeType;
-  const limit = searchParams.get("limit") || "10";
-  const offset = searchParams.get("offset") || "0";
+  const page = Math.max(1, Number(searchParams.get("page") || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") || 10)));
   const sort = (searchParams.get("sort") || "usage").toLowerCase();
   const root = searchParams.get("root") || "";
-  const concise = (searchParams.get("concise") ?? "true").toString();
-  return { nodeType, limit, offset, sort, root, concise };
+  const status = (searchParams.get("status") || "all").toLowerCase();
+  if (status && status !== "all" && status !== "tested" && status !== "untested") {
+    return {
+      error: NextResponse.json(
+        { success: false, message: "Invalid status. Use 'all', 'tested', or 'untested'." },
+        { status: 400 },
+      ),
+    } as const;
+  }
+  return { nodeType, page, pageSize, sort, root, status };
 }
 
 function buildQueryString(params: ParsedParams): string {
   const q = new URLSearchParams();
   q.set("node_type", params.nodeType);
-  if (params.limit) q.set("limit", String(params.limit));
-  if (params.offset) q.set("offset", String(params.offset));
+  const offset = (params.page - 1) * params.pageSize;
+  q.set("limit", String(params.pageSize));
+  q.set("offset", String(offset));
   if (params.sort) q.set("sort", String(params.sort));
   if (params.root) q.set("root", String(params.root));
-  if (params.concise) q.set("concise", String(params.concise));
+  q.set("concise", "true");
+  if (params.status) {
+    const s = String(params.status).toLowerCase();
+    if (s === "tested") q.set("covered_only", "true");
+    if (s === "untested") q.set("covered_only", "false");
+  }
   return q.toString();
 }
 
@@ -67,35 +81,36 @@ function isNodesResponse(payload: unknown): payload is NodesResponse {
 function normalizeResponse(
   payload: unknown,
   nodeType: UncoveredNodeType,
-  limit: string,
-  offset: string,
+  page: number,
+  pageSize: number,
 ): CoverageNodesResponse {
   let items: CoverageNodeConcise[] = [];
+  const mapToConcise = (n: unknown): CoverageNodeConcise => {
+    const o = n as Record<string, unknown> | null;
+    const props = (o?.properties as Record<string, unknown> | undefined) || undefined;
+    const name = (o?.name as string) || (props?.name as string) || "";
+    const file = (o?.file as string) || (props?.file as string) || "";
+    const weight = typeof o?.weight === "number" ? (o?.weight as number) : 0;
+    const testCount = typeof o?.test_count === "number" ? (o?.test_count as number) : 0;
+    return { name, file, weight, test_count: testCount };
+  };
+
   if (isItemsOrNodes(payload)) {
-    items = payload.items || payload.nodes || [];
+    const rawList = (payload.items || payload.nodes || []) as unknown[];
+    items = rawList.map(mapToConcise);
   } else if (isNodesResponse(payload)) {
     const list = nodeType === "endpoint" ? payload.endpoints : payload.functions;
-    items = (list as CoverageNodeConcise[]) || [];
+    const raw = (list as unknown[]) || [];
+    items = raw.map(mapToConcise);
   }
-
-  // Ensure default fields exist to avoid undefined in UI
-  items = items.map((n) => {
-    const src = n as Partial<CoverageNodeConcise>;
-    return {
-      name: n.name,
-      file: n.file,
-      weight: typeof n.weight === "number" ? n.weight : 0,
-      test_count: typeof src.test_count === "number" ? src.test_count : 0,
-      covered: Boolean(n.covered),
-    } as CoverageNodeConcise;
-  });
 
   return {
     success: true,
     data: {
       node_type: nodeType,
-      limit: Number(limit) || 10,
-      offset: Number(offset) || 0,
+      page,
+      pageSize,
+      hasNextPage: items.length >= pageSize,
       items,
     },
   };
@@ -114,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
-    const { nodeType, limit, offset } = parsed;
+    const { nodeType, page, pageSize } = parsed;
     const endpointPath = `/tests/nodes?${buildQueryString(parsed)}`;
 
     const isLocalHost =
@@ -140,7 +155,7 @@ export async function GET(request: NextRequest) {
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as unknown, nodeType, limit, offset);
+      const response = normalizeResponse(data as unknown, nodeType, page, pageSize);
       if (process.env.NODE_ENV === "development") {
         try {
           console.log("[tests/nodes][DEV] normalized:", JSON.stringify(response).slice(0, 4000));
@@ -201,7 +216,7 @@ export async function GET(request: NextRequest) {
       } catch {}
     }
 
-    const response = normalizeResponse(apiResult.data as unknown, nodeType, limit, offset);
+    const response = normalizeResponse(apiResult.data as unknown, nodeType, page, pageSize);
     if (process.env.NODE_ENV === "development") {
       try {
         console.log("[tests/nodes] normalized:", JSON.stringify(response).slice(0, 4000));
