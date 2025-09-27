@@ -34,11 +34,55 @@ export default function DashboardPage() {
 
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
-
-    console.log(codeIsSynced, ingestRefId, workspaceId)
+    console.log(codeIsSynced, ingestRefId, workspaceId);
     if (codeIsSynced || !ingestRefId || !workspaceId) return;
 
     let isCancelled = false;
+    let retryAttempts = 0;
+    const maxRetryAttempts = 5;
+
+    const clearIngestRefId = async () => {
+      try {
+        await fetch('/api/swarm/stakgraph/ingest', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workspaceId,
+            action: 'clearIngestRefId',
+          }),
+        });
+        
+        updateWorkspace({
+          ingestRefId: null,
+        });
+        
+        toast({
+          title: "Ingestion Reference Cleared",
+          description: "The invalid ingestion reference has been cleared. You may need to restart the ingestion process.",
+          variant: "destructive",
+        });
+      } catch (error) {
+        console.error("Failed to clear ingestRefId:", error);
+      }
+    };
+
+    const handle404Error = async (source: string) => {
+      retryAttempts++;
+      console.log(`${source} 404 for ingestRefId (attempt ${retryAttempts}/${maxRetryAttempts})`);
+      
+      if (retryAttempts >= maxRetryAttempts) {
+        console.log(`Max retry attempts (${maxRetryAttempts}) reached for invalid ingestRefId. Clearing reference.`);
+        await clearIngestRefId();
+        return true;
+      }
+      
+      if (!isCancelled) {
+        pollTimeoutRef.current = setTimeout(getIngestStatus, 10000);
+      }
+      return true;
+    };
 
     const getIngestStatus = async () => {
       if (isCancelled) return;
@@ -47,13 +91,25 @@ export default function DashboardPage() {
         const res = await fetch(
           `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
         );
+        
+        if (res.status === 404) {
+          await handle404Error("Received");
+          return;
+        }
+
         const { apiResult } = await res.json();
         const { data } = apiResult;
 
         console.log("Ingest status:", data);
 
-        if (data?.status === "Complete") {
+        if (apiResult?.status === 404) {
+          await handle404Error("Stakgraph API returned");
+          return;
+        }
 
+        retryAttempts = 0;
+
+        if (data?.status === "Complete") {
           updateWorkspace({
             repositories: workspace?.repositories.map((repo) => ({
               ...repo,
@@ -69,12 +125,25 @@ export default function DashboardPage() {
             description: "There was an error ingesting your codebase. Please try again.",
             variant: "destructive",
           });
+          return; 
         } else {
           // Continue polling if still in progress
           pollTimeoutRef.current = setTimeout(getIngestStatus, 5000);
         }
       } catch (error) {
         console.error("Failed to get ingest status:", error);
+        retryAttempts++;
+
+        if (retryAttempts >= maxRetryAttempts) {
+          console.log(`Max retry attempts (${maxRetryAttempts}) reached due to repeated errors.`);
+          toast({
+            title: "Ingestion Status Check Failed",
+            description: "Unable to check ingestion status after multiple attempts. Please try refreshing the page.",
+            variant: "destructive",
+          });
+          return; 
+        }
+
         // Retry after a longer delay on error
         if (!isCancelled) {
           pollTimeoutRef.current = setTimeout(getIngestStatus, 10000);
