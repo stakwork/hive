@@ -1,113 +1,113 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType } from "@/types/stakgraph";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CoverageNodeConcise, CoverageNodesResponse } from "@/types/stakgraph";
+import { useCoverageStore } from "@/stores/useCoverageStore";
 
 export type StatusFilter = "all" | "tested" | "untested";
 
 export interface UseCoverageParams {
-  nodeType?: UncoveredNodeType;
-  limit?: number;
-  offset?: number;
-  sort?: string;
   root?: string;
   concise?: boolean;
-  status?: StatusFilter;
 }
-
 
 export function useCoverageNodes(initial: UseCoverageParams = {}) {
   const { id: workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const { nodeType, status, sort, pageSize, page, root, concise, setPage, setNodeType, setStatus } = useCoverageStore();
+  if (initial.root !== undefined && initial.root !== root) {
+    useCoverageStore.setState({ root: initial.root });
+  }
+  if (initial.concise !== undefined && initial.concise !== concise) {
+    useCoverageStore.setState({ concise: initial.concise });
+  }
 
-  const [nodeType, setNodeType] = useState<UncoveredNodeType>(initial.nodeType || "endpoint");
-  const [limit, setLimit] = useState<number>(initial.limit ?? 10);
-  const [offset, setOffset] = useState<number>(initial.offset ?? 0);
-  const [sort, setSort] = useState<string>(initial.sort || "usage");
-  const [root, setRoot] = useState<string>(initial.root || "");
-  const [concise, setConcise] = useState<boolean>(initial.concise ?? true);
-  const [status, setStatus] = useState<StatusFilter>(initial.status || "all");
-
-  const [items, setItems] = useState<CoverageNodeConcise[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const params = useMemo(
-    () => ({ nodeType, limit, offset, sort, root, concise, status }),
-    [nodeType, limit, offset, sort, root, concise, status],
+  const queryKey = useMemo(
+    () => ["coverage-nodes", workspaceId, nodeType, status, sort, page, pageSize, root, concise],
+    [workspaceId, nodeType, status, sort, page, pageSize, root, concise],
   );
 
-  const fetchData = useCallback(async () => {
-    if (!workspaceId) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
+  const query = useQuery<{ items: CoverageNodeConcise[]; hasNextPage?: boolean } | null>({
+    queryKey,
+    enabled: Boolean(workspaceId),
+    placeholderData: (prev) => prev,
+    queryFn: async () => {
+      if (!workspaceId) return null;
       const qp = new URLSearchParams();
       qp.set("workspaceId", workspaceId);
       qp.set("node_type", nodeType);
-      qp.set("limit", String(limit));
-      qp.set("offset", String(offset));
+      qp.set("page", String(page));
+      qp.set("pageSize", String(pageSize));
       qp.set("sort", sort);
       if (root) qp.set("root", root);
-      qp.set("concise", String(concise));
+      qp.set("status", status);
 
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
+      if (process.env.NODE_ENV === "development") {
+        try {
+          console.log("[useCoverageNodes] upstream query:", Object.fromEntries(qp.entries()));
+          console.log("[useCoverageNodes] upstream data:", JSON.stringify(json).slice(0, 4000));
+        } catch {}
+      }
       if (!res.ok || !json.success) {
         throw new Error(json.message || "Failed to fetch coverage nodes");
       }
-      let list = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
-
-      if (status === "tested") list = list.filter((n) => n.covered || (n.test_count || 0) > 0);
-      if (status === "untested") list = list.filter((n) => !n.covered && (n.test_count || 0) === 0);
-
-      list.sort((a, b) => {
-        const aCovered = a.covered || (a.test_count || 0) > 0;
-        const bCovered = b.covered || (b.test_count || 0) > 0;
-        if (aCovered !== bCovered) return aCovered ? -1 : 1;
-        const tcDiff = (b.test_count || 0) - (a.test_count || 0);
-        if (tcDiff !== 0) return tcDiff;
-        return (b.weight || 0) - (a.weight || 0);
-      });
-
-      setItems(list);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch coverage nodes");
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, nodeType, limit, offset, sort, root, concise, status]);
-
-  useEffect(() => {
-    if (!workspaceId) return;
-    fetchData();
-  }, [fetchData, workspaceId]);
-
-  const setPage = useCallback(
-    (page: number) => {
-      const newOffset = Math.max(0, (page - 1) * limit);
-      setOffset(newOffset);
+      const rawItems = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
+      const items = rawItems.slice(0, pageSize);
+      const hasNext = (json.data?.hasNextPage ?? rawItems.length >= pageSize) as boolean;
+      return { items, hasNextPage: hasNext };
     },
-    [limit],
-  );
+  });
 
-  const page = useMemo(() => Math.floor(offset / limit) + 1, [offset, limit]);
+  const hasNextPage = Boolean(query.data?.hasNextPage);
+  const hasPrevPage = page > 1;
+
+  const prefetch = async (targetPage: number) => {
+    if (!workspaceId) return;
+    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, status, sort, targetPage, pageSize, root, concise];
+    await queryClient.prefetchQuery({
+      queryKey: prefetchKey,
+      queryFn: async () => {
+        const qp = new URLSearchParams();
+        qp.set("workspaceId", workspaceId);
+        qp.set("node_type", nodeType);
+        qp.set("page", String(targetPage));
+        qp.set("pageSize", String(pageSize));
+        qp.set("sort", sort);
+        if (root) qp.set("root", root);
+        qp.set("status", status);
+        const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
+        const json: CoverageNodesResponse = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.message || "Failed to fetch coverage nodes");
+        }
+        const rawItems = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
+        const items = rawItems.slice(0, pageSize);
+        const hasNext = (json.data?.hasNextPage ?? rawItems.length >= pageSize) as boolean;
+        return { items, hasNextPage: hasNext };
+      },
+    });
+  };
 
   return {
-    items,
-    loading,
-    error,
-    params,
+    items: query.data?.items || [],
+    loading: query.isLoading,
+    filterLoading: query.isFetching && !query.isLoading,
+    error: query.error ? (query.error as Error).message : null,
+    params: { nodeType, limit: pageSize, offset: (page - 1) * pageSize, sort, root, concise, status },
     page,
-    setPage,
+    hasNextPage,
+    hasPrevPage,
+    setPage: (p: number) => setPage(Math.max(1, p)),
+    prefetchNext: () => prefetch(page + 1),
+    prefetchPrev: () => prefetch(Math.max(1, page - 1)),
     setNodeType,
-    setLimit,
-    setOffset,
-    setSort,
-    setRoot,
-    setConcise,
+    setLimit: (n: number) => useCoverageStore.setState({ pageSize: n }),
+    setSort: (s: string) => useCoverageStore.setState({ sort: s }),
+    setRoot: (v: string) => useCoverageStore.setState({ root: v }),
+    setConcise: (v: boolean) => useCoverageStore.setState({ concise: v }),
     setStatus,
-    refetch: fetchData,
+    refetch: () => query.refetch(),
   };
 }
