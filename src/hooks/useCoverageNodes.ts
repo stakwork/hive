@@ -11,20 +11,14 @@ export interface UseCoverageParams {
   concise?: boolean;
 }
 
-export function useCoverageNodes(initial: UseCoverageParams = {}) {
+export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, status, sort, pageSize, page, root, concise, setPage, setNodeType, setStatus } = useCoverageStore();
-  if (initial.root !== undefined && initial.root !== root) {
-    useCoverageStore.setState({ root: initial.root });
-  }
-  if (initial.concise !== undefined && initial.concise !== concise) {
-    useCoverageStore.setState({ concise: initial.concise });
-  }
+  const { nodeType, sort, limit, offset, setOffset, setNodeType, setSort } = useCoverageStore();
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, status, sort, page, pageSize, root, concise],
-    [workspaceId, nodeType, status, sort, page, pageSize, root, concise],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, limit, offset],
+    [workspaceId, nodeType, sort, limit, offset],
   );
 
   const query = useQuery<{ items: CoverageNodeConcise[]; hasNextPage?: boolean } | null>({
@@ -36,55 +30,45 @@ export function useCoverageNodes(initial: UseCoverageParams = {}) {
       const qp = new URLSearchParams();
       qp.set("workspaceId", workspaceId);
       qp.set("node_type", nodeType);
-      qp.set("page", String(page));
-      qp.set("pageSize", String(pageSize));
+      qp.set("limit", String(limit));
+      qp.set("offset", String(offset));
       qp.set("sort", sort);
-      if (root) qp.set("root", root);
-      qp.set("status", status);
 
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
-      if (process.env.NODE_ENV === "development") {
-        try {
-          console.log("[useCoverageNodes] upstream query:", Object.fromEntries(qp.entries()));
-          console.log("[useCoverageNodes] upstream data:", JSON.stringify(json).slice(0, 4000));
-        } catch {}
-      }
       if (!res.ok || !json.success) {
         throw new Error(json.message || "Failed to fetch coverage nodes");
       }
       const rawItems = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
-      const items = rawItems.slice(0, pageSize);
-      const hasNext = (json.data?.hasNextPage ?? rawItems.length >= pageSize) as boolean;
+      const items = rawItems.slice(0, limit);
+      const hasNext = (json.data?.hasNextPage ?? rawItems.length >= limit) as boolean;
       return { items, hasNextPage: hasNext };
     },
   });
 
   const hasNextPage = Boolean(query.data?.hasNextPage);
-  const hasPrevPage = page > 1;
+  const hasPrevPage = offset > 0;
 
   const prefetch = async (targetPage: number) => {
     if (!workspaceId) return;
-    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, status, sort, targetPage, pageSize, root, concise];
+    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, sort, limit, targetPage];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
       queryFn: async () => {
         const qp = new URLSearchParams();
         qp.set("workspaceId", workspaceId);
         qp.set("node_type", nodeType);
-        qp.set("page", String(targetPage));
-        qp.set("pageSize", String(pageSize));
+        qp.set("limit", String(limit));
+        qp.set("offset", String(targetPage));
         qp.set("sort", sort);
-        if (root) qp.set("root", root);
-        qp.set("status", status);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {
           throw new Error(json.message || "Failed to fetch coverage nodes");
         }
         const rawItems = ((json.data?.items as CoverageNodeConcise[]) || []).slice();
-        const items = rawItems.slice(0, pageSize);
-        const hasNext = (json.data?.hasNextPage ?? rawItems.length >= pageSize) as boolean;
+        const items = rawItems.slice(0, limit);
+        const hasNext = (json.data?.hasNextPage ?? rawItems.length >= limit) as boolean;
         return { items, hasNextPage: hasNext };
       },
     });
@@ -95,19 +79,19 @@ export function useCoverageNodes(initial: UseCoverageParams = {}) {
     loading: query.isLoading,
     filterLoading: query.isFetching && !query.isLoading,
     error: query.error ? (query.error as Error).message : null,
-    params: { nodeType, limit: pageSize, offset: (page - 1) * pageSize, sort, root, concise, status },
-    page,
+    params: { nodeType, limit, offset, sort },
+    page: Math.floor(offset / limit) + 1,
     hasNextPage,
     hasPrevPage,
-    setPage: (p: number) => setPage(Math.max(1, p)),
-    prefetchNext: () => prefetch(page + 1),
-    prefetchPrev: () => prefetch(Math.max(1, page - 1)),
+    setPage: (p: number) => setOffset(Math.max(0, (p - 1) * limit)),
+    prefetchNext: () => prefetch(offset + limit),
+    prefetchPrev: () => prefetch(Math.max(0, offset - limit)),
     setNodeType,
-    setLimit: (n: number) => useCoverageStore.setState({ pageSize: n }),
-    setSort: (s: string) => useCoverageStore.setState({ sort: s }),
-    setRoot: (v: string) => useCoverageStore.setState({ root: v }),
-    setConcise: (v: boolean) => useCoverageStore.setState({ concise: v }),
-    setStatus,
+    setLimit: (n: number) => useCoverageStore.setState({ limit: n, offset: 0 }),
+    setSort,
+    setRoot: () => {},
+    setConcise: () => {},
+    setStatus: () => {},
     refetch: () => query.refetch(),
   };
 }

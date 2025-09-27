@@ -2,42 +2,28 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import type { UncoveredNodeType } from "@/types/stakgraph";
 
-type StatusFilter = "all" | "tested" | "untested";
-
 type CoverageStore = {
   nodeType: UncoveredNodeType;
-  status: StatusFilter;
-  sort: string;
-  pageSize: number;
-  page: number;
-  root: string;
-  concise: boolean;
+  sort: string; // "test_count" | "name"
+  limit: number;
+  offset: number;
   setNodeType: (t: UncoveredNodeType) => void;
-  setStatus: (s: StatusFilter) => void;
   setSort: (s: string) => void;
-  setPageSize: (n: number) => void;
-  setPage: (n: number) => void;
-  setRoot: (v: string) => void;
-  setConcise: (v: boolean) => void;
-  resetPage: () => void;
+  setLimit: (n: number) => void;
+  setOffset: (n: number) => void;
+  resetPagination: () => void;
 };
 
 export const useCoverageStore = create<CoverageStore>()(
   devtools((set) => ({
     nodeType: "endpoint",
-    status: "all",
-    sort: "usage",
-    pageSize: 10,
-    page: 1,
-    root: "",
-    concise: true,
-    setNodeType: (t) => set({ nodeType: t, page: 1 }),
-    setStatus: (s) => set({ status: s, page: 1 }),
+    sort: "test_count",
+    limit: 10,
+    offset: 0,
+    setNodeType: (t) => set({ nodeType: t, offset: 0 }),
     setSort: (s) => set({ sort: s }),
-    setPageSize: (n) => set({ pageSize: n, page: 1 }),
-    setPage: (n) => set({ page: Math.max(1, n) }),
-    setRoot: (v) => set({ root: v }),
-    setConcise: (v) => set({ concise: v }),
-    resetPage: () => set({ page: 1 }),
+    setLimit: (n) => set({ limit: Math.max(1, Math.min(100, n)), offset: 0 }),
+    setOffset: (n) => set({ offset: Math.max(0, n) }),
+    resetPagination: () => set({ offset: 0 }),
   })),
 );

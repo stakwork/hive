@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Loader2, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import type { CoverageNodeConcise, UncoveredNodeType } from "@/types/stakgraph";
-import type { StatusFilter } from "@/hooks/useCoverageNodes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,12 +29,10 @@ export function CoverageInsights() {
     setPage,
     params,
     setNodeType,
-    setStatus,
+    setSort,
     prefetchNext,
     prefetchPrev,
-  } = useCoverageNodes({
-    concise: true,
-  });
+  } = useCoverageNodes();
 
   const hasItems = items && items.length > 0;
 
@@ -53,7 +50,7 @@ export function CoverageInsights() {
   );
 
   const setNodeTypeFilter = (value: UncoveredNodeType) => setNodeType(value);
-  const setStatusFilter = (value: StatusFilter) => setStatus(value);
+  const setSortFilter = (value: string) => setSort(value);
 
   return (
     <Card>
@@ -81,15 +78,12 @@ export function CoverageInsights() {
                 {params.nodeType === "function" && <span className="text-green-500">•</span>} Function
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Status</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setStatusFilter("tested")}>
-                {params.status === "tested" && <span className="text-green-500">•</span>} Tested
+              <DropdownMenuLabel>Sort</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setSortFilter("test_count")}>
+                {params.sort === "test_count" && <span className="text-green-500">•</span>} By test count
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("untested")}>
-                {params.status === "untested" && <span className="text-green-500">•</span>} Untested
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("all")}>
-                {params.status === "all" && <span className="text-green-500">•</span>} All
+              <DropdownMenuItem onClick={() => setSortFilter("name")}>
+                {params.sort === "name" && <span className="text-green-500">•</span>} By name
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -138,8 +132,8 @@ export function CoverageInsights() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r) => (
-                    <TableRow key={r.key}>
+                  {rows.map((r, i) => (
+                    <TableRow key={`${r.name}-${r.file}-${params.offset}-${i}`}>
                       <TableCell className="truncate max-w-[320px]">{r.name}</TableCell>
                       <TableCell className="truncate max-w-[360px] text-muted-foreground">{r.file}</TableCell>
                       <TableCell className="text-right">{r.coverage}</TableCell>

@@ -13,11 +13,9 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 type ParsedParams = {
   nodeType: UncoveredNodeType;
-  page: number;
-  pageSize: number;
+  limit: number;
+  offset: number;
   sort: string;
-  root: string;
-  status?: string;
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
@@ -31,36 +29,19 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
     } as const;
   }
   const nodeType = nodeTypeParam as UncoveredNodeType;
-  const page = Math.max(1, Number(searchParams.get("page") || 1));
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") || 10)));
-  const sort = (searchParams.get("sort") || "usage").toLowerCase();
-  const root = searchParams.get("root") || "";
-  const status = (searchParams.get("status") || "all").toLowerCase();
-  if (status && status !== "all" && status !== "tested" && status !== "untested") {
-    return {
-      error: NextResponse.json(
-        { success: false, message: "Invalid status. Use 'all', 'tested', or 'untested'." },
-        { status: 400 },
-      ),
-    } as const;
-  }
-  return { nodeType, page, pageSize, sort, root, status };
+  const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") || 20)));
+  const offset = Math.max(0, Number(searchParams.get("offset") || 0));
+  const sort = (searchParams.get("sort") || "test_count").toLowerCase();
+  return { nodeType, limit, offset, sort };
 }
 
 function buildQueryString(params: ParsedParams): string {
   const q = new URLSearchParams();
   q.set("node_type", params.nodeType);
-  const offset = (params.page - 1) * params.pageSize;
-  q.set("limit", String(params.pageSize));
-  q.set("offset", String(offset));
+  q.set("limit", String(params.limit));
+  q.set("offset", String(params.offset));
   if (params.sort) q.set("sort", String(params.sort));
-  if (params.root) q.set("root", String(params.root));
   q.set("concise", "true");
-  if (params.status) {
-    const s = String(params.status).toLowerCase();
-    if (s === "tested") q.set("covered_only", "true");
-    if (s === "untested") q.set("covered_only", "false");
-  }
   return q.toString();
 }
 
@@ -81,8 +62,8 @@ function isNodesResponse(payload: unknown): payload is NodesResponse {
 function normalizeResponse(
   payload: unknown,
   nodeType: UncoveredNodeType,
-  page: number,
-  pageSize: number,
+  limit: number,
+  offset: number,
 ): CoverageNodesResponse {
   let items: CoverageNodeConcise[] = [];
   const mapToConcise = (n: unknown): CoverageNodeConcise => {
@@ -108,9 +89,9 @@ function normalizeResponse(
     success: true,
     data: {
       node_type: nodeType,
-      page,
-      pageSize,
-      hasNextPage: items.length >= pageSize,
+      page: Math.floor(offset / limit) + 1,
+      pageSize: limit,
+      hasNextPage: items.length >= limit,
       items,
     },
   };
@@ -129,7 +110,7 @@ export async function GET(request: NextRequest) {
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
-    const { nodeType, page, pageSize } = parsed;
+    const { nodeType, limit, offset } = parsed;
     const endpointPath = `/tests/nodes?${buildQueryString(parsed)}`;
 
     const isLocalHost =
@@ -138,29 +119,13 @@ export async function GET(request: NextRequest) {
       const url = `http://0.0.0.0:7799${endpointPath}`;
       const resp = await fetch(url);
       const data = await resp.json().catch(() => ({}));
-      if (process.env.NODE_ENV === "development") {
-        try {
-          console.log("[tests/nodes][DEV] upstream url:", url);
-          console.log(
-            "[tests/nodes][DEV] upstream raw:",
-            typeof data === "object" ? JSON.stringify(data).slice(0, 4000) : String(data),
-          );
-        } catch {
-          // ignore logging errors
-        }
-      }
       if (!resp.ok) {
         return NextResponse.json(
           { success: false, message: "Failed to fetch coverage nodes (dev)", details: data },
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as unknown, nodeType, page, pageSize);
-      if (process.env.NODE_ENV === "development") {
-        try {
-          console.log("[tests/nodes][DEV] normalized:", JSON.stringify(response).slice(0, 4000));
-        } catch {}
-      }
+      const response = normalizeResponse(data as unknown, nodeType, limit, offset);
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -206,22 +171,8 @@ export async function GET(request: NextRequest) {
         { status: apiResult.status },
       );
     }
-    if (process.env.NODE_ENV === "development") {
-      try {
-        console.log("[tests/nodes] upstream path:", endpointPath);
-        console.log(
-          "[tests/nodes] upstream raw:",
-          typeof apiResult.data === "object" ? JSON.stringify(apiResult.data).slice(0, 4000) : String(apiResult.data),
-        );
-      } catch {}
-    }
 
-    const response = normalizeResponse(apiResult.data as unknown, nodeType, page, pageSize);
-    if (process.env.NODE_ENV === "development") {
-      try {
-        console.log("[tests/nodes] normalized:", JSON.stringify(response).slice(0, 4000));
-      } catch {}
-    }
+    const response = normalizeResponse(apiResult.data as unknown, nodeType, limit, offset);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);
