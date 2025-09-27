@@ -1,15 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ServiceFactory, ServiceName, stakworkService, poolManagerService, wizardService } from "@/lib/service-factory";
-import { StakworkService } from "@/services/stakwork";
-import { PoolManagerService } from "@/services/pool-manager";
-import { WizardService } from "@/services/wizard";
-import { getServiceConfig } from "@/config/services";
+
+vi.mock("@/lib/env", () => ({
+  requiredEnvVars: {
+    STAKWORK_API_KEY: "test-stakwork-key",
+    POOL_MANAGER_API_KEY: "test-pool-key", 
+    WIZARD_API_KEY: "test-wizard-key"
+  }
+}));
 
 // Mock the service dependencies
 vi.mock("@/services/stakwork");
 vi.mock("@/services/pool-manager");
 vi.mock("@/services/wizard");
 vi.mock("@/config/services");
+
+import { ServiceFactory, ServiceName, stakworkService, poolManagerService, wizardService } from "@/lib/service-factory";
+import { StakworkService } from "@/services/stakwork";
+import { PoolManagerService } from "@/services/pool-manager";
+import { WizardService } from "@/services/wizard";
+import { getServiceConfig } from "@/config/services";
 
 describe("ServiceFactory", () => {
   const mockConfig = {
