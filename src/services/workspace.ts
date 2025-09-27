@@ -692,7 +692,7 @@ export async function deleteWorkspaceBySlug(
   }
 
   // Deletes the ec2 instance
-  if (swarm.ec2Id) {
+  if (swarm?.ec2Id) {
     try {
       console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
 
