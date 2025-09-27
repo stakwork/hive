@@ -1,34 +1,24 @@
 "use client";
 
-import { ConnectRepository } from "@/components/ConnectRepository";
+import { RepositoryCard, TestCoverageCard } from "@/components/dashboard";
+import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
 import { EmptyState, TaskCard } from "@/components/tasks";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
 import { VMConfigSection } from "@/components/vm-config";
-import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
-import { formatRelativeTime } from "@/lib/utils";
-import { TestCoverageData } from "@/types";
-import { Clock, Database, ExternalLink, GitBranch, Github, RefreshCw, TestTube } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Gitsee } from "./graph/gitsee";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
-  const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const processedCallback = useRef(false);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [isIngesting, setIsIngesting] = useState(false);
-  const [testCoverage, setTestCoverage] = useState<TestCoverageData | null>(null);
-  const [coverageLoading, setCoverageLoading] = useState(false);
   const ingestRefId = workspace?.ingestRefId;
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -36,12 +26,16 @@ export default function DashboardPage() {
 
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
 
+  console.log('codeIsSynced--codeIsSynced--codeIsSynced', codeIsSynced)
+
   const isEnvironmentSetup = poolState === "COMPLETE";
 
   console.log(isEnvironmentSetup);
 
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
+
+    console.log(codeIsSynced, ingestRefId, workspaceId)
     if (codeIsSynced || !ingestRefId || !workspaceId) return;
 
     let isCancelled = false;
@@ -102,120 +96,213 @@ export default function DashboardPage() {
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
 
-  // Handle GitHub App installation
-  const handleGithubAppInstall = async () => {
-    if (!slug) return;
-
-    setIsInstalling(true);
+  // Helper function to extract repository info from URL
+  const extractRepoInfoFromUrl = (url: string) => {
     try {
-      const response = await fetch("/api/github/app/install", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ workspaceSlug: slug }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.data?.link) {
-        // Redirect to GitHub App installation
-        // Keep spinner running during navigation
-        window.location.href = data.data.link;
-        // Don't set isInstalling to false - let the page navigate
-      } else {
-        setIsInstalling(false);
-        toast({
-          title: "Installation Failed",
-          description: data.message || "Failed to generate GitHub App installation link",
-          variant: "destructive",
-        });
+      // Handle various GitHub URL formats
+      const githubMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+      if (githubMatch) {
+        return {
+          owner: githubMatch[1],
+          name: githubMatch[2]
+        };
       }
+      return null;
     } catch (error) {
-      console.error("Failed to install GitHub App:", error);
-      setIsInstalling(false);
-      toast({
-        title: "Installation Failed",
-        description: "An error occurred while trying to install the GitHub App",
-        variant: "destructive",
-      });
+      console.error("Error extracting repo info from URL:", error);
+      return null;
     }
   };
 
-  // Handle rerun ingest
-  const handleRerunIngest = async () => {
-    if (!workspace?.id) {
-      toast({
-        title: "Error",
-        description: "No swarm ID found for this workspace",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsIngesting(true);
+  // Function to fetch repository default branch
+  const getRepositoryDefaultBranch = async (repositoryUrl: string): Promise<string> => {
     try {
-      const response = await fetch("/api/swarm/stakgraph/ingest", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ workspaceId }),
-      });
+      // Extract owner/repo from URL
+      const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+      if (!githubMatch) {
+        console.warn("Invalid repository URL format, defaulting to 'main' branch");
+        return "main";
+      }
 
-      const data = await response.json();
+      const [, owner, repo] = githubMatch;
+
+      // Try to fetch repository info from GitHub API via our proxy
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
 
       if (response.ok) {
-        toast({
-          title: "Ingest Started",
-          description: "Code ingestion has been started. This may take a few minutes.",
-        });
-      } else {
-        toast({
-          title: "Ingest Failed",
-          description: data.message || "Failed to start code ingestion",
-          variant: "destructive",
-        });
+        const repoData = await response.json();
+        if (repoData.default_branch) {
+          return repoData.default_branch;
+        }
       }
+
+      console.warn("Could not fetch repository info, defaulting to 'main' branch");
+      return "main";
     } catch (error) {
-      console.error("Failed to start ingest:", error);
-      toast({
-        title: "Ingest Failed",
-        description: "An error occurred while trying to start code ingestion",
-        variant: "destructive",
-      });
-    } finally {
-      setIsIngesting(false);
+      console.error("Error fetching repository default branch:", error);
+      return "main";
     }
   };
 
-  // Fetch test coverage if workspace has a swarm
-  useEffect(() => {
-    const fetchCoverage = async () => {
-      if (!workspace?.swarmStatus || workspace.swarmStatus !== "ACTIVE") return;
+  // Complete swarm setup after GitHub App installation
+  const completeSwarmSetup = useCallback(async () => {
+    if (!workspaceId || !workspace) return;
 
-      setCoverageLoading(true);
+    try {
+      // Get repository URL from localStorage if available
+      const repositoryUrl = localStorage.getItem("repoUrl");
+
+      if (!repositoryUrl) {
+        console.error("No repository URL found for setup");
+        return;
+      }
+
+      // Extract repository info from URL
+      const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
+
+      if (!repoInfo) {
+        console.error("Could not extract repository info from URL:", repositoryUrl);
+        toast({
+          title: "Setup Error",
+          description: "Invalid repository URL format",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Fetch repository default branch
+      const defaultBranch = await getRepositoryDefaultBranch(repositoryUrl);
+      console.log(`Repository default branch: ${defaultBranch}`);
+
+      if (!defaultBranch || defaultBranch === "main") {
+        console.warn("Using fallback default branch 'main'");
+      }
+
+      // Check if workspace already has a swarm (via API call since swarm isn't in workspace type)
+      let swarm: { swarmId: string } | null = null;
+
+      // Try to get swarm info from API
       try {
-        const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data) {
-            setTestCoverage(result.data);
+        const swarmResponse = await fetch(`/api/workspaces/${workspaceId}/swarm`);
+        if (swarmResponse.ok) {
+          const swarmData = await swarmResponse.json();
+          if (swarmData.success && swarmData.data?.swarmId) {
+            swarm = { swarmId: swarmData.data.swarmId };
           }
         }
       } catch (error) {
-        console.error("Failed to fetch test coverage:", error);
-      } finally {
-        setCoverageLoading(false);
+        console.log("Could not fetch existing swarm info:", error);
       }
-    };
 
-    fetchCoverage();
-  }, [workspaceId, workspace?.swarmStatus]);
+      if (!swarm?.swarmId) {
+        console.log('Creating swarm with:', {
+          workspaceId: workspaceId,
+          name: workspace.slug,
+          repositoryName: repoInfo.name,
+          repositoryUrl: repositoryUrl,
+          repositoryDefaultBranch: defaultBranch,
+        });
+
+        const swarmRes = await fetch("/api/swarm", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            workspaceId: workspaceId,
+            name: workspace.slug,
+            repositoryName: repoInfo.name,
+            repositoryUrl: repositoryUrl,
+            repositoryDefaultBranch: defaultBranch,
+          }),
+        });
+
+        const swarmData = await swarmRes.json();
+        if (!swarmRes.ok || !swarmData.success) {
+          throw new Error(swarmData.message || "Failed to create swarm");
+        }
+
+        // Update workspace reference
+        await updateWorkspace(workspace);
+        swarm = { swarmId: swarmData.data.swarmId };
+
+        // Immediately update workspace with repository data after swarm creation
+        updateWorkspace({
+          repositories: [{
+            id: `repo-${Date.now()}`, // temporary ID
+            name: repoInfo.name,
+            repositoryUrl: repositoryUrl,
+            branch: defaultBranch,
+            status: "PENDING", // Initially pending, will become SYNCED after ingestion
+            updatedAt: new Date().toISOString(),
+          }],
+          swarmStatus: "ACTIVE",
+        });
+      }
+
+      if (!swarm?.swarmId) {
+        throw new Error("Failed to get swarm ID");
+      }
+
+      const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (!ingestRes.ok) {
+        throw new Error("Failed to start code ingestion");
+      }
+
+      // Create Stakwork customer
+      const customerRes = await fetch("/api/stakwork/create-customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (!customerRes.ok) {
+        throw new Error("Failed to create Stakwork customer");
+      }
+
+      // Call stakgraph services endpoint
+      const servicesRes = await fetch(
+        `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
+          workspaceId,
+        )}&swarmId=${encodeURIComponent(swarm.swarmId)}&repo_url=${encodeURIComponent(repositoryUrl)}`,
+      );
+
+      if (!servicesRes.ok) {
+        throw new Error("Failed to fetch services");
+      }
+
+      const servicesData = await servicesRes.json();
+      console.log('services', servicesData);
+
+      toast({
+        title: "Workspace Setup Complete",
+        description: "Your workspace is now being configured. Code ingestion has started.",
+        variant: "default",
+      });
+
+    } catch (error) {
+      console.error("Failed to complete swarm setup:", error);
+      toast({
+        title: "Setup Error",
+        description: error instanceof Error ? error.message : "Failed to complete workspace setup",
+        variant: "destructive",
+      });
+    }
+  }, [workspaceId, workspace, extractRepoInfoFromUrl, getRepositoryDefaultBranch, updateWorkspace, toast]);
 
   // Handle GitHub App callback
   useEffect(() => {
     const setupAction = searchParams.get("github_setup_action");
+    console.log('setupAction', setupAction)
 
     if (setupAction && !processedCallback.current) {
       processedCallback.current = true;
@@ -225,18 +312,34 @@ export default function DashboardPage() {
       let variant: "default" | "destructive" = "default";
 
       switch (setupAction) {
+        case "existing_installation":
+          title = "GitHub App Ready";
+          description = "Using existing GitHub App installation";
+          // Complete swarm setup since GitHub App is already configured
+          completeSwarmSetup();
+          break;
         case "install":
           title = "GitHub App Installed";
-          description = "Successfully installed GitHub App";
+          description = "Successfully installed GitHub App. Setting up workspace...";
+          // Complete swarm setup after GitHub App installation
+          completeSwarmSetup();
           break;
         case "update":
           title = "GitHub App Updated";
-          description = "Successfully updated GitHub App";
+          description = "Successfully updated GitHub App. Setting up workspace...";
+          // Complete swarm setup after GitHub App update
+          completeSwarmSetup();
           break;
         case "uninstall":
           title = "GitHub App Uninstalled";
           description = "GitHub App has been uninstalled";
           variant = "destructive";
+          break;
+        case "connected":
+          title = "GitHub App Connected";
+          description = "Successfully connected to GitHub. Setting up workspace...";
+          // Complete swarm setup after GitHub App connection
+          completeSwarmSetup();
           break;
         default:
           title = "GitHub App Connected";
@@ -249,144 +352,46 @@ export default function DashboardPage() {
         variant,
       });
 
-      // Clean up URL parameter without causing re-render
+      // Clean up URL parameters without causing re-render
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("github_setup_action");
+      newUrl.searchParams.delete("repository_access");
       const newPath = newUrl.pathname + newUrl.search;
 
       // Use replace to avoid adding to history and prevent loops
       window.history.replaceState({}, "", newPath);
     }
-  }, [searchParams, toast]);
+  }, [searchParams, toast, completeSwarmSetup]);
 
   console.log(workspace, slug);
+
+  // Determine if swarm is ready - repositories exist (swarm is created and setup is complete)
+  const isSwarmReady = workspace &&
+    workspace.repositories &&
+    workspace.repositories.length > 0;
+
+  // Show full-page loading if workspace exists but swarm is not ready yet
+  const shouldShowSwarmLoader = workspace && !isSwarmReady;
+
+  if (shouldShowSwarmLoader) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Dashboard" description="Welcome to your development workspace." />
+        <SwarmSetupLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Welcome to your development workspace." />
 
-      {/* Show onboarding if needed */}
-      {workspace && !workspace.isCodeGraphSetup && <ConnectRepository workspaceSlug={slug} />}
 
       {/* Info Cards Grid - All horizontal */}
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-        {/* VM Configuration */}
         <VMConfigSection />
-
-        {/* Repository Information Card */}
-        {workspace?.repositories && workspace.repositories.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <GitBranch className="w-4 h-4" />
-                  Graph Database
-                </CardTitle>
-                {!isGithubAppLoading &&
-                  (hasGithubAppTokens ? (
-                    <Badge variant="outline" className="text-xs flex items-center gap-1">
-                      <Github className="w-3 h-3" />
-                      GitHub
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleGithubAppInstall}
-                      disabled={isInstalling}
-                      className="text-xs h-6 px-2 bg-white text-black hover:bg-gray-100 hover:text-black dark:bg-white dark:text-black dark:hover:bg-gray-100 dark:hover:text-black border-gray-300 dark:border-gray-300"
-                    >
-                      <Github className="w-3 h-3 mr-1" />
-                      {isInstalling ? "Installing..." : "Link GitHub"}
-                      <ExternalLink className="w-3 h-3 ml-1" />
-                    </Button>
-                  ))}
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col h-full">
-              <div className="flex-1"></div>
-              <div className="space-y-3">
-                <div className="text-sm font-medium truncate">{workspace.repositories[0].name}</div>
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={
-                        workspace.repositories[0].status === "SYNCED"
-                          ? "default"
-                          : workspace.repositories[0].status === "PENDING"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                      className="text-xs"
-                    >
-                      {workspace.repositories[0].status}
-                    </Badge>
-                    <span className="text-muted-foreground">{workspace.repositories[0].branch}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <RefreshCw className="w-3 h-3" />
-                    {formatRelativeTime(workspace.repositories[0].updatedAt)}
-                  </div>
-                </div>
-                <div className="pt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRerunIngest}
-                    disabled={isIngesting}
-                    className="w-full text-xs flex items-center gap-2"
-                  >
-                    <Database className="w-3 h-3" />
-                    {isIngesting ? "Ingesting..." : "Rerun Ingest"}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Test Coverage Card */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TestTube className="w-4 h-4" />
-                Test Coverage
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {coverageLoading ? (
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">Loading...</span>
-              </div>
-            ) : testCoverage?.unit_tests !== null && testCoverage?.integration_tests !== null && testCoverage?.e2e_tests !== null ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Unit</span>
-                  <span className="text-sm font-medium">
-                    {testCoverage?.unit_tests.percent.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Integration</span>
-                  <span className="text-sm font-medium">
-                    {testCoverage?.integration_tests?.percent.toFixed(1) || 0}%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">E2E</span>
-                  <span className="text-sm font-medium">
-                    {testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <span className="text-sm text-muted-foreground">No coverage data</span>
-            )}
-          </CardContent>
-        </Card>
+        <RepositoryCard />
+        <TestCoverageCard />
       </div>
 
       {/* Recent Tasks Section */}
@@ -409,7 +414,9 @@ export default function DashboardPage() {
         ) : (
           <EmptyState workspaceSlug={slug} />
         ))}
-      <Gitsee />
+
+      {/* Only render Gitsee when swarm is ready */}
+      {isSwarmReady && <Gitsee />}
     </div>
   );
 }

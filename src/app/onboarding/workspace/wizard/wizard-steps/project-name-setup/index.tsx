@@ -1,5 +1,3 @@
-// Create a standalone Gitsee component for onboarding
-import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,42 +8,11 @@ import {
 } from "@/components/ui/card";
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
-import { useGitVisualizer } from "@/hooks/useGitVisualizer";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { Repository } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-
-interface OnboardingGitseeProps {
-  workspaceId: string | null;
-  repositoryUrl: string | null;
-  swarmUrl?: string | null;
-  onInitialized?: () => void;
-}
-
-const OnboardingGitsee = ({ workspaceId, repositoryUrl, swarmUrl, onInitialized }: OnboardingGitseeProps) => {
-  const { isInitialized } = useGitVisualizer({
-    workspaceId,
-    repositoryUrl,
-    swarmUrl: swarmUrl || null
-  });
-
-  useEffect(() => {
-    if (isInitialized && onInitialized) {
-      onInitialized();
-    }
-  }, [isInitialized, onInitialized]);
-
-  return (
-    <Card className="max-w-2xl">
-      <CardContent>
-        <svg width="500" height="500" id="vizzy" style={{ width: "100%", height: "100%" }}></svg>
-      </CardContent>
-    </Card>
-  );
-};
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -62,28 +29,35 @@ function nextIndexedName(base: string, pool: string[]) {
   return next === 0 ? base : `${base}-${next}`;
 }
 
+function extractRepoNameFromUrl(url: string): string | null {
+  try {
+    // Handle various GitHub URL formats
+    const githubMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    if (githubMatch) {
+      return githubMatch[2]; // Return the repository name
+    }
+    return null;
+  } catch (error) {
+    console.error("Error extracting repo name from URL:", error);
+    return null;
+  }
+}
+
 
 export function ProjectNameSetupStep() {
   const [error, setError] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
-
   const newNamesIsSettled = useRef(false);
 
   const router = useRouter();
 
   const [swarmIsLoading, setSwarmIsLoading] = useState<boolean>(false);
-  const [gitseeReady, setGitseeReady] = useState<boolean>(false);
 
   const [projectName, setProjectName] = useState<string>("");
-  const [workspaceId, setWorkspaceId] = useState<string>("");
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
   const [hasWorkspaceConflict, setHasWorkspaceConflict] = useState<boolean>(false);
   const { refreshWorkspaces, workspaces } = useWorkspace();
-  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
-  const swarmId = useRef<string>("");
-  const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
-  const [swarmUrl, setSwarmUrl] = useState<string>("");
+  const [repoName, setRepoName] = useState<string>("");
 
   const [repositoryUrlDraft, setRepositoryUrlDraft] = useState<string>("");
 
@@ -91,31 +65,24 @@ export function ProjectNameSetupStep() {
     const draft = localStorage.getItem("repoUrl");
     if (draft) {
       setRepositoryUrlDraft(draft);
+      // Extract repository name directly from URL
+      const extractedRepoName = extractRepoNameFromUrl(draft);
+      if (extractedRepoName) {
+        setRepoName(extractedRepoName);
+      }
     }
   }, []);
 
-  // Set gitseeReady after minimum time has passed
-  useEffect(() => {
-    if (swarmUrl && swarmIsLoading) {
-      // Minimum time to show all loading states (1.5s × 3 = 4.5s)
-      // After this, we'll show GitSee (which will initialize itself when ready)
-      const minimumTimer = setTimeout(() => {
-        setGitseeReady(true);
-      }, 4500);
-
-      return () => clearTimeout(minimumTimer);
-    }
-  }, [swarmUrl, swarmIsLoading]);
 
   useEffect(() => {
-    if (!selectedRepo || projectName) return;
+    if (!repoName || projectName) return;
 
-    const base = selectedRepo.name.toLowerCase();
+    const base = repoName.toLowerCase();
     const pool = workspaces.map(w => w.slug.toLowerCase());
     const nextName = nextIndexedName(base, pool)
 
     setProjectName(nextName);
-  }, [selectedRepo, workspaces, setProjectName, projectName]);
+  }, [repoName, workspaces, setProjectName, projectName]);
 
   // Check for workspace slug conflicts using API
   useEffect(() => {
@@ -153,8 +120,10 @@ export function ProjectNameSetupStep() {
   }, [projectName]);
 
   const handleCreateWorkspace = async () => {
+    setSwarmIsLoading(true);
 
     try {
+      // 1. Create workspace
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,45 +141,48 @@ export function ProjectNameSetupStep() {
       }
 
       if (data?.workspace?.slug && data?.workspace?.id) {
-        setWorkspaceSlug(data.workspace.slug);
-        setWorkspaceId(data.workspace.id);
-        await refreshWorkspaces()
+        await refreshWorkspaces();
+
+        // 2. Check GitHub App status for this workspace/repository
+        const statusResponse = await fetch(`/api/github/app/status?workspaceSlug=${data.workspace.slug}&repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
+        const statusData = await statusResponse.json();
+
+        if (statusData.hasTokens) {
+          // GitHub App is already installed and has tokens, redirect to dashboard
+          window.location.href = `/w/${data.workspace.slug}?github_setup_action=existing_installation`;
+          return;
+        } else {
+          // GitHub App not installed or no tokens, proceed with installation
+          const installResponse = await fetch("/api/github/app/install", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              workspaceSlug: data.workspace.slug,
+              repositoryUrl: repositoryUrlDraft
+            }),
+          });
+
+          const installData = await installResponse.json();
+
+          if (installData.success && installData.data?.link) {
+            // Navigate to GitHub App installation
+            window.location.href = installData.data.link;
+            return; // Don't reset loading state since we're redirecting
+          } else {
+            throw new Error(installData.message || "Failed to generate GitHub App installation link");
+          }
+        }
       }
 
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unknown error");
+      setSwarmIsLoading(false);
       throw error;
     }
   };
 
-  useEffect(() => {
-    const fetchRepositories = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/github/repository?repoUrl=${repositoryUrlDraft}`);
-        console.log('response', response)
-        const { data, error } = await response.json();
-        if (response.ok) {
-          if (data) {
-            setSelectedRepo(data);
-          }
-        } else {
-          const message = error;
-          const err = new Error(message) as Error
-          throw err;
-        }
-      } catch (error) {
-        setError(error instanceof Error ? error.message : "Unknown error");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (repositoryUrlDraft) {
-      fetchRepositories();
-    }
-
-  }, [repositoryUrlDraft, setSelectedRepo]);
 
   useEffect(() => {
     const validateSlug = async () => {
@@ -241,112 +213,11 @@ export function ProjectNameSetupStep() {
       }
     }
 
-    if (selectedRepo && projectName && !newNamesIsSettled.current) {
+    if (repoName && projectName && !newNamesIsSettled.current) {
       validateSlug();
     }
-  }, [selectedRepo, projectName, setProjectName, router, newNamesIsSettled]);
+  }, [repoName, projectName, setProjectName, router, newNamesIsSettled]);
 
-  useEffect(() => {
-
-    const handleCreateSwarm = async () => {
-
-      setSwarmIsLoading(true);
-      let shouldNavigate = false;
-      try {
-
-        const res = await fetch("/api/swarm", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            workspaceId: workspaceId,
-            name: projectName,
-            repositoryName: selectedRepo?.name,
-            repositoryUrl: selectedRepo?.html_url,
-            repositoryDescription: selectedRepo?.description,
-            repositoryDefaultBranch: selectedRepo?.default_branch,
-          }),
-        });
-
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-          throw new Error(json.message || "Failed to create swarm");
-        }
-
-        console.log(json);
-
-        const { swarmId } = json.data;
-
-        // Fetch swarm details to get the swarm URL
-        if (swarmId) {
-          try {
-            const swarmDetailsRes = await fetch(`/api/workspaces/${workspaceSlug}/stakgraph`);
-            if (swarmDetailsRes.ok) {
-              const swarmDetails = await swarmDetailsRes.json();
-              if (swarmDetails.success && swarmDetails.data?.swarmUrl) {
-                setSwarmUrl(swarmDetails.data.swarmUrl);
-              }
-            }
-          } catch (error) {
-            console.error("Failed to fetch swarm URL:", error);
-          }
-        }
-
-
-        if (swarmId && selectedRepo?.html_url) {
-          const servicesRes = await fetch(
-            `/api/swarm/stakgraph/services?workspaceId=${encodeURIComponent(
-              workspaceId,
-            )}&swarmId=${encodeURIComponent(swarmId!)}&repo_url=${encodeURIComponent(selectedRepo?.html_url)}`,
-          );
-
-          const data = await servicesRes.json();
-
-          console.log('services', data);
-
-          const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspaceId }),
-          });
-
-          if (!ingestRes.ok) {
-            throw new Error(json.message || "Failed to ingest code");
-          }
-
-          const customerRes = await fetch("/api/stakwork/create-customer", {
-            method: "POST",
-            body: JSON.stringify({
-              workspaceId,
-            }),
-          });
-
-          if (!customerRes.ok) {
-            throw new Error(json.message || "Failed to ingest code");
-          }
-
-          localStorage.removeItem("repoUrl");
-          shouldNavigate = true;
-        }
-
-      } catch (error) {
-        setError(error instanceof Error ? error.message : "Unknown error");
-        throw error;
-      }
-      finally {
-        if (shouldNavigate) {
-          router.push(`/w/${projectName.trim()}`);
-        } else {
-          setSwarmIsLoading(false);
-        }
-      }
-    }
-
-    if (!swarmId.current && projectName && workspaceSlug) {
-      handleCreateSwarm();
-    }
-  }, [projectName, router, selectedRepo?.default_branch, selectedRepo?.description, selectedRepo?.html_url, selectedRepo?.name, swarmId, workspaceId, workspaceSlug]);
 
   const resetProgress = () => {
     localStorage.removeItem("repoUrl");
@@ -354,14 +225,7 @@ export function ProjectNameSetupStep() {
   }
 
 
-  return isLoading ? (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-      <div className="text-center">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    </div>
-  ) : (
+  return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
       <CardHeader className="text-center">
         <ErrorDisplay error={error} className="mb-4" />
@@ -486,15 +350,12 @@ export function ProjectNameSetupStep() {
 
       <CardContent className="space-y-6">
         {swarmIsLoading ? (
-          gitseeReady ? (
-            <OnboardingGitsee
-              workspaceId={workspaceId || null}
-              repositoryUrl={selectedRepo?.html_url || null}
-              swarmUrl={swarmUrl || null}
-            />
-          ) : (
-            <SwarmSetupLoader />
-          )
+          <div className="flex justify-center items-center py-8">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+              <p className="text-muted-foreground">Setting up GitHub App installation...</p>
+            </div>
+          </div>
         ) : (
           <>
             {error ? (

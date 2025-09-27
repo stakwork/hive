@@ -45,7 +45,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
             githubToken: pat,
           });
           const coms = await analyzer.getRecentCommitsWithFiles(repoOwner, repoName, {
-            limit: 7,
+            limit: 10,
           });
           return coms;
         } catch (e) {
