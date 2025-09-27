@@ -60,6 +60,7 @@ export const select = {
   repositoryName: true,
   repositoryDescription: true,
   repositoryUrl: true,
+  ec2Id: true,
   swarmApiKey: true,
   swarmPassword: true,
   poolApiKey: true,
