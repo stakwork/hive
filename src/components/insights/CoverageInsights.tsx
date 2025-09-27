@@ -19,11 +19,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function CoverageInsights() {
-  const { items, loading, error, page, setPage, params, setNodeType, setStatus } = useCoverageNodes({
-    nodeType: "endpoint",
-    limit: 10,
+  const {
+    items,
+    loading,
+    filterLoading,
+    error,
+    page,
+    hasNextPage,
+    hasPrevPage,
+    setPage,
+    params,
+    setNodeType,
+    setStatus,
+    prefetchNext,
+    prefetchPrev,
+  } = useCoverageNodes({
     concise: true,
-    status: "all",
   });
 
   const hasItems = items && items.length > 0;
@@ -36,7 +47,7 @@ export function CoverageInsights() {
         file: item.file,
         coverage: item.test_count,
         weight: item.weight,
-        covered: item.covered,
+        covered: (item.test_count || 0) > 0,
       })),
     [items],
   );
@@ -85,10 +96,28 @@ export function CoverageInsights() {
         </div>
       </CardHeader>
       <CardContent>
-        <CardTitle className="pb-2">{params.nodeType === "endpoint" ? "Endpoints" : "Functions"}</CardTitle>
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading nodes...
+        <div className="flex items-center justify-between pb-2">
+          <CardTitle>{params.nodeType === "endpoint" ? "Endpoints" : "Functions"}</CardTitle>
+          {filterLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Filtering...
+            </div>
+          )}
+        </div>
+        {loading && !filterLoading ? (
+          <div className="space-y-3">
+            <div className="rounded-md border overflow-hidden">
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-4">
+                    <div className="col-span-4 h-4 rounded-md bg-muted animate-pulse" />
+                    <div className="col-span-5 h-4 rounded-md bg-muted animate-pulse" />
+                    <div className="col-span-1 h-4 rounded-md bg-muted animate-pulse" />
+                    <div className="col-span-2 h-4 rounded-md bg-muted animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : error ? (
           <div className="text-sm text-red-600">{error}</div>
@@ -96,7 +125,9 @@ export function CoverageInsights() {
           <div className="text-sm text-muted-foreground">No nodes found with the selected filters.</div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-md border overflow-hidden">
+            <div
+              className={`rounded-md border overflow-hidden transition-opacity ${filterLoading ? "opacity-50" : "opacity-100"}`}
+            >
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -124,10 +155,22 @@ export function CoverageInsights() {
             <div className="flex items-center justify-between">
               <div className="text-xs text-muted-foreground">Page {page}</div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={!hasPrevPage || filterLoading}
+                  onMouseEnter={() => hasPrevPage && prefetchPrev()}
+                >
                   Previous
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(page + 1)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page + 1)}
+                  disabled={!hasNextPage || filterLoading}
+                  onMouseEnter={() => hasNextPage && prefetchNext()}
+                >
                   Next
                 </Button>
               </div>
