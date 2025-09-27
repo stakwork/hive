@@ -242,6 +242,7 @@ model Swarm {
   swarmUrl     String?     @map("swarm_url") // https://{name}.sphinx.chat/api
   status       SwarmStatus @default(PENDING) // pending, active, failed, deleted
   instanceType String      @default("XL") @map("instance_type")
+  ec2Id        String?     @map("ec2_id")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
 

@@ -1,7 +1,13 @@
 import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
 import { HttpClient } from "@/lib/http-client";
-import { CreateSwarmRequest, CreateSwarmResponse, ValidateUriResponse } from "@/types";
+import {
+  CreateSwarmRequest,
+  CreateSwarmResponse,
+  ValidateUriResponse,
+  StopSwarmRequest,
+  StopSwarmResponse,
+} from "@/types";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function createSwarmApi(
@@ -11,6 +17,19 @@ export async function createSwarmApi(
 ): Promise<CreateSwarmResponse> {
   return client.post<CreateSwarmResponse>(
     `/api/super/new_swarm`,
+    swarm,
+    { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
+    serviceName,
+  );
+}
+
+export async function stopSwarmApi(
+  client: HttpClient,
+  swarm: StopSwarmRequest,
+  serviceName: string,
+): Promise<StopSwarmResponse> {
+  return client.post<StopSwarmResponse>(
+    `/api/super/stop_swarm`,
     swarm,
     { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
     serviceName,
