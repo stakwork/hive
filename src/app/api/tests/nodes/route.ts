@@ -16,6 +16,7 @@ type ParsedParams = {
   limit: number;
   offset: number;
   sort: string;
+  coverage: "all" | "tested" | "untested";
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
@@ -32,7 +33,9 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") || 20)));
   const offset = Math.max(0, Number(searchParams.get("offset") || 0));
   const sort = (searchParams.get("sort") || "test_count").toLowerCase();
-  return { nodeType, limit, offset, sort };
+  let coverage = (searchParams.get("coverage") || "all").toLowerCase();
+  if (!["all", "tested", "untested"].includes(coverage)) coverage = "all";
+  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested" };
 }
 
 function buildQueryString(params: ParsedParams): string {
@@ -41,6 +44,7 @@ function buildQueryString(params: ParsedParams): string {
   q.set("limit", String(params.limit));
   q.set("offset", String(params.offset));
   if (params.sort) q.set("sort", String(params.sort));
+  if (params.coverage && params.coverage !== "all") q.set("coverage", params.coverage);
   q.set("concise", "true");
   return q.toString();
 }
@@ -59,8 +63,15 @@ function isNodesResponse(payload: unknown): payload is NodesResponse {
   return Array.isArray(p.endpoints) || Array.isArray(p.functions);
 }
 
+type Payload = ItemsOrNodes & Partial<NodesResponse> & {
+  total_count?: number;
+  total_pages?: number;
+  current_page?: number;
+  total_returned?: number;
+};
+
 function normalizeResponse(
-  payload: unknown,
+  payload: Payload,
   nodeType: UncoveredNodeType,
   limit: number,
   offset: number,
@@ -84,15 +95,22 @@ function normalizeResponse(
     const raw = (list as unknown[]) || [];
     items = raw.map(mapToConcise);
   }
+  const total_count = typeof payload.total_count === "number" ? payload.total_count : items.length;
+  const total_pages = typeof payload.total_pages === "number" ? payload.total_pages : undefined;
+  const current_page = typeof payload.current_page === "number" ? payload.current_page : Math.floor(offset / limit) + 1;
+  const total_returned = typeof payload.total_returned === "number" ? payload.total_returned : items.length;
 
   return {
     success: true,
     data: {
       node_type: nodeType,
-      page: Math.floor(offset / limit) + 1,
+      page: current_page,
       pageSize: limit,
       hasNextPage: items.length >= limit,
       items,
+      total_count,
+      total_pages,
+      total_returned,
     },
   };
 }

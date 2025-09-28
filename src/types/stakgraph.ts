@@ -58,6 +58,9 @@ export interface CoverageNodesResponse {
     pageSize: number;
     hasNextPage: boolean;
     items: CoverageNodeConcise[];
+    total_count?: number;
+    total_pages?: number;
+    total_returned?: number;
   };
   message?: string;
   details?: unknown;

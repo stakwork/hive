@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
-import type { CoverageNodeConcise, UncoveredNodeType } from "@/types/stakgraph";
+import type { CoverageNodeConcise } from "@/types/stakgraph";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,12 +24,16 @@ export function CoverageInsights() {
     filterLoading,
     error,
     page,
+    totalPages,
+    totalCount,
+    totalReturned,
     hasNextPage,
     hasPrevPage,
     setPage,
     params,
     setNodeType,
     setSort,
+    setCoverage,
     prefetchNext,
     prefetchPrev,
   } = useCoverageNodes();
@@ -49,7 +53,6 @@ export function CoverageInsights() {
     [items],
   );
 
-  const setNodeTypeFilter = (value: UncoveredNodeType) => setNodeType(value);
   const setSortFilter = (value: string) => setSort(value);
 
   return (
@@ -71,11 +74,22 @@ export function CoverageInsights() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Node Type</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setNodeTypeFilter("endpoint")}>
+              <DropdownMenuItem onClick={() => setNodeType("endpoint")}>
                 {params.nodeType === "endpoint" && <span className="text-green-500">•</span>} Endpoint
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setNodeTypeFilter("function")}>
+              <DropdownMenuItem onClick={() => setNodeType("function")}>
                 {params.nodeType === "function" && <span className="text-green-500">•</span>} Function
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Test Status</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setCoverage("all")}>
+                {params.coverage === "all" && <span className="text-green-500">•</span>} All
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setCoverage("tested")}>
+                {params.coverage === "tested" && <span className="text-green-500">•</span>} Tested
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setCoverage("untested")}>
+                {params.coverage === "untested" && <span className="text-green-500">•</span>} Untested
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Sort</DropdownMenuLabel>
@@ -147,7 +161,16 @@ export function CoverageInsights() {
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="text-xs text-muted-foreground">Page {page}</div>
+              <div className="text-xs text-muted-foreground">
+                Page {page}
+                {totalPages ? ` of ${totalPages}` : ""}
+                {typeof totalCount === "number" && typeof totalReturned === "number" ? (
+                  <>
+                    {" "}
+                    &middot; Showing {totalReturned} of {totalCount} nodes
+                  </>
+                ) : null}
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
