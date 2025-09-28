@@ -87,14 +87,15 @@ function normalizeResponse(
     return { name, file, weight, test_count: testCount };
   };
 
-  if (isItemsOrNodes(payload)) {
-    const rawList = (payload.items || payload.nodes || []) as unknown[];
-    items = rawList.map(mapToConcise);
-  } else if (isNodesResponse(payload)) {
-    const list = nodeType === "endpoint" ? payload.endpoints : payload.functions;
-    const raw = (list as unknown[]) || [];
-    items = raw.map(mapToConcise);
-  }
+    if (isItemsOrNodes(payload)) {
+      const rawList = (payload.items || payload.nodes || []) as unknown[];
+      items = rawList.map(mapToConcise);
+    } else if (isNodesResponse(payload)) {
+      const nodesPayload = payload as NodesResponse;
+      const list = nodeType === "endpoint" ? nodesPayload.endpoints : nodesPayload.functions;
+      const raw = (list as unknown[]) || [];
+      items = raw.map(mapToConcise);
+    }
   const total_count = typeof payload.total_count === "number" ? payload.total_count : items.length;
   const total_pages = typeof payload.total_pages === "number" ? payload.total_pages : undefined;
   const current_page = typeof payload.current_page === "number" ? payload.current_page : Math.floor(offset / limit) + 1;
@@ -143,7 +144,7 @@ export async function GET(request: NextRequest) {
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as unknown, nodeType, limit, offset);
+      const response = normalizeResponse(data as Payload, nodeType, limit, offset);
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -190,7 +191,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = normalizeResponse(apiResult.data as unknown, nodeType, limit, offset);
+    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);
