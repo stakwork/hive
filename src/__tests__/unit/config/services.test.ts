@@ -79,7 +79,7 @@ describe("getServiceConfig", () => {
         timeout: expect.any(Number),
         headers: expect.any(Object),
       });
-      expect(config.baseURL).toBe(process.env.SWARM_SUPER_ADMIN_URL || "");
+      expect(config.baseURL).toBe("");
       expect(config.apiKey).toBe(""); // Added under x-user-token
       expect(config.timeout).toBe(120000); // 2 minutes timeout
       expect(config.headers).toHaveProperty("Content-Type", "application/json");
