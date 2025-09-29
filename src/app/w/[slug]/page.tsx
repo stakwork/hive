@@ -164,6 +164,8 @@ export default function DashboardPage() {
       // Get repository URL from localStorage if available
       const repositoryUrl = localStorage.getItem("repoUrl");
 
+      localStorage.removeItem("repoUrl");
+
       if (!repositoryUrl) {
         console.error("No repository URL found for setup");
         return;
