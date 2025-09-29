@@ -1,6 +1,6 @@
 "use client";
 
-import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
+import { EnvironmentForm, ServicesForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,13 +8,12 @@ import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { useGitVisualizer } from "@/hooks/useGitVisualizer";
-import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
+import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function StakgraphPage() {
-  const { slug, id, refreshCurrentWorkspace } = useWorkspace();
+  const { slug, refreshCurrentWorkspace } = useWorkspace();
   const router = useRouter();
 
   const {
@@ -25,9 +24,6 @@ export default function StakgraphPage() {
     saved,
     loadSettings,
     saveSettings,
-    handleProjectInfoChange,
-    handleRepositoryChange,
-    handleSwarmChange,
     handleEnvironmentChange,
     handleEnvVarsChange,
     handleServicesChange,
@@ -35,13 +31,6 @@ export default function StakgraphPage() {
   } = useStakgraphStore();
 
   const { toast } = useToast();
-
-  // Initialize GitVisualizer
-  useGitVisualizer({
-    workspaceId: id,
-    repositoryUrl: formData.repositoryUrl,
-    swarmUrl: formData.swarmUrl,
-  });
 
   // Load existing settings on component mount
   useEffect(() => {
@@ -59,69 +48,6 @@ export default function StakgraphPage() {
     refreshCurrentWorkspace();
   };
 
-  const handleEnsureWebhooks = async () => {
-    try {
-      if (!id) {
-        toast({
-          title: "Error",
-          description: "Workspace not ready",
-          variant: "destructive",
-        });
-        return;
-      }
-      const res = await fetch("/api/github/webhook/ensure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: id,
-          repositoryUrl: formData.repositoryUrl,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (data.error === "INSUFFICIENT_PERMISSIONS") {
-          toast({
-            title: "Permission Required",
-            description: data.message || "Admin access required to manage webhooks on this repository",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: data.message || "Failed to add webhooks",
-            variant: "destructive",
-          });
-        }
-        return;
-      }
-
-      toast({
-        title: "Webhooks added",
-        description: "GitHub webhooks have been ensured",
-      });
-      await loadSettings(slug!);
-    } catch (error) {
-      console.error("Failed to ensure webhooks", error);
-      toast({
-        title: "Error",
-        description: "Failed to add webhooks",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // const allFieldsFilled =
-  //   formData.name &&
-  //     formData.repositoryUrl &&
-  //     formData.swarmUrl &&
-  //     formData.swarmSecretAlias &&
-  //     formData.poolName
-  //     ? true
-  //     : false;
-
-  // console.log("allFieldsFilled", allFieldsFilled);
 
   if (initialLoading) {
     return (
@@ -154,20 +80,12 @@ export default function StakgraphPage() {
       </div>
       <PageHeader
         title="VM Configuration"
-        description="Configure your virtual machine settings for development environment"
+        description="Configure your virtual machine environment, services, and container files"
       />
 
       <Card className="max-w-2xl">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>VM Settings</CardTitle>
-          <div className="flex gap-2">
-            {!formData.webhookEnsured && formData.repositoryUrl ? (
-              <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
-                <Webhook className="mr-2 h-4 w-4" />
-                Add Github Webhooks
-              </Button>
-            ) : null}
-          </div>
+        <CardHeader>
+          <CardTitle>VM Environment Settings</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -184,34 +102,6 @@ export default function StakgraphPage() {
             )}
 
             <div className="space-y-6">
-              <ProjectInfoForm
-                data={{
-                  name: formData.name,
-                  description: formData.description,
-                }}
-                errors={errors}
-                loading={loading}
-                onChange={handleProjectInfoChange}
-              />
-
-              <RepositoryForm
-                data={{ repositoryUrl: formData.repositoryUrl }}
-                errors={errors}
-                loading={loading}
-                onChange={handleRepositoryChange}
-              />
-
-              <SwarmForm
-                data={{
-                  swarmUrl: formData.swarmUrl,
-                  swarmApiKey: formData.swarmApiKey || "",
-                  swarmSecretAlias: formData.swarmSecretAlias,
-                }}
-                errors={errors}
-                loading={loading}
-                onChange={handleSwarmChange}
-              />
-
               <EnvironmentForm
                 data={{
                   poolName: formData.poolName,
@@ -243,18 +133,11 @@ export default function StakgraphPage() {
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Save
+                  Save VM Configuration
                 </>
               )}
             </Button>
           </form>
-        </CardContent>
-      </Card>
-
-      {/* Gitsee section */}
-      <Card className="max-w-2xl">
-        <CardContent>
-          <svg width="500" height="500" id="vizzy" style={{ width: "100%", height: "100%" }}></svg>
         </CardContent>
       </Card>
     </div>

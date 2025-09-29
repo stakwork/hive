@@ -203,28 +203,20 @@ export const useStakgraphStore = create<StakgraphStore>()(
       // Reset previous states
       set({ errors: {}, saved: false });
 
-      // Validation
+      // Validation - only validate fields that are on the VM config page
       const newErrors: Record<string, string> = {};
 
-      if (!state.formData.name.trim()) {
-        newErrors.name = "Name is required";
-      }
-      if (!state.formData.repositoryUrl.trim()) {
-        newErrors.repositoryUrl = "Repository URL is required";
-      } else if (!isValidUrl(state.formData.repositoryUrl.trim())) {
+      // Repository and Swarm settings are now in Settings page
+      // Only validate if they are present (for backward compatibility)
+      if (state.formData.repositoryUrl && !isValidUrl(state.formData.repositoryUrl.trim())) {
         newErrors.repositoryUrl = "Please enter a valid URL";
       }
 
-      if (!state.formData.swarmUrl.trim()) {
-        newErrors.swarmUrl = "Swarm URL is required";
-      } else if (!isValidUrl(state.formData.swarmUrl.trim())) {
+      if (state.formData.swarmUrl && !isValidUrl(state.formData.swarmUrl.trim())) {
         newErrors.swarmUrl = "Please enter a valid URL";
       }
 
-      if (!state.formData.swarmSecretAlias.trim()) {
-        newErrors.swarmSecretAlias = "Swarm API Key is required";
-      }
-
+      // VM-specific validations
       if (!state.formData.poolName.trim()) {
         newErrors.poolName = "Pool Name is required";
       }
@@ -266,11 +258,14 @@ export const useStakgraphStore = create<StakgraphStore>()(
         );
 
         const payload: Partial<StakgraphSettings> = {
-          name: state.formData.name.trim(),
-          description: state.formData.description.trim(),
-          repositoryUrl: state.formData.repositoryUrl.trim(),
-          swarmUrl: state.formData.swarmUrl.trim(),
-          swarmSecretAlias: state.formData.swarmSecretAlias.trim(),
+          // Include name and description if they exist (backward compatibility)
+          ...(state.formData.name && { name: state.formData.name.trim() }),
+          ...(state.formData.description && { description: state.formData.description.trim() }),
+          // Include repository and swarm settings if they exist
+          ...(state.formData.repositoryUrl && { repositoryUrl: state.formData.repositoryUrl.trim() }),
+          ...(state.formData.swarmUrl && { swarmUrl: state.formData.swarmUrl.trim() }),
+          ...(state.formData.swarmSecretAlias && { swarmSecretAlias: state.formData.swarmSecretAlias.trim() }),
+          // VM-specific settings
           poolName: state.formData.poolName.trim(),
           poolCpu: state.formData.poolCpu,
           poolMemory: state.formData.poolMemory,
