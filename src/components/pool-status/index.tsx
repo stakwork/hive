@@ -92,7 +92,7 @@ export function VMConfigSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Server className="w-5 h-5" />
-          VM Configuration
+          Pool Status
         </CardTitle>
         <CardDescription>
           {vmState.description}
@@ -133,7 +133,7 @@ export function VMConfigSection() {
                   <Zap className="w-6 h-6" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">Set up VMs</span>
+                  <span className="text-sm font-medium">Set up Pool</span>
                   <span className="text-xs text-muted-foreground">Get started now</span>
                 </div>
               </div>

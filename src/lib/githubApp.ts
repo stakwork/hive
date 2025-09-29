@@ -17,26 +17,6 @@ export interface RefreshTokenResponse {
 }
 
 /**
- * Check if the GitHub App is installed for a workspace
- */
-export async function checkAppInstalled(workspaceSlug: string): Promise<AppInstallationStatus> {
-  // Check if we already have an installation ID for this workspace
-  const swarm = await db.swarm.findFirst({
-    where: {
-      workspace: { slug: workspaceSlug },
-      githubInstallationId: { not: null },
-    },
-    select: { githubInstallationId: true },
-  });
-
-  if (swarm?.githubInstallationId) {
-    return { installed: true, installationId: swarm.githubInstallationId };
-  }
-
-  return { installed: false };
-}
-
-/**
  * Refresh a GitHub App user access token using the refresh token
  */
 async function refreshUserToken(refreshToken: string): Promise<RefreshTokenResponse> {
@@ -202,62 +182,95 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
 }
 
 /**
- * Get a valid access token, refreshing if it's close to expiration
+ * Check if a GitHub App installation has access to a specific repository
  * @param userId - The user ID
- * @param refreshThresholdSeconds - Number of seconds before expiration to trigger refresh (default: 3600 = 1 hour)
- * @returns The access token (either current or newly refreshed)
+ * @param installationId - The GitHub App installation ID
+ * @param repositoryUrl - The repository URL to check access for
+ * @returns Promise<boolean> - true if the installation has access to the repository
  */
-export async function getOrRefreshAccessToken(
+export async function checkRepositoryAccess(
   userId: string,
-  refreshThresholdSeconds: number = 3600,
-): Promise<string | null> {
+  installationId: string,
+  repositoryUrl: string,
+): Promise<boolean> {
+  console.log("[REPO ACCESS] Starting repository access check:", {
+    userId,
+    installationId,
+    repositoryUrl,
+  });
+
   try {
-    // Get current tokens and expiration
-    const account = await db.account.findFirst({
-      where: {
-        userId,
-        provider: "github",
-        app_access_token: { not: null },
-      },
-      select: {
-        app_access_token: true,
-        app_refresh_token: true,
-        app_expires_at: true,
+    // Extract owner and repo name from repository URL
+    const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    if (!githubMatch) {
+      console.error("[REPO ACCESS] Invalid GitHub repository URL:", repositoryUrl);
+      return false;
+    }
+
+    const [, owner, repo] = githubMatch;
+    const targetRepoFullName = `${owner}/${repo}`.toLowerCase();
+    console.log("[REPO ACCESS] Parsed repository:", { owner, repo, targetRepoFullName });
+
+    // Get access token for the specific GitHub owner
+    console.log("[REPO ACCESS] Getting tokens for user:", userId, "and owner:", owner);
+    const tokens = await getUserAppTokens(userId, owner);
+    if (!tokens?.accessToken) {
+      console.error("[REPO ACCESS] No access token available for user:", userId, "and owner:", owner);
+      return false;
+    }
+    console.log("[REPO ACCESS] Successfully retrieved access token");
+
+    console.log(
+      "[REPO ACCESS] Making GitHub API request to:",
+      `https://api.github.com/user/installations/${installationId}/repositories`,
+    );
+
+    // Fetch repositories accessible by this installation
+    const response = await fetch(`https://api.github.com/user/installations/${installationId}/repositories`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${tokens.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
       },
     });
 
-    if (!account?.app_access_token) {
-      console.error("No GitHub App tokens found for user:", userId);
-      return null;
+    console.log("[REPO ACCESS] GitHub API response status:", response.status);
+
+    if (!response.ok) {
+      console.error("[REPO ACCESS] Failed to fetch installation repositories:", response.status, response.statusText);
+      const errorText = await response.text();
+      console.error("[REPO ACCESS] Error response body:", errorText);
+      return false;
     }
 
-    if (account?.app_refresh_token) {
-      // Check if token is close to expiration
-      const now = Math.floor(Date.now() / 1000);
-      const expiresAt = account.app_expires_at;
+    const data = await response.json();
+    console.log("[REPO ACCESS] Successfully fetched data from GitHub API");
 
-      if (expiresAt && expiresAt - now <= refreshThresholdSeconds) {
-        console.log(`Token expires in ${expiresAt - now} seconds, refreshing...`);
+    // Log the API response for debugging
+    console.log(`GitHub App Installation ${installationId} repositories:`, {
+      total_count: data.total_count,
+      repository_count: data.repositories?.length,
+      repositories:
+        data.repositories?.map((repo: { full_name: string; private: boolean; permissions: object }) => ({
+          full_name: repo.full_name,
+          private: repo.private,
+          permissions: repo.permissions,
+        })) || [],
+    });
 
-        // Token is close to expiration, refresh it
-        const refreshSuccess = await refreshAndUpdateAccessTokens(userId);
-        if (!refreshSuccess) {
-          console.error("Failed to refresh token for user:", userId);
-          return null;
-        }
+    console.log(`Looking for repository: ${targetRepoFullName}`);
 
-        // Get the newly refreshed token
-        const newTokens = await getUserAppTokens(userId);
-        return newTokens?.accessToken || null;
-      }
-    }
+    // Check if the target repository is in the list
+    const hasAccess = data.repositories?.some(
+      (repository: { full_name: string }) => repository.full_name.toLowerCase() === targetRepoFullName,
+    );
 
-    // Token is still valid, decrypt and return it
-    const encryptionService = EncryptionService.getInstance();
-    const accessToken = encryptionService.decryptField("app_access_token", account.app_access_token);
-    return accessToken;
+    console.log(`Repository access check result: ${hasAccess ? "GRANTED" : "DENIED"}`);
+
+    console.log("[REPO ACCESS] Final result:", hasAccess ? "ACCESS GRANTED" : "ACCESS DENIED");
+    return !!hasAccess;
   } catch (error) {
-    console.error("Failed to get or refresh access token:", error);
-    return null;
+    console.error("[REPO ACCESS] Error during repository access check:", error);
+    return false;
   }
 }

@@ -55,7 +55,7 @@ vi.mock("@/lib/encryption", () => {
           version: "1",
           encryptedAt: new Date().toISOString(),
         },
-      }))
+      })),
     ),
   };
 });
@@ -128,10 +128,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmApiKey",
-        "secret-api-key"
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmApiKey", "secret-api-key");
 
       expect(db.swarm.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -139,7 +136,7 @@ describe("saveOrUpdateSwarm", () => {
             swarmApiKey: expect.stringContaining("encrypted_secret-api-key"),
           }),
           select: expect.any(Object),
-        })
+        }),
       );
     });
 
@@ -152,10 +149,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmPassword",
-        "secret-password"
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmPassword", "secret-password");
 
       expect(db.swarm.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -163,7 +157,7 @@ describe("saveOrUpdateSwarm", () => {
             swarmPassword: expect.stringContaining("encrypted_secret-password"),
           }),
           select: expect.any(Object),
-        })
+        }),
       );
     });
 
@@ -241,7 +235,6 @@ describe("saveOrUpdateSwarm", () => {
         select: expect.any(Object),
       });
     });
-
   });
 
   describe("when updating an existing swarm", () => {
@@ -286,7 +279,6 @@ describe("saveOrUpdateSwarm", () => {
       });
     });
 
-
     it("should update encrypted fields properly", async () => {
       const params = {
         workspaceId: mockWorkspaceId,
@@ -296,14 +288,8 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmApiKey",
-        "updated-api-key"
-      );
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmPassword",
-        "updated-password"
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmApiKey", "updated-api-key");
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmPassword", "updated-password");
 
       expect(db.swarm.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -314,7 +300,7 @@ describe("saveOrUpdateSwarm", () => {
             updatedAt: expect.any(Date),
           }),
           select: expect.any(Object),
-        })
+        }),
       );
     });
 
@@ -370,9 +356,7 @@ describe("saveOrUpdateSwarm", () => {
         name: "test-swarm",
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Database connection failed"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Database connection failed");
     });
 
     it("should handle create operation errors", async () => {
@@ -385,9 +369,7 @@ describe("saveOrUpdateSwarm", () => {
         name: "test-swarm",
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Failed to create swarm"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Failed to create swarm");
     });
 
     it("should handle update operation errors", async () => {
@@ -401,9 +383,7 @@ describe("saveOrUpdateSwarm", () => {
         status: SwarmStatus.ACTIVE,
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Failed to update swarm"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Failed to update swarm");
     });
   });
 
@@ -420,9 +400,7 @@ describe("saveOrUpdateSwarm", () => {
         swarmApiKey: "secret-key",
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Encryption failed"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Encryption failed");
     });
 
     it("should not call encryption for fields that are undefined", async () => {
@@ -472,9 +450,8 @@ describe("saveOrUpdateSwarm", () => {
         swarmId: "custom-swarm-id",
         swarmSecretAlias: "secret-alias",
         ingestRefId: "ingest-ref-123",
-        containerFiles: { "Dockerfile": "FROM node:18" },
+        containerFiles: { Dockerfile: "FROM node:18" },
         defaultBranch: "main",
-        githubInstallationId: "github-install-123",
       };
 
       await saveOrUpdateSwarm(params);
@@ -493,9 +470,8 @@ describe("saveOrUpdateSwarm", () => {
           poolCpu: "4",
           poolMemory: "8Gi",
           swarmSecretAlias: "secret-alias",
-          containerFiles: { "Dockerfile": "FROM node:18" },
+          containerFiles: { Dockerfile: "FROM node:18" },
           defaultBranch: "main",
-          githubInstallationId: "github-install-123",
           swarmId: "custom-swarm-id",
           ingestRefId: "ingest-ref-123",
           // Verify encrypted fields are JSON strings

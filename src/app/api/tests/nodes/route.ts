@@ -13,11 +13,10 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 type ParsedParams = {
   nodeType: UncoveredNodeType;
-  limit: string;
-  offset: string;
+  limit: number;
+  offset: number;
   sort: string;
-  root: string;
-  concise: string;
+  coverage: "all" | "tested" | "untested";
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
@@ -31,22 +30,22 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
     } as const;
   }
   const nodeType = nodeTypeParam as UncoveredNodeType;
-  const limit = searchParams.get("limit") || "10";
-  const offset = searchParams.get("offset") || "0";
-  const sort = (searchParams.get("sort") || "usage").toLowerCase();
-  const root = searchParams.get("root") || "";
-  const concise = (searchParams.get("concise") ?? "true").toString();
-  return { nodeType, limit, offset, sort, root, concise };
+  const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") || 20)));
+  const offset = Math.max(0, Number(searchParams.get("offset") || 0));
+  const sort = (searchParams.get("sort") || "test_count").toLowerCase();
+  let coverage = (searchParams.get("coverage") || "all").toLowerCase();
+  if (!["all", "tested", "untested"].includes(coverage)) coverage = "all";
+  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested" };
 }
 
 function buildQueryString(params: ParsedParams): string {
   const q = new URLSearchParams();
   q.set("node_type", params.nodeType);
-  if (params.limit) q.set("limit", String(params.limit));
-  if (params.offset) q.set("offset", String(params.offset));
+  q.set("limit", String(params.limit));
+  q.set("offset", String(params.offset));
   if (params.sort) q.set("sort", String(params.sort));
-  if (params.root) q.set("root", String(params.root));
-  if (params.concise) q.set("concise", String(params.concise));
+  if (params.coverage && params.coverage !== "all") q.set("coverage", params.coverage);
+  q.set("concise", "true");
   return q.toString();
 }
 
@@ -64,39 +63,55 @@ function isNodesResponse(payload: unknown): payload is NodesResponse {
   return Array.isArray(p.endpoints) || Array.isArray(p.functions);
 }
 
+type Payload = ItemsOrNodes & Partial<NodesResponse> & {
+  total_count?: number;
+  total_pages?: number;
+  current_page?: number;
+  total_returned?: number;
+};
+
 function normalizeResponse(
-  payload: unknown,
+  payload: Payload,
   nodeType: UncoveredNodeType,
-  limit: string,
-  offset: string,
+  limit: number,
+  offset: number,
 ): CoverageNodesResponse {
   let items: CoverageNodeConcise[] = [];
-  if (isItemsOrNodes(payload)) {
-    items = payload.items || payload.nodes || [];
-  } else if (isNodesResponse(payload)) {
-    const list = nodeType === "endpoint" ? payload.endpoints : payload.functions;
-    items = (list as CoverageNodeConcise[]) || [];
-  }
+  const mapToConcise = (n: unknown): CoverageNodeConcise => {
+    const o = n as Record<string, unknown> | null;
+    const props = (o?.properties as Record<string, unknown> | undefined) || undefined;
+    const name = (o?.name as string) || (props?.name as string) || "";
+    const file = (o?.file as string) || (props?.file as string) || "";
+    const weight = typeof o?.weight === "number" ? (o?.weight as number) : 0;
+    const testCount = typeof o?.test_count === "number" ? (o?.test_count as number) : 0;
+    return { name, file, weight, test_count: testCount };
+  };
 
-  // Ensure default fields exist to avoid undefined in UI
-  items = items.map((n) => {
-    const src = n as Partial<CoverageNodeConcise>;
-    return {
-      name: n.name,
-      file: n.file,
-      weight: typeof n.weight === "number" ? n.weight : 0,
-      test_count: typeof src.test_count === "number" ? src.test_count : 0,
-      covered: Boolean(n.covered),
-    } as CoverageNodeConcise;
-  });
+    if (isItemsOrNodes(payload)) {
+      const rawList = (payload.items || payload.nodes || []) as unknown[];
+      items = rawList.map(mapToConcise);
+    } else if (isNodesResponse(payload)) {
+      const nodesPayload = payload as NodesResponse;
+      const list = nodeType === "endpoint" ? nodesPayload.endpoints : nodesPayload.functions;
+      const raw = (list as unknown[]) || [];
+      items = raw.map(mapToConcise);
+    }
+  const total_count = typeof payload.total_count === "number" ? payload.total_count : items.length;
+  const total_pages = typeof payload.total_pages === "number" ? payload.total_pages : undefined;
+  const current_page = typeof payload.current_page === "number" ? payload.current_page : Math.floor(offset / limit) + 1;
+  const total_returned = typeof payload.total_returned === "number" ? payload.total_returned : items.length;
 
   return {
     success: true,
     data: {
       node_type: nodeType,
-      limit: Number(limit) || 10,
-      offset: Number(offset) || 0,
+      page: current_page,
+      pageSize: limit,
+      hasNextPage: items.length >= limit,
       items,
+      total_count,
+      total_pages,
+      total_returned,
     },
   };
 }
@@ -123,29 +138,13 @@ export async function GET(request: NextRequest) {
       const url = `http://0.0.0.0:7799${endpointPath}`;
       const resp = await fetch(url);
       const data = await resp.json().catch(() => ({}));
-      if (process.env.NODE_ENV === "development") {
-        try {
-          console.log("[tests/nodes][DEV] upstream url:", url);
-          console.log(
-            "[tests/nodes][DEV] upstream raw:",
-            typeof data === "object" ? JSON.stringify(data).slice(0, 4000) : String(data),
-          );
-        } catch {
-          // ignore logging errors
-        }
-      }
       if (!resp.ok) {
         return NextResponse.json(
           { success: false, message: "Failed to fetch coverage nodes (dev)", details: data },
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as unknown, nodeType, limit, offset);
-      if (process.env.NODE_ENV === "development") {
-        try {
-          console.log("[tests/nodes][DEV] normalized:", JSON.stringify(response).slice(0, 4000));
-        } catch {}
-      }
+      const response = normalizeResponse(data as Payload, nodeType, limit, offset);
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -191,22 +190,8 @@ export async function GET(request: NextRequest) {
         { status: apiResult.status },
       );
     }
-    if (process.env.NODE_ENV === "development") {
-      try {
-        console.log("[tests/nodes] upstream path:", endpointPath);
-        console.log(
-          "[tests/nodes] upstream raw:",
-          typeof apiResult.data === "object" ? JSON.stringify(apiResult.data).slice(0, 4000) : String(apiResult.data),
-        );
-      } catch {}
-    }
 
-    const response = normalizeResponse(apiResult.data as unknown, nodeType, limit, offset);
-    if (process.env.NODE_ENV === "development") {
-      try {
-        console.log("[tests/nodes] normalized:", JSON.stringify(response).slice(0, 4000));
-      } catch {}
-    }
+    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);
