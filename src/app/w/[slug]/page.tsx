@@ -1,12 +1,11 @@
 "use client";
 
 import { RepositoryCard, TestCoverageCard } from "@/components/dashboard";
-import { SwarmSetupLoader } from "@/components/onboarding/SwarmSetupLoader";
+import { VMConfigSection } from "@/components/pool-status";
 import { EmptyState, TaskCard } from "@/components/tasks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
-import { VMConfigSection } from "@/components/vm-config";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useSearchParams } from "next/navigation";
@@ -194,6 +193,8 @@ export default function DashboardPage() {
       // Get repository URL from localStorage if available
       const repositoryUrl = localStorage.getItem("repoUrl");
 
+      localStorage.removeItem("repoUrl");
+
       if (!repositoryUrl) {
         console.error("No repository URL found for setup");
         return;
@@ -280,10 +281,6 @@ export default function DashboardPage() {
           }],
           swarmStatus: "ACTIVE",
         });
-      }
-
-      if (!swarm?.swarmId) {
-        throw new Error("Failed to get swarm ID");
       }
 
       const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
@@ -418,7 +415,16 @@ export default function DashboardPage() {
       <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
         <div className="w-full h-full flex flex-col items-center justify-center">
           <PageHeader title="Welcome to your development workspace" />
-          {isSwarmReady ? <Gitsee /> : <SwarmSetupLoader />}
+          {isSwarmReady ? <Gitsee /> : (
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-16 h-16 bg-[#16a34a] rounded-full animate-pulse"></div>
+              {workspace?.repositories?.[0]?.name && (
+                <p className="text-lg font-medium text-muted-foreground">
+                  {workspace.repositories[0].name}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
