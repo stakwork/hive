@@ -19,7 +19,7 @@ export interface ServiceConfig {
     postStart?: string;
     rebuild?: string;
   };
-  env?: Record<string, string>;  // Environment variables from stakgraph
+  env?: Record<string, string>; // Environment variables from stakgraph
 }
 
 interface SaveOrUpdateSwarmParams {
@@ -44,7 +44,6 @@ interface SaveOrUpdateSwarmParams {
   ingestRefId?: string;
   containerFiles?: Record<string, string>;
   defaultBranch?: string;
-  githubInstallationId?: string;
   poolState?: PoolState;
 }
 
@@ -75,7 +74,6 @@ export const select = {
   environmentVariables: true,
   containerFiles: true,
   defaultBranch: true,
-  githubInstallationId: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -117,7 +115,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   }
   if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
-  if (params.githubInstallationId !== undefined) data.githubInstallationId = params.githubInstallationId;
   data.updatedAt = new Date();
 
   if (swarm) {
@@ -133,11 +130,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       instanceType: params.instanceType || "",
       environmentVariables: params.environmentVariables
         ? (encryptEnvVars(
-          params.environmentVariables as unknown as Array<{
-            name: string;
-            value: string;
-          }>,
-        ) as unknown)
+            params.environmentVariables as unknown as Array<{
+              name: string;
+              value: string;
+            }>,
+          ) as unknown)
         : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,
@@ -160,7 +157,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       swarmSecretAlias: params.swarmSecretAlias || "",
       defaultBranch: params.defaultBranch || "",
       containerFiles: params.containerFiles,
-      githubInstallationId: params.githubInstallationId,
       swarmId: params.swarmId,
       ingestRefId: params.ingestRefId,
       poolState: params.poolState || PoolState.NOT_STARTED,
