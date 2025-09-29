@@ -163,7 +163,16 @@ export default function DashboardPage() {
 
     try {
       // Get repository URL from localStorage if available
-      const repositoryUrl = localStorage.getItem("repoUrl");
+      const repoStorageKeys = workspaceId ? [`repoUrl:${workspaceId}`, "repoUrl"] : ["repoUrl"];
+      let repositoryUrl: string | null = null;
+
+      for (const key of repoStorageKeys) {
+        const storedUrl = localStorage.getItem(key);
+        if (storedUrl) {
+          repositoryUrl = storedUrl;
+          break;
+        }
+      }
 
       if (!repositoryUrl) {
         console.error("No repository URL found for setup");
@@ -291,6 +300,9 @@ export default function DashboardPage() {
 
       const servicesData = await servicesRes.json();
       console.log('services', servicesData);
+
+      // Repo URL no longer needed after successful setup; remove cached values
+      repoStorageKeys.forEach((key) => localStorage.removeItem(key));
 
       toast({
         title: "Workspace Setup Complete",

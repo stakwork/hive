@@ -143,6 +143,11 @@ export function ProjectNameSetupStep() {
       if (data?.workspace?.slug && data?.workspace?.id) {
         await refreshWorkspaces();
 
+        // Persist repo URL specifically for this workspace so setup can complete after redirect
+        if (repositoryUrlDraft) {
+          localStorage.setItem(`repoUrl:${data.workspace.id}`, repositoryUrlDraft);
+        }
+
         // 2. Check GitHub App status for this workspace/repository
         const statusResponse = await fetch(`/api/github/app/status?workspaceSlug=${data.workspace.slug}&repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
         const statusData = await statusResponse.json();
