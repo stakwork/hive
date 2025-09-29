@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 
 interface GithubAppStatus {
   hasTokens: boolean;
+  hasRepoAccess?: boolean;
   isLoading: boolean;
   error: string | null;
 }
@@ -12,6 +13,7 @@ interface GithubAppStatus {
 export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
   const { data: session, status } = useSession();
   const [hasTokens, setHasTokens] = useState(false);
+  const [hasRepoAccess, setHasRepoAccess] = useState<boolean | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,9 +33,7 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
         setIsLoading(true);
         setError(null);
 
-        const url = workspaceSlug
-          ? `/api/github/app/status?workspaceSlug=${workspaceSlug}`
-          : "/api/github/app/status";
+        const url = workspaceSlug ? `/api/github/app/status?workspaceSlug=${workspaceSlug}` : "/api/github/app/status";
 
         const response = await fetch(url, {
           method: "GET",
@@ -48,6 +48,7 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
 
         const data = await response.json();
         setHasTokens(data.hasTokens || false);
+        setHasRepoAccess(data.hasRepoAccess);
       } catch (err) {
         console.error("Error checking GitHub App status:", err);
         setError(err instanceof Error ? err.message : "Unknown error");
@@ -62,7 +63,13 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
 
   return {
     hasTokens,
+    hasRepoAccess,
     isLoading,
     error,
   };
 }
+
+/*
+staklink universal install cargo
+rm HANDLER from the 2 endpoints
+*/
