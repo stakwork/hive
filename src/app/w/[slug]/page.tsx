@@ -20,7 +20,8 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const processedCallback = useRef(false);
   const ingestRefId = workspace?.ingestRefId;
-  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isRequestPendingRef = useRef(false);
   const [shouldShowSwarmLoader, setShouldShowSwarmLoader] = useState(false);
   const [ingestError, setIngestError] = useState(false);
 
@@ -36,39 +37,59 @@ export default function DashboardPage() {
 
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
+    if (codeIsSynced || !ingestRefId || !workspaceId || ingestError) {
+      // Clear any existing polling
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
 
-    if (codeIsSynced || !ingestRefId || !workspaceId || ingestError) return;
+    // Prevent multiple intervals
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
 
     let isCancelled = false;
 
     const getIngestStatus = async () => {
-      if (isCancelled) return;
+      if (isCancelled || isRequestPendingRef.current) return;
 
+      isRequestPendingRef.current = true;
       try {
+        console.log('Polling ingest status...');
         const res = await fetch(
           `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
         );
         const { apiResult } = await res.json();
         const { data } = apiResult;
 
-        console.log(apiResult)
+        console.log(apiResult);
 
         if (apiResult.status === 500) {
           setIngestError(true);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
           return;
         }
 
-
         if (data?.status === "Complete") {
-
           updateWorkspace({
             repositories: workspace?.repositories.map((repo) => ({
               ...repo,
               status: "SYNCED",
             })),
           });
-
-          return; // Stop polling
+          // Stop polling
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          return;
         } else if (data?.status === "Failed") {
           console.log('Ingestion failed');
           toast({
@@ -76,29 +97,37 @@ export default function DashboardPage() {
             description: "There was an error ingesting your codebase. Please try again.",
             variant: "destructive",
           });
-        } else {
-          // Continue polling if still in progress
-          pollTimeoutRef.current = setTimeout(getIngestStatus, 5000);
+          // Stop polling on failure
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          return;
         }
+        // If still in progress, continue polling will be handled by interval
       } catch (error) {
         console.error("Failed to get ingest status:", error);
-        // Retry after a longer delay on error
-        if (!isCancelled) {
-          pollTimeoutRef.current = setTimeout(getIngestStatus, 10000);
-        }
+        // Don't retry on error, let the interval handle it
+      } finally {
+        isRequestPendingRef.current = false;
       }
     };
 
+    // Use setInterval for consistent polling
+    pollingIntervalRef.current = setInterval(getIngestStatus, 5000);
+
+    // Call once immediately
     getIngestStatus();
 
     return () => {
       isCancelled = true;
-      if (pollTimeoutRef.current) {
-        clearTimeout(pollTimeoutRef.current);
-        pollTimeoutRef.current = null;
+      isRequestPendingRef.current = false;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
-  }, [ingestRefId, workspaceId, toast, updateWorkspace, codeIsSynced, ingestError, workspace?.repositories]);
+  }, [ingestRefId, workspaceId, codeIsSynced, ingestError]);
 
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
