@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
+import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 // import { EncryptionService } from "@/lib/encryption";
@@ -16,6 +17,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspaceSlug");
     const repositoryUrl = searchParams.get("repositoryUrl");
+
+    // Validate workspace access if workspaceSlug is provided
+    if (workspaceSlug) {
+      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+      if (!workspaceAccess.hasAccess) {
+        return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
+      }
+    }
 
     let hasTokens = false;
     let hasRepoAccess = false;
