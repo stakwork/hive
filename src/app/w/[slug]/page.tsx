@@ -6,7 +6,7 @@ import { EmptyState, TaskCard } from "@/components/tasks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
-import { VMConfigSection } from "@/components/vm-config";
+import { VMConfigSection } from "@/components/pool-status";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useSearchParams } from "next/navigation";

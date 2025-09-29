@@ -153,13 +153,13 @@ export default function StakgraphPage() {
         </Button>
       </div>
       <PageHeader
-        title="VM Configuration"
-        description="Configure your virtual machine settings for development environment"
+        title="Pool Status"
+        description="Configure your pool settings for development environment"
       />
 
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>VM Settings</CardTitle>
+          <CardTitle>Pool Settings</CardTitle>
           <div className="flex gap-2">
             {!formData.webhookEnsured && formData.repositoryUrl ? (
               <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
