@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
-import type { CoverageNodeConcise, UncoveredNodeType } from "@/types/stakgraph";
-import type { StatusFilter } from "@/hooks/useCoverageNodes";
+import type { CoverageNodeConcise } from "@/types/stakgraph";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,12 +18,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function CoverageInsights() {
-  const { items, loading, error, page, setPage, params, setNodeType, setStatus } = useCoverageNodes({
-    nodeType: "endpoint",
-    limit: 10,
-    concise: true,
-    status: "all",
-  });
+  const {
+    items,
+    loading,
+    filterLoading,
+    error,
+    page,
+    totalPages,
+    totalCount,
+    totalReturned,
+    hasNextPage,
+    hasPrevPage,
+    setPage,
+    params,
+    setNodeType,
+    setSort,
+    setCoverage,
+    prefetchNext,
+    prefetchPrev,
+  } = useCoverageNodes();
 
   const hasItems = items && items.length > 0;
 
@@ -36,13 +48,12 @@ export function CoverageInsights() {
         file: item.file,
         coverage: item.test_count,
         weight: item.weight,
-        covered: item.covered,
+        covered: (item.test_count || 0) > 0,
       })),
     [items],
   );
 
-  const setNodeTypeFilter = (value: UncoveredNodeType) => setNodeType(value);
-  const setStatusFilter = (value: StatusFilter) => setStatus(value);
+  const setSortFilter = (value: string) => setSort(value);
 
   return (
     <Card>
@@ -63,32 +74,58 @@ export function CoverageInsights() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Node Type</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setNodeTypeFilter("endpoint")}>
+              <DropdownMenuItem onClick={() => setNodeType("endpoint")}>
                 {params.nodeType === "endpoint" && <span className="text-green-500">•</span>} Endpoint
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setNodeTypeFilter("function")}>
+              <DropdownMenuItem onClick={() => setNodeType("function")}>
                 {params.nodeType === "function" && <span className="text-green-500">•</span>} Function
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Status</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setStatusFilter("tested")}>
-                {params.status === "tested" && <span className="text-green-500">•</span>} Tested
+              <DropdownMenuLabel>Test Status</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setCoverage("all")}>
+                {params.coverage === "all" && <span className="text-green-500">•</span>} All
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("untested")}>
-                {params.status === "untested" && <span className="text-green-500">•</span>} Untested
+              <DropdownMenuItem onClick={() => setCoverage("tested")}>
+                {params.coverage === "tested" && <span className="text-green-500">•</span>} Tested
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("all")}>
-                {params.status === "all" && <span className="text-green-500">•</span>} All
+              <DropdownMenuItem onClick={() => setCoverage("untested")}>
+                {params.coverage === "untested" && <span className="text-green-500">•</span>} Untested
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Sort</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setSortFilter("test_count")}>
+                {params.sort === "test_count" && <span className="text-green-500">•</span>} By test count
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortFilter("name")}>
+                {params.sort === "name" && <span className="text-green-500">•</span>} By name
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </CardHeader>
       <CardContent>
-        <CardTitle className="pb-2">{params.nodeType === "endpoint" ? "Endpoints" : "Functions"}</CardTitle>
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading nodes...
+        <div className="flex items-center justify-between pb-2">
+          <CardTitle>{params.nodeType === "endpoint" ? "Endpoints" : "Functions"}</CardTitle>
+          {filterLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Filtering...
+            </div>
+          )}
+        </div>
+        {loading && !filterLoading ? (
+          <div className="space-y-3">
+            <div className="rounded-md border overflow-hidden">
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-4">
+                    <div className="col-span-4 h-4 rounded-md bg-muted animate-pulse" />
+                    <div className="col-span-5 h-4 rounded-md bg-muted animate-pulse" />
+                    <div className="col-span-1 h-4 rounded-md bg-muted animate-pulse" />
+                    <div className="col-span-2 h-4 rounded-md bg-muted animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : error ? (
           <div className="text-sm text-red-600">{error}</div>
@@ -96,7 +133,9 @@ export function CoverageInsights() {
           <div className="text-sm text-muted-foreground">No nodes found with the selected filters.</div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-md border overflow-hidden">
+            <div
+              className={`rounded-md border overflow-hidden transition-opacity ${filterLoading ? "opacity-50" : "opacity-100"}`}
+            >
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -107,8 +146,8 @@ export function CoverageInsights() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r) => (
-                    <TableRow key={r.key}>
+                  {rows.map((r, i) => (
+                    <TableRow key={`${r.name}-${r.file}-${params.offset}-${i}`}>
                       <TableCell className="truncate max-w-[320px]">{r.name}</TableCell>
                       <TableCell className="truncate max-w-[360px] text-muted-foreground">{r.file}</TableCell>
                       <TableCell className="text-right">{r.coverage}</TableCell>
@@ -122,12 +161,33 @@ export function CoverageInsights() {
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="text-xs text-muted-foreground">Page {page}</div>
+              <div className="text-xs text-muted-foreground">
+                Page {page}
+                {totalPages ? ` of ${totalPages}` : ""}
+                {typeof totalCount === "number" && typeof totalReturned === "number" ? (
+                  <>
+                    {" "}
+                    &middot; Showing {totalReturned} of {totalCount} nodes
+                  </>
+                ) : null}
+              </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={!hasPrevPage || filterLoading}
+                  onMouseEnter={() => hasPrevPage && prefetchPrev()}
+                >
                   Previous
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(page + 1)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(page + 1)}
+                  disabled={!hasNextPage || filterLoading}
+                  onMouseEnter={() => hasNextPage && prefetchNext()}
+                >
                   Next
                 </Button>
               </div>
