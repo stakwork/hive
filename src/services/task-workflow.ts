@@ -125,7 +125,7 @@ export async function sendMessageToStakwork(params: {
   contextTags?: any[];
   attachments?: string[];
 }) {
-  const { taskId, message, userId, contextTags = [], attachments = [] } = params;
+  const { taskId, message, userId, contextTags = [], attachments = [], mode = "default" } = params;
 
   // Get task with workspace and swarm details
   const task = await db.task.findFirst({
@@ -161,6 +161,7 @@ export async function sendMessageToStakwork(params: {
     task,
     contextTags,
     attachments,
+    mode,
   });
 }
 
