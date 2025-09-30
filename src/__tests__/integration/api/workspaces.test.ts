@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { POST } from "@/app/api/workspaces/route";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
@@ -18,6 +17,7 @@ import {
   expectUnauthorized,
   expectError,
   generateUniqueSlug,
+  createPostRequest,
 } from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({
@@ -42,14 +42,10 @@ describe("Workspace API - Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Test Workspace",
-          description: "A test workspace",
-          slug,
-        }),
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "Test Workspace",
+        description: "A test workspace",
+        slug,
       });
 
       const response = await POST(request);
@@ -77,14 +73,10 @@ describe("Workspace API - Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Extra Workspace",
-          description: "This should fail",
-          slug,
-        }),
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "Extra Workspace",
+        description: "This should fail",
+        slug,
       });
 
       const response = await POST(request);
@@ -114,13 +106,9 @@ describe("Workspace API - Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "New Workspace",
-          slug,
-        }),
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "New Workspace",
+        slug,
       });
 
       const response = await POST(request);
@@ -133,13 +121,9 @@ describe("Workspace API - Integration Tests", () => {
     test("rejects unauthenticated requests", async () => {
       mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Test Workspace",
-          slug: "test-workspace",
-        }),
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "Test Workspace",
+        slug: "test-workspace",
       });
 
       const response = await POST(request);
@@ -152,12 +136,8 @@ describe("Workspace API - Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: "Missing name and slug",
-        }),
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        description: "Missing name and slug",
       });
 
       const response = await POST(request);
@@ -177,13 +157,9 @@ describe("Workspace API - Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Duplicate Workspace",
-          slug,
-        }),
+      const request = createPostRequest("http://localhost:3000/api/workspaces", {
+        name: "Duplicate Workspace",
+        slug,
       });
 
       const response = await POST(request);
