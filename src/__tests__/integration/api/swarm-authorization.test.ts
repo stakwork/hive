@@ -223,8 +223,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Only workspace owners and admins can create swarms");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Only workspace owners and admins can create swarms");
     });
 
     it("should reject viewer role from creating swarm", async () => {
@@ -232,8 +235,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Only workspace owners and admins can create swarms");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Only workspace owners and admins can create swarms");
     });
 
     it("should reject unauthorized user from creating swarm in workspace they don't belong to", async () => {
@@ -241,8 +247,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Workspace not found or access denied");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Workspace not found or access denied");
     });
 
     it("should reject creating swarm with non-existent workspace ID", async () => {
@@ -250,8 +259,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest("non-existent-workspace-id");
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Workspace not found or access denied");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Workspace not found or access denied");
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -259,8 +271,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectUnauthorized(response);
+      expect(response.status).toBe(401);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Unauthorized");
     });
   });
 
@@ -318,8 +333,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Only workspace owners and admins can update swarms");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Only workspace owners and admins can update swarms");
     });
 
     it("should reject viewer role from updating swarm", async () => {
@@ -327,8 +345,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Only workspace owners and admins can update swarms");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Only workspace owners and admins can update swarms");
     });
 
     it("should reject unauthorized user from updating swarm in workspace they don't belong to", async () => {
@@ -336,8 +357,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Workspace not found or access denied");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Workspace not found or access denied");
     });
 
     it("should reject updating swarm with non-existent workspace ID", async () => {
@@ -345,8 +369,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = updateSwarmRequest("non-existent-workspace-id");
       const response = await PUT(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Workspace not found or access denied");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Workspace not found or access denied");
     });
 
     it("should reject request without workspaceId", async () => {
@@ -366,8 +393,11 @@ describe("Swarm API Authorization Tests", () => {
       });
 
       const response = await PUT(request);
+      const data = await response.json();
 
-      await expectError(response, "Missing required field: workspaceId", 400);
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Missing required field: workspaceId");
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -375,8 +405,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
+      const data = await response.json();
 
-      await expectUnauthorized(response);
+      expect(response.status).toBe(401);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Unauthorized");
     });
   });
 
@@ -387,8 +420,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Workspace not found or access denied");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Workspace not found or access denied");
 
       // Verify no swarm was created
       const swarmCount = await db.swarm.count({
@@ -403,8 +439,11 @@ describe("Swarm API Authorization Tests", () => {
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
+      const data = await response.json();
 
-      await expectForbidden(response, "Only workspace owners and admins can create swarms");
+      expect(response.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Only workspace owners and admins can create swarms");
     });
   });
 });
