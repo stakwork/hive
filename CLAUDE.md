@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run setup` - Generate JWT secret for development
 
 ### Testing
-- `npm run test` - Run all tests with Vitest
+- `npm run test` - Run all tests (unit + integration) with Vitest
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Run tests with coverage
 - `npm run test:unit` - Run unit tests only
@@ -21,6 +21,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run test:integration` - Run integration tests
 - `npm run test:integration:watch` - Run integration tests in watch mode
 - `npm run test:integration:full` - Full integration test cycle with database
+- `npx playwright test` - Run E2E tests with Playwright
+- `npx playwright test --ui` - Run E2E tests in UI mode
+- `npx playwright test --headed` - Run E2E tests in headed browser mode
 
 ### Database Management
 - `npx prisma studio` - Open Prisma Studio (database GUI)
@@ -72,16 +75,17 @@ Key features:
 
 #### `/src/app` - Next.js App Router
 - API routes organized by feature: `/api/auth`, `/api/github`, `/api/workspaces`, `/api/stakwork`, etc.
-- Workspace pages under `/w/[slug]/*`: tasks, insights, graph, learn, stakgraph, settings, user-journeys
-- Authentication and onboarding flows
+- Workspace pages under `/w/[slug]/*`: tasks, insights, learn, stakgraph, settings, user-journeys, task/[...taskParams]
+- Authentication flows via NextAuth.js
+- Workspace onboarding wizard at `/onboarding/workspace` (3-step wizard: Welcome → GitHub Auth → Project Setup)
 - Cron job endpoints: `/api/cron/janitors`
 
 #### `/src/components` - React Components
 - `ui/` - shadcn/ui components (Button, Dialog, Input, etc.)
-- `wizard/` - Multi-step wizard components for workspace setup
 - `stakgraph/` - Components for stakgraph integration and forms
-- `roadmap/` - Product roadmap management components
-- `onboarding/` - User onboarding components
+- `onboarding/` - Workspace setup form components (OnboardingHeader, WorkspaceForm, FormField)
+- `tasks/` - Task management and display components
+- `insights/` - Janitor insights and recommendations display
 - Any time you create a react component, create a directory always call the file index.tsx
 
 #### `/src/lib` - Core Utilities
@@ -103,7 +107,15 @@ Key features:
 #### `/src/hooks` - React Hooks
 - `useWorkspace.ts` - Core workspace operations and data management
 - `useWorkspaceAccess.ts` - Permission checking and access control
+- `useFeatureFlag.ts` - Feature flag access checks
+- `useGithubApp.ts` - GitHub App integration utilities
 - Workspace-specific hooks for different features
+
+#### `/src/stores` - Zustand State Management
+- `useCoverageStore.ts` - Test coverage visualization state
+- `useStakgraphStore.ts` - Stakgraph component state
+- `useModalsStore.ts` - Global modal state management
+- `useInsightsStore.ts` - Janitor insights filtering and display state
 
 #### `/src/types` - TypeScript Types
 - Comprehensive type definitions for all entities
@@ -117,8 +129,8 @@ The database follows a hierarchical structure:
 - **Source Control**: `SourceControlOrg` (GitHub orgs/users), `SourceControlToken` (encrypted installation tokens)
 - **Workspaces**: Multi-tenant workspace system with role-based access (`Workspace`, `WorkspaceMember`)
 - **Infrastructure**: `Swarm` (deployment infrastructure), `Repository` (linked Git repos)
-- **Task Management**: Task hierarchy with AI chat integration, status tracking, and notifications
-- **Janitor System**: `JanitorRun`, `JanitorRecommendation` for automated code quality suggestions
+- **Task Management**: `Task` model with AI chat integration (`ChatMessage`), status tracking, and file attachments (`Attachment`, `Artifact`)
+- **Janitor System**: `JanitorRun`, `JanitorRecommendation`, `JanitorConfig` for automated code quality analysis
 - **Learning**: `Learning` model for capturing insights from codebase analysis
 - Encrypted fields use JSON format: `{ data: string, iv: string, tag: string, keyId?: string, version: string, encryptedAt: string }`
 
@@ -182,10 +194,13 @@ npx shadcn@latest add [component-name]
 - Verify migration files are committed and deployed to production
 
 ### Testing Strategy
-- Unit tests for utilities and hooks
-- Integration tests for API routes and database operations
-- Separate test database configuration
-- Use `vitest.config.ts` for test configuration
+- **Unit tests**: Utilities, hooks, components, and pure functions (67+ test files, 1800+ test cases)
+- **Integration tests**: API routes, database operations, and service integrations (19+ test files, 300+ test cases)
+- **E2E tests**: Critical user flows with Playwright (workspace settings, etc.)
+- **Test database**: Separate PostgreSQL database via Docker Compose (`docker-compose.test.yml`)
+- **Test isolation**: Database cleanup before/after each integration test
+- **Configuration**: `vitest.config.ts` for Vitest, `playwright.config.ts` for Playwright
+- **Coverage**: Run `npm run test:coverage` to generate coverage reports
 
 ### Environment Setup
 Required environment variables (see `env.example` for complete list):
