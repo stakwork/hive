@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH } from "@/app/api/workspaces/[slug]/members/[userId]/route";
@@ -15,6 +14,8 @@ import {
   expectUnauthorized,
   expectForbidden,
   generateUniqueId,
+  createPostRequest,
+  createPatchRequest,
 } from "@/__tests__/helpers";
 
 // Mock NextAuth - only external dependency
@@ -67,13 +68,9 @@ describe("Workspace Member Role API Integration Tests", () => {
         // Mock session with real admin user
         mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            githubUsername: "testuser",
-            role: role,
-          }),
+        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+          githubUsername: "testuser",
+          role: role,
         });
 
         const response = await POST(request, { 
@@ -100,13 +97,9 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.OWNER,
-        }),
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.OWNER,
       });
 
       const response = await POST(request, { 
@@ -127,13 +120,9 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.STAKEHOLDER,
-        }),
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.STAKEHOLDER,
       });
 
       const response = await POST(request, { 
@@ -157,13 +146,9 @@ describe("Workspace Member Role API Integration Tests", () => {
         
         mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            githubUsername: "testuser",
-            role: role,
-          }),
+        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+          githubUsername: "testuser",
+          role: role,
         });
 
         const response = await POST(request, { 
@@ -186,13 +171,9 @@ describe("Workspace Member Role API Integration Tests", () => {
       // Mock no session
       mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.DEVELOPER,
       });
 
       const response = await POST(request, { 
@@ -207,13 +188,9 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest("http://localhost/api/workspaces/nonexistent/members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest("http://localhost/api/workspaces/nonexistent/members", {
+        githubUsername: "testuser",
+        role: WorkspaceRole.DEVELOPER,
       });
 
       const response = await POST(request, { 
@@ -240,10 +217,8 @@ describe("Workspace Member Role API Integration Tests", () => {
 
         mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
+        const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+          role,
         });
 
         const response = await PATCH(request, { 
@@ -278,10 +253,8 @@ describe("Workspace Member Role API Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: WorkspaceRole.OWNER }),
+      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.OWNER,
       });
 
       const response = await PATCH(request, { 
@@ -311,10 +284,8 @@ describe("Workspace Member Role API Integration Tests", () => {
 
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: WorkspaceRole.STAKEHOLDER }),
+      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.STAKEHOLDER,
       });
 
       const response = await PATCH(request, { 
@@ -347,10 +318,8 @@ describe("Workspace Member Role API Integration Tests", () => {
 
         mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
+        const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+          role,
         });
 
         const response = await PATCH(request, { 
@@ -391,10 +360,8 @@ describe("Workspace Member Role API Integration Tests", () => {
       // Mock session with non-admin user
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: WorkspaceRole.PM }),
+      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.PM,
       });
 
       const response = await PATCH(request, { 

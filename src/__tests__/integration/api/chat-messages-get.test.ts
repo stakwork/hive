@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { GET } from "@/app/api/chat/messages/[messageId]/route";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
@@ -13,6 +12,7 @@ import {
   expectNotFound,
   generateUniqueId,
   generateUniqueSlug,
+  createGetRequest,
 } from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
@@ -157,10 +157,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     it("should return 401 when no session provided", async () => {
       mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -175,10 +172,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: null });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -193,10 +187,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { name: "Test User" } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -213,10 +204,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = new NextRequest(
-        "http://localhost:3000/api/chat/messages/",
-        { method: "GET" }
-      );
+      const request = createGetRequest("http://localhost:3000/api/chat/messages/");
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: "" })
@@ -232,10 +220,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
         .mockResolvedValue({ user: { id: testUser.id } });
 
       const nonExistentId = "non-existent-message-id";
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${nonExistentId}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${nonExistentId}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: nonExistentId })
@@ -252,10 +237,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: otherUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -270,10 +252,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -289,10 +268,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: memberUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -310,10 +286,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -354,10 +327,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: otherUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -380,10 +350,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })
@@ -421,10 +388,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
       // Mock database error by providing invalid messageId format that might cause DB issues
       const invalidMessageId = "invalid-uuid-format-that-breaks-db";
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${invalidMessageId}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${invalidMessageId}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: invalidMessageId })
@@ -484,10 +448,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${orphanedMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${orphanedMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: orphanedMessage.id })
@@ -504,10 +465,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
         .mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/chat/messages/${testMessage.id}`,
-        { method: "GET" }
-      );
+      const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ messageId: testMessage.id })

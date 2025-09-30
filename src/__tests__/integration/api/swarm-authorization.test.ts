@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { NextRequest } from "next/server";
 import { POST, PUT } from "@/app/api/swarm/route";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
@@ -12,6 +11,8 @@ import {
   expectError,
   generateUniqueId,
   generateUniqueSlug,
+  createPostRequest,
+  createPutRequest,
 } from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
@@ -158,21 +159,13 @@ describe("Swarm API Authorization Tests", () => {
 
   describe("POST /api/swarm - Authorization Tests", () => {
     const createSwarmRequest = (workspaceId: string) => {
-      const body = JSON.stringify({
+      return createPostRequest("http://localhost:3000/api/swarm", {
         workspaceId,
         name: "test-swarm",
         repositoryName: "test-repo",
         repositoryUrl: "https://github.com/test/repo",
         repositoryDescription: "Test repository",
         repositoryDefaultBranch: "main",
-      });
-
-      return new NextRequest("http://localhost:3000/api/swarm", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body,
       });
     };
 
@@ -281,18 +274,10 @@ describe("Swarm API Authorization Tests", () => {
 
   describe("PUT /api/swarm - Authorization Tests", () => {
     const updateSwarmRequest = (workspaceId: string) => {
-      const body = JSON.stringify({
+      return createPutRequest("http://localhost:3000/api/swarm", {
         workspaceId,
         envVars: [{ name: "TEST_VAR", value: "test_value" }],
         services: [{ name: "test-service", port: 3000 }],
-      });
-
-      return new NextRequest("http://localhost:3000/api/swarm", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body,
       });
     };
 
@@ -379,17 +364,9 @@ describe("Swarm API Authorization Tests", () => {
     it("should reject request without workspaceId", async () => {
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const body = JSON.stringify({
+      const request = createPutRequest("http://localhost:3000/api/swarm", {
         envVars: [{ name: "TEST_VAR", value: "test_value" }],
         services: [{ name: "test-service", port: 3000 }],
-      });
-
-      const request = new NextRequest("http://localhost:3000/api/swarm", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body,
       });
 
       const response = await PUT(request);
@@ -449,20 +426,12 @@ describe("Swarm API Authorization Tests", () => {
 });
 
 function createSwarmRequest(workspaceId: string) {
-  const body = JSON.stringify({
+  return createPostRequest("http://localhost:3000/api/swarm", {
     workspaceId,
     name: "test-swarm",
     repositoryName: "test-repo",
     repositoryUrl: "https://github.com/test/repo",
     repositoryDescription: "Test repository",
     repositoryDefaultBranch: "main",
-  });
-
-  return new NextRequest("http://localhost:3000/api/swarm", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body,
   });
 }

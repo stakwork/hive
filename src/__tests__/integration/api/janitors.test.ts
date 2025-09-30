@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { GET as GetConfig, PUT as UpdateConfig } from "@/app/api/workspaces/[slug]/janitors/config/route";
 import { POST as TriggerRun } from "@/app/api/workspaces/[slug]/janitors/[type]/run/route";
@@ -19,6 +18,9 @@ import {
   expectForbidden,
   generateUniqueId,
   generateUniqueSlug,
+  createGetRequest,
+  createPostRequest,
+  createPutRequest,
 } from "@/__tests__/helpers";
 
 // Mock NextAuth - only external dependency
@@ -141,9 +143,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "GET",
-      });
+      const request = createGetRequest("http://localhost/api/test");
       
       const response = await GetConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -165,12 +165,9 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "PUT",
-        body: JSON.stringify({
-          unitTestsEnabled: true,
-          integrationTestsEnabled: false,
-        }),
+      const request = createPutRequest("http://localhost/api/test", {
+        unitTestsEnabled: true,
+        integrationTestsEnabled: false,
       });
       
       const response = await UpdateConfig(request, {
@@ -190,9 +187,8 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "PUT",
-        body: JSON.stringify({ unitTestsEnabled: true }),
+      const request = createPutRequest("http://localhost/api/test", {
+        unitTestsEnabled: true,
       });
       
       const response = await UpdateConfig(request, {
@@ -207,9 +203,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "GET",
-      });
+      const request = createGetRequest("http://localhost/api/test");
       
       const response = await GetConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -233,9 +227,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-      });
+      const request = createPostRequest("http://localhost/api/test", {});
       
       const response = await TriggerRun(request, {
         params: Promise.resolve({ 
@@ -271,9 +263,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-      });
+      const request = createPostRequest("http://localhost/api/test", {});
       
       const response = await TriggerRun(request, {
         params: Promise.resolve({ 
@@ -292,9 +282,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-      });
+      const request = createPostRequest("http://localhost/api/test", {});
       
       const response = await TriggerRun(request, {
         params: Promise.resolve({ 
@@ -330,9 +318,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-      });
+      const request = createPostRequest("http://localhost/api/test", {});
       
       const response = await TriggerRun(request, {
         params: Promise.resolve({ 
@@ -379,8 +365,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const url = new URL(`http://localhost/api/test?limit=10&page=1`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test", { limit: "10", page: "1" });
       
       const response = await GetRuns(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -428,8 +413,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const url = new URL(`http://localhost/api/test?type=UNIT_TESTS`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test", { type: "UNIT_TESTS" });
       
       const response = await GetRuns(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -480,10 +464,7 @@ describe("Janitor API Integration Tests", () => {
         },
       };
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-        body: JSON.stringify(webhookPayload),
-      });
+      const request = createPostRequest("http://localhost/api/test", webhookPayload);
       
       const response = await WebhookHandler(request);
       const responseData = await response.json();
@@ -530,10 +511,7 @@ describe("Janitor API Integration Tests", () => {
         error: "Analysis timed out",
       };
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-        body: JSON.stringify(webhookPayload),
-      });
+      const request = createPostRequest("http://localhost/api/test", webhookPayload);
       
       const response = await WebhookHandler(request);
       const responseData = await response.json();
@@ -557,10 +535,7 @@ describe("Janitor API Integration Tests", () => {
         status: "completed",
       };
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-        body: JSON.stringify(webhookPayload),
-      });
+      const request = createPostRequest("http://localhost/api/test", webhookPayload);
       
       const response = await WebhookHandler(request);
 
@@ -612,8 +587,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const url = new URL(`http://localhost/api/test?limit=10&page=1`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test", { limit: "10", page: "1" });
       
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -683,8 +657,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const url = new URL(`http://localhost/api/test?status=PENDING`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test", { status: "PENDING" });
       
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -738,8 +711,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const url = new URL(`http://localhost/api/test?priority=HIGH`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test", { priority: "HIGH" });
       
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -758,8 +730,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const url = new URL(`http://localhost/api/test`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test");
       
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -777,8 +748,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
-      const url = new URL(`http://localhost/api/test`);
-      const request = new NextRequest(url, { method: "GET" });
+      const request = createGetRequest("http://localhost/api/test");
       
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -819,10 +789,7 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
+      const request = createPostRequest("http://localhost/api/test", {});
       
       const response = await AcceptRecommendation(request, {
         params: Promise.resolve({ id: recommendation.id }),
@@ -884,11 +851,8 @@ describe("Janitor API Integration Tests", () => {
       
       mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = new NextRequest("http://localhost/api/test", {
-        method: "POST",
-        body: JSON.stringify({
-          reason: "Not relevant for this project",
-        }),
+      const request = createPostRequest("http://localhost/api/test", {
+        reason: "Not relevant for this project",
       });
       
       const response = await DismissRecommendation(request, {

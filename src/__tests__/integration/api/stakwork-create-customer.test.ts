@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/create-customer/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -8,6 +7,7 @@ import {
   createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
+  createPostRequest,
 } from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
@@ -75,13 +75,7 @@ describe("POST /api/stakwork/create-customer", () => {
   });
 
   it("creates secret with plaintext value (not encrypted JSON)", async () => {
-    const req = new NextRequest(
-      "http://localhost:3000/api/stakwork/create-customer",
-      {
-        method: "POST",
-        body: JSON.stringify({ workspaceId }),
-      },
-    );
+    const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
     const res = await POST(req);
     expect(res?.status).toBe(201);
@@ -108,13 +102,7 @@ describe("POST /api/stakwork/create-customer", () => {
       data: { swarmApiKey: JSON.stringify(doubleCipher) },
     });
 
-    const req = new NextRequest(
-      "http://localhost:3000/api/stakwork/create-customer",
-      {
-        method: "POST",
-        body: JSON.stringify({ workspaceId }),
-      },
-    );
+    const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
     mockCreateSecret.mockClear();
     const res = await POST(req);
