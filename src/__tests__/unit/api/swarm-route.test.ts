@@ -342,8 +342,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       const request = createMockRequest(validSwarmData);
       await POST(request);
 
-      const secondCall = mockSaveOrUpdateSwarm.mock.calls[1][0];
-      expect(secondCall.swarmSecretAlias).toBe("{{SWARM_456_API_KEY}}");
+      const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
+      expect(saveCall.swarmSecretAlias).toBe("{{SWARM_456_API_KEY}}");
     });
   });
 
@@ -352,20 +352,18 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: true,
       });
-
-      mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "temp-swarm" });
     });
 
     test("should handle external service errors gracefully", async () => {
       const serviceError = new Error("External service unavailable");
       (serviceError as any).status = 503;
       (serviceError as any).message = "Service temporarily unavailable";
-      
+
       mockSwarmServiceInstance.createSwarm.mockRejectedValue(serviceError);
 
       const request = createMockRequest(validSwarmData);
@@ -375,9 +373,9 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(503);
       expect(data.success).toBe(false);
       expect(data.message).toBe("Service temporarily unavailable");
-      
-      // Verify initial swarm save occurred but update didn't
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(1);
+
+      // Verify no database save occurred since service failed
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(0);
     });
 
     test("should handle unknown errors securely", async () => {
@@ -429,33 +427,53 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: true,
       });
     });
 
-    test("should save initial swarm with pending status", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "temp-swarm" });
-      mockSwarmServiceInstance.createSwarm.mockRejectedValue(new Error("Service error"));
+    test("should save swarm only after successful service creation", async () => {
+      mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "final-swarm" });
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: {
+          swarm_id: "swarm-456",
+          address: "test-swarm.sphinx.chat",
+          x_api_key: "api-key-123",
+          ec2_id: "i-1234567890abcdef0",
+        },
+      });
 
       const request = createMockRequest(validSwarmData);
       await POST(request);
 
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
         workspaceId: "workspace-123",
-        name: "test-swarm",
+        name: "swarm-456", // Uses swarm_id as name
         instanceType: "m6i.xlarge",
-        status: SwarmStatus.PENDING,
+        status: SwarmStatus.ACTIVE,
         repositoryName: "test-repo",
         repositoryUrl: "https://github.com/test/repo",
         repositoryDescription: "Test repository",
         defaultBranch: "main",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
+        ec2Id: "i-1234567890abcdef0",
+        swarmApiKey: "api-key-123",
+        swarmSecretAlias: "{{SWARM_456_API_KEY}}",
+        swarmId: "swarm-456",
+        swarmPassword: "secure-test-password-123",
       });
     });
 
-    test("should handle database save failure", async () => {
+    test("should handle database save failure after service creation", async () => {
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: {
+          swarm_id: "swarm-456",
+          address: "test-swarm.sphinx.chat",
+          x_api_key: "api-key-123",
+        },
+      });
       mockSaveOrUpdateSwarm.mockRejectedValue(new Error("Database connection failed"));
 
       const request = createMockRequest(validSwarmData);
@@ -467,10 +485,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.message).toBe("Unknown error while creating swarm");
     });
 
-    test("should handle failed swarm update", async () => {
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" })
-        .mockResolvedValueOnce(null); // Failed update
+    test("should handle failed swarm creation", async () => {
+      mockSaveOrUpdateSwarm.mockResolvedValueOnce(null); // Failed creation
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -486,7 +502,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(500);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Failed to update swarm");
+      expect(data.message).toBe("Failed to create swarm record");
     });
   });
 
@@ -495,15 +511,13 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" })
-        .mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -531,8 +545,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       // Verify all steps were executed in correct order
       expect(mockGetServerSession).toHaveBeenCalled();
       expect(mockValidateWorkspaceAccessById).toHaveBeenCalled();
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(2);
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalled();
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(1); // Only called once after service creation
     });
   });
 });
