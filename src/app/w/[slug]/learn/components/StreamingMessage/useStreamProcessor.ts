@@ -78,6 +78,11 @@ export function useStreamProcessor() {
           try {
             const data = JSON.parse(jsonStr);
 
+            // Log tool output events to debug
+            if (data.type?.includes("output")) {
+              console.log("🔧 Tool output event:", data.type, data);
+            }
+
             if (data.type === "text-start") {
               textParts.set(data.id, "");
             } else if (data.type === "text-delta") {
@@ -128,7 +133,7 @@ export function useStreamProcessor() {
                 });
               }
             } else if (data.type === "tool-output-available") {
-              // Special handling for final_answer - extract and store separately
+              // Final output available - ensure final_answer is cleaned up
               if (finalAnswerToolIds.has(data.toolCallId)) {
                 let answer = typeof data.output === "string"
                   ? data.output
@@ -136,7 +141,6 @@ export function useStreamProcessor() {
 
                 // Clean up XML tags if present
                 if (typeof answer === "string") {
-                  // Remove XML wrapper tags
                   answer = answer
                     .replace(/<function_calls>\s*/gi, "")
                     .replace(/<\/function_calls>\s*/gi, "")
@@ -147,6 +151,8 @@ export function useStreamProcessor() {
                     .trim();
                 }
 
+                // Set the final cleaned answer
+                textParts.set("final-answer", answer);
                 finalAnswer = answer;
               } else {
                 const existing = toolCalls.get(data.toolCallId);
