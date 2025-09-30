@@ -1,10 +1,16 @@
 import { useEffect, useState, useRef } from "react";
 
-type StaktrakMessageType = "staktrak-setup" | "staktrak-results" | "staktrak-selection" | "staktrak-page-navigation";
+type StaktrakMessageType =
+  | "staktrak-setup"
+  | "staktrak-results"
+  | "staktrak-selection"
+  | "staktrak-page-navigation"
+  | "staktrak-event";
 
 interface StaktrakMessageData {
   type: StaktrakMessageType;
   data?: unknown;
+  eventType?: string;
 }
 
 interface StaktrakMessageEvent extends MessageEvent {
@@ -17,99 +23,34 @@ type StaktrakCommandType =
   | "staktrak-enable-selection"
   | "staktrak-disable-selection";
 
-// Updated interfaces to match the new structure
-interface ClickDetail {
-  x: number;
-  y: number;
-  timestamp: number;
-  selectors: {
-    primary: string;
-    fallbacks: string[];
-    text?: string;
-    ariaLabel?: string;
-    title?: string;
-    role?: string;
-    tagName: string;
-    xpath?: string;
-  };
-  elementInfo: {
-    tagName: string;
-    id?: string;
-    className?: string;
-    attributes: Record<string, string>;
-  };
-}
-
-interface PlaywrightTrackingData {
-  clicks?: {
-    clickCount: number;
-    clickDetails: ClickDetail[]; // Changed from number[][]
-  };
-  inputChanges?: Array<{
-    elementSelector: string;
-    value: string;
-    action?: string;
-    timestamp: number;
-  }>;
-  assertions?: Array<{
-    type: string;
-    selector: string;
-    value: string;
-    timestamp: number;
-  }>;
-  userInfo?: {
-    windowSize: [number, number];
-  };
-  formElementChanges?: Array<{
-    elementSelector: string;
-    type: string;
-    value: string;
-    checked?: boolean;
-    text?: string;
-    timestamp: number;
-  }>;
-  focusChanges?: unknown[];
-  // Add other properties that might be in the results
-  pageNavigation?: Array<{
-    type: string;
-    url: string;
-    timestamp: number;
-  }>;
-  keyboardActivities?: Array<[string, number]>;
-  mouseMovement?: Array<[number, number, number]>;
-  mouseScroll?: Array<[number, number, number]>;
-  visibilitychanges?: Array<[string, number]>;
-  windowSizes?: Array<[number, number, number]>;
-  touchEvents?: Array<{
-    type: string;
-    x: number;
-    y: number;
-    timestamp: number;
-  }>;
-  audioVideoInteractions?: unknown[];
-  time?: {
-    startedAt: number;
-    completedAt: number;
-    totalSeconds: number;
-  };
-}
-
 function sendCommand(iframeRef: React.RefObject<HTMLIFrameElement | null>, command: StaktrakCommandType) {
-  console.log("Sending command:", command);
   if (iframeRef?.current && iframeRef.current.contentWindow) {
     iframeRef.current.contentWindow.postMessage({ type: command }, "*");
   }
 }
 
+// RecordingManager type definition
+interface RecordingManager {
+  handleEvent(eventType: string, eventData: any): any;
+  generateTest(url: string, options?: any): string;
+  getActions(): any[];
+  getTrackingData(): any;
+  clear(): void;
+  clearAllActions(): void;
+  removeAction(actionId: string): boolean;
+}
+
 declare global {
   interface Window {
     PlaywrightGenerator?: {
-      generatePlaywrightTest: (url: string, trackingData: PlaywrightTrackingData) => string;
+      RecordingManager: new () => RecordingManager;
+      generatePlaywrightTest: (url: string, trackingData: any) => string;
+      generatePlaywrightTestFromActions: (actions: any[], options?: any) => string;
     };
   }
 }
 
-export const useStaktrak = (initialUrl?: string) => {
+export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string) => void) => {
   const [currentUrl, setCurrentUrl] = useState<string | null>(initialUrl || null);
   const [isSetup, setIsSetup] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -118,10 +59,26 @@ export const useStaktrak = (initialUrl?: string) => {
   const [generatedPlaywrightTest, setGeneratedPlaywrightTest] = useState<string>("");
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const recorderRef = useRef<RecordingManager | null>(null);
+  const onTestGeneratedRef = useRef(onTestGenerated);
 
-  // No longer need to inject scripts - staktrak.js handles its own React detection
+  // Keep callback ref up to date
+  useEffect(() => {
+    onTestGeneratedRef.current = onTestGenerated;
+  }, [onTestGenerated]);
+
+  // Initialize RecordingManager once when PlaywrightGenerator is available
+  useEffect(() => {
+    if (window.PlaywrightGenerator?.RecordingManager && !recorderRef.current) {
+      recorderRef.current = new window.PlaywrightGenerator.RecordingManager();
+    }
+  }, []);
 
   const startRecording = () => {
+    // Clear existing recording data when starting a new recording
+    if (recorderRef.current) {
+      recorderRef.current.clear();
+    }
     sendCommand(iframeRef, "staktrak-start");
     setIsRecording(true);
     setIsAssertionMode(false);
@@ -157,7 +114,6 @@ export const useStaktrak = (initialUrl?: string) => {
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // console.log("****** message received:", event.data);
       if (event.data && event.data.type) {
         const staktrakEvent = event as StaktrakMessageEvent;
 
@@ -165,29 +121,44 @@ export const useStaktrak = (initialUrl?: string) => {
           case "staktrak-setup":
             setIsSetup(true);
             break;
-          case "staktrak-results":
-            console.log("Staktrak results:", staktrakEvent.data.data);
 
-            // Generate Playwright test when results are received
-            if (window.PlaywrightGenerator && initialUrl) {
+          case "staktrak-event":
+            // Handle event-based recording with RecordingManager (currently unused)
+            if (recorderRef.current && staktrakEvent.data.eventType && staktrakEvent.data.data) {
               try {
-                const playwrightTest = window.PlaywrightGenerator.generatePlaywrightTest(
-                  cleanInitialUrl(initialUrl),
-                  staktrakEvent.data.data as PlaywrightTrackingData,
-                );
-                setGeneratedPlaywrightTest(playwrightTest);
+                recorderRef.current.handleEvent(staktrakEvent.data.eventType, staktrakEvent.data.data);
               } catch (error) {
-                console.error("Error generating Playwright test:", error);
-                // You might want to show an error message to the user here
+                console.error("Error handling staktrak event:", error);
               }
             }
             break;
-          case "staktrak-selection":
-            // TODO: Handle staktrak selection
-            console.log("Staktrak selection:", staktrakEvent.data.data);
+
+          case "staktrak-results":
+            // Generate test using bulk data from staktrak-results
+            // Don't use RecordingManager.generateTest() because events aren't sent incrementally
+            if (window.PlaywrightGenerator?.generatePlaywrightTest && initialUrl && staktrakEvent.data.data) {
+              try {
+                const bulkData = staktrakEvent.data.data;
+                const test = window.PlaywrightGenerator.generatePlaywrightTest(
+                  cleanInitialUrl(initialUrl),
+                  bulkData
+                );
+                setGeneratedPlaywrightTest(test);
+                // Call the callback if provided
+                if (onTestGeneratedRef.current) {
+                  onTestGeneratedRef.current(test);
+                }
+              } catch (error) {
+                console.error("Error generating Playwright test:", error);
+              }
+            }
             break;
+
+          case "staktrak-selection":
+            // Handle element selection for assertions
+            break;
+
           case "staktrak-page-navigation":
-            console.log("Staktrak page navigation:", staktrakEvent.data.data);
             const newUrl = staktrakEvent.data.data as string;
             if (newUrl) {
               setCurrentUrl(newUrl);

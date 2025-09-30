@@ -42,7 +42,10 @@ export function BrowserArtifactPanel({
     disableAssertionMode,
     generatedPlaywrightTest,
     setGeneratedPlaywrightTest,
-  } = useStaktrak(activeContent?.url);
+  } = useStaktrak(activeContent?.url, () => {
+    // Open modal when test is generated
+    setIsTestModalOpen(true);
+  });
 
   // Use playwright replay hook
   const { isPlaywrightReplaying, startPlaywrightReplay, stopPlaywrightReplay } = usePlaywrightReplay(iframeRef);
@@ -71,7 +74,7 @@ export function BrowserArtifactPanel({
   const handleRecordToggle = () => {
     if (isRecording) {
       stopRecording();
-      setIsTestModalOpen(true);
+      // Modal will open automatically when test is generated (via callback)
     } else {
       startRecording();
     }
