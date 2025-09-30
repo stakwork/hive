@@ -4,8 +4,20 @@ import { GET } from "@/app/api/chat/messages/[messageId]/route";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
 import { ChatRole, ChatStatus } from "@/lib/chat";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectSuccess,
+  expectUnauthorized,
+  expectForbidden,
+  expectNotFound,
+  generateUniqueId,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
+
+const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("GET /api/chat/messages/[messageId]", () => {
   let testUser: { id: string; email: string; name: string };
@@ -24,7 +36,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       // Create primary test user
       const user = await tx.user.create({
         data: {
-          email: `user-${Date.now()}@example.com`,
+          email: `user-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
@@ -33,7 +45,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const workspace = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: `test-workspace-${Date.now()}`,
+          slug: generateUniqueSlug("test-workspace"),
           ownerId: user.id,
         },
       });
@@ -143,8 +155,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Authentication", () => {
     it("should return 401 when no session provided", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue(null);
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const request = new NextRequest(
         `http://localhost:3000/api/chat/messages/${testMessage.id}`,
