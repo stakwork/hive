@@ -4,8 +4,19 @@ import { POST, PUT } from "@/app/api/swarm/route";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
 import type { User, Workspace } from "@prisma/client";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectUnauthorized,
+  expectForbidden,
+  expectError,
+  generateUniqueId,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
+
+const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 // Mock the SwarmService to avoid making real external API calls
 vi.mock("@/services/swarm", () => ({
@@ -41,40 +52,40 @@ describe("Swarm API Authorization Tests", () => {
       // Create users
       const owner = await tx.user.create({
         data: {
-          id: `owner-${Date.now()}`,
-          email: `owner-${Date.now()}@example.com`,
+          id: generateUniqueId("owner"),
+          email: `owner-${generateUniqueId()}@example.com`,
           name: "Owner User",
         },
       });
 
       const admin = await tx.user.create({
         data: {
-          id: `admin-${Date.now()}`,
-          email: `admin-${Date.now()}@example.com`,
+          id: generateUniqueId("admin"),
+          email: `admin-${generateUniqueId()}@example.com`,
           name: "Admin User",
         },
       });
 
       const developer = await tx.user.create({
         data: {
-          id: `dev-${Date.now()}`,
-          email: `dev-${Date.now()}@example.com`,
+          id: generateUniqueId("dev"),
+          email: `dev-${generateUniqueId()}@example.com`,
           name: "Developer User",
         },
       });
 
       const viewer = await tx.user.create({
         data: {
-          id: `viewer-${Date.now()}`,
-          email: `viewer-${Date.now()}@example.com`,
+          id: generateUniqueId("viewer"),
+          email: `viewer-${generateUniqueId()}@example.com`,
           name: "Viewer User",
         },
       });
 
       const unauthorized = await tx.user.create({
         data: {
-          id: `unauth-${Date.now()}`,
-          email: `unauth-${Date.now()}@example.com`,
+          id: generateUniqueId("unauth"),
+          email: `unauth-${generateUniqueId()}@example.com`,
           name: "Unauthorized User",
         },
       });
@@ -83,7 +94,7 @@ describe("Swarm API Authorization Tests", () => {
       const ws = await tx.workspace.create({
         data: {
           name: "Test Workspace",
-          slug: `test-ws-${Date.now()}`,
+          slug: generateUniqueSlug("test-ws"),
           ownerId: owner.id,
         },
       });
@@ -91,7 +102,7 @@ describe("Swarm API Authorization Tests", () => {
       const otherWs = await tx.workspace.create({
         data: {
           name: "Other Workspace",
-          slug: `other-ws-${Date.now()}`,
+          slug: generateUniqueSlug("other-ws"),
           ownerId: unauthorized.id,
         },
       });
@@ -166,9 +177,7 @@ describe("Swarm API Authorization Tests", () => {
     };
 
     it("should allow workspace owner to create swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: ownerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -189,9 +198,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should allow workspace admin to create swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: adminUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -212,71 +219,48 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject developer role from creating swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: developerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(developerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Only workspace owners and admins can create swarms");
+      await expectForbidden(response, "Only workspace owners and admins can create swarms");
     });
 
     it("should reject viewer role from creating swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: viewerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(viewerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Only workspace owners and admins can create swarms");
+      await expectForbidden(response, "Only workspace owners and admins can create swarms");
     });
 
     it("should reject unauthorized user from creating swarm in workspace they don't belong to", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: unauthorizedUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Workspace not found or access denied");
+      await expectForbidden(response, "Workspace not found or access denied");
     });
 
     it("should reject creating swarm with non-existent workspace ID", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: ownerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = createSwarmRequest("non-existent-workspace-id");
       const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Workspace not found or access denied");
+      await expectForbidden(response, "Workspace not found or access denied");
     });
 
     it("should reject unauthenticated requests", async () => {
-      (getServerSession as any).mockResolvedValue(null);
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Unauthorized");
+      await expectUnauthorized(response);
     });
   });
 
@@ -298,9 +282,7 @@ describe("Swarm API Authorization Tests", () => {
     };
 
     it("should allow workspace owner to update swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: ownerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -316,9 +298,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should allow workspace admin to update swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: adminUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -334,65 +314,43 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject developer role from updating swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: developerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(developerUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Only workspace owners and admins can update swarms");
+      await expectForbidden(response, "Only workspace owners and admins can update swarms");
     });
 
     it("should reject viewer role from updating swarm", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: viewerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(viewerUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Only workspace owners and admins can update swarms");
+      await expectForbidden(response, "Only workspace owners and admins can update swarms");
     });
 
     it("should reject unauthorized user from updating swarm in workspace they don't belong to", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: unauthorizedUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Workspace not found or access denied");
+      await expectForbidden(response, "Workspace not found or access denied");
     });
 
     it("should reject updating swarm with non-existent workspace ID", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: ownerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = updateSwarmRequest("non-existent-workspace-id");
       const response = await PUT(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Workspace not found or access denied");
+      await expectForbidden(response, "Workspace not found or access denied");
     });
 
     it("should reject request without workspaceId", async () => {
-      (getServerSession as any).mockResolvedValue({
-        user: { id: ownerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const body = JSON.stringify({
         envVars: [{ name: "TEST_VAR", value: "test_value" }],
@@ -408,41 +366,29 @@ describe("Swarm API Authorization Tests", () => {
       });
 
       const response = await PUT(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required field: workspaceId");
+      await expectError(response, "Missing required field: workspaceId", 400);
     });
 
     it("should reject unauthenticated requests", async () => {
-      (getServerSession as any).mockResolvedValue(null);
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Unauthorized");
+      await expectUnauthorized(response);
     });
   });
 
   describe("Security Vulnerability Prevention", () => {
     it("should prevent cross-workspace swarm creation attack", async () => {
       // Attacker is owner of otherWorkspace but tries to create swarm in victim's workspace
-      (getServerSession as any).mockResolvedValue({
-        user: { id: unauthorizedUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
-      const data = await response.json();
 
-      // Should be rejected with 403, not allowed
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Workspace not found or access denied");
+      await expectForbidden(response, "Workspace not found or access denied");
 
       // Verify no swarm was created
       const swarmCount = await db.swarm.count({
@@ -453,18 +399,12 @@ describe("Swarm API Authorization Tests", () => {
 
     it("should prevent privilege escalation via direct API call", async () => {
       // Developer tries to bypass UI restrictions by calling API directly
-      (getServerSession as any).mockResolvedValue({
-        user: { id: developerUser.id },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(developerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
-      const data = await response.json();
 
-      // Should be rejected based on role
-      expect(response.status).toBe(403);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Only workspace owners and admins can create swarms");
+      await expectForbidden(response, "Only workspace owners and admins can create swarms");
     });
   });
 });

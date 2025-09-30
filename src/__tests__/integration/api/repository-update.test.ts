@@ -2,6 +2,12 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { PUT } from "@/app/api/repositories/[id]/route";
 import { db } from "@/lib/db";
+import {
+  expectSuccess,
+  expectError,
+  generateUniqueId,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 describe("Repository Update API Integration Tests", () => {
   const TEST_API_KEY = "test-api-key-123";
@@ -10,8 +16,8 @@ describe("Repository Update API Integration Tests", () => {
     // Create test user
     const user = await db.user.create({
       data: {
-        id: `user-${Date.now()}-${Math.random()}`,
-        email: `user-${Date.now()}@example.com`,
+        id: generateUniqueId("user"),
+        email: `user-${generateUniqueId()}@example.com`,
         name: "Test User",
       },
     });
@@ -19,8 +25,8 @@ describe("Repository Update API Integration Tests", () => {
     // Create test workspace
     const workspace = await db.workspace.create({
       data: {
-        name: `Test Workspace ${Date.now()}`,
-        slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: `Test Workspace ${generateUniqueId()}`,
+        slug: generateUniqueSlug("test-workspace"),
         description: "Test workspace",
         ownerId: user.id,
       },
@@ -29,8 +35,8 @@ describe("Repository Update API Integration Tests", () => {
     // Create test repository
     const repository = await db.repository.create({
       data: {
-        name: `Test Repository ${Date.now()}`,
-        repositoryUrl: `https://github.com/test/repo-${Date.now()}`,
+        name: `Test Repository ${generateUniqueId()}`,
+        repositoryUrl: `https://github.com/test/repo-${generateUniqueId()}`,
         branch: "main",
         workspaceId: workspace.id,
         testingFrameworkSetup: false,
@@ -66,9 +72,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data.testingFrameworkSetup).toBe(true);
       expect(data.playwrightSetup).toBe(true);
       expect(data.id).toBe(repository.id);
@@ -100,9 +105,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data.testingFrameworkSetup).toBe(true);
       expect(data.playwrightSetup).toBe(false); // Should remain unchanged
 
@@ -131,9 +135,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data.playwrightSetup).toBe(true);
     });
 
@@ -154,10 +157,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized - Invalid or missing API key");
+      await expectError(response, "Unauthorized - Invalid or missing API key", 401);
 
       // Verify repository was not changed
       const unchangedRepo = await db.repository.findUnique({
@@ -183,10 +184,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized - Invalid or missing API key");
+      await expectError(response, "Unauthorized - Invalid or missing API key", 401);
 
       // Verify repository was not changed
       const unchangedRepo = await db.repository.findUnique({
@@ -212,10 +211,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: nonExistentId }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Repository not found");
+      await expectError(response, "Repository not found", 404);
     });
 
     test("should return 400 for invalid request body", async () => {
@@ -268,10 +265,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("API_KEY not configured on server");
+      await expectError(response, "API_KEY not configured on server", 500);
 
       // Verify repository was not changed
       const unchangedRepo = await db.repository.findUnique({
@@ -295,9 +290,8 @@ describe("Repository Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data.id).toBe(repository.id);
       // All fields should remain unchanged
       expect(data.testingFrameworkSetup).toBe(false);
@@ -337,7 +331,7 @@ describe("Repository Update API Integration Tests", () => {
 
       // All requests should succeed
       for (const response of responses) {
-        expect(response.status).toBe(200);
+        await expectSuccess(response);
       }
 
       // Verify final state in database

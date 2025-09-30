@@ -1,4 +1,5 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
+import { NextRequest } from "next/server";
 import { POST } from "@/app/api/workspaces/route";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
@@ -10,7 +11,14 @@ import {
   createTestUser,
   createTestWorkspace,
 } from "@/__tests__/fixtures";
-import { invokeRoute } from "@/__tests__/harness";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectSuccess,
+  expectUnauthorized,
+  expectError,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
@@ -20,34 +28,33 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
+const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
+
 describe("Workspace API - Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  const url = "http://localhost:3000/api/workspaces";
-
   describe("POST /api/workspaces", () => {
     test("creates workspace successfully", async () => {
       const user = await createTestUser();
-      const slug = `test-workspace-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      const slug = generateUniqueSlug("test-workspace");
 
-      const { status, json } = await invokeRoute(POST, {
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
-        url,
-        session: { user: { id: user.id, email: user.email } },
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: "Test Workspace",
           description: "A test workspace",
           slug,
-        },
+        }),
       });
 
-      const data = await json<{ workspace: { name: string; slug: string; ownerId: string } }>();
+      const response = await POST(request);
+      const data = await expectSuccess(response, 201);
 
-      expect(status).toBe(201);
       expect(data.workspace).toMatchObject({
         name: "Test Workspace",
         slug,
@@ -62,31 +69,27 @@ describe("Workspace API - Integration Tests", () => {
         await createTestWorkspace({
           ownerId: user.id,
           name: `Workspace ${index + 1}`,
-          slug: `workspace-${index + 1}-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2)}`,
+          slug: generateUniqueSlug(`workspace-${index + 1}`),
         });
       }
 
-      const slug = `extra-workspace-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      const slug = generateUniqueSlug("extra-workspace");
 
-      const { status, json } = await invokeRoute(POST, {
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
-        url,
-        session: { user: { id: user.id, email: user.email } },
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: "Extra Workspace",
           description: "This should fail",
           slug,
-        },
+        }),
       });
 
-      const data = await json<{ error: string }>();
+      const response = await POST(request);
 
-      expect(status).toBe(400);
-      expect(data.error).toBe(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
+      await expectError(response, WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED, 400);
     });
 
     test("permits creation after workspace deletion", async () => {
@@ -97,9 +100,7 @@ describe("Workspace API - Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: user.id,
           name: `Workspace ${index + 1}`,
-          slug: `workspace-${index + 1}-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2)}`,
+          slug: generateUniqueSlug(`workspace-${index + 1}`),
         });
         workspaces.push(workspace);
       }
@@ -109,67 +110,64 @@ describe("Workspace API - Integration Tests", () => {
         data: { deleted: true, deletedAt: new Date() },
       });
 
-      const slug = `new-workspace-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      const slug = generateUniqueSlug("new-workspace");
 
-      const { status, json } = await invokeRoute(POST, {
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
-        url,
-        session: { user: { id: user.id, email: user.email } },
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: "New Workspace",
           slug,
-        },
+        }),
       });
 
-      const data = await json<{ workspace: { name: string; slug: string } }>();
+      const response = await POST(request);
+      const data = await expectSuccess(response, 201);
 
-      expect(status).toBe(201);
       expect(data.workspace.name).toBe("New Workspace");
       expect(data.workspace.slug).toBe(slug);
     });
 
     test("rejects unauthenticated requests", async () => {
-      const { status, json } = await invokeRoute(POST, {
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+
+      const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
-        url,
-        session: null,
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: "Test Workspace",
           slug: "test-workspace",
-        },
+        }),
       });
 
-      const data = await json<{ error: string }>();
+      const response = await POST(request);
 
-      expect(status).toBe(401);
-      expect(data.error).toBe("Unauthorized");
+      await expectUnauthorized(response);
     });
 
     test("rejects missing required fields", async () => {
       const user = await createTestUser();
 
-      const { status, json } = await invokeRoute(POST, {
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
-        url,
-        session: { user: { id: user.id, email: user.email } },
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           description: "Missing name and slug",
-        },
+        }),
       });
 
-      const data = await json<{ error: string }>();
+      const response = await POST(request);
 
-      expect(status).toBe(400);
-      expect(data.error).toBe("Missing required fields");
+      await expectError(response, "Missing required fields", 400);
     });
 
     test("rejects duplicate slugs", async () => {
       const user = await createTestUser();
-      const slug = `duplicate-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      const slug = generateUniqueSlug("duplicate");
 
       await createTestWorkspace({
         ownerId: user.id,
@@ -177,20 +175,20 @@ describe("Workspace API - Integration Tests", () => {
         slug,
       });
 
-      const { status, json } = await invokeRoute(POST, {
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = new NextRequest("http://localhost:3000/api/workspaces", {
         method: "POST",
-        url,
-        session: { user: { id: user.id, email: user.email } },
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: "Duplicate Workspace",
           slug,
-        },
+        }),
       });
 
-      const data = await json<{ error: string }>();
+      const response = await POST(request);
 
-      expect(status).toBe(400);
-      expect(data.error).toBe(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+      await expectError(response, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 400);
     });
   });
 });
