@@ -36,86 +36,108 @@ describe("Workspace API - Integration Tests", () => {
   });
 
   describe("POST /api/workspaces", () => {
-    test("creates workspace successfully", async () => {
-      const user = await createTestUser();
-      const slug = generateUniqueSlug("test-workspace");
+    test.each([
+      {
+        name: "creates workspace successfully",
+        setup: async () => ({ user: await createTestUser() }),
+        requestData: {
+          name: "Test Workspace",
+          description: "A test workspace",
+        },
+        expectedStatus: 201,
+        assertions: async (response: Response, { user }: { user: any }) => {
+          const data = await expectSuccess(response, 201);
+          const slug = data.workspace.slug;
+          expect(data.workspace).toMatchObject({
+            name: "Test Workspace",
+            slug,
+            ownerId: user.id,
+          });
+        },
+      },
+      {
+        name: "enforces workspace limit",
+        setup: async () => {
+          const user = await createTestUser();
+          for (let index = 0; index < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; index++) {
+            await createTestWorkspace({
+              ownerId: user.id,
+              name: `Workspace ${index + 1}`,
+              slug: generateUniqueSlug(`workspace-${index + 1}`),
+            });
+          }
+          return { user };
+        },
+        requestData: {
+          name: "Extra Workspace",
+          description: "This should fail",
+        },
+        expectedStatus: 400,
+        assertions: async (response: Response) => {
+          await expectError(response, WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED, 400);
+        },
+      },
+      {
+        name: "permits creation after workspace deletion",
+        setup: async () => {
+          const user = await createTestUser();
+          const workspaces = [];
+          for (let index = 0; index < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; index++) {
+            const workspace = await createTestWorkspace({
+              ownerId: user.id,
+              name: `Workspace ${index + 1}`,
+              slug: generateUniqueSlug(`workspace-${index + 1}`),
+            });
+            workspaces.push(workspace);
+          }
+          await db.workspace.update({
+            where: { id: workspaces[0].id },
+            data: { deleted: true, deletedAt: new Date() },
+          });
+          return { user };
+        },
+        requestData: {
+          name: "New Workspace",
+        },
+        expectedStatus: 201,
+        assertions: async (response: Response) => {
+          const data = await expectSuccess(response, 201);
+          expect(data.workspace.name).toBe("New Workspace");
+        },
+      },
+      {
+        name: "rejects duplicate slugs",
+        setup: async () => {
+          const user = await createTestUser();
+          const slug = generateUniqueSlug("duplicate");
+          await createTestWorkspace({
+            ownerId: user.id,
+            name: "First Workspace",
+            slug,
+          });
+          return { user, slug };
+        },
+        requestData: {
+          name: "Duplicate Workspace",
+        },
+        expectedStatus: 400,
+        assertions: async (response: Response) => {
+          await expectError(response, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 400);
+        },
+      },
+    ])("$name", async ({ setup, requestData, assertions }) => {
+      const context = await setup();
+      const slug = (context as any).slug || generateUniqueSlug(requestData.name.toLowerCase().replace(/\s+/g, "-"));
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(context.user));
 
       const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        name: "Test Workspace",
-        description: "A test workspace",
+        ...requestData,
         slug,
       });
 
       const response = await POST(request);
-      const data = await expectSuccess(response, 201);
-
-      expect(data.workspace).toMatchObject({
-        name: "Test Workspace",
-        slug,
-        ownerId: user.id,
-      });
-    });
-
-    test("enforces workspace limit", async () => {
-      const user = await createTestUser();
-
-      for (let index = 0; index < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; index++) {
-        await createTestWorkspace({
-          ownerId: user.id,
-          name: `Workspace ${index + 1}`,
-          slug: generateUniqueSlug(`workspace-${index + 1}`),
-        });
-      }
-
-      const slug = generateUniqueSlug("extra-workspace");
-
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        name: "Extra Workspace",
-        description: "This should fail",
-        slug,
-      });
-
-      const response = await POST(request);
-
-      await expectError(response, WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED, 400);
-    });
-
-    test("permits creation after workspace deletion", async () => {
-      const user = await createTestUser();
-
-      const workspaces = [];
-      for (let index = 0; index < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; index++) {
-        const workspace = await createTestWorkspace({
-          ownerId: user.id,
-          name: `Workspace ${index + 1}`,
-          slug: generateUniqueSlug(`workspace-${index + 1}`),
-        });
-        workspaces.push(workspace);
-      }
-
-      await db.workspace.update({
-        where: { id: workspaces[0].id },
-        data: { deleted: true, deletedAt: new Date() },
-      });
-
-      const slug = generateUniqueSlug("new-workspace");
-
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        name: "New Workspace",
-        slug,
-      });
-
-      const response = await POST(request);
-      const data = await expectSuccess(response, 201);
-
-      expect(data.workspace.name).toBe("New Workspace");
-      expect(data.workspace.slug).toBe(slug);
+      await assertions(response, context);
     });
 
     test("rejects unauthenticated requests", async () => {
@@ -143,28 +165,6 @@ describe("Workspace API - Integration Tests", () => {
       const response = await POST(request);
 
       await expectError(response, "Missing required fields", 400);
-    });
-
-    test("rejects duplicate slugs", async () => {
-      const user = await createTestUser();
-      const slug = generateUniqueSlug("duplicate");
-
-      await createTestWorkspace({
-        ownerId: user.id,
-        name: "First Workspace",
-        slug,
-      });
-
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        name: "Duplicate Workspace",
-        slug,
-      });
-
-      const response = await POST(request);
-
-      await expectError(response, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 400);
     });
   });
 });
