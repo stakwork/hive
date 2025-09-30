@@ -112,4 +112,43 @@ export const mockData = {
       expires: "2024-12-31T00:00:00.000Z",
     };
   },
+
+  githubAuth(overrides: Record<string, unknown> = {}) {
+    return {
+      userId: "user-123",
+      githubUsername: "testuser",
+      name: "Test User",
+      bio: "Software Developer",
+      publicRepos: 25,
+      followers: 100,
+      ...overrides,
+    };
+  },
+
+  memberWithGithub(role: WorkspaceRole = "DEVELOPER", overrides: Record<string, unknown> = {}) {
+    const userId = (overrides.userId as string) || "user-123";
+    const username = (overrides.username as string) || "testuser";
+
+    return {
+      id: (overrides.id as string) || "member-123",
+      userId,
+      workspaceId: (overrides.workspaceId as string) || "ws-123",
+      role,
+      joinedAt: new Date("2024-01-01"),
+      user: {
+        id: userId,
+        name: (overrides.name as string) || "Test User",
+        email: (overrides.email as string) || `${username}@example.com`,
+        image: (overrides.image as string | null) ?? `https://github.com/${username}.png`,
+        githubAuth: {
+          githubUsername: username,
+          name: (overrides.name as string) || "Test User",
+          bio: (overrides.bio as string) || "Software Developer",
+          publicRepos: (overrides.publicRepos as number) || 25,
+          followers: (overrides.followers as number) || 100,
+        },
+      },
+      ...overrides,
+    };
+  },
 };
