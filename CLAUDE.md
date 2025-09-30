@@ -82,7 +82,7 @@ Key features:
 - `stakgraph/` - Components for stakgraph integration and forms
 - `roadmap/` - Product roadmap management components
 - `onboarding/` - User onboarding components
-- Any time you create a react component, create a directory always call the file index.ts
+- Any time you create a react component, create a directory always call the file index.tsx
 
 #### `/src/lib` - Core Utilities
 - `auth/` - NextAuth.js configuration, workspace resolution, role-based access
