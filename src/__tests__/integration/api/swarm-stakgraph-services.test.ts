@@ -4,8 +4,15 @@ import { GET } from "@/app/api/swarm/stakgraph/services/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getServerSession } from "next-auth/next";
+import {
+  createAuthenticatedSession,
+  generateUniqueId,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
+
+const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("GET /api/swarm/stakgraph/services", () => {
   const enc = EncryptionService.getInstance();
@@ -21,25 +28,25 @@ describe("GET /api/swarm/stakgraph/services", () => {
     const testData = await db.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
           name: "User 1",
         },
       });
-      
+
       const workspace = await tx.workspace.create({
         data: {
           name: "w1",
-          slug: `w1-${Date.now()}-${Math.random()}`,
+          slug: generateUniqueSlug("w1"),
           ownerId: user.id,
         },
       });
-      
+
       const swarm = await tx.swarm.create({
         data: {
           workspaceId: workspace.id,
           name: "s1-name",
-          swarmId: `s1-${Date.now()}`,
+          swarmId: generateUniqueId("s1"),
           status: "ACTIVE",
           swarmUrl: "https://s1-name.sphinx.chat/api",
           swarmApiKey: JSON.stringify(
@@ -48,18 +55,14 @@ describe("GET /api/swarm/stakgraph/services", () => {
           services: [],
         },
       });
-      
+
       return { user, workspace, swarm };
     });
-    
+
     workspaceId = testData.workspace.id;
     swarmId = testData.swarm.swarmId!;
-    
-    (
-      getServerSession as unknown as { mockResolvedValue: (v: unknown) => void }
-    ).mockResolvedValue({
-      user: { id: testData.user.id },
-    });
+
+    mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("proxies with decrypted header and keeps DB encrypted", async () => {
