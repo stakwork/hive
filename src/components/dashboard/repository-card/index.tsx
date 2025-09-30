@@ -7,7 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
-import { Database, ExternalLink, GitBranch, Github, RefreshCw, Loader2 } from "lucide-react";
+import { Database, ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 export function RepositoryCard() {
@@ -222,8 +222,6 @@ export function RepositoryCard() {
   if (!workspace?.repositories || workspace.repositories.length === 0) {
     return null;
   }
-
-  console.log(workspace)
 
   const repository = workspace.repositories[0];
 

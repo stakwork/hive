@@ -24,15 +24,9 @@ export default function DashboardPage() {
   const [shouldShowSwarmLoader, setShouldShowSwarmLoader] = useState(false);
   const [ingestError, setIngestError] = useState(false);
 
-  const poolState = workspace?.poolState;
-
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
 
-  console.log('codeIsSynced--codeIsSynced--codeIsSynced', codeIsSynced)
 
-  const isEnvironmentSetup = poolState === "COMPLETE";
-
-  console.log(isEnvironmentSetup);
 
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
@@ -58,14 +52,12 @@ export default function DashboardPage() {
 
       isRequestPendingRef.current = true;
       try {
-        console.log('Polling ingest status...');
         const res = await fetch(
           `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
         );
         const { apiResult } = await res.json();
         const { data } = apiResult;
 
-        console.log(apiResult);
 
         if (apiResult.status === 500) {
           setIngestError(true);
@@ -399,8 +391,6 @@ export default function DashboardPage() {
       window.history.replaceState({}, "", newPath);
     }
   }, [searchParams, toast, completeSwarmSetup]);
-
-  console.log(workspace, slug);
 
   // Determine if swarm is ready - repositories exist (swarm is created and setup is complete)
   const isSwarmReady = workspace &&

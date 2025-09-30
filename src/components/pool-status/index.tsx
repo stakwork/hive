@@ -13,13 +13,8 @@ export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
 
   const open = useModal();
-  console.log(workspace);
-  // const swarmStatus = workspace?.swarmStatus;
 
   const poolState = workspace?.poolState;
-  const poolStateCompleted = workspace?.poolState === "COMPLETE";
-
-  console.log(poolStateCompleted);
 
   // Check if we should show the modal
 
