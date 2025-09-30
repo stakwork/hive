@@ -120,7 +120,7 @@ The database follows a hierarchical structure:
 - **Task Management**: Task hierarchy with AI chat integration, status tracking, and notifications
 - **Janitor System**: `JanitorRun`, `JanitorRecommendation` for automated code quality suggestions
 - **Learning**: `Learning` model for capturing insights from codebase analysis
-- Encrypted fields use JSON format: `{ iv: string, encryptedData: string, authTag: string, keyId: string }`
+- Encrypted fields use JSON format: `{ data: string, iv: string, tag: string, keyId?: string, version: string, encryptedAt: string }`
 
 ### Permission System
 
