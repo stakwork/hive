@@ -60,20 +60,8 @@ export async function POST(request: NextRequest) {
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
     // const env = SWARM_DEFAULT_ENV_VARS;
 
-    await saveOrUpdateSwarm({
-      workspaceId,
-      name: name,
-      instanceType: instance_type,
-      status: SwarmStatus.PENDING,
-      repositoryName: repositoryName || "",
-      repositoryUrl: repositoryUrl || "",
-      repositoryDescription: repositoryDescription || "",
-      defaultBranch: repositoryDefaultBranch || "",
-    });
-
     const swarmConfig = getServiceConfig("swarm");
     const swarmService = new SwarmService(swarmConfig);
-
 
     // Generate a secure password for the swarm
     const swarmPassword = generateSecurePassword(20);
@@ -92,28 +80,32 @@ export async function POST(request: NextRequest) {
     const swarm_id_num = match ? match[1] : swarm_id;
     const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
 
-    // We change the name of the swarm with the swarm_id so subsequent API requests
-    // can succeed since we now use swarm_ids by default.
-    const updatedSwarm = await saveOrUpdateSwarm({
+    // Create the swarm record in database only after successful external service creation
+    const createdSwarm = await saveOrUpdateSwarm({
       workspaceId,
+      name: swarm_id, // Use swarm_id as name so subsequent API requests can succeed
+      instanceType: instance_type,
+      status: SwarmStatus.ACTIVE,
+      repositoryName: repositoryName || "",
+      repositoryUrl: repositoryUrl || "",
+      repositoryDescription: repositoryDescription || "",
+      defaultBranch: repositoryDefaultBranch || "",
       swarmUrl: `https://${swarm_address}/api`,
-      name: swarm_id,
       ec2Id: ec2_id,
       swarmApiKey: x_api_key,
       swarmSecretAlias: swarmSecretAlias,
-      status: SwarmStatus.ACTIVE,
       swarmId: swarm_id,
       swarmPassword: swarmPassword,
     });
 
-    if (!updatedSwarm) {
-      return NextResponse.json({ success: false, message: "Failed to update swarm" }, { status: 500 });
+    if (!createdSwarm) {
+      return NextResponse.json({ success: false, message: "Failed to create swarm record" }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
       message: `${name}-Swarm was created successfully`,
-      data: { id: updatedSwarm.id, swarmId: swarm_id },
+      data: { id: createdSwarm.id, swarmId: swarm_id },
     });
   } catch (error: unknown) {
     console.error("Error creating Swarm:", error);
