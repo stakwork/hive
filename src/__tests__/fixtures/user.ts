@@ -1,24 +1,43 @@
 import { db } from "@/lib/db";
-import type { User } from "@prisma/client";
+import type { User, GitHubAuth } from "@prisma/client";
 
 export interface CreateTestUserOptions {
   name?: string;
   email?: string;
   role?: "USER" | "ADMIN";
+  withGitHubAuth?: boolean;
+  githubUsername?: string;
 }
 
 export async function createTestUser(
   options: CreateTestUserOptions = {},
 ): Promise<User> {
   const timestamp = Date.now();
+  const githubUsername = options.githubUsername || `testuser-${timestamp}`;
 
-  return db.user.create({
+  const user = await db.user.create({
     data: {
       name: options.name || `Test User ${timestamp}`,
       email: options.email || `test-${timestamp}@example.com`,
       role: options.role || "USER",
     },
   });
+
+  if (options.withGitHubAuth) {
+    await db.gitHubAuth.create({
+      data: {
+        userId: user.id,
+        githubUserId: `github-${timestamp}`,
+        githubUsername,
+        name: user.name || "Test User",
+        bio: "Test bio",
+        publicRepos: 10,
+        followers: 5,
+      },
+    });
+  }
+
+  return user;
 }
 
 export async function createTestUsers(count: number): Promise<User[]> {

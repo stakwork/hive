@@ -5,6 +5,8 @@ import { GET, POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH, DELETE } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
+import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/fixtures/workspace";
+import { createTestUser } from "@/__tests__/fixtures/user";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
@@ -29,72 +31,24 @@ const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getSer
 
 describe("Workspace Members API Integration Tests", () => {
   async function createTestWorkspaceWithUsers() {
-    // Use transaction to create all test data atomically
-    return await db.$transaction(async (tx) => {
-      // Create workspace owner with real database operations
-      const ownerUser = await tx.user.create({
-        data: {
-          id: `owner-${Date.now()}-${Math.random()}`,
-          email: `owner-${Date.now()}@example.com`,
-          name: "Owner User",
-        },
-      });
-
-      // Create workspace owned by owner
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `Test Workspace ${Date.now()}`,
-          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-          ownerId: ownerUser.id,
-        },
-      });
-
-      // Create a regular member user
-      const memberUser = await tx.user.create({
-        data: {
-          id: `member-${Date.now()}-${Math.random()}`,
-          email: `member-${Date.now()}@example.com`,
-          name: "Member User",
-        },
-      });
-
-      // Create GitHub auth for member user (needed for member operations)
-      await tx.gitHubAuth.create({
-        data: {
-          userId: memberUser.id,
-          githubUserId: `github-${Date.now()}`,
-          githubUsername: "testuser",
-          name: "Test User",
-          bio: "Test bio",
-          publicRepos: 10,
-          followers: 5,
-        },
-      });
-
-      // Create target user for operations
-      const targetUser = await tx.user.create({
-        data: {
-          id: `target-${Date.now()}-${Math.random()}`,
-          email: `target-${Date.now()}@example.com`,
-          name: "Target User",
-        },
-      });
-
-      // Create GitHub auth for target user
-      await tx.gitHubAuth.create({
-        data: {
-          userId: targetUser.id,
-          githubUserId: `github-target-${Date.now()}`,
-          githubUsername: "targetuser",
-          name: "Target User",
-          bio: "Target bio",
-          publicRepos: 5,
-          followers: 3,
-        },
-      });
-
-      return { ownerUser, workspace, memberUser, targetUser };
+    const scenario = await createTestWorkspaceScenario({
+      members: [
+        { role: "DEVELOPER", withGitHubAuth: true, githubUsername: "testuser" },
+      ],
     });
+
+    const targetUser = await createTestUser({
+      name: "Target User",
+      withGitHubAuth: true,
+      githubUsername: "targetuser",
+    });
+
+    return {
+      ownerUser: scenario.owner,
+      workspace: scenario.workspace,
+      memberUser: scenario.members[0],
+      targetUser,
+    };
   }
 
   beforeEach(async () => {

@@ -64,6 +64,8 @@ export async function createTestMembership(
 export interface WorkspaceMemberBlueprint {
   user?: CreateTestUserOptions;
   role?: WorkspaceRole;
+  withGitHubAuth?: boolean;
+  githubUsername?: string;
 }
 
 export interface CreateTestWorkspaceScenarioOptions {
@@ -133,6 +135,8 @@ export async function createTestWorkspaceScenario(
       name: userOptions?.name,
       email: userOptions?.email,
       role: userOptions?.role,
+      withGitHubAuth: blueprint.withGitHubAuth || userOptions?.withGitHubAuth,
+      githubUsername: blueprint.githubUsername || userOptions?.githubUsername,
     });
 
     members.push(member);
