@@ -66,7 +66,7 @@ export interface WorkspaceMemberBlueprint {
   role?: WorkspaceRole;
 }
 
-export interface WorkspaceScenarioOptions {
+export interface CreateTestWorkspaceScenarioOptions {
   owner?: CreateTestUserOptions;
   members?: WorkspaceMemberBlueprint[];
   memberCount?: number;
@@ -75,7 +75,7 @@ export interface WorkspaceScenarioOptions {
   swarm?: Partial<CreateTestSwarmOptions>;
 }
 
-export interface WorkspaceScenarioResult {
+export interface TestWorkspaceScenarioResult {
   owner: User;
   workspace: Workspace;
   members: User[];
@@ -83,9 +83,9 @@ export interface WorkspaceScenarioResult {
   swarm: Swarm | null;
 }
 
-export async function createWorkspaceScenario(
-  options: WorkspaceScenarioOptions = {},
-): Promise<WorkspaceScenarioResult> {
+export async function createTestWorkspaceScenario(
+  options: CreateTestWorkspaceScenarioOptions = {},
+): Promise<TestWorkspaceScenarioResult> {
   const {
     owner: ownerOverrides,
     members: memberBlueprints = [],

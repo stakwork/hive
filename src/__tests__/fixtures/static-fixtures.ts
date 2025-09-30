@@ -1,3 +1,9 @@
+/**
+ * Static in-memory test data factories.
+ *
+ * Note: This file contains static mock data builders for unit tests.
+ * For Vitest mock configuration (e.g., mocking Prisma), see src/__tests__/mocks/
+ */
 import type { WorkspaceRole } from "@/lib/auth/roles";
 import type { User, WorkspaceMember, Swarm, Workspace } from "@prisma/client";
 import type { Session } from "next-auth";

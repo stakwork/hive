@@ -6,12 +6,17 @@ This directory contains all test files for the Hive application.
 
 ```
 src/__tests__/
-├── assertions/           # Shared domain-specific matchers
-├── fixtures/             # Database-backed builders and factories
-├── harness/              # Helpers for invoking routes and handlers
-├── mocks/                # Global Vitest mocks (Prisma, auth, etc.)
+├── assertions/           # Domain-specific test matchers
+├── fixtures/             # Test data builders (database-backed and static)
+│   ├── user.ts          # createTestUser(), createTestUsers()
+│   ├── workspace.ts     # createTestWorkspace(), createTestWorkspaceScenario()
+│   ├── swarm.ts         # createTestSwarm()
+│   ├── database.ts      # resetDatabase(), cleanup utilities
+│   └── static-fixtures.ts # In-memory mock data (mockData.workspace(), etc.)
+├── harness/              # Test execution helpers (invokeRoute, etc.)
+├── mocks/                # Vitest mock configuration (Prisma client, etc.)
 ├── setup/                # Vitest setup entrypoints (unit/integration)
-├── utils/                # Legacy re-exports (prefer new folders)
+├── utils/                # Legacy re-exports (prefer fixtures/)
 ├── unit/                 # Unit tests
 └── integration/          # Integration tests
 ```
