@@ -87,7 +87,7 @@ export function WorkspaceSettings() {
     if (!swarmApiKey) {
       setSwarmApiKey("");
     }
-  }, [stakgraphData]);
+  }, [stakgraphData, swarmApiKey]);
 
   const onSubmit = async (data: UpdateWorkspaceInput) => {
     if (!workspace) return;
