@@ -6,6 +6,7 @@ import type {
   WorkspaceMember,
 } from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
+import { generateUniqueId } from "@/__tests__/helpers";
 import {
   createTestUser,
   type CreateTestUserOptions,
@@ -33,9 +34,7 @@ export interface CreateTestMembershipOptions {
 export async function createTestWorkspace(
   options: CreateTestWorkspaceOptions,
 ): Promise<Workspace> {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
-  const uniqueId = `${timestamp}-${random}`;
+  const uniqueId = generateUniqueId("workspace");
 
   return db.workspace.create({
     data: {

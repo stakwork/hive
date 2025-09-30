@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { User, GitHubAuth } from "@prisma/client";
+import { generateUniqueId } from "@/__tests__/helpers";
 
 export interface CreateTestUserOptions {
   name?: string;
@@ -12,9 +13,7 @@ export interface CreateTestUserOptions {
 export async function createTestUser(
   options: CreateTestUserOptions = {},
 ): Promise<User> {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
-  const uniqueId = `${timestamp}-${random}`;
+  const uniqueId = generateUniqueId("user");
   const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
 
   const user = await db.user.create({
@@ -29,7 +28,7 @@ export async function createTestUser(
     await db.gitHubAuth.create({
       data: {
         userId: user.id,
-        githubUserId: `github-${uniqueId}`,
+        githubUserId: generateUniqueId("github"),
         githubUsername,
         name: user.name || "Test User",
         bio: "Test bio",
