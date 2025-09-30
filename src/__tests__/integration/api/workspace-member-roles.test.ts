@@ -240,13 +240,13 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should accept all assignable roles for role updates", async () => {
       for (const role of AssignableMemberRoles) {
         const { adminUser, workspace, targetUser } = await createTestWorkspaceWithAdminUser();
-        
-        // First add user as a member with VIEWER role
+
+        // First add user as a member with STAKEHOLDER role (not in AssignableMemberRoles)
         await db.workspaceMember.create({
           data: {
             workspaceId: workspace.id,
             userId: targetUser.id,
-            role: WorkspaceRole.VIEWER,
+            role: WorkspaceRole.STAKEHOLDER,
           },
         });
 

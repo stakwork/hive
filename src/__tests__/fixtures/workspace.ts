@@ -34,13 +34,15 @@ export async function createTestWorkspace(
   options: CreateTestWorkspaceOptions,
 ): Promise<Workspace> {
   const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 15);
+  const uniqueId = `${timestamp}-${random}`;
 
   return db.workspace.create({
     data: {
-      name: options.name || `Test Workspace ${timestamp}`,
+      name: options.name || `Test Workspace ${uniqueId}`,
       description:
         options.description === undefined ? null : options.description,
-      slug: options.slug || `test-workspace-${timestamp}`,
+      slug: options.slug || `test-workspace-${uniqueId}`,
       ownerId: options.ownerId,
       stakworkApiKey:
         options.stakworkApiKey === undefined ? null : options.stakworkApiKey,

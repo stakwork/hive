@@ -13,12 +13,14 @@ export async function createTestUser(
   options: CreateTestUserOptions = {},
 ): Promise<User> {
   const timestamp = Date.now();
-  const githubUsername = options.githubUsername || `testuser-${timestamp}`;
+  const random = Math.random().toString(36).substring(2, 15);
+  const uniqueId = `${timestamp}-${random}`;
+  const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
 
   const user = await db.user.create({
     data: {
-      name: options.name || `Test User ${timestamp}`,
-      email: options.email || `test-${timestamp}@example.com`,
+      name: options.name || `Test User ${uniqueId}`,
+      email: options.email || `test-${uniqueId}@example.com`,
       role: options.role || "USER",
     },
   });
@@ -27,7 +29,7 @@ export async function createTestUser(
     await db.gitHubAuth.create({
       data: {
         userId: user.id,
-        githubUserId: `github-${timestamp}`,
+        githubUserId: `github-${uniqueId}`,
         githubUsername,
         name: user.name || "Test User",
         bio: "Test bio",
