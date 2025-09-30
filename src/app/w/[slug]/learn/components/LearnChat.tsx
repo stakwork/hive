@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LearnChatArea } from "./LearnChatArea";
 import { LearnSidebar } from "./LearnSidebar";
+import { useStreamProcessor } from "./StreamingMessage/useStreamProcessor";
 import type { LearnMessage } from "@/types/learn";
 
 interface LearnChatProps {
@@ -22,6 +23,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
+  const { processStream } = useStreamProcessor();
 
   const handleSend = async (content: string) => {
     if (!content.trim()) return;
@@ -37,7 +39,6 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     setIsLoading(true);
 
     try {
-      // Choose API endpoint based on mode
       const apiEndpoint =
         mode === "chat"
           ? `/api/ask/quick?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`
@@ -45,31 +46,24 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
 
       const response = await fetch(apiEndpoint);
 
-      // console.log("🌐 Response details:", {
-      //   status: response.status,
-      //   statusText: response.statusText,
-      //   headers: Object.fromEntries(response.headers.entries()),
-      //   body: response.body,
-      //   bodyUsed: response.bodyUsed,
-      //   url: response.url,
-      // });
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       if (mode === "chat") {
-        // Handle JSON response for chat mode
-        const data = await response.json();
+        const messageId = (Date.now() + 1).toString();
 
-        const assistantMessage: LearnMessage = {
-          id: (Date.now() + 1).toString(),
-          content: data.result || data.message || "I apologize, but I couldn't generate a response at this time.",
-          role: "assistant",
-          timestamp: new Date(),
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
+        await processStream(response, messageId, (updatedMessage) => {
+          setMessages((prev) => {
+            const existingIndex = prev.findIndex((m) => m.id === messageId);
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              updated[existingIndex] = updatedMessage;
+              return updated;
+            }
+            return [...prev, updatedMessage];
+          });
+        });
       } else {
         // Handle regular JSON response for learn mode
         const data = await response.json();
