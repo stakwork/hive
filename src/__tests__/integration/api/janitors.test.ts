@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
+import { getServerSession } from "next-auth/next";
 import { GET as GetConfig, PUT as UpdateConfig } from "@/app/api/workspaces/[slug]/janitors/config/route";
 import { POST as TriggerRun } from "@/app/api/workspaces/[slug]/janitors/[type]/run/route";
 import { GET as GetRuns } from "@/app/api/workspaces/[slug]/janitors/runs/route";
@@ -20,7 +21,14 @@ import {
   createPutRequest,
 } from "@/__tests__/helpers";
 import { createTestWorkspaceScenario } from "@/__tests__/fixtures";
-import { mockGetServerSession } from "@/__tests__/setup/next-auth-mock";
+
+vi.mock("next-auth/next", () => ({
+  getServerSession: vi.fn(),
+}));
+
+vi.mock("@/lib/auth/nextauth", () => ({
+  authOptions: {},
+}));
 
 // Mock Stakwork service
 vi.mock("@/lib/service-factory", () => ({
@@ -38,6 +46,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
+const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
 describe("Janitor API Integration Tests", () => {

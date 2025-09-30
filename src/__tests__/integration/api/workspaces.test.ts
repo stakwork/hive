@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/workspaces/route";
+import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import {
   WORKSPACE_ERRORS,
@@ -18,7 +19,16 @@ import {
   generateUniqueSlug,
   createPostRequest,
 } from "@/__tests__/helpers";
-import { mockGetServerSession } from "@/__tests__/setup/next-auth-mock";
+
+vi.mock("next-auth/next", () => ({
+  getServerSession: vi.fn(),
+}));
+
+vi.mock("@/lib/auth/nextauth", () => ({
+  authOptions: {},
+}));
+
+const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("Workspace API - Integration Tests", () => {
   beforeEach(() => {
