@@ -4,6 +4,19 @@ import { getServerSession } from "next-auth/next";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { db } from "@/lib/db";
 import { createTestWorkspaceScenario } from "@/__tests__/fixtures/workspace";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectSuccess,
+  expectUnauthorized,
+  expectNotFound,
+  expectForbidden,
+  expectConflict,
+  expectValidationError,
+  expectWorkspaceExists,
+  expectWorkspaceDeleted,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
@@ -39,68 +52,54 @@ describe("Workspace Update API Integration Tests", () => {
   describe("GET /api/workspaces/[slug]", () => {
     test("should get workspace successfully with real database operations", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
-      
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.workspace).toBeDefined();
       expect(data.workspace.name).toBe(workspace.name);
       expect(data.workspace.slug).toBe(workspace.slug);
       expect(data.workspace.description).toBe("Original description");
 
       // Verify data comes from real database
-      const workspaceInDb = await db.workspace.findUnique({
-        where: { slug: workspace.slug },
-      });
-      expect(workspaceInDb?.name).toBe(workspace.name);
+      await expectWorkspaceExists(workspace.id);
     });
 
     test("should return 401 for unauthenticated request", async () => {
       const { workspace } = await createTestWorkspace();
-      
-      mockGetServerSession.mockResolvedValue(null);
+
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data).toEqual({ error: "Unauthorized" });
+      await expectUnauthorized(response);
     });
 
     test("should return 404 for non-existent workspace", async () => {
       const { ownerUser } = await createTestWorkspace();
-      
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = new NextRequest("http://localhost:3000/api/workspaces/nonexistent");
       const response = await GET(request, { params: Promise.resolve({ slug: "nonexistent" }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Workspace not found or access denied");
+      await expectNotFound(response, "Workspace not found or access denied");
     });
   });
 
   describe("PUT /api/workspaces/[slug]", () => {
     test("should update workspace successfully as owner with real database operations", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
-      
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const updateData = {
         name: "Updated Workspace Name",
-        slug: `updated-slug-${Date.now()}`,
+        slug: generateUniqueSlug("updated"),
         description: "Updated description",
       };
 
@@ -111,9 +110,8 @@ describe("Workspace Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.workspace.name).toBe("Updated Workspace Name");
       expect(data.workspace.slug).toBe(updateData.slug);
       expect(data.workspace.description).toBe("Updated description");
@@ -125,7 +123,7 @@ describe("Workspace Update API Integration Tests", () => {
       });
       expect(updatedWorkspaceInDb?.name).toBe("Updated Workspace Name");
       expect(updatedWorkspaceInDb?.description).toBe("Updated description");
-      
+
       // Verify old slug no longer exists
       const oldWorkspaceInDb = await db.workspace.findUnique({
         where: { slug: workspace.slug },
@@ -135,10 +133,8 @@ describe("Workspace Update API Integration Tests", () => {
 
     test("should update workspace successfully as admin with real database operations", async () => {
       const { adminUser, workspace } = await createTestWorkspace();
-      
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const updateData = {
         name: "Admin Updated Name",
@@ -153,9 +149,8 @@ describe("Workspace Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.workspace.name).toBe("Admin Updated Name");
       expect(data.slugChanged).toBeNull(); // Slug didn't change
 
@@ -170,9 +165,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 403 for insufficient permissions", async () => {
       const { memberUser, workspace } = await createTestWorkspace();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: memberUser.id, email: memberUser.email },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(memberUser));
 
       const updateData = {
         name: "Unauthorized Update",
@@ -187,10 +180,8 @@ describe("Workspace Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.error).toContain("owners and admins");
+      await expectForbidden(response, "owners and admins");
 
       // Verify workspace was not changed in database
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
@@ -203,9 +194,7 @@ describe("Workspace Update API Integration Tests", () => {
     test("should validate required fields with real schema validation", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const invalidData = {
         name: "", // Empty name should fail validation
@@ -219,11 +208,8 @@ describe("Workspace Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("Validation failed");
-      expect(data.details).toBeDefined();
+      await expectValidationError(response);
 
       // Verify workspace was not changed in database
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
@@ -245,9 +231,7 @@ describe("Workspace Update API Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const duplicateData = {
         name: "Updated Name",
@@ -261,10 +245,8 @@ describe("Workspace Update API Integration Tests", () => {
       });
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(409);
-      expect(data.error).toContain("already exists");
+      await expectConflict(response, "already exists");
 
       // Verify original workspace slug unchanged
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
@@ -278,26 +260,23 @@ describe("Workspace Update API Integration Tests", () => {
     test("should delete workspace successfully as owner with real database operations", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
         method: "DELETE",
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.success).toBe(true);
 
-      // Verify workspace was soft-deleted in database (use ID since slug changes)
+      // Verify workspace was soft-deleted in database
+      await expectWorkspaceDeleted(workspace.id);
+
       const deletedWorkspaceInDb = await db.workspace.findUnique({
         where: { id: workspace.id },
       });
-      expect(deletedWorkspaceInDb?.deleted).toBe(true);
-      expect(deletedWorkspaceInDb?.deletedAt).toBeTruthy();
       expect(deletedWorkspaceInDb?.originalSlug).toBe(workspace.slug);
       expect(deletedWorkspaceInDb?.slug).toMatch(/^.+-deleted-\d+$/);
     });
@@ -305,19 +284,15 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 403 for non-owner attempting deletion", async () => {
       const { adminUser, workspace } = await createTestWorkspace();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
         method: "DELETE",
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.error).toContain("Only workspace owners");
+      await expectForbidden(response, "Only workspace owners");
 
       // Verify workspace was not deleted
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
@@ -330,35 +305,29 @@ describe("Workspace Update API Integration Tests", () => {
     test("should return 404 for non-existent workspace", async () => {
       const { ownerUser } = await createTestWorkspace();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = new NextRequest("http://localhost:3000/api/workspaces/nonexistent", {
         method: "DELETE",
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: "nonexistent" }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toContain("not found");
+      await expectNotFound(response, "not found");
     });
 
     test("should return 401 for unauthenticated deletion", async () => {
       const { workspace } = await createTestWorkspace();
       
-      mockGetServerSession.mockResolvedValue(null);
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
         method: "DELETE",
       });
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data).toEqual({ error: "Unauthorized" });
+      await expectUnauthorized(response);
 
       // Verify workspace was not deleted
       const unchangedWorkspaceInDb = await db.workspace.findUnique({
