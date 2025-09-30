@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
     const model = await getModel(provider, apiKey, workspaceSlug);
-    const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat);
+    const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat, apiKey);
 
     const messages: ModelMessage[] = [
       { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },

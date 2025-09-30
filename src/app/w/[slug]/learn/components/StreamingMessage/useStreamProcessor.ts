@@ -33,6 +33,7 @@ export function useStreamProcessor() {
       let error: string | undefined;
       let finalAnswer: string | undefined;
       const finalAnswerToolIds = new Set<string>();
+      let webSearchResults: Array<{ url: string; title?: string }> = [];
 
       const updateMessage = () => {
         // Build text parts array with final answer at the end
@@ -128,13 +129,23 @@ export function useStreamProcessor() {
                 });
               }
             } else if (data.type === "tool-output-available") {
+              const existing = toolCalls.get(data.toolCallId);
+
+              // Capture web search results
+              if (existing?.toolName === "web_search" && Array.isArray(data.output)) {
+                webSearchResults = data.output.map((result: { url: string; title?: string }) => ({
+                  url: result.url,
+                  title: result.title,
+                }));
+              }
+
               // Final output available - ensure final_answer is cleaned up
               if (finalAnswerToolIds.has(data.toolCallId)) {
                 let answer = typeof data.output === "string"
                   ? data.output
                   : (data.output as { answer?: string })?.answer || JSON.stringify(data.output);
 
-                // Clean up XML tags if present
+                // Clean up XML tags if present and convert citations to links
                 if (typeof answer === "string") {
                   answer = answer
                     .replace(/<function_calls>\s*/gi, "")
@@ -144,20 +155,27 @@ export function useStreamProcessor() {
                     .replace(/<parameter[^>]*>/gi, "")
                     .replace(/<\/parameter>\s*/gi, "")
                     .trim();
+
+                  // Convert <cite index="X-Y">text</cite> to markdown links
+                  answer = answer.replace(/<cite index="(\d+)-\d+">(.*?)<\/cite>/g, (_match: string, index: string, text: string) => {
+                    const resultIndex = parseInt(index) - 1; // Convert to 0-indexed
+                    if (webSearchResults[resultIndex]) {
+                      const result = webSearchResults[resultIndex];
+                      return `[${text}](${result.url})`;
+                    }
+                    return text;
+                  });
                 }
 
                 // Set the final cleaned answer
                 textParts.set("final-answer", answer);
                 finalAnswer = answer;
-              } else {
-                const existing = toolCalls.get(data.toolCallId);
-                if (existing) {
-                  toolCalls.set(data.toolCallId, {
-                    ...existing,
-                    output: data.output,
-                    status: "output-available",
-                  });
-                }
+              } else if (existing) {
+                toolCalls.set(data.toolCallId, {
+                  ...existing,
+                  output: data.output,
+                  status: "output-available",
+                });
               }
             } else if (data.type === "tool-output-error") {
               const existing = toolCalls.get(data.toolCallId);
