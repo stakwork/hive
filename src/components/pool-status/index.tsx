@@ -40,7 +40,7 @@ export function VMConfigSection() {
             icon: CheckCircle,
             className: "bg-green-100 text-green-800 border-green-200"
           },
-          description: "Configure your VM environment, services, and container files."
+          description: "Manage environment variables and services any time."
         };
       case "PENDING":
         return {
@@ -82,7 +82,7 @@ export function VMConfigSection() {
               <DropdownMenuItem asChild>
                 <Link href={`/w/${slug}/stakgraph`} className="cursor-pointer">
                   <Settings className="w-4 h-4 mr-2" />
-                  VM Environment Settings
+                  Edit Configuration
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>

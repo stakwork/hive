@@ -48,7 +48,6 @@ export default function StakgraphPage() {
     refreshCurrentWorkspace();
   };
 
-
   if (initialLoading) {
     return (
       <div className="space-y-6">
@@ -79,13 +78,13 @@ export default function StakgraphPage() {
         </Button>
       </div>
       <PageHeader
-        title="VM Configuration"
-        description="Configure your virtual machine environment, services, and container files"
+        title="Pool Status"
+        description="Configure your pool settings for development environment"
       />
 
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle>VM Environment Settings</CardTitle>
+          <CardTitle>Pool Settings</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -133,7 +132,7 @@ export default function StakgraphPage() {
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Save VM Configuration
+                  Save
                 </>
               )}
             </Button>

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Edit3, Loader2, GitBranch, Server, Key } from "lucide-react";
+import { Edit3, Loader2, GitBranch, Server, Key, Webhook } from "lucide-react";
 
 import {
   Card,
@@ -34,7 +34,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 
 export function WorkspaceSettings() {
-  const { workspace, refreshCurrentWorkspace } = useWorkspace();
+  const { workspace, id, refreshCurrentWorkspace } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -129,6 +129,61 @@ export function WorkspaceSettings() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleEnsureWebhooks = async () => {
+    try {
+      if (!id) {
+        toast({
+          title: "Error",
+          description: "Workspace not ready",
+          variant: "destructive",
+        });
+        return;
+      }
+      const res = await fetch("/api/github/webhook/ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: id,
+          repositoryUrl: repositoryUrl,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === "INSUFFICIENT_PERMISSIONS") {
+          toast({
+            title: "Permission Required",
+            description: data.message || "Admin access required to manage webhooks on this repository",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: data.message || "Failed to add webhooks",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
+      toast({
+        title: "Webhooks added",
+        description: "GitHub webhooks have been ensured",
+      });
+      if (workspace?.slug) {
+        await loadSettings(workspace.slug);
+      }
+    } catch (error) {
+      console.error("Failed to ensure webhooks", error);
+      toast({
+        title: "Error",
+        description: "Failed to add webhooks",
+        variant: "destructive",
+      });
     }
   };
 
@@ -385,7 +440,13 @@ export function WorkspaceSettings() {
               </p>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {!stakgraphData.webhookEnsured && repositoryUrl ? (
+                <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
+                  <Webhook className="mr-2 h-4 w-4" />
+                  Add Github Webhooks
+                </Button>
+              ) : null}
               <Button
                 onClick={saveRepository}
                 disabled={isSubmitting || stakgraphLoading || repositoryUrl === stakgraphData.repositoryUrl}
