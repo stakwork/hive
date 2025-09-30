@@ -6,6 +6,8 @@ import { PATCH } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { AssignableMemberRoles } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
+import { createTestWorkspaceScenario } from "@/__tests__/fixtures/workspace";
+import { createTestUser } from "@/__tests__/fixtures/user";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
@@ -30,50 +32,19 @@ const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getSer
 
 describe("Workspace Member Role API Integration Tests", () => {
   async function createTestWorkspaceWithAdminUser() {
-    // Use a transaction to ensure atomicity
-    return await db.$transaction(async (tx) => {
-      // Create admin user with real database operations
-      const adminUser = await tx.user.create({
-        data: {
-          id: `admin-${Date.now()}-${Math.random()}`,
-          email: `admin-${Date.now()}@example.com`,
-          name: "Admin User",
-        },
-      });
+    const scenario = await createTestWorkspaceScenario();
 
-      // Create workspace owned by admin
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `Test Workspace ${Date.now()}`,
-          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-          ownerId: adminUser.id,
-        },
-      });
-
-      // Create target user for member operations
-      const targetUser = await tx.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Target User",
-        },
-      });
-
-      // Create GitHub auth for target user (needed for addWorkspaceMember)
-      await tx.gitHubAuth.create({
-        data: {
-          userId: targetUser.id,
-          githubUserId: "12345",
-          githubUsername: "testuser",
-          name: "Test User",
-          bio: "Test bio",
-          publicRepos: 10,
-          followers: 5,
-        },
-      });
-
-      return { adminUser, workspace, targetUser };
+    const targetUser = await createTestUser({
+      name: "Target User",
+      withGitHubAuth: true,
+      githubUsername: "testuser",
     });
+
+    return {
+      adminUser: scenario.owner,
+      workspace: scenario.workspace,
+      targetUser,
+    };
   }
 
   beforeEach(async () => {

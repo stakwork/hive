@@ -2,8 +2,8 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
-import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
+import { createTestWorkspaceScenario } from "@/__tests__/fixtures/workspace";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
@@ -14,61 +14,22 @@ const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getSer
 
 describe("Workspace Update API Integration Tests", () => {
   async function createTestWorkspace() {
-    // Create workspace owner with real database operations
-    const ownerUser = await db.user.create({
-      data: {
-        id: `owner-${Date.now()}-${Math.random()}`,
-        email: `owner-${Date.now()}@example.com`,
-        name: "Owner User",
-      },
-    });
-
-    // Create workspace owned by owner
-    const workspace = await db.workspace.create({
-      data: {
-        name: `Test Workspace ${Date.now()}`,
-        slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    const scenario = await createTestWorkspaceScenario({
+      workspace: {
         description: "Original description",
-        ownerId: ownerUser.id,
       },
+      members: [
+        { role: "ADMIN" },
+        { role: "DEVELOPER" },
+      ],
     });
 
-    // Create admin user
-    const adminUser = await db.user.create({
-      data: {
-        id: `admin-${Date.now()}-${Math.random()}`,
-        email: `admin-${Date.now()}@example.com`,
-        name: "Admin User",
-      },
-    });
-
-    // Add admin as workspace member
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: adminUser.id,
-        role: WorkspaceRole.ADMIN,
-      },
-    });
-
-    // Create regular member
-    const memberUser = await db.user.create({
-      data: {
-        id: `member-${Date.now()}-${Math.random()}`,
-        email: `member-${Date.now()}@example.com`,
-        name: "Member User",
-      },
-    });
-
-    await db.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: memberUser.id,
-        role: WorkspaceRole.DEVELOPER,
-      },
-    });
-
-    return { ownerUser, adminUser, memberUser, workspace };
+    return {
+      ownerUser: scenario.owner,
+      adminUser: scenario.members[0],
+      memberUser: scenario.members[1],
+      workspace: scenario.workspace,
+    };
   }
 
   beforeEach(async () => {
