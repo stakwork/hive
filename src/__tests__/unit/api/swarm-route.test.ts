@@ -286,9 +286,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     test("should handle API key securely", async () => {
       const sensitiveApiKey = "very-sensitive-api-key-123";
       
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" })
-        .mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
