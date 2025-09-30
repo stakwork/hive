@@ -78,11 +78,6 @@ export function useStreamProcessor() {
           try {
             const data = JSON.parse(jsonStr);
 
-            // Log tool output events to debug
-            if (data.type?.includes("output")) {
-              console.log("🔧 Tool output event:", data.type, data);
-            }
-
             if (data.type === "text-start") {
               textParts.set(data.id, "");
             } else if (data.type === "text-delta") {
@@ -199,8 +194,6 @@ export function useStreamProcessor() {
           content: finalAnswer,
         });
       }
-
-      console.log("🏁 Finalizing stream with messageId:", messageId);
 
       onUpdate({
         id: messageId,
