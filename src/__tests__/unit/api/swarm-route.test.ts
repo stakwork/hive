@@ -172,9 +172,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" }) // First call
-        .mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" }); // Second call
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -263,9 +261,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should generate secure password for swarm", async () => {
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" })
-        .mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -317,9 +313,9 @@ describe("POST /api/swarm - Unit Tests", () => {
       });
 
       // Verify API key was saved to database securely
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(2);
-      const secondCall = mockSaveOrUpdateSwarm.mock.calls[1][0];
-      expect(secondCall).toMatchObject({
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(1);
+      const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
+      expect(saveCall).toMatchObject({
         workspaceId: "workspace-123",
         swarmApiKey: sensitiveApiKey,
         swarmPassword: "secure-test-password-123",
@@ -327,9 +323,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should create secure secret alias", async () => {
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" })
-        .mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -395,9 +389,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should handle malformed external service responses", async () => {
-      mockSaveOrUpdateSwarm
-        .mockResolvedValueOnce({ id: "temp-swarm" })
-        .mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       // Malformed response missing required fields
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
@@ -412,8 +404,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(200); // Should still succeed
       
       // Verify it handles undefined values gracefully
-      const secondCall = mockSaveOrUpdateSwarm.mock.calls[1][0];
-      expect(secondCall).toMatchObject({
+      const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
+      expect(saveCall).toMatchObject({
         workspaceId: "workspace-123",
         swarmUrl: "https://undefined/api", // undefined address becomes "undefined"
         swarmApiKey: undefined,
@@ -517,7 +509,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
