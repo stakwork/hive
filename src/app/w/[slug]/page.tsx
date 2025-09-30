@@ -406,14 +406,18 @@ export default function DashboardPage() {
         <div className="w-full h-full flex flex-col items-center justify-center">
           <PageHeader title="Welcome to your development workspace" />
           {isSwarmReady ? <Gitsee /> : (
-            <div className="flex flex-col items-center space-y-4">
-              <div className="w-16 h-16 bg-[#16a34a] rounded-full animate-pulse"></div>
-              {workspace?.repositories?.[0]?.name && (
-                <p className="text-lg font-medium text-muted-foreground">
-                  {workspace.repositories[0].name}
-                </p>
-              )}
-            </div>
+            <Card className="max-w-2xl">
+              <CardContent>
+                <div className="flex flex-col items-center justify-center space-y-4" style={{ width: "500px", height: "500px" }}>
+                  <div className="w-16 h-16 bg-[#16a34a] rounded-full animate-pulse"></div>
+                  {workspace?.repositories?.[0]?.name && (
+                    <p className="text-lg font-medium text-muted-foreground">
+                      {workspace.repositories[0].name}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
