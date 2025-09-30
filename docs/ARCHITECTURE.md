@@ -192,7 +192,7 @@ State/UX:
 ## Testing
 Config: `vitest.config.ts`
 - `TEST_SUITE=integration` toggles to integration suite and setup; default is unit.
-- Setup files: `src/__tests__/setup-unit.ts`, `src/__tests__/setup-integration.ts`.
+- Setup files: `src/__tests__/setup/unit.ts`, `src/__tests__/setup/integration.ts`.
 - Commands: see `package.json` (unit/integration/coverage). Test DB is managed by Docker via scripts in `scripts/*` and `docker-compose.test.yml`.
 
 ---
@@ -245,5 +245,4 @@ Docker options are available for local DB and app (`docker-compose*.yml`).
 - API routes: `src/app/api/*`
 - Workspace UI: `src/app/w/[slug]/*`
 - Hooks/Stores: `src/hooks/*`, `src/stores/*`
-
 

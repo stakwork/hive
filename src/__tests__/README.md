@@ -6,11 +6,19 @@ This directory contains all test files for the Hive application.
 
 ```
 src/__tests__/
-├── setup.ts              # Global test setup
+├── assertions/           # Domain-specific test matchers
+├── fixtures/             # Test data builders (database-backed and static)
+│   ├── user.ts          # createTestUser(), createTestUsers()
+│   ├── workspace.ts     # createTestWorkspace(), createTestWorkspaceScenario()
+│   ├── swarm.ts         # createTestSwarm()
+│   ├── database.ts      # resetDatabase(), cleanup utilities
+│   └── static-fixtures.ts # In-memory mock data (mockData.workspace(), etc.)
+├── harness/              # Test execution helpers (invokeRoute, etc.)
+├── mocks/                # Vitest mock configuration (Prisma client, etc.)
+├── setup/                # Vitest setup entrypoints (unit/integration)
+├── utils/                # Legacy re-exports (prefer fixtures/)
 ├── unit/                 # Unit tests
-│   └── .gitkeep         # Placeholder
 └── integration/          # Integration tests
-    └── .gitkeep         # Placeholder
 ```
 
 ## Test Types
@@ -45,4 +53,4 @@ npm run test:watch
 
 ## Test Setup
 
-The `setup.ts` file configures the global test environment. Add any global setup, mocks, or configuration here. 
+Global hooks live in `setup/global.ts`. Use `setup/unit.ts` and `setup/integration.ts` for suite-specific configuration. Shared builders are exported from `@/__tests__/fixtures`, and the `invokeRoute` helper in `@/__tests__/harness` standardises API route execution in tests.
