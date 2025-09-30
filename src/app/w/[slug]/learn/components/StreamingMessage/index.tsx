@@ -15,14 +15,10 @@ export function StreamingMessage({ message }: StreamingMessageProps) {
   const finalAnswerPart = message.textParts?.find(part => part.id === "final-answer");
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       {message.error && (
-        <div className="rounded-lg p-3 border bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg">❌</span>
-            <div className="font-semibold text-sm text-red-700 dark:text-red-300">Error</div>
-          </div>
-          <div className="text-xs text-red-600 dark:text-red-400">{message.error}</div>
+        <div className="text-xs text-destructive bg-destructive/10 rounded p-2">
+          {message.error}
         </div>
       )}
       {message.reasoningParts?.map((part) => (
@@ -31,11 +27,30 @@ export function StreamingMessage({ message }: StreamingMessageProps) {
       {regularTextParts.map((part) => (
         <StreamTextPart key={part.id} part={part} />
       ))}
-      {message.toolCalls?.map((toolCall) => (
-        <StreamToolCall key={toolCall.id} toolCall={toolCall} />
-      ))}
-      {finalAnswerPart && (
+      {message.toolCalls && message.toolCalls.length > 0 && (
+        <div className="bg-muted/50 border border-border/50 rounded-lg p-2 my-1">
+          <div className="flex flex-wrap gap-1.5">
+            {message.toolCalls.map((toolCall) => (
+              <StreamToolCall key={toolCall.id} toolCall={toolCall} />
+            ))}
+          </div>
+        </div>
+      )}
+      {finalAnswerPart ? (
         <StreamTextPart key={finalAnswerPart.id} part={finalAnswerPart} />
+      ) : message.isStreaming && (
+        <div className="flex items-center space-x-1 text-muted-foreground">
+          <div className="w-1 h-1 bg-current rounded-full animate-pulse"></div>
+          <div
+            className="w-1 h-1 bg-current rounded-full animate-pulse"
+            style={{ animationDelay: "0.2s" }}
+          ></div>
+          <div
+            className="w-1 h-1 bg-current rounded-full animate-pulse"
+            style={{ animationDelay: "0.4s" }}
+          ></div>
+          <span className="ml-2 text-xs">Thinking...</span>
+        </div>
       )}
     </div>
   );

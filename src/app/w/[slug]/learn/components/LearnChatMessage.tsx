@@ -20,7 +20,7 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
       transition={{ duration: 0.2 }}
       className={`flex ${isUser ? "justify-end" : "justify-start"}`}
     >
-      <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+      <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm overflow-hidden ${
         isUser
           ? "bg-primary text-primary-foreground ml-12"
           : "bg-muted mr-12"

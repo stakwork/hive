@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { LearnChatArea } from "./LearnChatArea";
 import { LearnSidebar } from "./LearnSidebar";
 import { useStreamProcessor } from "./StreamingMessage/useStreamProcessor";
@@ -24,6 +24,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
   const { processStream } = useStreamProcessor();
+  const hasReceivedContentRef = useRef(false);
 
   const handleSend = async (content: string) => {
     if (!content.trim()) return;
@@ -37,6 +38,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    hasReceivedContentRef.current = false;
 
     try {
       const apiEndpoint =
@@ -54,6 +56,12 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
         const messageId = (Date.now() + 1).toString();
 
         await processStream(response, messageId, (updatedMessage) => {
+          // Turn off loading as soon as we get the first content
+          if (!hasReceivedContentRef.current) {
+            hasReceivedContentRef.current = true;
+            setIsLoading(false);
+          }
+
           setMessages((prev) => {
             const existingIndex = prev.findIndex((m) => m.id === messageId);
             if (existingIndex >= 0) {

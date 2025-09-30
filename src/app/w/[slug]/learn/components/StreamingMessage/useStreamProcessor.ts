@@ -32,6 +32,7 @@ export function useStreamProcessor() {
       >();
       let error: string | undefined;
       let finalAnswer: string | undefined;
+      const finalAnswerToolIds = new Set<string>();
 
       const updateMessage = () => {
         // Build text parts array with final answer at the end
@@ -86,10 +87,15 @@ export function useStreamProcessor() {
             } else if (data.type === "reasoning-delta") {
               reasoningParts.set(data.id, (reasoningParts.get(data.id) || "") + data.delta);
             } else if (data.type === "tool-input-start") {
-              toolCalls.set(data.toolCallId, {
-                toolName: data.toolName,
-                status: "input-start",
-              });
+              // Track final_answer but don't show as a tool bubble
+              if (data.toolName === "final_answer") {
+                finalAnswerToolIds.add(data.toolCallId);
+              } else {
+                toolCalls.set(data.toolCallId, {
+                  toolName: data.toolName,
+                  status: "input-start",
+                });
+              }
             } else if (data.type === "tool-input-delta") {
               const existing = toolCalls.get(data.toolCallId);
               if (existing) {
@@ -100,13 +106,16 @@ export function useStreamProcessor() {
                 });
               }
             } else if (data.type === "tool-input-available") {
-              const existing = toolCalls.get(data.toolCallId);
-              if (existing) {
-                toolCalls.set(data.toolCallId, {
-                  ...existing,
-                  input: data.input,
-                  status: "input-available",
-                });
+              // Skip final_answer tool
+              if (!finalAnswerToolIds.has(data.toolCallId)) {
+                const existing = toolCalls.get(data.toolCallId);
+                if (existing) {
+                  toolCalls.set(data.toolCallId, {
+                    ...existing,
+                    input: data.input,
+                    status: "input-available",
+                  });
+                }
               }
             } else if (data.type === "tool-input-error") {
               const existing = toolCalls.get(data.toolCallId);
@@ -119,17 +128,29 @@ export function useStreamProcessor() {
                 });
               }
             } else if (data.type === "tool-output-available") {
-              const existing = toolCalls.get(data.toolCallId);
-              if (existing) {
-                // Special handling for final_answer - store separately to show at the end
-                if (existing.toolName === "final_answer") {
-                  finalAnswer = typeof data.output === "string"
-                    ? data.output
-                    : (data.output as { answer?: string })?.answer || JSON.stringify(data.output);
+              // Special handling for final_answer - extract and store separately
+              if (finalAnswerToolIds.has(data.toolCallId)) {
+                let answer = typeof data.output === "string"
+                  ? data.output
+                  : (data.output as { answer?: string })?.answer || JSON.stringify(data.output);
 
-                  // Remove the tool call so it doesn't show as a bubble
-                  toolCalls.delete(data.toolCallId);
-                } else {
+                // Clean up XML tags if present
+                if (typeof answer === "string") {
+                  // Remove XML wrapper tags
+                  answer = answer
+                    .replace(/<function_calls>\s*/gi, "")
+                    .replace(/<\/function_calls>\s*/gi, "")
+                    .replace(/<invoke[^>]*>\s*/gi, "")
+                    .replace(/<\/invoke>\s*/gi, "")
+                    .replace(/<parameter[^>]*>/gi, "")
+                    .replace(/<\/parameter>\s*/gi, "")
+                    .trim();
+                }
+
+                finalAnswer = answer;
+              } else {
+                const existing = toolCalls.get(data.toolCallId);
+                if (existing) {
                   toolCalls.set(data.toolCallId, {
                     ...existing,
                     output: data.output,
@@ -150,7 +171,10 @@ export function useStreamProcessor() {
               error = data.errorText;
             }
 
-            updateMessage();
+            // Only update if there's content to show
+            if (textParts.size > 0 || toolCalls.size > 0 || reasoningParts.size > 0 || finalAnswer || error) {
+              updateMessage();
+            }
           } catch (parseError) {
             console.error("Failed to parse stream chunk:", parseError);
           }
@@ -169,6 +193,8 @@ export function useStreamProcessor() {
           content: finalAnswer,
         });
       }
+
+      console.log("🏁 Finalizing stream with messageId:", messageId);
 
       onUpdate({
         id: messageId,

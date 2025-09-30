@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Wrench } from "lucide-react";
 import { StreamToolCall as StreamToolCallType } from "@/types/learn";
 
 interface StreamToolCallProps {
@@ -7,64 +9,63 @@ interface StreamToolCallProps {
 }
 
 export function StreamToolCall({ toolCall }: StreamToolCallProps) {
-  const getStatusDisplay = (status: string) => {
-    switch (status) {
-      case "input-start":
-        return { emoji: "⏳", label: "Starting..." };
-      case "input-delta":
-        return { emoji: "⌨️", label: "Inputting..." };
-      case "input-available":
-        return { emoji: "🔧", label: "Running..." };
-      case "input-error":
-        return { emoji: "❌", label: "Input Error" };
-      case "output-available":
-        return { emoji: "✅", label: "Complete" };
-      case "output-error":
-        return { emoji: "⚠️", label: "Error" };
-      default:
-        return { emoji: "🔨", label: "Processing..." };
-    }
-  };
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  const hasError = toolCall.status === "input-error" || toolCall.status === "output-error";
-  const status = getStatusDisplay(toolCall.status);
+  const isComplete = toolCall.status === "output-available";
+  const isError = toolCall.status === "input-error" || toolCall.status === "output-error";
+  const isRunning = !isComplete && !isError;
 
   return (
-    <div
-      className={`rounded-lg p-3 border ${
-        hasError
-          ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
-          : "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800"
-      }`}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">{status.emoji}</span>
-        <div className="flex-1">
-          <div className="font-semibold text-sm">{toolCall.toolName}</div>
-          <div className="text-xs text-muted-foreground">{status.label}</div>
-        </div>
-      </div>
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-xs font-medium cursor-pointer"
+      >
+        <Wrench className="w-3 h-3" />
+        <span>{toolCall.toolName}</span>
+        {isRunning && (
+          <span className="text-muted-foreground animate-pulse">...</span>
+        )}
+        {isComplete && (
+          <span className="text-muted-foreground">Complete</span>
+        )}
+        {isError && (
+          <span className="text-destructive">Error</span>
+        )}
+      </button>
 
-      {toolCall.inputText && (
-        <div className="text-xs bg-white/50 dark:bg-black/20 rounded p-2 mt-2 font-mono">{toolCall.inputText}</div>
-      )}
-
-      {toolCall.output !== undefined && (
-        <div className="text-xs bg-white/50 dark:bg-black/20 rounded p-2 mt-2">
-          {String(
-            typeof toolCall.output === "string"
-              ? toolCall.output.length > 200
-                ? toolCall.output.substring(0, 200) + "..."
-                : toolCall.output
-              : JSON.stringify(toolCall.output, null, 2).substring(0, 200) +
-                  (JSON.stringify(toolCall.output).length > 200 ? "..." : ""),
+      {isExpanded && (
+        <div className="mt-2 ml-5 text-xs text-muted-foreground space-y-2 overflow-hidden">
+          {toolCall.inputText && (
+            <div>
+              <div className="font-semibold mb-1">Input:</div>
+              <div className="bg-muted/50 rounded p-2 font-mono text-[10px] whitespace-pre-wrap break-words">
+                {toolCall.inputText}
+              </div>
+            </div>
           )}
-        </div>
-      )}
 
-      {toolCall.errorText && (
-        <div className="text-xs bg-red-100 dark:bg-red-900/30 rounded p-2 mt-2 text-red-700 dark:text-red-300">
-          {toolCall.errorText}
+          {toolCall.output !== undefined && (
+            <div>
+              <div className="font-semibold mb-1">Output:</div>
+              <div className="bg-muted/50 rounded p-2 font-mono text-[10px] whitespace-pre-wrap break-words max-h-60 overflow-y-auto overflow-x-hidden">
+                {String(
+                  typeof toolCall.output === "string"
+                    ? toolCall.output
+                    : JSON.stringify(toolCall.output, null, 2)
+                )}
+              </div>
+            </div>
+          )}
+
+          {toolCall.errorText && (
+            <div>
+              <div className="font-semibold mb-1 text-destructive">Error:</div>
+              <div className="bg-destructive/10 rounded p-2 text-destructive break-words">
+                {toolCall.errorText}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
