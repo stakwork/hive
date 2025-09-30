@@ -61,7 +61,7 @@ describe("Janitor API Integration Tests", () => {
         owner: { name: "Workspace Owner" },
         members: [{ user: { name: "Test User" }, role }],
       });
-      return { user: scenario.members[0].user, workspace: scenario.workspace };
+      return { user: scenario.members[0], workspace: scenario.workspace };
     }
   }
 
