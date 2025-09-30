@@ -49,6 +49,22 @@ export function createPutRequest(
 }
 
 /**
+ * Creates a PATCH request with JSON body
+ */
+export function createPatchRequest(
+  url: string,
+  body: object
+): NextRequest {
+  return new NextRequest(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
  * Creates a DELETE request
  */
 export function createDeleteRequest(url: string): NextRequest {
