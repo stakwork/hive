@@ -36,14 +36,6 @@ jobs:
           JWT_SECRET: test-jwt-secret
         run: npm run test:unit
 
-      - name: Upload unit test results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-results
-          path: coverage/
-          retention-days: 7
-
   integration-tests:
     runs-on: ubuntu-latest
 
@@ -106,13 +98,3 @@ jobs:
           STAKWORK_CUSTOMERS_PASSWORD: ${{ secrets.STAKWORK_CUSTOMERS_PASSWORD}}
           SWARM_SUPER_ADMIN_URL: placeholder
         run: npm run test:integration
-
-      - name: Upload integration test results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-test-results
-          path: |
-            coverage/
-            test-results/
-          retention-days: 7
