@@ -1,5 +1,6 @@
 import type { WorkspaceRole } from "@/lib/auth/roles";
-import type { Session, User, WorkspaceMember, Swarm } from "@prisma/client";
+import type { User, WorkspaceMember, Swarm, Workspace } from "@prisma/client";
+import type { Session } from "next-auth";
 
 export const mockData = {
   workspace(overrides: Record<string, unknown> = {}) {

@@ -128,10 +128,11 @@ export async function createWorkspaceScenario(
   const memberships: WorkspaceMember[] = [];
 
   for (const blueprint of effectiveMemberBlueprints) {
+    const userOptions = "user" in blueprint ? blueprint.user : undefined;
     const member = await createTestUser({
-      name: blueprint.user?.name,
-      email: blueprint.user?.email,
-      role: blueprint.user?.role,
+      name: userOptions?.name,
+      email: userOptions?.email,
+      role: userOptions?.role,
     });
 
     members.push(member);
