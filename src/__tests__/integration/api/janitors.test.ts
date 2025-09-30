@@ -11,6 +11,15 @@ import { POST as WebhookHandler } from "@/app/api/janitors/webhook/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
 import { stakworkService } from "@/lib/service-factory";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectSuccess,
+  expectUnauthorized,
+  expectForbidden,
+  generateUniqueId,
+  generateUniqueSlug,
+} from "@/__tests__/helpers";
 
 // Mock NextAuth - only external dependency
 vi.mock("next-auth/next", () => ({
@@ -42,8 +51,8 @@ describe("Janitor API Integration Tests", () => {
       // Create the test user
       const user = await tx.user.create({
         data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
@@ -52,8 +61,8 @@ describe("Janitor API Integration Tests", () => {
         // If role is OWNER, make them the actual workspace owner
         const workspace = await tx.workspace.create({
           data: {
-            name: `Test Workspace ${Date.now()}`,
-            slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            name: `Test Workspace ${generateUniqueId()}`,
+            slug: generateUniqueSlug("test-workspace"),
             ownerId: user.id,
           },
         });
@@ -71,16 +80,16 @@ describe("Janitor API Integration Tests", () => {
         // For non-OWNER roles, create a separate owner and add user as member
         const owner = await tx.user.create({
           data: {
-            id: `owner-${Date.now()}-${Math.random()}`,
-            email: `owner-${Date.now()}@example.com`,
+            id: generateUniqueId("owner"),
+            email: `owner-${generateUniqueId()}@example.com`,
             name: "Workspace Owner",
           },
         });
 
         const workspace = await tx.workspace.create({
           data: {
-            name: `Test Workspace ${Date.now()}`,
-            slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            name: `Test Workspace ${generateUniqueId()}`,
+            slug: generateUniqueSlug("test-workspace"),
             ownerId: owner.id,
           },
         });
@@ -130,9 +139,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/config - should get janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("OWNER");
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "GET",
@@ -156,9 +163,7 @@ describe("Janitor API Integration Tests", () => {
     test("PUT /api/workspaces/[slug]/janitors/config - should update janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "PUT",
@@ -183,9 +188,7 @@ describe("Janitor API Integration Tests", () => {
     test("PUT /api/workspaces/[slug]/janitors/config - should reject unauthorized user", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("VIEWER");
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "PUT",
@@ -196,13 +199,13 @@ describe("Janitor API Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      expect(response.status).toBe(403);
+      await expectForbidden(response);
     });
 
     test("GET /api/workspaces/[slug]/janitors/config - should reject unauthenticated user", async () => {
       const { workspace } = await createTestWorkspaceWithUser();
       
-      mockGetServerSession.mockResolvedValue(null);
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "GET",
@@ -212,7 +215,7 @@ describe("Janitor API Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      expect(response.status).toBe(401);
+      await expectUnauthorized(response);
     });
   });
 
@@ -228,9 +231,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "POST",
@@ -268,9 +269,7 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should reject when janitor disabled", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "POST",
@@ -291,9 +290,7 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should reject invalid janitor type", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "POST",
@@ -331,9 +328,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "POST",
@@ -382,9 +377,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const url = new URL(`http://localhost/api/test?limit=10&page=1`);
       const request = new NextRequest(url, { method: "GET" });
@@ -433,9 +426,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const url = new URL(`http://localhost/api/test?type=UNIT_TESTS`);
       const request = new NextRequest(url, { method: "GET" });
@@ -619,9 +610,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const url = new URL(`http://localhost/api/test?limit=10&page=1`);
       const request = new NextRequest(url, { method: "GET" });
@@ -692,9 +681,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const url = new URL(`http://localhost/api/test?status=PENDING`);
       const request = new NextRequest(url, { method: "GET" });
@@ -749,9 +736,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const url = new URL(`http://localhost/api/test?priority=HIGH`);
       const request = new NextRequest(url, { method: "GET" });
@@ -771,9 +756,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should return empty array when no janitor config exists", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const url = new URL(`http://localhost/api/test`);
       const request = new NextRequest(url, { method: "GET" });
@@ -792,7 +775,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should reject unauthorized user", async () => {
       const { workspace } = await createTestWorkspaceWithUser();
       
-      mockGetServerSession.mockResolvedValue(null);
+      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
 
       const url = new URL(`http://localhost/api/test`);
       const request = new NextRequest(url, { method: "GET" });
@@ -801,7 +784,7 @@ describe("Janitor API Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      expect(response.status).toBe(401);
+      await expectUnauthorized(response);
     });
 
     test("POST /api/janitors/recommendations/[id]/accept - should accept recommendation and create task", async () => {
@@ -834,9 +817,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "POST",
@@ -901,9 +882,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
+      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = new NextRequest("http://localhost/api/test", {
         method: "POST",
