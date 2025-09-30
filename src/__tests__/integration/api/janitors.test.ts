@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { getServerSession } from "next-auth/next";
 import { GET as GetConfig, PUT as UpdateConfig } from "@/app/api/workspaces/[slug]/janitors/config/route";
 import { POST as TriggerRun } from "@/app/api/workspaces/[slug]/janitors/[type]/run/route";
 import { GET as GetRuns } from "@/app/api/workspaces/[slug]/janitors/runs/route";
@@ -16,17 +15,12 @@ import {
   expectSuccess,
   expectUnauthorized,
   expectForbidden,
-  generateUniqueId,
-  generateUniqueSlug,
   createGetRequest,
   createPostRequest,
   createPutRequest,
 } from "@/__tests__/helpers";
-
-// Mock NextAuth - only external dependency
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+import { createTestWorkspaceScenario } from "@/__tests__/fixtures";
+import { mockGetServerSession } from "@/__tests__/setup/next-auth-mock";
 
 // Mock Stakwork service
 vi.mock("@/lib/service-factory", () => ({
@@ -44,79 +38,22 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
 describe("Janitor API Integration Tests", () => {
   async function createTestWorkspaceWithUser(role: WorkspaceRole = "OWNER") {
-    return await db.$transaction(async (tx) => {
-      // Create the test user
-      const user = await tx.user.create({
-        data: {
-          id: generateUniqueId("user"),
-          email: `user-${generateUniqueId()}@example.com`,
-          name: "Test User",
-        },
+    if (role === "OWNER") {
+      const scenario = await createTestWorkspaceScenario({
+        owner: { name: "Test User" },
       });
-
-      if (role === "OWNER") {
-        // If role is OWNER, make them the actual workspace owner
-        const workspace = await tx.workspace.create({
-          data: {
-            name: `Test Workspace ${generateUniqueId()}`,
-            slug: generateUniqueSlug("test-workspace"),
-            ownerId: user.id,
-          },
-        });
-
-        await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: user.id,
-            role: "OWNER",
-          },
-        });
-
-        return { user, workspace };
-      } else {
-        // For non-OWNER roles, create a separate owner and add user as member
-        const owner = await tx.user.create({
-          data: {
-            id: generateUniqueId("owner"),
-            email: `owner-${generateUniqueId()}@example.com`,
-            name: "Workspace Owner",
-          },
-        });
-
-        const workspace = await tx.workspace.create({
-          data: {
-            name: `Test Workspace ${generateUniqueId()}`,
-            slug: generateUniqueSlug("test-workspace"),
-            ownerId: owner.id,
-          },
-        });
-
-        // Create owner membership
-        await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: owner.id,
-            role: "OWNER",
-          },
-        });
-
-        // Create test user membership with specified role
-        await tx.workspaceMember.create({
-          data: {
-            workspaceId: workspace.id,
-            userId: user.id,
-            role: role,
-          },
-        });
-
-        return { user, workspace };
-      }
-    });
+      return { user: scenario.owner, workspace: scenario.workspace };
+    } else {
+      const scenario = await createTestWorkspaceScenario({
+        owner: { name: "Workspace Owner" },
+        members: [{ user: { name: "Test User" }, role }],
+      });
+      return { user: scenario.members[0].user, workspace: scenario.workspace };
+    }
   }
 
   beforeEach(() => {
