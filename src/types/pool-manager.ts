@@ -119,3 +119,70 @@ export interface PoolManagerAuthResponse {
   success: boolean;
   token: string;
 }
+
+export interface PoolWorkspace {
+  id: string;
+  fqdn: string;
+  state: string;
+  internal_state: string;
+  usage_status: string;
+  created: string;
+  marked_at: string;
+  branches: string[];
+  repositories: string[];
+  primaryRepo: string;
+  repoName: string;
+  url: string;
+  subdomain: string;
+  password: string;
+  image: string;
+  customImage: boolean;
+  useDevContainer: boolean;
+  flagged_for_recreation: boolean;
+  portMappings: Record<string, string>;
+  user_info: unknown | null;
+}
+
+export interface PoolStatus {
+  current_vms: number;
+  running_vms: number;
+  pending_vms: number;
+  failed_vms: number;
+  used_vms: number;
+  unused_vms: number;
+  minimum_vms: number;
+  scale_needed: number;
+  needs_scaling: boolean;
+  last_check: string;
+  pool_name: string;
+  workspaces: PoolWorkspace[];
+}
+
+export interface PoolStatusResponse {
+  config: {
+    pool_name: string;
+    minimum_vms: number;
+    repo_name: string;
+    branch_name: string;
+    cpu: string;
+    memory: string;
+    github_username: string;
+    created_at: string;
+    env_vars: Array<{
+      name: string;
+      value: string;
+      masked: boolean;
+    }>;
+    github_pat: {
+      value: string;
+      masked: boolean;
+    };
+    owner_username: string | null;
+    dockerfile?: string;
+    docker_compose_yml?: string;
+    devcontainer_json?: string;
+    pm2_config_js?: string;
+  };
+  owner: string;
+  status: PoolStatus;
+}

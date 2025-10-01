@@ -1,5 +1,5 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig } from "@/types";
+import { PoolUserResponse, ServiceConfig, PoolStatusResponse } from "@/types";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
@@ -25,6 +25,7 @@ interface IPoolManagerService {
     github_pat: string,
     github_username: string,
   ) => Promise<void>;
+  getPoolStatus: (poolId: string) => Promise<PoolStatusResponse>;
 }
 
 export class PoolManagerService extends BaseServiceClass implements IPoolManagerService {
@@ -76,5 +77,10 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
       github_pat,
       github_username,
     );
+  }
+
+  async getPoolStatus(poolId: string): Promise<PoolStatusResponse> {
+    const response = await this.getClient().get<PoolStatusResponse>(`/pools/${poolId}`);
+    return response.data;
   }
 }

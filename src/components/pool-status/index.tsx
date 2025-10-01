@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { cn } from "@/lib/utils";
-import { CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
+import { cn, formatRelativeTime } from "@/lib/utils";
+import { CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
 
@@ -16,7 +17,7 @@ export function VMConfigSection() {
 
   const poolState = workspace?.poolState;
 
-  // Check if we should show the modal
+  const { poolStatus, loading: poolStatusLoading } = usePoolStatus(slug);
 
   const swarmStatus = poolState === "COMPLETE" ? "ACTIVE" : "PENDING";
 
@@ -95,22 +96,38 @@ export function VMConfigSection() {
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between">
-          {/* Left side - Cool status display */}
-          <div className="flex items-center gap-4">
-            {swarmStatus ? (
+          {swarmStatus ? (
+            poolStatus?.status && swarmStatus === "ACTIVE" ? (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span className={poolStatus.status.running_vms > 0 ? "text-green-600" : "text-muted-foreground"}>
+                    {poolStatus.status.running_vms} running
+                  </span>
+                  <span className="text-muted-foreground">•</span>
+                  <span className={poolStatus.status.pending_vms > 0 ? "text-orange-600" : "text-muted-foreground"}>
+                    {poolStatus.status.pending_vms} pending
+                  </span>
+                  {poolStatus.status.failed_vms > 0 && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-red-600">
+                        {poolStatus.status.failed_vms} failed
+                      </span>
+                    </>
+                  )}
+                </div>
+                {poolStatus.status.last_check && (
+                  <div className="text-xs text-muted-foreground">
+                    Updated {formatRelativeTime(poolStatus.status.last_check.endsWith('Z') ? poolStatus.status.last_check : poolStatus.status.last_check + 'Z')}
+                  </div>
+                )}
+              </div>
+            ) : (
               <div className="flex items-center gap-3">
                 <div className={cn(
                   "relative flex items-center justify-center w-12 h-12 rounded-full",
-                  swarmStatus === "ACTIVE" ? "bg-green-100 text-green-700" :
-                    swarmStatus === "PENDING" ? "bg-orange-100 text-orange-700" :
-                      "bg-gray-100 text-gray-700"
+                  swarmStatus === "PENDING" ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-700"
                 )}>
-                  {swarmStatus === "ACTIVE" && (
-                    <>
-                      <CheckCircle className="w-6 h-6" />
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                    </>
-                  )}
                   {swarmStatus === "PENDING" && (
                     <>
                       <Clock className="w-6 h-6" />
@@ -118,31 +135,34 @@ export function VMConfigSection() {
                     </>
                   )}
                 </div>
-                <div>
-                  <span className="text-sm font-medium">{vmState.statusBadge.text}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-700">
-                  <Zap className="w-6 h-6" />
-                </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">Set up Pool</span>
-                  <span className="text-xs text-muted-foreground">Get started now</span>
+                  <span className="text-sm font-medium">{vmState.statusBadge.text}</span>
+                  <span className="text-xs text-muted-foreground">{vmState.description}</span>
                 </div>
+                <Button asChild>
+                  <Link onClick={handleOpenModal} href={slug ? vmState.buttonHref : "#"}>
+                    <Zap className="w-4 h-4 mr-2" />
+                    {vmState.buttonText}
+                  </Link>
+                </Button>
               </div>
-            )}
-          </div>
-
-          {/* Right side - Action button */}
-          {swarmStatus !== "ACTIVE" && (
-            <Button asChild>
-              <Link onClick={handleOpenModal} href={slug ? vmState.buttonHref : "#"}>
-                <Zap className="w-4 h-4 mr-2" />
-                {vmState.buttonText}
-              </Link>
-            </Button>
+            )
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-700">
+                <Zap className="w-6 h-6" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Set up Pool</span>
+                <span className="text-xs text-muted-foreground">Get started now</span>
+              </div>
+              <Button asChild>
+                <Link onClick={handleOpenModal} href={slug ? vmState.buttonHref : "#"}>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Set up
+                </Link>
+              </Button>
+            </div>
           )}
         </div>
 

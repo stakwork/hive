@@ -144,7 +144,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, poolName: true },
       },
       repositories: {
         select: {
@@ -243,7 +243,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, poolName: true },
       },
       repositories: {
         select: {
