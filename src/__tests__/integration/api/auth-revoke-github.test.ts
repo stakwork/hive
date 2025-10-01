@@ -11,6 +11,7 @@ import {
   generateUniqueId,
   getMockedSession,
 } from "@/__tests__/helpers";
+import { createTestUser } from "@/__tests__/fixtures/user";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
@@ -187,13 +188,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
     test("should handle revocation when no access token exists", async () => {
       // Create account without access token
-      const testUser = await db.user.create({
-        data: {
-          id: generateUniqueId("test-user-no-token"),
-          email: `test-no-token-${generateUniqueId()}@example.com`,
-          name: "Test User No Token",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User No Token" });
 
       const testAccount = await db.account.create({
         data: {
@@ -249,13 +244,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
     test("should return 404 when no GitHub account exists", async () => {
       // Create user without GitHub account
-      const testUser = await db.user.create({
-        data: {
-          id: `test-user-no-github-${Date.now()}`,
-          email: `test-no-github-${Date.now()}@example.com`,
-          name: "Test User No GitHub",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User No GitHub" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 

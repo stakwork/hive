@@ -14,6 +14,7 @@ import {
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/helpers";
+import { createTestUser } from "@/__tests__/fixtures/user";
 
 // Mock environment config
 vi.mock("@/lib/env", () => ({
@@ -208,13 +209,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       const { testTask } = await createTestUserWithWorkspaceAndTask();
 
       // Create different user who doesn't have access
-      const unauthorizedUser = await db.user.create({
-        data: {
-          id: `unauth-user-${Date.now()}`,
-          email: `unauth-${Date.now()}@example.com`,
-          name: "Unauthorized User",
-        },
-      });
+      const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 

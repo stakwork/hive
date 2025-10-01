@@ -200,21 +200,18 @@ describe("Workspace Update API Integration Tests", () => {
 
     test("should prevent duplicate slug with real database constraint", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
-      
+
       // Create another workspace to conflict with
-      const conflictWorkspace = await db.workspace.create({
-        data: {
-          name: "Conflict Workspace",
-          slug: "conflict-slug",
-          ownerId: ownerUser.id,
-        },
+      const conflictWorkspace = await createTestWorkspaceScenario({
+        owner: { name: "Conflict Owner" },
+        workspace: { slug: "conflict-slug", name: "Conflict Workspace" },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const duplicateData = {
         name: "Updated Name",
-        slug: conflictWorkspace.slug, // Try to use existing slug
+        slug: conflictWorkspace.workspace.slug, // Try to use existing slug
       };
 
       const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, duplicateData);

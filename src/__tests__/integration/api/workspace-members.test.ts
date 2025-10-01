@@ -167,15 +167,9 @@ describe("Workspace Members API Integration Tests", () => {
 
     test("should return 403 for insufficient permissions", async () => {
       const { workspace, memberUser, targetUser } = await createTestWorkspaceWithUsers();
-      
+
       // Create non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: generateUniqueId("nonadmin"),
-          email: `nonadmin-${generateUniqueId()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
@@ -246,13 +240,7 @@ describe("Workspace Members API Integration Tests", () => {
       // Member already created by createTestWorkspaceScenario
 
       // Create non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: generateUniqueId("nonadmin"),
-          email: `nonadmin-${generateUniqueId()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
@@ -314,13 +302,7 @@ describe("Workspace Members API Integration Tests", () => {
       // Member already created by createTestWorkspaceScenario
 
       // Create non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: generateUniqueId("nonadmin"),
-          email: `nonadmin-${generateUniqueId()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 

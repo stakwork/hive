@@ -14,6 +14,8 @@ import {
   createGetRequest,
   getMockedSession,
 } from "@/__tests__/helpers";
+import { createTestUser } from "@/__tests__/fixtures/user";
+import { createTestWorkspace } from "@/__tests__/fixtures/workspace";
 
 describe("GET /api/chat/messages/[messageId]", () => {
   let testUser: { id: string; email: string; name: string };
@@ -390,19 +392,11 @@ describe("GET /api/chat/messages/[messageId]", () => {
       // Create a task to satisfy foreign key constraint, but this simulates
       // a scenario where the task exists but access control logic handles
       // cases where the task workspace isn't found or accessible
-      const tempUser = await db.user.create({
-        data: {
-          email: `temp-user-${Date.now()}@example.com`,
-          name: "Temp User",
-        },
-      });
-      
-      const tempWorkspace = await db.workspace.create({
-        data: {
-          name: "Temp Workspace",
-          slug: `temp-workspace-${Date.now()}`,
-          ownerId: tempUser.id,
-        },
+      const tempUser = await createTestUser({ name: "Temp User" });
+
+      const tempWorkspace = await createTestWorkspace({
+        name: "Temp Workspace",
+        ownerId: tempUser.id,
       });
       
       const tempTask = await db.task.create({

@@ -331,15 +331,9 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     test("should verify real permission checks for role updates", async () => {
       const { workspace, targetUser } = await createTestWorkspaceWithAdminUser();
-      
+
       // Create a non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: generateUniqueId("nonadmin"),
-          email: `nonadmin-${generateUniqueId()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
       // Add target user as a member first
       await db.workspaceMember.create({

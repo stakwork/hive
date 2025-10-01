@@ -13,6 +13,7 @@ import {
   getMockedSession,
   createGetRequest,
 } from "@/__tests__/helpers";
+import { createTestUser } from "@/__tests__/fixtures/user";
 
 // Mock axios for GitHub API calls
 vi.mock("axios");
@@ -167,13 +168,7 @@ describe("GitHub Users Search API Integration Tests", () => {
 
     test("should return 400 when GitHub account not found in database", async () => {
       // Create user without GitHub account
-      const userWithoutGitHub = await db.user.create({
-        data: {
-          id: generateUniqueId("user-no-github"),
-          email: `noauth-${generateUniqueId()}@example.com`,
-          name: "No Auth User",
-        },
-      });
+      const userWithoutGitHub = await createTestUser({ name: "No Auth User" });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(userWithoutGitHub));
 
