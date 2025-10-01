@@ -15,3 +15,6 @@ export * from "./request-builders";
 
 // Transaction helpers
 export * from "./transactions";
+
+// Stakwork API helpers
+export * from "./stakwork";

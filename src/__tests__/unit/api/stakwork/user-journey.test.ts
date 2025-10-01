@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/stakwork/user-journey/route";
 import { NextRequest } from "next/server";
+import { 
+  createMockSession, 
+  createMockWorkspace, 
+  createMockWorkspaceData, 
+  createMockSwarm, 
+  createMockGithubProfile 
+} from "@/__tests__/support/fixtures/stakwork";
+import { setupStakworkSuccessfulMocks, createStakworkTestRequest } from "@/__tests__/support/helpers/stakwork";
 
 // Mock external modules with factory functions to avoid hoisting issues
 vi.mock("next-auth/next", () => ({
