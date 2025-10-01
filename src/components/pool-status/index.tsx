@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
+import { useState, useEffect, useCallback } from "react";
+import { PoolStatusResponse } from "@/types";
 
 export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
@@ -17,7 +18,45 @@ export function VMConfigSection() {
 
   const poolState = workspace?.poolState;
 
-  const { poolStatus, loading: poolStatusLoading } = usePoolStatus(slug);
+  const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
+  const [poolStatusLoading, setPoolStatusLoading] = useState(false);
+  const [poolStatusError, setPoolStatusError] = useState<Error | null>(null);
+
+  const fetchPoolStatus = useCallback(async () => {
+    if (!slug) {
+      setPoolStatus(null);
+      setPoolStatusLoading(false);
+      setPoolStatusError(null);
+      return;
+    }
+
+    setPoolStatusLoading(true);
+    setPoolStatusError(null);
+
+    try {
+      const response = await fetch(`/api/w/${slug}/pool/status`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch pool status: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || "Failed to fetch pool status");
+      }
+
+      setPoolStatus(result.data);
+      setPoolStatusLoading(false);
+    } catch (error) {
+      setPoolStatusLoading(false);
+      setPoolStatusError(error instanceof Error ? error : new Error("Unknown error"));
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    fetchPoolStatus();
+  }, [fetchPoolStatus]);
 
   const swarmStatus = poolState === "COMPLETE" ? "ACTIVE" : "PENDING";
 
