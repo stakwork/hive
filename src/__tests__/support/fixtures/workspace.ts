@@ -6,7 +6,7 @@ import type {
   WorkspaceMember,
 } from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
-import { generateUniqueId } from "@/__tests__/helpers";
+import { generateUniqueId } from "@/__tests__/support/helpers";
 import {
   createTestUser,
   type CreateTestUserOptions,

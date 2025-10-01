@@ -1,21 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import {
   GET as GET_STAK,
   PUT as PUT_STAK,
 } from "@/app/api/workspaces/[slug]/stakgraph/route";
 import { db } from "@/lib/db";
 import { encryptEnvVars } from "@/lib/encryption";
-import { getServerSession } from "next-auth/next";
 import {
   createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
-} from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
+  getMockedSession,
+  createGetRequest,
+} from "@/__tests__/support/helpers";
 
 describe("/api/workspaces/[slug]/stakgraph", () => {
   const PLAINTEXT_ENV = [{ name: "SECRET", value: "my_value" }];
@@ -56,12 +52,12 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       return { user, workspace, swarm };
     });
 
-    mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testData.user));
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("GET returns decrypted env vars but DB remains encrypted", async () => {
-    const req = new NextRequest(
-      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+    const req = createGetRequest(
+      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`
     );
     const res = await GET_STAK(req, {
       params: Promise.resolve({ slug: testData.workspace.slug }),

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { MessageCircle, Lightbulb, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Learnings } from "@/types/learn";
 
 interface LearnSidebarProps {
@@ -81,7 +82,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
         </div>
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-8 bg-muted rounded-lg animate-pulse" />
+            <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
       </div>

@@ -456,9 +456,6 @@ export default function DashboardPage() {
         ) : (
           <EmptyState workspaceSlug={slug} />
         ))}
-
-      {/* Only render Gitsee when swarm is ready */}
-      {isSwarmReady && <Gitsee />}
     </div>
   );
 }

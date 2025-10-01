@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/workspaces/route";
-import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import {
   WORKSPACE_ERRORS,
@@ -9,26 +8,17 @@ import {
 import {
   createTestUser,
   createTestWorkspace,
-} from "@/__tests__/fixtures";
+} from "@/__tests__/support/fixtures";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
+  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   generateUniqueSlug,
   createPostRequest,
-} from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
+} from "@/__tests__/support/helpers";
 
 describe("Workspace API - Integration Tests", () => {
   beforeEach(() => {
@@ -129,7 +119,7 @@ describe("Workspace API - Integration Tests", () => {
       const context = await setup();
       const slug = (context as any).slug || generateUniqueSlug(requestData.name.toLowerCase().replace(/\s+/g, "-"));
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(context.user));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(context.user));
 
       const request = createPostRequest("http://localhost:3000/api/workspaces", {
         ...requestData,
@@ -141,7 +131,7 @@ describe("Workspace API - Integration Tests", () => {
     });
 
     test("rejects unauthenticated requests", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createPostRequest("http://localhost:3000/api/workspaces", {
         name: "Test Workspace",
@@ -156,7 +146,7 @@ describe("Workspace API - Integration Tests", () => {
     test("rejects missing required fields", async () => {
       const user = await createTestUser();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createPostRequest("http://localhost:3000/api/workspaces", {
         description: "Missing name and slug",

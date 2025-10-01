@@ -119,3 +119,14 @@ export interface PoolManagerAuthResponse {
   success: boolean;
   token: string;
 }
+
+export interface PoolStatus {
+  runningVms: number;
+  pendingVms: number;
+  failedVms: number;
+  lastCheck: string;
+}
+
+export interface PoolStatusResponse {
+  status: PoolStatus;
+}

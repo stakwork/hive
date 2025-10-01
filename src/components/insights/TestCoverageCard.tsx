@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TestTube, FunctionSquare, Globe, Loader2, Target } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
@@ -69,8 +70,23 @@ export function TestCoverageCard() {
           <CardDescription>Code coverage analysis from your test suite</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="space-y-6">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Skeleton className="h-4 w-4" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                  <Skeleton className="h-5 w-12 rounded-full" />
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+                <div className="flex justify-between">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

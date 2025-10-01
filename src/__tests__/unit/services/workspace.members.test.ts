@@ -18,8 +18,8 @@ import {
   softDeleteMember,
 } from "@/lib/helpers/workspace-member-queries";
 import { mapWorkspaceMember, mapWorkspaceMembers } from "@/lib/mappers/workspace-member";
-import { mockData } from "@/__tests__/fixtures/static-fixtures";
-import { TEST_DATE, TEST_DATE_ISO } from "./__helpers__/workspace-mocks";
+import { mockData } from "@/__tests__/support/fixtures/static-fixtures";
+import { TEST_DATE, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
 
 const mockedDb = vi.mocked(db);
 

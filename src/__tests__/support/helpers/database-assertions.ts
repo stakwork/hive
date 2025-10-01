@@ -138,3 +138,26 @@ export async function expectUserNotExists(userId: string): Promise<void> {
   });
   expect(user).toBeNull();
 }
+
+/**
+ * Assert that a repository has a specific status
+ * @param workspaceId - Workspace ID
+ * @param repositoryUrl - Repository URL
+ * @param expectedStatus - Expected repository status
+ */
+export async function expectRepositoryStatus(
+  workspaceId: string,
+  repositoryUrl: string,
+  expectedStatus: string
+): Promise<void> {
+  const repository = await db.repository.findUnique({
+    where: {
+      repositoryUrl_workspaceId: {
+        repositoryUrl,
+        workspaceId,
+      },
+    },
+  });
+  expect(repository).toBeTruthy();
+  expect(repository?.status).toBe(expectedStatus);
+}

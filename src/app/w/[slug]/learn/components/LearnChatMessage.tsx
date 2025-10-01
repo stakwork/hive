@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { BookOpen, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { LearnMessage } from "@/types/learn";
+import { StreamingMessage } from "./StreamingMessage";
 
 interface LearnChatMessageProps {
   message: LearnMessage;
@@ -19,7 +20,7 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
       transition={{ duration: 0.2 }}
       className={`flex ${isUser ? "justify-end" : "justify-start"}`}
     >
-      <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+      <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm overflow-hidden ${
         isUser
           ? "bg-primary text-primary-foreground ml-12"
           : "bg-muted mr-12"
@@ -41,6 +42,8 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
         >
           {isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
+          ) : (message.textParts || message.toolCalls || message.reasoningParts) ? (
+            <StreamingMessage message={message} />
           ) : (
             <div className="prose prose-sm max-w-none dark:prose-invert prose-gray [&>*]:!text-foreground [&_*]:!text-foreground">
               <ReactMarkdown>

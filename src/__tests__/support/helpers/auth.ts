@@ -1,6 +1,8 @@
 import type { User, Workspace } from "@prisma/client";
 import type { Session } from "next-auth";
 import type { WorkspaceRole } from "@/lib/auth/roles";
+import { getServerSession } from "next-auth/next";
+import { vi } from "vitest";
 
 /**
  * Create a mock authenticated session for a user
@@ -14,6 +16,24 @@ export function createAuthenticatedSession(user: Pick<User, "id" | "email">): Se
     },
     expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours from now
   };
+}
+
+/**
+ * Get mocked getServerSession function for integration tests
+ * Use this after global mock is set up in setup/global.ts
+ */
+export function getMockedSession() {
+  return getServerSession as vi.MockedFunction<typeof getServerSession>;
+}
+
+/**
+ * Mock session for current test
+ * Convenience wrapper for setting up authentication in tests
+ */
+export function mockSessionAs(session: Session | null) {
+  const mock = getMockedSession();
+  mock.mockResolvedValue(session);
+  return mock;
 }
 
 /**

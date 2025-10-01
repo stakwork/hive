@@ -1,6 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { POST } from "@/app/api/auth/revoke-github/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -11,18 +9,13 @@ import {
   expectUnauthorized,
   expectError,
   generateUniqueId,
-} from "@/__tests__/helpers";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+  getMockedSession,
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("POST /api/auth/revoke-github Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
@@ -118,17 +111,13 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         await createTestUserWithGitHubAccount();
 
       // Mock successful session
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock successful GitHub API revocation
       mockFetch.mockResolvedValue({
         ok: true,
         status: 204,
         statusText: "No Content",
-      });
-
-      const request = new NextRequest("http://localhost:3000/api/auth/revoke-github", {
-        method: "POST",
       });
 
       const response = await POST();
@@ -176,7 +165,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle successful revocation even when GitHub API fails", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock GitHub API failure (but endpoint should still clean up database)
       mockFetch.mockResolvedValue({
@@ -199,13 +188,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
     test("should handle revocation when no access token exists", async () => {
       // Create account without access token
-      const testUser = await db.user.create({
-        data: {
-          id: generateUniqueId("test-user-no-token"),
-          email: `test-no-token-${generateUniqueId()}@example.com`,
-          name: "Test User No Token",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User No Token" });
 
       const testAccount = await db.account.create({
         data: {
@@ -218,7 +201,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const response = await POST();
       const data = await expectSuccess(response);
@@ -238,7 +221,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
   describe("Authentication and authorization scenarios", () => {
     test("should return 401 for unauthenticated user", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const response = await POST();
 
@@ -247,7 +230,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     });
 
     test("should return 401 for session without user ID", async () => {
-      mockGetServerSession.mockResolvedValue({
+      getMockedSession().mockResolvedValue({
         user: { email: "test@example.com" }, // Missing id field
       });
 
@@ -261,15 +244,9 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
     test("should return 404 when no GitHub account exists", async () => {
       // Create user without GitHub account
-      const testUser = await db.user.create({
-        data: {
-          id: `test-user-no-github-${Date.now()}`,
-          email: `test-no-github-${Date.now()}@example.com`,
-          name: "Test User No GitHub",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User No GitHub" });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const response = await POST();
       const data = await response.json();
@@ -287,7 +264,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         accessToken: originalToken,
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -331,7 +308,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const response = await POST();
 
@@ -350,7 +327,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle network errors when calling GitHub API", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock network error
       mockFetch.mockRejectedValue(new Error("Network error"));
@@ -378,7 +355,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         // Create fresh test data for each scenario
         const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-        mockGetServerSession.mockResolvedValue({
+        getMockedSession().mockResolvedValue({
           user: { id: testUser.id, email: testUser.email },
         });
 
@@ -408,7 +385,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         includeSessions: true,
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -439,7 +416,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         includeSessions: false, // No sessions created
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -458,11 +435,11 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should return 500 for unexpected database errors", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock database error by using invalid user ID
       const invalidUserId = "non-existent-user-id";
-      mockGetServerSession.mockResolvedValue({
+      getMockedSession().mockResolvedValue({
         user: { id: invalidUserId, email: "invalid@example.com" },
       });
 
@@ -476,7 +453,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle concurrent revocation attempts", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -501,7 +478,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle missing GitHub client credentials", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Temporarily unset environment variables
       const originalClientId = process.env.GITHUB_CLIENT_ID;

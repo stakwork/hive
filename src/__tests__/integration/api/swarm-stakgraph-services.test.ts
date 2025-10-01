@@ -1,18 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { GET } from "@/app/api/swarm/stakgraph/services/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getServerSession } from "next-auth/next";
 import {
   createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
-} from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
+  getMockedSession,
+  createGetRequest,
+} from "@/__tests__/support/helpers";
 
 describe("GET /api/swarm/stakgraph/services", () => {
   const enc = EncryptionService.getInstance();
@@ -62,7 +58,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
     workspaceId = testData.workspace.id;
     swarmId = testData.swarm.swarmId!;
 
-    mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testData.user));
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("proxies with decrypted header and keeps DB encrypted", async () => {
@@ -74,10 +70,12 @@ describe("GET /api/swarm/stakgraph/services", () => {
         json: async () => ({ services: [] }),
       } as unknown as Response);
 
-    const search = new URL(
-      `http://localhost:3000/api/swarm/stakgraph/services?workspaceId=${workspaceId}&swarmId=${swarmId}`,
+    const res = await GET(
+      createGetRequest(
+        "http://localhost:3000/api/swarm/stakgraph/services",
+        { workspaceId, swarmId }
+      )
     );
-    const res = await GET(new NextRequest(search.toString()));
     
     const responseBody = await res.json();
     console.log("Swarm API Response status:", res.status);

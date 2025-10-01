@@ -3,69 +3,67 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { cn } from "@/lib/utils";
-import { CheckCircle, Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
+import { formatRelativeTime } from "@/lib/utils";
+import { Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
+import { useState, useEffect, useCallback } from "react";
+import { PoolStatusResponse } from "@/types";
 
 export function VMConfigSection() {
   const { slug, workspace } = useWorkspace();
-
   const open = useModal();
 
-  const poolState = workspace?.poolState;
+  const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Check if we should show the modal
+  const isPoolActive = workspace?.poolState === "COMPLETE";
 
-  const swarmStatus = poolState === "COMPLETE" ? "ACTIVE" : "PENDING";
-
-
-  // Determine UI state based on swarm status
-  const getVMState = () => {
-
-    switch (swarmStatus) {
-      case "ACTIVE":
-        return {
-          buttonText: "Edit",
-          buttonHref: ``,
-          statusBadge: {
-            text: "Active",
-            variant: "default" as const,
-            icon: CheckCircle,
-            className: "bg-green-100 text-green-800 border-green-200"
-          },
-          description: "Manage environment variables and services any time."
-        };
-      case "PENDING":
-        return {
-          buttonText: "Finish setup",
-          buttonHref: `/w/${slug}/code-graph`,
-          statusBadge: {
-            text: "In progress",
-            variant: "secondary" as const,
-            icon: Clock,
-            className: "bg-orange-100 text-orange-800 border-orange-200"
-          },
-          description: "Finish your setup to get started."
-        };
+  const fetchPoolStatus = useCallback(async () => {
+    if (!slug || !isPoolActive) {
+      setPoolStatus(null);
+      setErrorMessage(null);
+      setLoading(false);
+      return;
     }
-  };
 
-  const vmState = getVMState();
+    setLoading(true);
+
+    try {
+      const response = await fetch(`/api/w/${slug}/pool/status`);
+
+      const result = await response.json();
+
+      if (result.success) {
+        setPoolStatus(result.data);
+        setErrorMessage(null);
+      } else {
+        setErrorMessage(result.message || "Unable to fetch pool data right now");
+      }
+    } catch (error) {
+      setErrorMessage("Unable to fetch pool data right now");
+    } finally {
+      setLoading(false);
+    }
+  }, [slug, isPoolActive]);
+
+  useEffect(() => {
+    fetchPoolStatus();
+  }, [fetchPoolStatus]);
 
   const handleOpenModal = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-
     open("ServicesWizard");
-
-  }
+  };
 
 
 
   return (
     <Card className="relative">
-      {swarmStatus === "ACTIVE" && (
+      {isPoolActive && (
         <div className="absolute top-4 right-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -90,63 +88,70 @@ export function VMConfigSection() {
           Pool Status
         </CardTitle>
         <CardDescription>
-          {vmState.description}
+          {isPoolActive
+            ? "Manage environment variables and services any time."
+            : "Finish your setup to get started."}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center justify-between">
-          {/* Left side - Cool status display */}
-          <div className="flex items-center gap-4">
-            {swarmStatus ? (
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  "relative flex items-center justify-center w-12 h-12 rounded-full",
-                  swarmStatus === "ACTIVE" ? "bg-green-100 text-green-700" :
-                    swarmStatus === "PENDING" ? "bg-orange-100 text-orange-700" :
-                      "bg-gray-100 text-gray-700"
-                )}>
-                  {swarmStatus === "ACTIVE" && (
-                    <>
-                      <CheckCircle className="w-6 h-6" />
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                    </>
-                  )}
-                  {swarmStatus === "PENDING" && (
-                    <>
-                      <Clock className="w-6 h-6" />
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
-                    </>
-                  )}
-                </div>
-                <div>
-                  <span className="text-sm font-medium">{vmState.statusBadge.text}</span>
-                </div>
+        {isPoolActive ? (
+          loading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          ) : poolStatus ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className={poolStatus.status.runningVms > 0 ? "text-green-600" : "text-muted-foreground"}>
+                  {poolStatus.status.runningVms} running
+                </span>
+                <span className="text-muted-foreground">•</span>
+                <span className={poolStatus.status.pendingVms > 0 ? "text-orange-600" : "text-muted-foreground"}>
+                  {poolStatus.status.pendingVms} pending
+                </span>
+                {poolStatus.status.failedVms > 0 && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-red-600">
+                      {poolStatus.status.failedVms} failed
+                    </span>
+                  </>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-700">
-                  <Zap className="w-6 h-6" />
+              {poolStatus.status.lastCheck && (
+                <div className="text-xs text-muted-foreground">
+                  Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
+                    ? poolStatus.status.lastCheck
+                    : poolStatus.status.lastCheck + 'Z')}
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">Set up Pool</span>
-                  <span className="text-xs text-muted-foreground">Get started now</span>
-                </div>
+              )}
+            </div>
+          ) : errorMessage ? (
+            <div className="text-sm text-muted-foreground">
+              {errorMessage}
+            </div>
+          ) : null
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 text-orange-700">
+                <Clock className="w-6 h-6" />
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
               </div>
-            )}
-          </div>
-
-          {/* Right side - Action button */}
-          {swarmStatus !== "ACTIVE" && (
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">In progress</span>
+                <span className="text-xs text-muted-foreground">Finish your setup to get started.</span>
+              </div>
+            </div>
             <Button asChild>
-              <Link onClick={handleOpenModal} href={slug ? vmState.buttonHref : "#"}>
+              <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
                 <Zap className="w-4 h-4 mr-2" />
-                {vmState.buttonText}
+                Finish setup
               </Link>
             </Button>
-          )}
-        </div>
-
-
+          </div>
+        )}
       </CardContent>
     </Card>
   );
