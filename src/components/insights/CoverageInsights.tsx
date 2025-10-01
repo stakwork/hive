@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
@@ -115,16 +116,26 @@ export function CoverageInsights() {
         {loading && !filterLoading ? (
           <div className="space-y-3">
             <div className="rounded-md border overflow-hidden">
-              <div className="p-4 space-y-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-4">
-                    <div className="col-span-4 h-4 rounded-md bg-muted animate-pulse" />
-                    <div className="col-span-5 h-4 rounded-md bg-muted animate-pulse" />
-                    <div className="col-span-1 h-4 rounded-md bg-muted animate-pulse" />
-                    <div className="col-span-2 h-4 rounded-md bg-muted animate-pulse" />
-                  </div>
-                ))}
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[35%]">Name</TableHead>
+                    <TableHead className="w-[40%]">File</TableHead>
+                    <TableHead className="w-[10%] text-right">Coverage</TableHead>
+                    <TableHead className="w-[15%] text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </div>
         ) : error ? (

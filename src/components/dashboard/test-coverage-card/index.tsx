@@ -1,9 +1,10 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { TestCoverageData } from "@/types";
-import { Clock, TestTube } from "lucide-react";
+import { TestTube } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function TestCoverageCard() {
@@ -47,9 +48,19 @@ export function TestCoverageCard() {
       </CardHeader>
       <CardContent>
         {coverageLoading ? (
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 animate-spin" />
-            <span className="text-sm text-muted-foreground">Loading...</span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-3 w-12" />
+              <Skeleton className="h-4 w-10" />
+            </div>
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-4 w-10" />
+            </div>
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-3 w-10" />
+              <Skeleton className="h-4 w-10" />
+            </div>
           </div>
         ) : testCoverage?.unit_tests !== null && testCoverage?.integration_tests !== null && testCoverage?.e2e_tests !== null ? (
           <div className="space-y-2">
