@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { GET } from "@/app/api/swarm/stakgraph/services/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -8,6 +7,7 @@ import {
   generateUniqueId,
   generateUniqueSlug,
   getMockedSession,
+  createGetRequest,
 } from "@/__tests__/helpers";
 
 describe("GET /api/swarm/stakgraph/services", () => {
@@ -70,10 +70,12 @@ describe("GET /api/swarm/stakgraph/services", () => {
         json: async () => ({ services: [] }),
       } as unknown as Response);
 
-    const search = new URL(
-      `http://localhost:3000/api/swarm/stakgraph/services?workspaceId=${workspaceId}&swarmId=${swarmId}`,
+    const res = await GET(
+      createGetRequest(
+        "http://localhost:3000/api/swarm/stakgraph/services",
+        { workspaceId, swarmId }
+      )
     );
-    const res = await GET(new NextRequest(search.toString()));
     
     const responseBody = await res.json();
     console.log("Swarm API Response status:", res.status);

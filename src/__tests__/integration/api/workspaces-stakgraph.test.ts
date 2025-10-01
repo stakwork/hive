@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import {
   GET as GET_STAK,
   PUT as PUT_STAK,
@@ -11,6 +10,7 @@ import {
   generateUniqueId,
   generateUniqueSlug,
   getMockedSession,
+  createGetRequest,
 } from "@/__tests__/helpers";
 
 describe("/api/workspaces/[slug]/stakgraph", () => {
@@ -56,8 +56,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
   });
 
   it("GET returns decrypted env vars but DB remains encrypted", async () => {
-    const req = new NextRequest(
-      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
+    const req = createGetRequest(
+      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`
     );
     const res = await GET_STAK(req, {
       params: Promise.resolve({ slug: testData.workspace.slug }),

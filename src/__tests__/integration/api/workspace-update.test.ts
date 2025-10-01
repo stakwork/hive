@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { db } from "@/lib/db";
 import { createTestWorkspaceScenario } from "@/__tests__/fixtures/workspace";
@@ -16,6 +15,9 @@ import {
   expectWorkspaceDeleted,
   generateUniqueSlug,
   getMockedSession,
+  createGetRequest,
+  createPutRequest,
+  createDeleteRequest,
 } from "@/__tests__/helpers";
 
 describe("Workspace Update API Integration Tests", () => {
@@ -48,7 +50,7 @@ describe("Workspace Update API Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       const data = await expectSuccess(response);
@@ -66,7 +68,7 @@ describe("Workspace Update API Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       await expectUnauthorized(response);
@@ -77,7 +79,7 @@ describe("Workspace Update API Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces/nonexistent");
+      const request = createGetRequest("http://localhost:3000/api/workspaces/nonexistent");
       const response = await GET(request, { params: Promise.resolve({ slug: "nonexistent" }) });
 
       await expectNotFound(response, "Workspace not found or access denied");
@@ -96,11 +98,7 @@ describe("Workspace Update API Integration Tests", () => {
         description: "Updated description",
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
-      });
+      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, updateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -135,11 +133,7 @@ describe("Workspace Update API Integration Tests", () => {
         description: "Admin updated description",
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
-      });
+      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, updateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -166,11 +160,7 @@ describe("Workspace Update API Integration Tests", () => {
         description: "Should not work",
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
-      });
+      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, updateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -194,11 +184,7 @@ describe("Workspace Update API Integration Tests", () => {
         slug: workspace.slug,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(invalidData),
-      });
+      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, invalidData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -231,11 +217,7 @@ describe("Workspace Update API Integration Tests", () => {
         slug: conflictWorkspace.slug, // Try to use existing slug
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(duplicateData),
-      });
+      const request = createPutRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, duplicateData);
 
       const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -255,9 +237,7 @@ describe("Workspace Update API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "DELETE",
-      });
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -279,9 +259,7 @@ describe("Workspace Update API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "DELETE",
-      });
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -300,9 +278,7 @@ describe("Workspace Update API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces/nonexistent", {
-        method: "DELETE",
-      });
+      const request = createDeleteRequest("http://localhost:3000/api/workspaces/nonexistent");
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: "nonexistent" }) });
 
@@ -314,9 +290,7 @@ describe("Workspace Update API Integration Tests", () => {
       
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`, {
-        method: "DELETE",
-      });
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
 
       const response = await DELETE(request, { params: Promise.resolve({ slug: workspace.slug }) });
 

@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { POST } from "@/app/api/auth/revoke-github/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -118,10 +117,6 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         ok: true,
         status: 204,
         statusText: "No Content",
-      });
-
-      const request = new NextRequest("http://localhost:3000/api/auth/revoke-github", {
-        method: "POST",
       });
 
       const response = await POST();

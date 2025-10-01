@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import { PUT } from "@/app/api/repositories/[id]/route";
 import { db } from "@/lib/db";
 import {
@@ -7,6 +6,7 @@ import {
   expectError,
   generateUniqueId,
   generateUniqueSlug,
+  createRequestWithHeaders,
 } from "@/__tests__/helpers";
 
 describe("Repository Update API Integration Tests", () => {
@@ -62,14 +62,15 @@ describe("Repository Update API Integration Tests", () => {
         playwrightSetup: true,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
       const data = await expectSuccess(response);
@@ -95,14 +96,15 @@ describe("Repository Update API Integration Tests", () => {
         // Not updating playwrightSetup
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
       const data = await expectSuccess(response);
@@ -125,14 +127,15 @@ describe("Repository Update API Integration Tests", () => {
         playwrightSetup: true,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "authorization": TEST_API_KEY,
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
       const data = await expectSuccess(response);
@@ -147,14 +150,15 @@ describe("Repository Update API Integration Tests", () => {
         testingFrameworkSetup: true,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           // No API key provided
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
 
@@ -174,14 +178,15 @@ describe("Repository Update API Integration Tests", () => {
         testingFrameworkSetup: true,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": "wrong-api-key",
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
 
@@ -201,14 +206,15 @@ describe("Repository Update API Integration Tests", () => {
         testingFrameworkSetup: true,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${nonExistentId}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${nonExistentId}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: nonExistentId }) });
 
@@ -222,14 +228,15 @@ describe("Repository Update API Integration Tests", () => {
         testingFrameworkSetup: "not-a-boolean", // Should be boolean
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        body: JSON.stringify(invalidData),
-      });
+        invalidData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
       const data = await response.json();
@@ -255,14 +262,15 @@ describe("Repository Update API Integration Tests", () => {
         testingFrameworkSetup: true,
       };
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": "any-key",
         },
-        body: JSON.stringify(updateData),
-      });
+        updateData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
 
@@ -280,14 +288,15 @@ describe("Repository Update API Integration Tests", () => {
 
       const emptyData = {};
 
-      const request = new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-        method: "PUT",
-        headers: {
+      const request = createRequestWithHeaders(
+        `http://localhost:3000/api/repositories/${repository.id}`,
+        "PUT",
+        {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        body: JSON.stringify(emptyData),
-      });
+        emptyData
+      );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
       const data = await expectSuccess(response);
@@ -316,14 +325,15 @@ describe("Repository Update API Integration Tests", () => {
       const responses = await Promise.all(
         requests.map(({ data }) =>
           PUT(
-            new NextRequest(`http://localhost:3000/api/repositories/${repository.id}`, {
-              method: "PUT",
-              headers: {
+            createRequestWithHeaders(
+              `http://localhost:3000/api/repositories/${repository.id}`,
+              "PUT",
+              {
                 "Content-Type": "application/json",
                 "x-api-key": TEST_API_KEY,
               },
-              body: JSON.stringify(data),
-            }),
+              data
+            ),
             { params: Promise.resolve({ id: repository.id }) }
           )
         )
