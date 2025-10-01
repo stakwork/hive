@@ -4,14 +4,13 @@ import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmFo
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
+import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { useGitVisualizer } from "@/hooks/useGitVisualizer";
-import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
-import { useEffect } from "react";
+import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
@@ -36,12 +35,6 @@ export default function StakgraphPage() {
 
   const { toast } = useToast();
 
-  // Initialize GitVisualizer
-  useGitVisualizer({
-    workspaceId: id,
-    repositoryUrl: formData.repositoryUrl,
-    swarmUrl: formData.swarmUrl,
-  });
 
   // Load existing settings on component mount
   useEffect(() => {
@@ -251,12 +244,6 @@ export default function StakgraphPage() {
         </CardContent>
       </Card>
 
-      {/* Gitsee section */}
-      <Card className="max-w-2xl">
-        <CardContent>
-          <svg width="500" height="500" id="vizzy" style={{ width: "100%", height: "100%" }}></svg>
-        </CardContent>
-      </Card>
     </div>
   );
 }
