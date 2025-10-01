@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { stakgraphToRepositoryStatus } from "@/utils/conversions";
 import { WebhookPayload } from "@/types";
+import { RepositoryStatus } from "@prisma/client";
 
 export async function updateStakgraphStatus(
   swarm: { id: string; workspaceId: string; repositoryUrl: string | null },
@@ -15,7 +16,7 @@ export async function updateStakgraphStatus(
       ingestRefId: payload.request_id,
     }),
 
-    swarm.repositoryUrl && (payload.status === "COMPLETED" || payload.status === "FAILED")
+    swarm.repositoryUrl
       ? db.repository.update({
           where: {
             repositoryUrl_workspaceId: {
@@ -23,7 +24,7 @@ export async function updateStakgraphStatus(
               workspaceId: swarm.workspaceId,
             },
           },
-          data: { status: repositoryStatus },
+          data: { status: repositoryStatus, updatedAt: new Date() },
         })
       : Promise.resolve(),
   ]);

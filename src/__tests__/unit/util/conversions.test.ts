@@ -138,6 +138,8 @@ describe("conversions", () => {
     test("converts valid stakgraph statuses to RepositoryStatus", () => {
       expect(stakgraphToRepositoryStatus("inprogress")).toBe("PENDING");
       expect(stakgraphToRepositoryStatus("complete")).toBe("SYNCED");
+      expect(stakgraphToRepositoryStatus("completed")).toBe("SYNCED");
+      expect(stakgraphToRepositoryStatus("synced")).toBe("SYNCED");
       expect(stakgraphToRepositoryStatus("failed")).toBe("FAILED");
     });
 
@@ -146,6 +148,8 @@ describe("conversions", () => {
       expect(stakgraphToRepositoryStatus("InProgress")).toBe("PENDING");
       expect(stakgraphToRepositoryStatus("COMPLETE")).toBe("SYNCED");
       expect(stakgraphToRepositoryStatus("Complete")).toBe("SYNCED");
+      expect(stakgraphToRepositoryStatus("COMPLETED")).toBe("SYNCED");
+      expect(stakgraphToRepositoryStatus("Synced")).toBe("SYNCED");
       expect(stakgraphToRepositoryStatus("FAILED")).toBe("FAILED");
       expect(stakgraphToRepositoryStatus("Failed")).toBe("FAILED");
     });
