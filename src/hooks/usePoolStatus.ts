@@ -7,8 +7,6 @@ interface UsePoolStatusState {
   error: Error | null;
 }
 
-const POLL_INTERVAL = 30000;
-
 export function usePoolStatus(slug: string | null | undefined) {
   const [state, setState] = useState<UsePoolStatusState>({
     poolStatus: null,
@@ -57,17 +55,7 @@ export function usePoolStatus(slug: string | null | undefined) {
 
   useEffect(() => {
     fetchPoolStatus();
-
-    if (!slug) {
-      return;
-    }
-
-    const intervalId = setInterval(fetchPoolStatus, POLL_INTERVAL);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [slug, fetchPoolStatus]);
+  }, [fetchPoolStatus]);
 
   const refetch = useCallback(() => {
     fetchPoolStatus();
