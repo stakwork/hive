@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { Repository } from "@prisma/client";
+import type { Repository, RepositoryStatus } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/helpers";
 
 export interface CreateTestRepositoryOptions {
@@ -7,6 +7,7 @@ export interface CreateTestRepositoryOptions {
   repositoryUrl?: string;
   branch?: string;
   workspaceId: string;
+  status?: RepositoryStatus;
   testingFrameworkSetup?: boolean;
   playwrightSetup?: boolean;
 }
@@ -22,6 +23,7 @@ export async function createTestRepository(
       repositoryUrl: options.repositoryUrl || `https://github.com/test/repo-${uniqueId}`,
       branch: options.branch || "main",
       workspaceId: options.workspaceId,
+      status: options.status,
       testingFrameworkSetup: options.testingFrameworkSetup ?? false,
       playwrightSetup: options.playwrightSetup ?? false,
     },
