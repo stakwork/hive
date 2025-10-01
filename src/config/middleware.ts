@@ -13,9 +13,10 @@ export const MIDDLEWARE_HEADERS = {
 export const PUBLIC_ROUTES = [
   "/api/auth",
   "/api/github/webhook",
-  "/api/stakwork/webhook", 
+  "/api/stakwork/webhook",
   "/api/janitors/webhook",
   "/api/swarm/stakgraph/webhook",
+  "/api/cron", // Cron jobs use their own auth (CRON_SECRET)
   "/api/mock",
   "/api/tests/coverage",
 ] as const;
