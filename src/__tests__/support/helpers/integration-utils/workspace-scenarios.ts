@@ -1,5 +1,5 @@
-import { createTestWorkspaceScenario } from "@/__tests__/fixtures/workspace";
-import { createTestUser } from "@/__tests__/fixtures/user";
+import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 /**
  * Creates a workspace with owner, admin, and developer members

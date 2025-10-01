@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { db } from "@/lib/db";
-import { createTestWorkspaceScenario } from "@/__tests__/fixtures/workspace";
+import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
@@ -18,7 +18,7 @@ import {
   createGetRequest,
   createPutRequest,
   createDeleteRequest,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 describe("Workspace Update API Integration Tests", () => {
   async function createTestWorkspace() {

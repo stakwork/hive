@@ -10,7 +10,7 @@ import {
 } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
-import { workspaceMocks, workspaceMockSetup, TEST_DATE_ISO } from "./__helpers__/workspace-mocks";
+import { workspaceMocks, workspaceMockSetup, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
 
 const mockedDb = vi.mocked(db);
 

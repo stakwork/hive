@@ -13,8 +13,8 @@ import {
   generateUniqueId,
   createPostRequest,
   getMockedSession,
-} from "@/__tests__/helpers";
-import { createTestUser } from "@/__tests__/fixtures/user";
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock environment config
 vi.mock("@/lib/env", () => ({

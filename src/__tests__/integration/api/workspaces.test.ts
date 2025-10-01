@@ -8,7 +8,7 @@ import {
 import {
   createTestUser,
   createTestWorkspace,
-} from "@/__tests__/fixtures";
+} from "@/__tests__/support/fixtures";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
@@ -18,7 +18,7 @@ import {
   expectError,
   generateUniqueSlug,
   createPostRequest,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 describe("Workspace API - Integration Tests", () => {
   beforeEach(() => {

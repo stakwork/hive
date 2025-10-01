@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import type { Repository, RepositoryStatus } from "@prisma/client";
-import { generateUniqueId } from "@/__tests__/helpers";
+import { generateUniqueId } from "@/__tests__/support/helpers";
 
 export interface CreateTestRepositoryOptions {
   name?: string;

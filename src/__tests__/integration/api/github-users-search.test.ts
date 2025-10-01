@@ -12,8 +12,8 @@ import {
   generateUniqueId,
   getMockedSession,
   createGetRequest,
-} from "@/__tests__/helpers";
-import { createTestUser } from "@/__tests__/fixtures/user";
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock axios for GitHub API calls
 vi.mock("axios");

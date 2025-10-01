@@ -11,7 +11,7 @@ import {
   generateUniqueSlug,
   getMockedSession,
   createGetRequest,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 describe("/api/workspaces/[slug]/stakgraph", () => {
   const PLAINTEXT_ENV = [{ name: "SECRET", value: "my_value" }];

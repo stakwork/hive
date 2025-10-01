@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import type { User, GitHubAuth } from "@prisma/client";
-import { generateUniqueId } from "@/__tests__/helpers";
+import { generateUniqueId } from "@/__tests__/support/helpers";
 
 export interface CreateTestUserOptions {
   name?: string;

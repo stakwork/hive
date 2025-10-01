@@ -13,9 +13,9 @@ import {
   generateUniqueSlug,
   createGetRequest,
   getMockedSession,
-} from "@/__tests__/helpers";
-import { createTestUser } from "@/__tests__/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/fixtures/workspace";
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 
 describe("GET /api/chat/messages/[messageId]", () => {
   let testUser: { id: string; email: string; name: string };

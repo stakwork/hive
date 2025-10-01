@@ -8,7 +8,7 @@ import {
   generateUniqueSlug,
   createPostRequest,
   getMockedSession,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 // Mock stakwork service factory to capture calls
 const mockCreateCustomer = vi.fn(async () => ({
