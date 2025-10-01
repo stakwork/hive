@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
-import { PoolManagerService } from "@/services/pool-manager/PoolManagerService";
+import { PoolManagerService } from "@/services/pool-manager";
 
 export async function GET(
   request: NextRequest,
@@ -56,14 +56,26 @@ export async function GET(
     const config = getServiceConfig("poolManager");
     const poolManagerService = new PoolManagerService(config);
 
-    const data = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
+    try {
+      const poolStatus = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
 
-    return NextResponse.json({
-      success: true,
-      data,
-    });
+      return NextResponse.json({
+        success: true,
+        data: poolStatus,
+      });
+    } catch (error) {
+      console.warn("Pool status fetch failed (pool may still be active):", error);
+      const message = error instanceof Error ? error.message : "Unable to fetch pool data right now";
+      return NextResponse.json(
+        {
+          success: false,
+          message,
+        },
+        { status: 503 }
+      );
+    }
   } catch (error) {
-    console.error("Error fetching pool status:", error);
+    console.error("Error in pool status endpoint:", error);
     return NextResponse.json(
       {
         success: false,

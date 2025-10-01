@@ -80,21 +80,36 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
   }
 
   async getPoolStatus(poolId: string, poolApiKey: string): Promise<PoolStatusResponse> {
-    const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
-    const response = await this.getClient().get(`/pools/${poolId}`, {
-      headers: {
-        Authorization: `Bearer ${decryptedApiKey}`,
-      },
-    });
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const data = response.data;
-    return {
-      status: {
-        runningVms: data.status.running_vms,
-        pendingVms: data.status.pending_vms,
-        failedVms: data.status.failed_vms,
-        lastCheck: data.status.last_check,
-      },
-    };
+      const response = await fetch(`${this.config.baseURL}/pools/${poolId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${decryptedApiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to fetch pool metrics at the moment");
+      }
+
+      const data = await response.json();
+
+      return {
+        status: {
+          runningVms: data.status.running_vms,
+          pendingVms: data.status.pending_vms,
+          failedVms: data.status.failed_vms,
+          lastCheck: data.status.last_check,
+        },
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("fetch")) {
+        throw new Error("Unable to connect to pool service");
+      }
+      throw error;
+    }
   }
 }
