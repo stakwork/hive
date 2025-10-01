@@ -19,38 +19,29 @@ export function VMConfigSection() {
   const poolState = workspace?.poolState;
 
   const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
-  const [poolStatusLoading, setPoolStatusLoading] = useState(false);
-  const [poolStatusError, setPoolStatusError] = useState<Error | null>(null);
 
   const fetchPoolStatus = useCallback(async () => {
     if (!slug) {
       setPoolStatus(null);
-      setPoolStatusLoading(false);
-      setPoolStatusError(null);
       return;
     }
-
-    setPoolStatusLoading(true);
-    setPoolStatusError(null);
 
     try {
       const response = await fetch(`/api/w/${slug}/pool/status`);
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch pool status: ${response.statusText}`);
+        return;
       }
 
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.message || "Failed to fetch pool status");
+        return;
       }
 
       setPoolStatus(result.data);
-      setPoolStatusLoading(false);
     } catch (error) {
-      setPoolStatusLoading(false);
-      setPoolStatusError(error instanceof Error ? error : new Error("Unknown error"));
+      // Silently handle errors
     }
   }, [slug]);
 

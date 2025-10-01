@@ -3,9 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
-import { EncryptionService } from "@/lib/encryption";
-
-const encryptionService = EncryptionService.getInstance();
+import { PoolManagerService } from "@/services/pool-manager/PoolManagerService";
 
 export async function GET(
   request: NextRequest,
@@ -37,7 +35,6 @@ export async function GET(
       );
     }
 
-    // Get swarm data directly from database
     const { db } = await import("@/lib/db");
     const swarm = await db.swarm.findFirst({
       where: {
@@ -57,42 +54,13 @@ export async function GET(
     }
 
     const config = getServiceConfig("poolManager");
-    const url = `${config.baseURL}/pools/${swarm.id}`;
+    const poolManagerService = new PoolManagerService(config);
 
-    const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${decryptedApiKey}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Pool status fetch failed:", errorText);
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Failed to fetch pool status: ${response.statusText}`,
-        },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
+    const data = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
 
     return NextResponse.json({
       success: true,
-      data: {
-        status: {
-          runningVms: data.status.running_vms,
-          pendingVms: data.status.pending_vms,
-          failedVms: data.status.failed_vms,
-          lastCheck: data.status.last_check,
-        },
-      },
+      data,
     });
   } catch (error) {
     console.error("Error fetching pool status:", error);
