@@ -85,7 +85,14 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      data,
+      data: {
+        status: {
+          runningVms: data.status.running_vms,
+          pendingVms: data.status.pending_vms,
+          failedVms: data.status.failed_vms,
+          lastCheck: data.status.last_check,
+        },
+      },
     });
   } catch (error) {
     console.error("Error fetching pool status:", error);

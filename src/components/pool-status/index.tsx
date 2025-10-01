@@ -139,25 +139,25 @@ export function VMConfigSection() {
             poolStatus?.status && swarmStatus === "ACTIVE" ? (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <span className={poolStatus.status.running_vms > 0 ? "text-green-600" : "text-muted-foreground"}>
-                    {poolStatus.status.running_vms} running
+                  <span className={poolStatus.status.runningVms > 0 ? "text-green-600" : "text-muted-foreground"}>
+                    {poolStatus.status.runningVms} running
                   </span>
                   <span className="text-muted-foreground">•</span>
-                  <span className={poolStatus.status.pending_vms > 0 ? "text-orange-600" : "text-muted-foreground"}>
-                    {poolStatus.status.pending_vms} pending
+                  <span className={poolStatus.status.pendingVms > 0 ? "text-orange-600" : "text-muted-foreground"}>
+                    {poolStatus.status.pendingVms} pending
                   </span>
-                  {poolStatus.status.failed_vms > 0 && (
+                  {poolStatus.status.failedVms > 0 && (
                     <>
                       <span className="text-muted-foreground">•</span>
                       <span className="text-red-600">
-                        {poolStatus.status.failed_vms} failed
+                        {poolStatus.status.failedVms} failed
                       </span>
                     </>
                   )}
                 </div>
-                {poolStatus.status.last_check && (
+                {poolStatus.status.lastCheck && (
                   <div className="text-xs text-muted-foreground">
-                    Updated {formatRelativeTime(poolStatus.status.last_check.endsWith('Z') ? poolStatus.status.last_check : poolStatus.status.last_check + 'Z')}
+                    Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z') ? poolStatus.status.lastCheck : poolStatus.status.lastCheck + 'Z')}
                   </div>
                 )}
               </div>
