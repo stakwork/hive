@@ -1,5 +1,5 @@
 import "./global";
-import { beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { beforeAll, afterAll, beforeEach } from "vitest";
 import { execSync } from "child_process";
 import { db } from "@/lib/db";
 import { resetDatabase } from "../fixtures";
@@ -44,11 +44,9 @@ beforeAll(async () => {
   }
 });
 
+// Reset database before each test to ensure clean state.
+// No afterEach needed - beforeEach provides full isolation.
 beforeEach(async () => {
-  await resetDatabase();
-});
-
-afterEach(async () => {
   await resetDatabase();
 });
 
