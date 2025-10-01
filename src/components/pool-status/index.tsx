@@ -133,7 +133,7 @@ export function VMConfigSection() {
             </div>
           ) : null
         ) : (
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 text-orange-700">
                 <Clock className="w-6 h-6" />
