@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { getServerSession } from "next-auth/next";
 import { GET as GetConfig, PUT as UpdateConfig } from "@/app/api/workspaces/[slug]/janitors/config/route";
 import { POST as TriggerRun } from "@/app/api/workspaces/[slug]/janitors/[type]/run/route";
 import { GET as GetRuns } from "@/app/api/workspaces/[slug]/janitors/runs/route";
@@ -21,12 +20,8 @@ import {
   createGetRequest,
   createPostRequest,
   createPutRequest,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-// Mock NextAuth - only external dependency
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
 
 // Mock Stakwork service
 vi.mock("@/lib/service-factory", () => ({
@@ -44,7 +39,6 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
 describe("Janitor API Integration Tests", () => {
@@ -141,7 +135,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/config - should get janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("OWNER");
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test");
       
@@ -163,7 +157,7 @@ describe("Janitor API Integration Tests", () => {
     test("PUT /api/workspaces/[slug]/janitors/config - should update janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPutRequest("http://localhost/api/test", {
         unitTestsEnabled: true,
@@ -185,7 +179,7 @@ describe("Janitor API Integration Tests", () => {
     test("PUT /api/workspaces/[slug]/janitors/config - should reject unauthorized user", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("VIEWER");
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPutRequest("http://localhost/api/test", {
         unitTestsEnabled: true,
@@ -201,7 +195,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/config - should reject unauthenticated user", async () => {
       const { workspace } = await createTestWorkspaceWithUser();
       
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createGetRequest("http://localhost/api/test");
       
@@ -225,7 +219,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
       
@@ -261,7 +255,7 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should reject when janitor disabled", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
       
@@ -280,7 +274,7 @@ describe("Janitor API Integration Tests", () => {
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should reject invalid janitor type", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
       
@@ -316,7 +310,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
       
@@ -363,7 +357,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { limit: "10", page: "1" });
       
@@ -411,7 +405,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { type: "UNIT_TESTS" });
       
@@ -585,7 +579,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { limit: "10", page: "1" });
       
@@ -655,7 +649,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { status: "PENDING" });
       
@@ -709,7 +703,7 @@ describe("Janitor API Integration Tests", () => {
         ],
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { priority: "HIGH" });
       
@@ -728,7 +722,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should return empty array when no janitor config exists", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test");
       
@@ -746,7 +740,7 @@ describe("Janitor API Integration Tests", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should reject unauthorized user", async () => {
       const { workspace } = await createTestWorkspaceWithUser();
       
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createGetRequest("http://localhost/api/test");
       
@@ -787,7 +781,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
       
@@ -849,7 +843,7 @@ describe("Janitor API Integration Tests", () => {
         },
       });
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(user) as any);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {
         reason: "Not relevant for this project",

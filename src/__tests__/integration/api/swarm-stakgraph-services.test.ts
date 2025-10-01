@@ -3,16 +3,12 @@ import { NextRequest } from "next/server";
 import { GET } from "@/app/api/swarm/stakgraph/services/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getServerSession } from "next-auth/next";
 import {
   createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("GET /api/swarm/stakgraph/services", () => {
   const enc = EncryptionService.getInstance();
@@ -62,7 +58,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
     workspaceId = testData.workspace.id;
     swarmId = testData.swarm.swarmId!;
 
-    mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testData.user));
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("proxies with decrypted header and keeps DB encrypted", async () => {

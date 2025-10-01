@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST, PUT } from "@/app/api/swarm/route";
 import { db } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
 import type { User, Workspace } from "@prisma/client";
 import {
   createAuthenticatedSession,
@@ -13,11 +12,8 @@ import {
   generateUniqueSlug,
   createPostRequest,
   createPutRequest,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 // Mock the SwarmService to avoid making real external API calls
 vi.mock("@/services/swarm", () => ({
@@ -170,7 +166,7 @@ describe("Swarm API Authorization Tests", () => {
     };
 
     it("should allow workspace owner to create swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -191,7 +187,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should allow workspace admin to create swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -212,7 +208,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject developer role from creating swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(developerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(developerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -224,7 +220,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject viewer role from creating swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(viewerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(viewerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -236,7 +232,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject unauthorized user from creating swarm in workspace they don't belong to", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -248,7 +244,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject creating swarm with non-existent workspace ID", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = createSwarmRequest("non-existent-workspace-id");
       const response = await POST(request);
@@ -260,7 +256,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject unauthenticated requests", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -282,7 +278,7 @@ describe("Swarm API Authorization Tests", () => {
     };
 
     it("should allow workspace owner to update swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -298,7 +294,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should allow workspace admin to update swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -314,7 +310,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject developer role from updating swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(developerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(developerUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -326,7 +322,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject viewer role from updating swarm", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(viewerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(viewerUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -338,7 +334,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject unauthorized user from updating swarm in workspace they don't belong to", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -350,7 +346,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject updating swarm with non-existent workspace ID", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = updateSwarmRequest("non-existent-workspace-id");
       const response = await PUT(request);
@@ -362,7 +358,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject request without workspaceId", async () => {
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(ownerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const request = createPutRequest("http://localhost:3000/api/swarm", {
         envVars: [{ name: "TEST_VAR", value: "test_value" }],
@@ -378,7 +374,7 @@ describe("Swarm API Authorization Tests", () => {
     });
 
     it("should reject unauthenticated requests", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = updateSwarmRequest(workspace.id);
       const response = await PUT(request);
@@ -393,7 +389,7 @@ describe("Swarm API Authorization Tests", () => {
   describe("Security Vulnerability Prevention", () => {
     it("should prevent cross-workspace swarm creation attack", async () => {
       // Attacker is owner of otherWorkspace but tries to create swarm in victim's workspace
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);
@@ -412,7 +408,7 @@ describe("Swarm API Authorization Tests", () => {
 
     it("should prevent privilege escalation via direct API call", async () => {
       // Developer tries to bypass UI restrictions by calling API directly
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(developerUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(developerUser));
 
       const request = createSwarmRequest(workspace.id);
       const response = await POST(request);

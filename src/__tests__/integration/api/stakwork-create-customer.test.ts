@@ -2,17 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/stakwork/create-customer/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getServerSession } from "next-auth/next";
 import {
   createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
   createPostRequest,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 // Mock stakwork service factory to capture calls
 const mockCreateCustomer = vi.fn(async () => ({
@@ -71,7 +67,7 @@ describe("POST /api/stakwork/create-customer", () => {
 
     workspaceId = testData.workspace.id;
 
-    mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testData.user));
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("creates secret with plaintext value (not encrypted JSON)", async () => {

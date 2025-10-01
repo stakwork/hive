@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { GET } from "@/app/api/github/users/search/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -12,17 +11,12 @@ import {
   expectUnauthorized,
   expectError,
   generateUniqueId,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
 
 // Mock axios for GitHub API calls
 vi.mock("axios");
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockAxios = axios as vi.Mocked<typeof axios>;
 
 describe("GitHub Users Search API Integration Tests", () => {
@@ -79,7 +73,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should search GitHub users successfully with real database operations", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock GitHub API response
       const mockGitHubResponse = {
@@ -141,7 +135,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     });
 
     test("should return 401 for unauthenticated user", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = new NextRequest("http://localhost:3000/api/github/users/search?q=john");
       const response = await GET(request);
@@ -152,7 +146,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 400 for missing query parameter", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = new NextRequest("http://localhost:3000/api/github/users/search");
       const response = await GET(request);
@@ -163,7 +157,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 400 for query too short", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = new NextRequest("http://localhost:3000/api/github/users/search?q=a");
       const response = await GET(request);
@@ -181,7 +175,7 @@ describe("GitHub Users Search API Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(userWithoutGitHub));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(userWithoutGitHub));
 
       const request = new NextRequest("http://localhost:3000/api/github/users/search?q=john");
       const response = await GET(request);
@@ -192,7 +186,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 401 for expired GitHub token", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock GitHub API 401 response
       mockAxios.get.mockRejectedValue({
@@ -208,7 +202,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 500 for other GitHub API errors", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockAxios.get.mockRejectedValue(new Error("Network error"));
 
@@ -221,7 +215,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should handle empty search results", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockAxios.get.mockResolvedValue({
         data: {
@@ -241,7 +235,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should properly encrypt and decrypt access tokens", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockAxios.get.mockResolvedValue({
         data: { total_count: 0, items: [] },

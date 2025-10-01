@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/chat/messages/[messageId]/route";
 import { db } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
 import { ChatRole, ChatStatus } from "@/lib/chat";
 import {
   createAuthenticatedSession,
@@ -13,11 +12,8 @@ import {
   generateUniqueId,
   generateUniqueSlug,
   createGetRequest,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("GET /api/chat/messages/[messageId]", () => {
   let testUser: { id: string; email: string; name: string };
@@ -155,7 +151,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Authentication", () => {
     it("should return 401 when no session provided", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -169,8 +165,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     });
 
     it("should return 401 when session has no user", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: null });
+      getMockedSession().mockResolvedValue({ user: null });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -184,8 +179,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     });
 
     it("should return 401 when session user has no id", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { name: "Test User" } });
+      getMockedSession().mockResolvedValue({ user: { name: "Test User" } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -201,8 +195,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Input Validation", () => {
     it("should return 400 when messageId is missing", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createGetRequest("http://localhost:3000/api/chat/messages/");
 
@@ -216,8 +209,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     });
 
     it("should return 404 when message does not exist", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const nonExistentId = "non-existent-message-id";
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${nonExistentId}`);
@@ -234,8 +226,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Authorization & Access Control", () => {
     it("should return 403 when user is not workspace owner or member", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: otherUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: otherUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -249,8 +240,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     });
 
     it("should allow access for workspace owner", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -265,8 +255,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     });
 
     it("should allow access for workspace member", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: memberUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: memberUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -283,8 +272,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Sensitive Data Handling", () => {
     it("should return complete message data with sensitive content for authorized user", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -324,8 +312,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
     });
 
     it("should not leak sensitive data through error messages", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: otherUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: otherUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -347,8 +334,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Data Integrity", () => {
     it("should maintain referential integrity and include all related data", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
@@ -383,8 +369,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Error Handling", () => {
     it("should return 500 and log errors for database failures", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       // Mock database error by providing invalid messageId format that might cause DB issues
       const invalidMessageId = "invalid-uuid-format-that-breaks-db";
@@ -445,8 +430,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       // Now delete the task to create an orphaned message scenario
       await db.task.delete({ where: { id: tempTask.id } });
 
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${orphanedMessage.id}`);
 
@@ -462,8 +446,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
 
   describe("Security Headers", () => {
     it("should return appropriate response headers", async () => {
-      (getServerSession as unknown as { mockResolvedValue: (v: unknown) => void })
-        .mockResolvedValue({ user: { id: testUser.id } });
+      getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 

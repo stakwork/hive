@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { getServerSession } from "next-auth/next";
 import { POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
@@ -16,12 +15,8 @@ import {
   generateUniqueId,
   createPostRequest,
   createPatchRequest,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-// Mock NextAuth - only external dependency
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
 
 // Mock GitHub API calls for addWorkspaceMember (external service)
 vi.mock("@/services/github", () => ({
@@ -36,8 +31,6 @@ vi.mock("@/services/github", () => ({
     followers: 5,
   }),
 }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("Workspace Member Role API Integration Tests", () => {
   async function createTestWorkspaceWithAdminUser() {
@@ -66,7 +59,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
         
         // Mock session with real admin user
-        mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
         const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
           githubUsername: "testuser",
@@ -95,7 +88,7 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should reject OWNER role with real validation logic", async () => {
       const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
         githubUsername: "testuser",
@@ -118,7 +111,7 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should reject STAKEHOLDER role with real validation logic", async () => {
       const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
         githubUsername: "testuser",
@@ -144,7 +137,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       for (const role of invalidRoles) {
         const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
         
-        mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
         const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
           githubUsername: "testuser",
@@ -169,7 +162,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       const { workspace } = await createTestWorkspaceWithAdminUser();
       
       // Mock no session
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
         githubUsername: "testuser",
@@ -186,7 +179,7 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should require valid workspace access with real database lookup", async () => {
       const { adminUser } = await createTestWorkspaceWithAdminUser();
       
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createPostRequest("http://localhost/api/workspaces/nonexistent/members", {
         githubUsername: "testuser",
@@ -215,7 +208,7 @@ describe("Workspace Member Role API Integration Tests", () => {
           },
         });
 
-        mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
         const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
           role,
@@ -251,7 +244,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
         role: WorkspaceRole.OWNER,
@@ -282,7 +275,7 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
       const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
         role: WorkspaceRole.STAKEHOLDER,
@@ -316,7 +309,7 @@ describe("Workspace Member Role API Integration Tests", () => {
           },
         });
 
-        mockGetServerSession.mockResolvedValue(createAuthenticatedSession(adminUser));
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
         const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
           role,
@@ -358,7 +351,7 @@ describe("Workspace Member Role API Integration Tests", () => {
       });
 
       // Mock session with non-admin user
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(nonAdminUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
       const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
         role: WorkspaceRole.PM,

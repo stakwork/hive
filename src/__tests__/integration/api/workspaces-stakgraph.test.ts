@@ -6,16 +6,12 @@ import {
 } from "@/app/api/workspaces/[slug]/stakgraph/route";
 import { db } from "@/lib/db";
 import { encryptEnvVars } from "@/lib/encryption";
-import { getServerSession } from "next-auth/next";
 import {
   createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("/api/workspaces/[slug]/stakgraph", () => {
   const PLAINTEXT_ENV = [{ name: "SECRET", value: "my_value" }];
@@ -56,7 +52,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       return { user, workspace, swarm };
     });
 
-    mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testData.user));
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("GET returns decrypted env vars but DB remains encrypted", async () => {

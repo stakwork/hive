@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { getServerSession } from "next-auth/next";
 import { POST } from "@/app/api/chat/message/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -13,12 +12,8 @@ import {
   expectUnauthorized,
   generateUniqueId,
   createPostRequest,
+  getMockedSession,
 } from "@/__tests__/helpers";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
 
 // Mock environment config
 vi.mock("@/lib/env", () => ({
@@ -57,7 +52,6 @@ vi.mock("@/lib/utils/swarm", () => ({
   transformSwarmUrlToRepo2Graph: vi.fn().mockReturnValue("http://test-repo2graph:3355"),
 }));
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
 
 describe("POST /api/chat/message Integration Tests", () => {
@@ -130,7 +124,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
   describe("Authentication Tests", () => {
     test("should return 401 for unauthenticated request", async () => {
-      mockGetServerSession.mockResolvedValue(mockUnauthenticatedSession());
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         taskId: "test-task-id",
@@ -143,7 +137,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     });
 
     test("should return 401 for invalid user session", async () => {
-      mockGetServerSession.mockResolvedValue({
+      getMockedSession().mockResolvedValue({
         user: { email: "test@example.com" }, // Missing id
       });
 
@@ -163,7 +157,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 400 for missing message", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         taskId: "test-task-id",
@@ -179,7 +173,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 400 for missing taskId", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         message: "Test message",
@@ -197,7 +191,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 404 for non-existent task", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         taskId: "non-existent-task-id",
@@ -222,7 +216,7 @@ describe("POST /api/chat/message Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         taskId: testTask.id,
@@ -240,7 +234,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should successfully create chat message with mock service", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock successful mock service call
       mockFetch.mockResolvedValueOnce({
@@ -298,7 +292,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should successfully create chat message with Stakwork service", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock successful Stakwork service call
       mockFetch.mockResolvedValueOnce({
@@ -338,7 +332,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle different task modes correctly", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -381,7 +375,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle Stakwork service failure", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock failed Stakwork service call
       mockFetch.mockResolvedValueOnce({
@@ -413,7 +407,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle mock service failure gracefully", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock failed mock service call
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
@@ -437,7 +431,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle database errors gracefully", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         taskId: "invalid-task-format", // This will cause database error
@@ -455,7 +449,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle empty arrays for contextTags, artifacts, and attachments", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -485,7 +479,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle very long message content", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -512,7 +506,7 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle special characters in message content", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      mockGetServerSession.mockResolvedValue(createAuthenticatedSession(testUser));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
