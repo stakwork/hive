@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { 
+import {
   createWorkspace,
   getWorkspacesByUserId,
   getWorkspaceBySlug,
@@ -9,11 +9,13 @@ import {
   deleteWorkspaceBySlug
 } from "@/services/workspace";
 import { db } from "@/lib/db";
-import { 
+import {
   WORKSPACE_ERRORS,
   WORKSPACE_LIMITS
 } from "@/lib/constants";
-import { createTestUser, createTestSwarm } from "@/__tests__/utils/test-helpers";
+import { createTestUser } from "@/__tests__/fixtures/user";
+import { createTestSwarm } from "@/__tests__/fixtures/swarm";
+import { generateUniqueSlug } from "@/__tests__/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 
 describe("Workspace Service - Integration Tests", () => {
@@ -23,16 +25,9 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("createWorkspace", () => {
     test("should create workspace successfully", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
-      const slug = `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      const slug = generateUniqueSlug("test-workspace");
       const workspaceData = {
         name: "Test Workspace",
         description: "A test workspace for integration testing",
@@ -61,24 +56,10 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should throw error for duplicate slug", async () => {
-      // Create test users with real database operations
-      const testUser1 = await db.user.create({
-        data: {
-          id: `user1-${Date.now()}-${Math.random()}`,
-          email: `user1-${Date.now()}@example.com`,
-          name: "Test User 1",
-        },
-      });
+      const testUser1 = await createTestUser({ name: "Test User 1" });
+      const testUser2 = await createTestUser({ name: "Test User 2" });
 
-      const testUser2 = await db.user.create({
-        data: {
-          id: `user2-${Date.now()}-${Math.random()}`,
-          email: `user2-${Date.now()}@example.com`,
-          name: "Test User 2",
-        },
-      });
-
-      const slug = `duplicate-slug-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      const slug = generateUniqueSlug("duplicate-slug");
       const workspaceData = {
         name: "Test Workspace",
         slug: slug,
@@ -101,16 +82,9 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should handle workspace creation with minimal data", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
-      const slug = `minimal-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      const slug = generateUniqueSlug("minimal-workspace");
       const workspaceData = {
         name: "Minimal Workspace",
         slug: slug,
@@ -124,28 +98,14 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should enforce workspace limit per user", async () => {
-      // Create test users with real database operations
-      const testUser1 = await db.user.create({
-        data: {
-          id: `user1-${Date.now()}-${Math.random()}`,
-          email: `user1-${Date.now()}@example.com`,
-          name: "Test User 1",
-        },
-      });
-
-      const testUser2 = await db.user.create({
-        data: {
-          id: `user2-${Date.now()}-${Math.random()}`,
-          email: `user2-${Date.now()}@example.com`,
-          name: "Test User 2",
-        },
-      });
+      const testUser1 = await createTestUser({ name: "Test User 1" });
+      const testUser2 = await createTestUser({ name: "Test User 2" });
 
       // Create max workspaces for user1
       for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
         await createWorkspace({
           name: `Workspace ${i + 1}`,
-          slug: `workspace-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          slug: generateUniqueSlug(`workspace-${i + 1}`),
           ownerId: testUser1.id,
         });
       }
@@ -153,7 +113,7 @@ describe("Workspace Service - Integration Tests", () => {
       // Try to create one more - should fail
       const extraWorkspaceData = {
         name: "Extra Workspace",
-        slug: `extra-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        slug: generateUniqueSlug("extra-workspace"),
         ownerId: testUser1.id,
       };
 
@@ -164,7 +124,7 @@ describe("Workspace Service - Integration Tests", () => {
       // Verify user2 can still create workspaces
       const user2WorkspaceData = {
         name: "User2 Workspace",
-        slug: `user2-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        slug: generateUniqueSlug("user2-workspace"),
         ownerId: testUser2.id,
       };
 
@@ -173,21 +133,14 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should allow workspace creation after deletion", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
       // Create max workspaces
       const workspaces = [];
       for (let i = 0; i < WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER; i++) {
         const workspace = await createWorkspace({
           name: `Workspace ${i + 1}`,
-          slug: `workspace-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          slug: generateUniqueSlug(`workspace-${i + 1}`),
           ownerId: testUser.id,
         });
         workspaces.push(workspace);
@@ -196,7 +149,7 @@ describe("Workspace Service - Integration Tests", () => {
       // Try to create another - should fail
       await expect(createWorkspace({
         name: "Extra Workspace",
-        slug: `extra-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        slug: generateUniqueSlug("extra-workspace"),
         ownerId: testUser.id,
       })).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
@@ -209,7 +162,7 @@ describe("Workspace Service - Integration Tests", () => {
       // Now should be able to create new workspace
       const newWorkspaceData = {
         name: "New Workspace",
-        slug: `new-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        slug: generateUniqueSlug("new-workspace"),
         ownerId: testUser.id,
       };
 
@@ -221,27 +174,13 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("getWorkspacesByUserId", () => {
     test("should return workspaces owned by user", async () => {
-      // Create test users with real database operations
-      const testUser1 = await db.user.create({
-        data: {
-          id: `user1-${Date.now()}-${Math.random()}`,
-          email: `user1-${Date.now()}@example.com`,
-          name: "Test User 1",
-        },
-      });
+      const testUser1 = await createTestUser({ name: "Test User 1" });
+      const testUser2 = await createTestUser({ name: "Test User 2" });
 
-      const testUser2 = await db.user.create({
-        data: {
-          id: `user2-${Date.now()}-${Math.random()}`,
-          email: `user2-${Date.now()}@example.com`,
-          name: "Test User 2",
-        },
-      });
+      const slug1 = generateUniqueSlug("workspace-1");
+      const slug2 = generateUniqueSlug("workspace-2");
+      const otherSlug = generateUniqueSlug("other-workspace");
 
-      const slug1 = `workspace-1-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const slug2 = `workspace-2-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const otherSlug = `other-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
       // Use transaction to create workspaces atomically
       await db.$transaction(async (tx) => {
         // Create workspaces for user1
@@ -279,18 +218,11 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should exclude deleted workspaces", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
-      const slug1 = `active-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const slug2 = `deleted-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
+      const slug1 = generateUniqueSlug("active-workspace");
+      const slug2 = generateUniqueSlug("deleted-workspace");
+
       // Use transaction to create workspaces atomically
       await db.$transaction(async (tx) => {
         await tx.workspace.create({
@@ -326,17 +258,10 @@ describe("Workspace Service - Integration Tests", () => {
     let testUser: User;
 
     beforeEach(async () => {
-      // Create test user with real database operations
-      testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      testUser = await createTestUser({ name: "Test User" });
 
-      const slug = `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
+      const slug = generateUniqueSlug("test-workspace");
+
       // Create workspace
       testWorkspace = await db.workspace.create({
         data: {
@@ -381,27 +306,13 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("getUserWorkspaces", () => {
     test("should return workspaces where user is owner or member", async () => {
-      // Create test users with real database operations
-      const ownerUser = await db.user.create({
-        data: {
-          id: `owner-${Date.now()}-${Math.random()}`,
-          email: `owner-${Date.now()}@example.com`,
-          name: "Owner User",
-        },
-      });
+      const ownerUser = await createTestUser({ name: "Owner User" });
+      const memberUser = await createTestUser({ name: "Member User" });
 
-      const memberUser = await db.user.create({
-        data: {
-          id: `member-${Date.now()}-${Math.random()}`,
-          email: `member-${Date.now()}@example.com`,
-          name: "Member User",
-        },
-      });
+      const ownedSlug = generateUniqueSlug("owned-workspace");
+      const memberSlug = generateUniqueSlug("member-workspace");
+      const unrelatedSlug = generateUniqueSlug("unrelated-workspace");
 
-      const ownedSlug = `owned-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const memberSlug = `member-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const unrelatedSlug = `unrelated-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
       // Use transaction to create test data atomically
       await db.$transaction(async (tx) => {
         // Workspace owned by memberUser
@@ -450,33 +361,12 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("validateWorkspaceAccess", () => {
     test("should validate workspace access correctly", async () => {
-      // Create test users with real database operations
-      const ownerUser = await db.user.create({
-        data: {
-          id: `owner-${Date.now()}-${Math.random()}`,
-          email: `owner-${Date.now()}@example.com`,
-          name: "Owner User",
-        },
-      });
+      const ownerUser = await createTestUser({ name: "Owner User" });
+      const memberUser = await createTestUser({ name: "Member User" });
+      const nonMemberUser = await createTestUser({ name: "Non-member User" });
 
-      const memberUser = await db.user.create({
-        data: {
-          id: `member-${Date.now()}-${Math.random()}`,
-          email: `member-${Date.now()}@example.com`,
-          name: "Member User",
-        },
-      });
+      const slug = generateUniqueSlug("test-workspace");
 
-      const nonMemberUser = await db.user.create({
-        data: {
-          id: `nonmember-${Date.now()}-${Math.random()}`,
-          email: `nonmember-${Date.now()}@example.com`,
-          name: "Non-member User",
-        },
-      });
-
-      const slug = `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
       // Use transaction to create test data atomically
       const workspace = await db.$transaction(async (tx) => {
         const ws = await tx.workspace.create({
@@ -526,20 +416,13 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("getDefaultWorkspaceForUser", () => {
     test("should return most recently created workspace", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
       // Create workspaces - getDefaultWorkspaceForUser returns the most recently created
       const workspace1 = await db.workspace.create({
         data: {
           name: "Workspace 1",
-          slug: `workspace-1-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          slug: generateUniqueSlug("workspace-1"),
           ownerId: testUser.id,
         },
       });
@@ -549,8 +432,8 @@ describe("Workspace Service - Integration Tests", () => {
 
       const workspace2 = await db.workspace.create({
         data: {
-          name: "Workspace 2", 
-          slug: `workspace-2-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          name: "Workspace 2",
+          slug: generateUniqueSlug("workspace-2"),
           ownerId: testUser.id,
         },
       });
@@ -563,14 +446,7 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should return null if user has no workspaces", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
       const defaultWorkspace = await getDefaultWorkspaceForUser(testUser.id);
       expect(defaultWorkspace).toBeNull();
@@ -579,17 +455,10 @@ describe("Workspace Service - Integration Tests", () => {
 
   describe("deleteWorkspaceBySlug", () => {
     test("should soft delete workspace", async () => {
-      // Create test user with real database operations
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
-      const slug = `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
+      const slug = generateUniqueSlug("test-workspace");
+
       const workspace = await db.workspace.create({
         data: {
           name: "Test Workspace",
@@ -609,13 +478,7 @@ describe("Workspace Service - Integration Tests", () => {
     });
 
     test("should throw error for non-existent workspace", async () => {
-      const testUser = await db.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Test User",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User" });
 
       await expect(
         deleteWorkspaceBySlug("non-existent-workspace", testUser.id)
