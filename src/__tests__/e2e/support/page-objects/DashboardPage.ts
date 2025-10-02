@@ -24,50 +24,6 @@ export class DashboardPage {
   }
 
   /**
-   * Verify page description is visible
-   */
-  async verifyDescription(): Promise<void> {
-    await expect(this.page.locator('text=Welcome to your development workspace')).toBeVisible();
-  }
-
-  /**
-   * Check if VM config section is present
-   */
-  async hasVMConfigSection(): Promise<boolean> {
-    const section = this.page.locator(selectors.dashboard.vmSection);
-    return (await section.count()) > 0;
-  }
-
-  /**
-   * Check if repository section is present
-   */
-  async hasRepositorySection(): Promise<boolean> {
-    const section = this.page.locator(selectors.dashboard.repoSection);
-    return (await section.count()) > 0;
-  }
-
-  /**
-   * Check if test coverage section is present
-   */
-  async hasCoverageSection(): Promise<boolean> {
-    try {
-      const section = this.page.locator(selectors.dashboard.coverageSection);
-      await section.waitFor({ state: 'visible', timeout: 10000 });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Check if recent tasks section is present
-   */
-  async hasRecentTasksSection(): Promise<boolean> {
-    const section = this.page.locator(selectors.dashboard.recentTasksSection).first();
-    return await section.count() > 0;
-  }
-
-  /**
    * Navigate to tasks page
    */
   async goToTasks(): Promise<void> {
@@ -89,14 +45,6 @@ export class DashboardPage {
   async goToSettings(): Promise<void> {
     await this.page.locator(selectors.navigation.settingsButton).click();
     await expect(this.page.locator(selectors.pageTitle.settings)).toBeVisible();
-  }
-
-  /**
-   * Verify workspace switcher is visible
-   */
-  async verifyWorkspaceSwitcher(): Promise<void> {
-    const switcher = this.page.locator('button').filter({ hasText: /mock/i }).first();
-    await expect(switcher).toBeVisible();
   }
 
   /**
