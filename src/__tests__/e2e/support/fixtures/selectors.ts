@@ -46,6 +46,40 @@ export const selectors = {
     createButton: 'button:has-text("Create")',
   },
 
+  workspaceMembers: {
+    card: '[data-testid="workspace-members-card"]',
+    addButton: '[data-testid="add-member-button"]',
+    emptyState: '[data-testid="members-empty-state"]',
+    ownerRow: '[data-testid="workspace-owner-row"]',
+    memberRow: '[data-testid="workspace-member-row"]',
+    roleBadge: '[data-testid="member-role-badge"]',
+    actionsButton: '[data-testid="member-actions-button"]',
+    actionMakeAdmin: '[data-testid="member-action-make-admin"]',
+    actionMakePM: '[data-testid="member-action-make-pm"]',
+    actionMakeDeveloper: '[data-testid="member-action-make-developer"]',
+    actionMakeViewer: '[data-testid="member-action-make-viewer"]',
+    actionRemove: '[data-testid="member-action-remove"]',
+  },
+
+  addMemberModal: {
+    modal: '[data-testid="add-member-modal"]',
+    form: '[data-testid="add-member-form"]',
+    githubInput: '[data-testid="add-member-github-input"]',
+    roleTrigger: '[data-testid="add-member-role-trigger"]',
+    roleOptionViewer: '[data-testid="role-option-viewer"]',
+    roleOptionDeveloper: '[data-testid="role-option-developer"]',
+    roleOptionPm: '[data-testid="role-option-pm"]',
+    roleOptionAdmin: '[data-testid="role-option-admin"]',
+    submit: '[data-testid="add-member-submit"]',
+    cancel: '[data-testid="add-member-cancel"]',
+  },
+
+  dialogs: {
+    confirm: '[data-testid="remove-member-dialog"]',
+    confirmButton: '[data-testid="remove-member-dialog-confirm"]',
+    cancelButton: '[data-testid="remove-member-dialog-cancel"]',
+  },
+
   // Tasks
   tasks: {
     newTaskButton: 'button:has-text("New Task")',
@@ -135,4 +169,10 @@ export const dynamicSelectors = {
    */
   linkByText: (text: string) =>
     `a:has-text("${text}")`,
+
+  workspaceMemberRowByUsername: (username: string) =>
+    `[data-testid="workspace-member-row"][data-member-username="${username}"]`,
+
+  workspaceMemberRoleBadgeByUsername: (username: string) =>
+    `[data-testid="workspace-member-row"][data-member-username="${username}"] [data-testid="member-role-badge"]`,
 };

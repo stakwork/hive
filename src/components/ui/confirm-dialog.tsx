@@ -20,6 +20,7 @@ interface ConfirmDialogProps {
   cancelText?: string;
   variant?: "default" | "destructive";
   onConfirm: () => void;
+  testId?: string;
 }
 
 export function ConfirmDialog({
@@ -31,6 +32,7 @@ export function ConfirmDialog({
   cancelText = "Cancel",
   variant = "default",
   onConfirm,
+  testId,
 }: ConfirmDialogProps) {
   const handleConfirm = () => {
     onConfirm();
@@ -39,13 +41,16 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent data-testid={testId}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => onOpenChange(false)}>
+          <AlertDialogCancel
+            onClick={() => onOpenChange(false)}
+            data-testid={testId ? `${testId}-cancel` : undefined}
+          >
             {cancelText}
           </AlertDialogCancel>
           <AlertDialogAction
@@ -55,6 +60,7 @@ export function ConfirmDialog({
                 ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 : undefined
             }
+            data-testid={testId ? `${testId}-confirm` : undefined}
           >
             {confirmText}
           </AlertDialogAction>

@@ -8,6 +8,8 @@
 import {
   createTestWorkspaceScenario,
   createTestTask,
+  createTestUser,
+  type CreateTestUserOptions,
   type TestWorkspaceScenarioResult,
 } from "./database";
 
@@ -87,5 +89,15 @@ export async function createWorkspaceWithMembersScenario() {
       { role: "DEVELOPER", withGitHubAuth: true, githubUsername: "e2e-dev" },
       { role: "VIEWER", withGitHubAuth: true, githubUsername: "e2e-viewer" },
     ],
+  });
+}
+
+/**
+ * Create a Hive user with GitHub auth for invitation flows.
+ */
+export async function createInvitableUser(options: Partial<CreateTestUserOptions> = {}) {
+  return createTestUser({
+    withGitHubAuth: true,
+    ...options,
   });
 }

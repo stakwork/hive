@@ -1,17 +1,17 @@
 import { Page, expect } from '@playwright/test';
+import { selectors } from './selectors';
 
 /**
  * Navigate to workspace settings page
  */
 export async function navigateToSettings(page: Page): Promise<void> {
-  const settingsButton = page.locator('button:has-text("Settings")');
+  const settingsButton = page.locator(selectors.navigation.settingsButton);
   await settingsButton.waitFor({ state: 'visible' });
   await settingsButton.click();
 
   // Verify we've landed on the settings page
-  const pageTitle = page.locator('h1.text-3xl.font-bold.text-foreground');
+  const pageTitle = page.locator(selectors.pageTitle.settings);
   await expect(pageTitle).toBeVisible();
-  await expect(pageTitle).toContainText('Workspace Settings');
 }
 
 /**
@@ -21,7 +21,7 @@ export async function navigateToTasks(page: Page, workspaceSlug: string): Promis
   await page.goto(`http://localhost:3000/w/${workspaceSlug}/tasks`);
 
   // Wait for tasks page to load
-  const pageTitle = page.locator('h1:has-text("Tasks")');
+  const pageTitle = page.locator(selectors.pageTitle.tasks);
   await expect(pageTitle).toBeVisible({ timeout: 10000 });
 }
 
@@ -32,7 +32,7 @@ export async function navigateToInsights(page: Page, workspaceSlug: string): Pro
   await page.goto(`http://localhost:3000/w/${workspaceSlug}/insights`);
 
   // Wait for insights page to load
-  const pageTitle = page.locator('h1:has-text("Insights")');
+  const pageTitle = page.locator(selectors.pageTitle.insights);
   await expect(pageTitle).toBeVisible({ timeout: 10000 });
 }
 
@@ -43,7 +43,7 @@ export async function navigateToDashboard(page: Page, workspaceSlug: string): Pr
   await page.goto(`http://localhost:3000/w/${workspaceSlug}`);
 
   // Wait for dashboard to load
-  const pageTitle = page.locator('h1:has-text("Dashboard")');
+  const pageTitle = page.locator(selectors.pageTitle.dashboard);
   await expect(pageTitle).toBeVisible({ timeout: 10000 });
 }
 
