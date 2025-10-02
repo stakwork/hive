@@ -102,25 +102,25 @@ export function VMConfigSection() {
             </div>
           ) : poolStatus ? (
             <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className={poolStatus.status.runningVms > 0 ? "text-green-600" : "text-muted-foreground"}>
+              <div className="flex items-center gap-2 text-sm font-medium" data-testid="pool-status-vms">
+                <span className={poolStatus.status.runningVms > 0 ? "text-green-600" : "text-muted-foreground"} data-testid="pool-running-vms">
                   {poolStatus.status.runningVms} running
                 </span>
                 <span className="text-muted-foreground">•</span>
-                <span className={poolStatus.status.pendingVms > 0 ? "text-orange-600" : "text-muted-foreground"}>
+                <span className={poolStatus.status.pendingVms > 0 ? "text-orange-600" : "text-muted-foreground"} data-testid="pool-pending-vms">
                   {poolStatus.status.pendingVms} pending
                 </span>
                 {poolStatus.status.failedVms > 0 && (
                   <>
                     <span className="text-muted-foreground">•</span>
-                    <span className="text-red-600">
+                    <span className="text-red-600" data-testid="pool-failed-vms">
                       {poolStatus.status.failedVms} failed
                     </span>
                   </>
                 )}
               </div>
               {poolStatus.status.lastCheck && (
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground" data-testid="pool-last-updated">
                   Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
                     ? poolStatus.status.lastCheck
                     : poolStatus.status.lastCheck + 'Z')}
@@ -144,7 +144,7 @@ export function VMConfigSection() {
                 <span className="text-xs text-muted-foreground">Finish your setup to get started.</span>
               </div>
             </div>
-            <Button asChild>
+            <Button asChild data-testid="finish-setup-button">
               <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
                 <Zap className="w-4 h-4 mr-2" />
                 Finish setup

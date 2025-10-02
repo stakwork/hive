@@ -24,6 +24,14 @@ export class DashboardPage {
   }
 
   /**
+   * Verify we're on the dashboard page
+   */
+  async verifyOnDashboardPage(): Promise<void> {
+    await expect(this.page.locator(selectors.pageTitle.dashboard)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(selectors.pageDescription.dashboard)).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
    * Navigate to tasks page
    */
   async goToTasks(): Promise<void> {
@@ -53,5 +61,26 @@ export class DashboardPage {
   async reload(): Promise<void> {
     await this.page.reload();
     await this.waitForLoad();
+  }
+
+  /**
+   * Verify VM config section is visible
+   */
+  async verifyVMSectionVisible(): Promise<void> {
+    await expect(this.page.locator(selectors.dashboard.vmSection)).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
+   * Verify repository card is visible
+   */
+  async verifyRepositoryCardVisible(): Promise<void> {
+    await expect(this.page.locator(selectors.dashboard.repoSection)).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
+   * Verify test coverage card is visible
+   */
+  async verifyCoverageCardVisible(): Promise<void> {
+    await expect(this.page.locator(selectors.dashboard.coverageSection)).toBeVisible({ timeout: 10000 });
   }
 }

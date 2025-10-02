@@ -63,28 +63,28 @@ export function TestCoverageCard() {
             </div>
           </div>
         ) : testCoverage?.unit_tests !== null && testCoverage?.integration_tests !== null && testCoverage?.e2e_tests !== null ? (
-          <div className="space-y-2">
+          <div className="space-y-2" data-testid="coverage-stats">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Unit</span>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium" data-testid="coverage-unit">
                 {testCoverage?.unit_tests.percent.toFixed(1)}%
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Integration</span>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium" data-testid="coverage-integration">
                 {testCoverage?.integration_tests?.percent.toFixed(1) || 0}%
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">E2E</span>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium" data-testid="coverage-e2e">
                 {testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%
               </span>
             </div>
           </div>
         ) : (
-          <span className="text-sm text-muted-foreground">No coverage data</span>
+          <span className="text-sm text-muted-foreground" data-testid="coverage-no-data">No coverage data</span>
         )}
       </CardContent>
     </Card>

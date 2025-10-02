@@ -65,7 +65,6 @@ export const selectors = {
     vmSection: '[data-testid="vm-config-section"]',
     repoSection: '[data-testid="repository-card"]',
     coverageSection: '[data-testid="coverage-card"]',
-    recentTasksSection: 'text=/Recent Tasks|No tasks yet/i',
   },
 
   // Insights
