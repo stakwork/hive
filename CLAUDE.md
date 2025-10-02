@@ -202,6 +202,42 @@ npx shadcn@latest add [component-name]
 - **Configuration**: `vitest.config.ts` for Vitest, `playwright.config.ts` for Playwright
 - **Coverage**: Run `npm run test:coverage` to generate coverage reports
 
+### E2E Test Guidelines
+**Structure**: `src/__tests__/e2e/` → `specs/[feature]/` (tests), `support/page-objects/` (Page Objects), `support/fixtures/` (selectors, scenarios, database, test-hooks), `support/helpers/` (assertions, waits, navigation)
+
+**Before Writing - Check Existing Code**:
+- `fixtures/selectors.ts` - selector already exists?
+- `page-objects/` - Page Object already exists?
+- `helpers/` - helper function already exists? (assertions, waits, navigation)
+- `fixtures/e2e-scenarios.ts` - test scenario already exists?
+- `fixtures/database.ts` - data factory already exists?
+
+**Core Rules**:
+- Use `AuthPage.signInWithMock()` for authentication (never real GitHub)
+- Use `selectors.ts` for all selectors (never hardcode)
+- Use Page Objects for all interactions (never direct `page.locator()` in tests)
+- Add `data-testid` to components first, then add to `selectors.ts`
+- Import database cleanup: `import { test } from '@/__tests__/e2e/support/fixtures/test-hooks'` for auto-cleanup
+- File placement: `specs/[feature-area]/[feature-name].spec.ts`
+
+**Selector Workflow**:
+1. Check `selectors.ts` → 2. If missing, add `data-testid` to component → 3. Add to `selectors.ts` → 4. Use `selectors.category.element`
+Priority: `data-testid` > semantic selectors > text selectors
+
+**Page Objects**:
+- Existing: `AuthPage`, `DashboardPage`, `TasksPage`
+- Must have: `goto()`, `waitForLoad()`, action methods
+- New Page Object → create in `page-objects/` → export from `index.ts`
+
+**Available Helpers**:
+- Assertions: `assertVisible`, `assertContainsText`, `assertElementCount`, `assertURLPattern`
+- Waits: `waitForElement`, `waitForLoadingToComplete`, `waitForCondition`
+- Navigation: `extractWorkspaceSlug`, `extractTaskId`, `waitForNavigation`
+- Scenarios: `createStandardWorkspaceScenario`, `createWorkspaceWithTasksScenario`, `createWorkspaceWithMembersScenario`
+
+**Anti-Patterns**:
+❌ Hardcoded selectors | ❌ Direct `page.locator()` in tests | ❌ Duplicate setup code | ❌ Real GitHub auth | ❌ Missing `waitForLoad()` | ❌ No `data-testid`
+
 ### Environment Setup
 Required environment variables (see `env.example` for complete list):
 - `DATABASE_URL` - PostgreSQL connection string
