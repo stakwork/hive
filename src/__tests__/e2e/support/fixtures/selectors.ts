@@ -30,6 +30,12 @@ export const selectors = {
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
   },
 
+  // Page descriptions
+  pageDescription: {
+    element: '[data-testid="page-description"]',
+    dashboard: '[data-testid="page-description"]:has-text("Welcome to your development workspace")',
+  },
+
   // Workspace
   workspace: {
     switcher: 'button', // Will be filtered by workspace name
