@@ -23,13 +23,13 @@ export function PageHeader({
   const defaultClassName = actions ? "flex justify-between items-start" : "";
   
   return (
-    <div className={`${className || defaultClassName} ${spacing}`}>
+    <div className={`${className || defaultClassName} ${spacing}`} data-testid="page-header">
       <div className="flex items-center space-x-3">
         {Icon && <Icon className={iconClassName} />}
         <div>
-          <h1 className="text-3xl font-bold text-foreground">{title}</h1>
+          <h1 className="text-3xl font-bold text-foreground" data-testid="page-title">{title}</h1>
           {description && (
-            <p className="text-muted-foreground mt-2">{description}</p>
+            <p className="text-muted-foreground mt-2" data-testid="page-description">{description}</p>
           )}
         </div>
       </div>
