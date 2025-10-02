@@ -85,7 +85,8 @@ const getProviders = () => {
 };
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(db),
+  // Only use PrismaAdapter when not using credentials provider
+  ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
   providers: getProviders(),
   callbacks: {
     async signIn({ user, account }) {
