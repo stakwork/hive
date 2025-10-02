@@ -62,7 +62,7 @@ export function VMConfigSection() {
 
 
   return (
-    <Card className="relative">
+    <Card className="relative" data-testid="vm-config-section">
       {isPoolActive && (
         <div className="absolute top-4 right-4">
           <DropdownMenu>

@@ -12,7 +12,7 @@ export class DashboardPage {
    * Navigate to dashboard for a specific workspace
    */
   async goto(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`/w/${workspaceSlug}`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}`);
     await this.waitForLoad();
   }
 
@@ -34,24 +34,29 @@ export class DashboardPage {
    * Check if VM config section is present
    */
   async hasVMConfigSection(): Promise<boolean> {
-    const section = this.page.locator(selectors.dashboard.vmSection).first();
-    return await section.count() > 0;
+    const section = this.page.locator(selectors.dashboard.vmSection);
+    return (await section.count()) > 0;
   }
 
   /**
    * Check if repository section is present
    */
   async hasRepositorySection(): Promise<boolean> {
-    const section = this.page.locator(selectors.dashboard.repoSection).first();
-    return await section.count() > 0;
+    const section = this.page.locator(selectors.dashboard.repoSection);
+    return (await section.count()) > 0;
   }
 
   /**
    * Check if test coverage section is present
    */
   async hasCoverageSection(): Promise<boolean> {
-    const section = this.page.locator(selectors.dashboard.coverageSection).first();
-    return await section.count() > 0;
+    try {
+      const section = this.page.locator(selectors.dashboard.coverageSection);
+      await section.waitFor({ state: 'visible', timeout: 10000 });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -51,9 +51,9 @@ export const selectors = {
 
   // Dashboard
   dashboard: {
-    vmSection: 'text=/VM Config|Pool|Configuration/i',
-    repoSection: 'text=/Repository|Connect Repository|Code/i',
-    coverageSection: 'text=/Test Coverage|Coverage/i',
+    vmSection: '[data-testid="vm-config-section"]',
+    repoSection: '[data-testid="repository-card"]',
+    coverageSection: '[data-testid="coverage-card"]',
     recentTasksSection: 'text=/Recent Tasks|No tasks yet/i',
   },
 

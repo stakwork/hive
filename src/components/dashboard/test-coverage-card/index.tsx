@@ -37,7 +37,7 @@ export function TestCoverageCard() {
   }, [workspaceId, workspace?.swarmStatus]);
 
   return (
-    <Card>
+    <Card data-testid="coverage-card">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">

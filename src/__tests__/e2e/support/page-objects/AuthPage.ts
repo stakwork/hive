@@ -11,7 +11,7 @@ export class AuthPage {
    * Navigate to home page
    */
   async goto(): Promise<void> {
-    await this.page.goto('/');
+    await this.page.goto('http://localhost:3000');
   }
 
   /**

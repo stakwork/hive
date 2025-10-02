@@ -61,7 +61,7 @@ export function TestCoverageCard() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card data-testid="coverage-card">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TestTube className="h-5 w-5 text-blue-500" />
@@ -95,7 +95,7 @@ export function TestCoverageCard() {
 
   if (error) {
     return (
-      <Card>
+      <Card data-testid="coverage-card">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TestTube className="h-5 w-5 text-blue-500" />
@@ -114,7 +114,7 @@ export function TestCoverageCard() {
 
   if (!data) {
     return (
-      <Card>
+      <Card data-testid="coverage-card">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TestTube className="h-5 w-5 text-blue-500" />
@@ -132,7 +132,7 @@ export function TestCoverageCard() {
   }
 
   return (
-    <Card>
+    <Card data-testid="coverage-card">
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
           <TestTube className="h-5 w-5 text-blue-500" />
