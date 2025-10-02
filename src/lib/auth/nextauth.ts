@@ -117,7 +117,38 @@ export const authOptions: NextAuthOptions = {
             user.id = existingUser.id;
           }
 
-          await ensureMockWorkspaceForUser(user.id as string);
+          // Create workspace atomically - this MUST succeed for auth to work
+          const workspaceSlug = await ensureMockWorkspaceForUser(user.id as string);
+
+          if (!workspaceSlug) {
+            logger.authError(
+              "Failed to create mock workspace - workspace slug is empty",
+              "SIGNIN_MOCK_WORKSPACE_FAILED",
+              { userId: user.id }
+            );
+            return false;
+          }
+
+          // Verify workspace was committed to DB before proceeding
+          // This ensures subsequent queries in middleware/pages will find it
+          const verifyWorkspace = await db.workspace.findFirst({
+            where: { ownerId: user.id as string, deleted: false },
+            select: { slug: true },
+          });
+
+          if (!verifyWorkspace) {
+            logger.authError(
+              "Mock workspace created but not found on verification - possible transaction issue",
+              "SIGNIN_MOCK_VERIFICATION_FAILED",
+              { userId: user.id, expectedSlug: workspaceSlug }
+            );
+            return false;
+          }
+
+          logger.authInfo("Mock workspace created successfully", "SIGNIN_MOCK_SUCCESS", {
+            userId: user.id,
+            workspaceSlug,
+          });
         } catch (error) {
           logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
           return false;
@@ -200,7 +231,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, user, token }) {
       if (session.user) {
-        // For JWT sessions (mock provider), get data from token and attach default workspace
+        // For JWT sessions (mock provider), get data from token
         if (process.env.POD_URL && token) {
           (session.user as { id: string }).id = token.id as string;
           if (token.github) {
@@ -218,13 +249,28 @@ export const authOptions: NextAuthOptions = {
               followers?: number;
             };
           }
+
+          // Get workspace slug that was created in signIn callback
+          const uid = (session.user as { id: string }).id;
           try {
-            const uid = (session.user as { id: string }).id;
-            const ws = await getDefaultWorkspaceForUser(uid);
-            if (ws?.slug) {
-              (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = ws.slug;
+            const workspace = await db.workspace.findFirst({
+              where: { ownerId: uid, deleted: false },
+              select: { slug: true },
+            });
+
+            if (workspace?.slug) {
+              (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = workspace.slug;
+            } else {
+              // This should never happen if signIn callback succeeded
+              logger.authError(
+                "Mock workspace not found in session callback - signIn may have failed",
+                "SESSION_MOCK_WORKSPACE_MISSING",
+                { userId: uid }
+              );
             }
-          } catch {}
+          } catch (error) {
+            logger.authError("Failed to query mock workspace in session", "SESSION_MOCK", error);
+          }
           return session;
         }
 

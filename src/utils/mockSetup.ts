@@ -15,6 +15,7 @@ function slugify(input: string): string {
 /**
  * Ensures a mock workspace and a completed swarm exist for a given user.
  * Returns the workspace slug.
+ * All DB operations wrapped in transaction for atomicity.
  */
 export async function ensureMockWorkspaceForUser(
   userId: string,
@@ -33,43 +34,48 @@ export async function ensureMockWorkspaceForUser(
     slugCandidate = `${baseSlug}-${++suffix}`;
   }
 
-  const workspace = await db.workspace.create({
-    data: {
-      name: "Mock Workspace",
-      description: "Development workspace (mock)",
-      slug: slugCandidate,
-      ownerId: userId,
-    },
-    select: { id: true, slug: true },
-  });
+  // Wrap all DB operations in transaction to prevent partial state
+  const workspace = await db.$transaction(async (tx) => {
+    const workspace = await tx.workspace.create({
+      data: {
+        name: "Mock Workspace",
+        description: "Development workspace (mock)",
+        slug: slugCandidate,
+        ownerId: userId,
+      },
+      select: { id: true, slug: true },
+    });
 
-  // Optional repository seed to satisfy UIs expecting a repository
-  await db.repository.create({
-    data: {
-      name: "stakgraph",
-      repositoryUrl: "https://github.com/mock/stakgraph",
-      branch: "main",
-      status: RepositoryStatus.SYNCED,
-      workspaceId: workspace.id,
-    },
-  });
+    // Optional repository seed to satisfy UIs expecting a repository
+    await tx.repository.create({
+      data: {
+        name: "stakgraph",
+        repositoryUrl: "https://github.com/mock/stakgraph",
+        branch: "main",
+        status: RepositoryStatus.SYNCED,
+        workspaceId: workspace.id,
+      },
+    });
 
-  await db.swarm.create({
-    data: {
-      name: slugify(`${workspace.slug}-swarm`),
-      status: SwarmStatus.ACTIVE,
-      instanceType: "XL",
-      repositoryName: "stakgraph",
-      repositoryUrl: "https://github.com/mock/stakgraph",
-      defaultBranch: "main",
-      environmentVariables: [{ name: "NODE_ENV", value: "development" }],
-      services: [
-        { name: "stakgraph", port: 7799, scripts: { start: "start" } },
-        { name: "repo2graph", port: 3355, scripts: { start: "start" } },
-      ],
-      workspaceId: workspace.id,
-      swarmUrl: "http://localhost",
-    },
+    await tx.swarm.create({
+      data: {
+        name: slugify(`${workspace.slug}-swarm`),
+        status: SwarmStatus.ACTIVE,
+        instanceType: "XL",
+        repositoryName: "stakgraph",
+        repositoryUrl: "https://github.com/mock/stakgraph",
+        defaultBranch: "main",
+        environmentVariables: [{ name: "NODE_ENV", value: "development" }],
+        services: [
+          { name: "stakgraph", port: 7799, scripts: { start: "start" } },
+          { name: "repo2graph", port: 3355, scripts: { start: "start" } },
+        ],
+        workspaceId: workspace.id,
+        swarmUrl: "http://localhost",
+      },
+    });
+
+    return workspace;
   });
 
   return workspace.slug;
