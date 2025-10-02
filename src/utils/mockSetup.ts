@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import {
+  PoolState,
   RepositoryStatus,
   SwarmStatus,
 } from "@prisma/client";
@@ -58,6 +59,7 @@ export async function ensureMockWorkspaceForUser(
     data: {
       name: slugify(`${workspace.slug}-swarm`),
       status: SwarmStatus.ACTIVE,
+      poolState: PoolState.COMPLETE,
       instanceType: "XL",
       repositoryName: "stakgraph",
       repositoryUrl: "https://github.com/mock/stakgraph",
