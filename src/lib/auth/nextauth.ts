@@ -119,7 +119,6 @@ export const authOptions: NextAuthOptions = {
 
           await ensureMockWorkspaceForUser(user.id as string);
         } catch (error) {
-          console.error("[Mock Auth Error]", error);
           logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
           return false;
         }
