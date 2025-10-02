@@ -75,12 +75,14 @@ export function ChatInput({
           className="flex-1"
           autoFocus
           disabled={disabled}
+          data-testid="chat-message-input"
         />
         <Button
           type="submit"
           disabled={
             (!input.trim() && !pendingDebugAttachment) || isLoading || disabled
           }
+          data-testid="chat-message-submit"
         >
           {isLoading ? "Sending..." : "Send"}
         </Button>
