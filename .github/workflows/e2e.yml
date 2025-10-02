@@ -102,6 +102,12 @@ jobs:
         run: npx wait-on http://localhost:3000
 
       - name: Run Playwright tests
+        env:
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: fake_secret
+          JWT_SECRET: fake_secret
+          POD_URL: http://localhost:3000
         run: npx playwright test
 
       - name: Upload Playwright Report
