@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CoverageSortOption } from "@/stores/useCoverageStore";
 
 export function CoverageInsights() {
   const {
@@ -54,7 +55,7 @@ export function CoverageInsights() {
     [items],
   );
 
-  const setSortFilter = (value: string) => setSort(value);
+  const setSortFilter = (value: CoverageSortOption) => setSort(value);
 
   return (
     <Card>
@@ -95,10 +96,16 @@ export function CoverageInsights() {
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Sort</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => setSortFilter("test_count")}>
-                {params.sort === "test_count" && <span className="text-green-500">•</span>} By test count
+                {params.sort === "test_count" && <span className="text-green-500">• </span>}By test count
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortFilter("body_length")}>
+                {params.sort === "body_length" && <span className="text-green-500">• </span>}By body length
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortFilter("line_count")}>
+                {params.sort === "line_count" && <span className="text-green-500">• </span>}By line count
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSortFilter("name")}>
-                {params.sort === "name" && <span className="text-green-500">•</span>} By name
+                {params.sort === "name" && <span className="text-green-500">• </span>}By name
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -128,10 +135,18 @@ export function CoverageInsights() {
                 <TableBody>
                   {Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-48" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-8 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-5 w-16 ml-auto" />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

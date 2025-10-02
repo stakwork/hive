@@ -17,6 +17,8 @@ type ParsedParams = {
   offset: number;
   sort: string;
   coverage: "all" | "tested" | "untested";
+  bodyLength: boolean;
+  lineCount: boolean;
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
@@ -35,7 +37,9 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
   const sort = (searchParams.get("sort") || "test_count").toLowerCase();
   let coverage = (searchParams.get("coverage") || "all").toLowerCase();
   if (!["all", "tested", "untested"].includes(coverage)) coverage = "all";
-  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested" };
+  const bodyLength = searchParams.get("body_length") === "true";
+  const lineCount = searchParams.get("line_count") === "true";
+  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested", bodyLength, lineCount };
 }
 
 function buildQueryString(params: ParsedParams): string {
@@ -43,7 +47,13 @@ function buildQueryString(params: ParsedParams): string {
   q.set("node_type", params.nodeType);
   q.set("limit", String(params.limit));
   q.set("offset", String(params.offset));
-  if (params.sort) q.set("sort", String(params.sort));
+  if (params.bodyLength) {
+    q.set("body_length", "true");
+  } else if (params.lineCount) {
+    q.set("line_count", "true");
+  } else if (params.sort) {
+    q.set("sort", String(params.sort));
+  }
   if (params.coverage && params.coverage !== "all") q.set("coverage", params.coverage);
   q.set("concise", "true");
   return q.toString();
