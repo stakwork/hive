@@ -49,10 +49,15 @@ export const selectors = {
   // Tasks
   tasks: {
     newTaskButton: 'button:has-text("New Task")',
-    taskInput: 'textarea',
-    submitButton: 'button[type="submit"], button:has-text("Send")',
+    taskStartInput: '[data-testid="task-start-input"]',
+    taskStartSubmit: '[data-testid="task-start-submit"]',
+    chatMessageInput: '[data-testid="chat-message-input"]',
+    chatMessageSubmit: '[data-testid="chat-message-submit"]',
+    taskTitle: '[data-testid="task-title"]',
     taskCard: '[data-testid="task-card"]',
     connectRepoButton: 'button:has-text("Connect Repository")',
+    taskListContainer: '[data-testid="task-card"]',
+    recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
   },
 
   // Dashboard

@@ -11,7 +11,7 @@ export class TasksPage {
    * Navigate to tasks page
    */
   async goto(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`/w/${workspaceSlug}/tasks`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/tasks`);
     await this.waitForLoad();
   }
 
@@ -19,6 +19,13 @@ export class TasksPage {
    * Wait for tasks page to load
    */
   async waitForLoad(): Promise<void> {
+    await expect(this.page.locator(selectors.pageTitle.tasks)).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
+   * Verify we're on the tasks page
+   */
+  async verifyOnTasksPage(): Promise<void> {
     await expect(this.page.locator(selectors.pageTitle.tasks)).toBeVisible({ timeout: 10000 });
   }
 
@@ -58,7 +65,7 @@ export class TasksPage {
    * Wait for task input to be visible
    */
   async waitForTaskInput(): Promise<void> {
-    const input = this.page.locator(selectors.tasks.taskInput).first();
+    const input = this.page.locator(selectors.tasks.taskStartInput);
     await input.waitFor({ state: 'visible', timeout: 10000 });
   }
 
@@ -67,19 +74,21 @@ export class TasksPage {
    */
   async createTask(message: string): Promise<string> {
     // Fill task input
-    const input = this.page.locator(selectors.tasks.taskInput).first();
+    const input = this.page.locator(selectors.tasks.taskStartInput);
     await input.fill(message);
 
     // Submit task
-    const submitButton = this.page.locator(selectors.tasks.submitButton).first();
+    const submitButton = this.page.locator(selectors.tasks.taskStartSubmit);
     await submitButton.click();
 
-    // Wait for task creation and URL change
-    await this.page.waitForURL(/\/w\/.*\/task\/[^\/]+$/, { timeout: 15000 });
+    // Wait for URL to change from /task/new to /task/[id]
+    await this.page.waitForURL((url) => {
+      return url.pathname.includes('/task/') && !url.pathname.includes('/task/new');
+    }, { timeout: 15000 });
 
     // Extract task ID from URL
     const url = this.page.url();
-    const match = url.match(/\/task\/([^\/]+)$/);
+    const match = url.match(/\/task\/([^\/\?#]+)/);
     return match ? match[1] : '';
   }
 
@@ -87,9 +96,10 @@ export class TasksPage {
    * Send a message in task chat
    */
   async sendMessage(message: string): Promise<void> {
-    const input = this.page.locator(selectors.tasks.taskInput).last();
+    const input = this.page.locator(selectors.tasks.chatMessageInput);
     await input.fill(message);
-    await this.page.keyboard.press('Enter');
+    const submitButton = this.page.locator(selectors.tasks.chatMessageSubmit);
+    await submitButton.click();
   }
 
   /**
@@ -103,8 +113,9 @@ export class TasksPage {
    * Verify task title is visible
    */
   async verifyTaskTitle(title: string): Promise<void> {
-    const titleElement = this.page.locator(`text="${title}"`).first();
+    const titleElement = this.page.locator(selectors.tasks.taskTitle);
     await expect(titleElement).toBeVisible({ timeout: 10000 });
+    await expect(titleElement).toContainText(title);
   }
 
   /**
@@ -113,5 +124,29 @@ export class TasksPage {
   async findTaskInList(title: string): Promise<boolean> {
     const taskCard = this.page.locator(`text="${title}"`).first();
     return await taskCard.isVisible({ timeout: 5000 }).catch(() => false);
+  }
+
+  /**
+   * Verify task exists in list by title
+   */
+  async verifyTaskInList(title: string): Promise<void> {
+    const taskCard = this.page.locator(selectors.tasks.taskCard).filter({ hasText: title });
+    await expect(taskCard).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
+   * Get task count from the list
+   */
+  async getTaskCount(): Promise<number> {
+    return await this.page.locator(selectors.tasks.taskCard).count();
+  }
+
+  /**
+   * Click on a task by title to open it
+   */
+  async clickTask(title: string): Promise<void> {
+    const taskCard = this.page.locator(selectors.tasks.taskCard).filter({ hasText: title });
+    await taskCard.click();
+    await this.page.waitForURL(/\/w\/.*\/task\/[^\/]+$/, { timeout: 10000 });
   }
 }
