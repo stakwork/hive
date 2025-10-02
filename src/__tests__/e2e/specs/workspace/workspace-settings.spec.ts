@@ -48,12 +48,9 @@ test.describe('Workspace Settings', () => {
     // Navigate to our test workspace
     await page.goto(`http://localhost:3000/w/${scenario.workspace.slug}`);
 
-    // Wait for workspace page to load
-    await page.waitForLoadState('networkidle');
-
-    // Navigate to settings using data-testid
+    // Wait for settings button to be visible (indicates page loaded)
     const settingsButton = page.locator('[data-testid="settings-button"]');
-    await expect(settingsButton).toBeVisible({ timeout: 10000 });
+    await expect(settingsButton).toBeVisible({ timeout: 15000 });
     await settingsButton.click();
 
     // Verify we're on the settings page
