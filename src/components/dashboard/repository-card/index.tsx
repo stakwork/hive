@@ -246,6 +246,7 @@ export function RepositoryCard() {
                 onClick={handleGithubAppInstall}
                 disabled={isInstalling}
                 className="text-xs h-6 px-2 bg-white text-black hover:bg-gray-100 hover:text-black dark:bg-white dark:text-black dark:hover:bg-gray-100 dark:hover:text-black border-gray-300 dark:border-gray-300"
+                data-testid="link-github-button"
               >
                 <Github className="w-3 h-3 mr-1" />
                 {isInstalling ? "Installing..." : "Link GitHub"}
@@ -257,7 +258,7 @@ export function RepositoryCard() {
       <CardContent className="flex flex-col h-full">
         <div className="flex-1"></div>
         <div className="space-y-3">
-          <div className="text-sm font-medium truncate">{repository.name}</div>
+          <div className="text-sm font-medium truncate" data-testid="repository-name">{repository.name}</div>
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
               <Badge
@@ -269,12 +270,13 @@ export function RepositoryCard() {
                       : "destructive"
                 }
                 className="text-xs"
+                data-testid="repository-status"
               >
                 {repository.status}
               </Badge>
-              <span className="text-muted-foreground">{repository.branch}</span>
+              <span className="text-muted-foreground" data-testid="repository-branch">{repository.branch}</span>
             </div>
-            <div className="flex items-center gap-1 text-muted-foreground">
+            <div className="flex items-center gap-1 text-muted-foreground" data-testid="repository-updated">
               <RefreshCw className="w-3 h-3" />
               {formatRelativeTime(repository.updatedAt)}
             </div>
@@ -286,6 +288,7 @@ export function RepositoryCard() {
               onClick={handleRerunIngest}
               disabled={isIngesting}
               className="w-full text-xs flex items-center gap-2"
+              data-testid="rerun-ingest-button"
             >
               <Database className="w-3 h-3" />
               {isIngesting ? "Ingesting..." : "Rerun Ingest"}

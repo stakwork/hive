@@ -62,10 +62,31 @@ export const selectors = {
 
   // Dashboard
   dashboard: {
+    cardsGrid: '[data-testid="dashboard-cards-grid"]',
     vmSection: '[data-testid="vm-config-section"]',
     repoSection: '[data-testid="repository-card"]',
     coverageSection: '[data-testid="coverage-card"]',
-    recentTasksSection: 'text=/Recent Tasks|No tasks yet/i',
+    recentTasksSection: '[data-testid="recent-tasks-section"]',
+    // VM Config Section
+    poolStatusVms: '[data-testid="pool-status-vms"]',
+    poolRunningVms: '[data-testid="pool-running-vms"]',
+    poolPendingVms: '[data-testid="pool-pending-vms"]',
+    poolFailedVms: '[data-testid="pool-failed-vms"]',
+    poolLastUpdated: '[data-testid="pool-last-updated"]',
+    finishSetupButton: '[data-testid="finish-setup-button"]',
+    // Repository Card
+    repositoryName: '[data-testid="repository-name"]',
+    repositoryStatus: '[data-testid="repository-status"]',
+    repositoryBranch: '[data-testid="repository-branch"]',
+    repositoryUpdated: '[data-testid="repository-updated"]',
+    linkGithubButton: '[data-testid="link-github-button"]',
+    rerunIngestButton: '[data-testid="rerun-ingest-button"]',
+    // Coverage Card
+    coverageStats: '[data-testid="coverage-stats"]',
+    coverageUnit: '[data-testid="coverage-unit"]',
+    coverageIntegration: '[data-testid="coverage-integration"]',
+    coverageE2E: '[data-testid="coverage-e2e"]',
+    coverageNoData: '[data-testid="coverage-no-data"]',
   },
 
   // Insights

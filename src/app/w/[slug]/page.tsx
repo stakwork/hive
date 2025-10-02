@@ -430,7 +430,7 @@ export default function DashboardPage() {
 
 
       {/* Info Cards Grid - All horizontal */}
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3" data-testid="dashboard-cards-grid">
         <VMConfigSection />
         <RepositoryCard />
         <TestCoverageCard />
@@ -440,7 +440,7 @@ export default function DashboardPage() {
       {workspace &&
         workspace.isCodeGraphSetup &&
         (recentTasks.length > 0 ? (
-          <Card>
+          <Card data-testid="recent-tasks-section">
             <CardHeader>
               <CardTitle>Recent Tasks</CardTitle>
               <CardDescription>Your most recently created tasks</CardDescription>
