@@ -6,4 +6,3 @@
 export { AuthPage } from './AuthPage';
 export { DashboardPage } from './DashboardPage';
 export { TasksPage } from './TasksPage';
-export { InsightsPage } from './InsightsPage';
