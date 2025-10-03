@@ -81,6 +81,9 @@ export const selectors = {
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
     acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
+    switchComponent: 'button[role="switch"]',
+    janitorItem: 'div.flex.items-center.justify-between.p-3.rounded-lg.border',
+    janitorSection: 'div.space-y-2',
   },
 
   // Onboarding
