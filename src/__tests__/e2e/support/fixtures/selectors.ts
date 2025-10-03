@@ -4,6 +4,11 @@
  */
 
 export const selectors = {
+  insights: {
+    pageTitle: '[data-testid="insights-page-title"]',
+    toggleButton: '[data-testid="insight-toggle-button"]',
+    panel: '[data-testid="insight-panel"]',
+  },
   // Authentication
   auth: {
     mockSignInButton: '[data-testid="mock-signin-button"]',

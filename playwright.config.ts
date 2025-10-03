@@ -8,6 +8,7 @@ export default defineConfig({
     headless: true,
     browserName: "chromium",
     trace: "on-first-retry",
+    baseURL: "http://localhost:3000",
   },
   testDir: "src/__tests__/e2e",
 });
