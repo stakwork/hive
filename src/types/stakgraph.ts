@@ -46,8 +46,12 @@ export interface NodesResponse {
 export interface CoverageNodeConcise {
   name: string;
   file: string;
+  ref_id: string;
   weight: number;
   test_count: number;
+  covered: boolean;
+  body_length: number | null;
+  line_count: number | null;
 }
 
 export interface CoverageNodesResponse {

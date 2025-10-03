@@ -120,7 +120,7 @@ export default function InsightsPage() {
     <div className="space-y-6">
       <PageHeader title="Insights" description="Automated codebase analysis and recommendations" />
 
-      <div className="max-w-4xl space-y-6">
+      <div className="max-w-5xl space-y-6">
         {/* Content container */}
 
         <TestCoverageCard />
