@@ -6,18 +6,46 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, SlidersHorizontal } from "lucide-react";
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useMemo } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
+
+interface SortableHeaderProps {
+  label: string;
+  sortKey: CoverageSortOption;
+  currentSort: CoverageSortOption;
+  sortDirection: "asc" | "desc";
+  onSort: (key: CoverageSortOption) => void;
+  className?: string;
+}
+
+function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, className }: SortableHeaderProps) {
+  const isActive = currentSort === sortKey;
+  
+  return (
+    <TableHead className={className}>
+      <button
+        onClick={() => onSort(sortKey)}
+        className="flex items-center gap-1 hover:text-foreground transition-colors font-medium cursor-pointer select-none"
+        type="button"
+      >
+        <span className={isActive ? "text-foreground" : ""}>{label}</span>
+        {isActive ? (
+          sortDirection === "asc" ? (
+            <ArrowUp className="h-3.5 w-3.5 transition-transform" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5 transition-transform" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5 opacity-40 transition-opacity" />
+        )}
+      </button>
+    </TableHead>
+  );
+}
 
 export function CoverageInsights() {
   const {
@@ -34,7 +62,7 @@ export function CoverageInsights() {
     setPage,
     params,
     setNodeType,
-    setSort,
+    toggleSort,
     setCoverage,
     prefetchNext,
     prefetchPrev,
@@ -51,16 +79,16 @@ export function CoverageInsights() {
         coverage: item.test_count,
         weight: item.weight,
         covered: (item.test_count || 0) > 0,
+        bodyLength: item.body_length,
+        lineCount: item.line_count,
       })),
     [items],
   );
 
-  const setSortFilter = (value: CoverageSortOption) => setSort(value);
-
   return (
-    <Card>
+    <Card className="w-full">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="space-y-4">
           <div>
             <CardTitle className="text-base">Test Coverage Insights</CardTitle>
             <CardDescription>
@@ -68,47 +96,31 @@ export function CoverageInsights() {
             </CardDescription>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <SlidersHorizontal className="h-4 w-4" /> Filters
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Node Type</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setNodeType("endpoint")}>
-                {params.nodeType === "endpoint" && <span className="text-green-500">•</span>} Endpoint
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setNodeType("function")}>
-                {params.nodeType === "function" && <span className="text-green-500">•</span>} Function
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Test Status</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setCoverage("all")}>
-                {params.coverage === "all" && <span className="text-green-500">•</span>} All
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setCoverage("tested")}>
-                {params.coverage === "tested" && <span className="text-green-500">•</span>} Tested
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setCoverage("untested")}>
-                {params.coverage === "untested" && <span className="text-green-500">•</span>} Untested
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Sort</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setSortFilter("test_count")}>
-                {params.sort === "test_count" && <span className="text-green-500">• </span>}By test count
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortFilter("body_length")}>
-                {params.sort === "body_length" && <span className="text-green-500">• </span>}By body length
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortFilter("line_count")}>
-                {params.sort === "line_count" && <span className="text-green-500">• </span>}By line count
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortFilter("name")}>
-                {params.sort === "name" && <span className="text-green-500">• </span>}By name
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Type:</span>
+              <Tabs value={params.nodeType} onValueChange={(v) => setNodeType(v as "endpoint" | "function")}>
+                <TabsList className="h-8">
+                  <TabsTrigger value="endpoint" className="text-xs px-3">Endpoints</TabsTrigger>
+                  <TabsTrigger value="function" className="text-xs px-3">Functions</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Status:</span>
+              <Select value={params.coverage} onValueChange={(v) => setCoverage(v as "all" | "tested" | "untested")}>
+                <SelectTrigger className="h-8 w-[120px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">All</SelectItem>
+                  <SelectItem value="tested" className="text-xs">Tested</SelectItem>
+                  <SelectItem value="untested" className="text-xs">Untested</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -126,10 +138,40 @@ export function CoverageInsights() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[35%]">Name</TableHead>
-                    <TableHead className="w-[40%]">File</TableHead>
-                    <TableHead className="w-[10%] text-right">Coverage</TableHead>
-                    <TableHead className="w-[15%] text-right">Status</TableHead>
+                    <SortableHeader
+                      label="Name"
+                      sortKey="name"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[25%]"
+                    />
+                    <TableHead className="w-[30%]">File</TableHead>
+                    <SortableHeader
+                      label="Coverage"
+                      sortKey="test_count"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[10%] text-right"
+                    />
+                    <SortableHeader
+                      label="Body Length"
+                      sortKey="body_length"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[12%] text-right"
+                    />
+                    <SortableHeader
+                      label="Line Count"
+                      sortKey="line_count"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[10%] text-right"
+                    />
+                    <TableHead className="w-[13%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -140,6 +182,12 @@ export function CoverageInsights() {
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-4 w-48" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-8 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-12 ml-auto" />
                       </TableCell>
                       <TableCell className="text-right">
                         <Skeleton className="h-4 w-8 ml-auto" />
@@ -165,18 +213,54 @@ export function CoverageInsights() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[35%]">Name</TableHead>
-                    <TableHead className="w-[40%]">File</TableHead>
-                    <TableHead className="w-[10%] text-right">Coverage</TableHead>
-                    <TableHead className="w-[15%] text-right">Status</TableHead>
+                    <SortableHeader
+                      label="Name"
+                      sortKey="name"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[25%]"
+                    />
+                    <TableHead className="w-[30%]">File</TableHead>
+                    <SortableHeader
+                      label="Coverage"
+                      sortKey="test_count"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[10%] text-right"
+                    />
+                    <SortableHeader
+                      label="Body Length"
+                      sortKey="body_length"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[12%] text-right"
+                    />
+                    <SortableHeader
+                      label="Line Count"
+                      sortKey="line_count"
+                      currentSort={params.sort}
+                      sortDirection={params.sortDirection}
+                      onSort={toggleSort}
+                      className="w-[10%] text-right"
+                    />
+                    <TableHead className="w-[13%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((r, i) => (
-                    <TableRow key={`${r.name}-${r.file}-${params.offset}-${i}`}>
-                      <TableCell className="truncate max-w-[320px]">{r.name}</TableCell>
-                      <TableCell className="truncate max-w-[360px] text-muted-foreground">{r.file}</TableCell>
-                      <TableCell className="text-right">{r.coverage}</TableCell>
+                    <TableRow key={`${r.name}-${r.file}-${params.offset}-${i}`} className="hover:bg-muted/50 transition-colors">
+                      <TableCell className="truncate max-w-[280px] font-mono text-sm">{r.name}</TableCell>
+                      <TableCell className="truncate max-w-[320px] text-muted-foreground text-xs">{r.file}</TableCell>
+                      <TableCell className="text-right font-medium">{r.coverage}</TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                        {r.bodyLength != null ? r.bodyLength.toLocaleString() : "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                        {r.lineCount != null ? r.lineCount.toLocaleString() : "-"}
+                      </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={r.covered ? "default" : "outline"}>{r.covered ? "Tested" : "Untested"}</Badge>
                       </TableCell>
