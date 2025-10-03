@@ -3,7 +3,8 @@
 import { useState, useRef } from "react";
 import { LearnChatArea } from "./LearnChatArea";
 import { LearnSidebar } from "./LearnSidebar";
-import { useStreamProcessor } from "./StreamingMessage/useStreamProcessor";
+import { useStreamProcessor } from "@/lib/streaming";
+import { learnToolProcessors } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
 
 interface LearnChatProps {
@@ -23,7 +24,11 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
-  const { processStream } = useStreamProcessor();
+  const { processStream } = useStreamProcessor<LearnMessage>({
+    toolProcessors: learnToolProcessors,
+    hiddenTools: ["final_answer"],
+    hiddenToolTextIds: { final_answer: "final-answer" },
+  });
   const hasReceivedContentRef = useRef(false);
 
   const handleSend = async (content: string) => {
@@ -55,23 +60,32 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
       if (mode === "chat") {
         const messageId = (Date.now() + 1).toString();
 
-        await processStream(response, messageId, (updatedMessage) => {
-          // Turn off loading as soon as we get the first content
-          if (!hasReceivedContentRef.current) {
-            hasReceivedContentRef.current = true;
-            setIsLoading(false);
-          }
-
-          setMessages((prev) => {
-            const existingIndex = prev.findIndex((m) => m.id === messageId);
-            if (existingIndex >= 0) {
-              const updated = [...prev];
-              updated[existingIndex] = updatedMessage;
-              return updated;
+        await processStream(
+          response,
+          messageId,
+          (updatedMessage) => {
+            // Turn off loading as soon as we get the first content
+            if (!hasReceivedContentRef.current) {
+              hasReceivedContentRef.current = true;
+              setIsLoading(false);
             }
-            return [...prev, updatedMessage];
-          });
-        });
+
+            setMessages((prev) => {
+              const existingIndex = prev.findIndex((m) => m.id === messageId);
+              if (existingIndex >= 0) {
+                const updated = [...prev];
+                updated[existingIndex] = updatedMessage;
+                return updated;
+              }
+              return [...prev, updatedMessage];
+            });
+          },
+          // Additional fields specific to LearnMessage
+          {
+            role: "assistant" as const,
+            timestamp: new Date(),
+          }
+        );
       } else {
         // Handle regular JSON response for learn mode
         const data = await response.json();

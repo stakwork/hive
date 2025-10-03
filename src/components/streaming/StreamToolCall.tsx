@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Wrench } from "lucide-react";
-import { StreamToolCall as StreamToolCallType } from "@/types/learn";
+import type { StreamToolCall as StreamToolCallType } from "@/types/streaming";
 
 interface StreamToolCallProps {
   toolCall: StreamToolCallType;
@@ -23,15 +23,9 @@ export function StreamToolCall({ toolCall }: StreamToolCallProps) {
       >
         <Wrench className="w-3 h-3" />
         <span>{toolCall.toolName}</span>
-        {isRunning && (
-          <span className="text-muted-foreground animate-pulse">...</span>
-        )}
-        {isComplete && (
-          <span className="text-muted-foreground">Complete</span>
-        )}
-        {isError && (
-          <span className="text-destructive">Error</span>
-        )}
+        {isRunning && <span className="text-muted-foreground animate-pulse">...</span>}
+        {isComplete && <span className="text-muted-foreground">Complete</span>}
+        {isError && <span className="text-destructive">Error</span>}
       </button>
 
       {isExpanded && (
