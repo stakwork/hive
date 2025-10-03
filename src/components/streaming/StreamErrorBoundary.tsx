@@ -34,7 +34,7 @@ export class StreamErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
 
       return (
         <div className="text-xs text-destructive bg-destructive/10 rounded p-2">
-          Failed to render streaming message. {this.state.error?.message}
+          Failed to render streaming content. {this.state.error?.message}
         </div>
       );
     }

@@ -4,8 +4,8 @@ import { motion } from "framer-motion";
 import { BookOpen, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { LearnMessage } from "@/types/learn";
-import { StreamingMessage } from "./StreamingMessage";
-import { StreamErrorBoundary } from "./StreamingMessage/ErrorBoundary";
+import { StreamingMessage, StreamErrorBoundary, StreamTextPart } from "@/components/streaming";
+import { FINAL_ANSWER_ID } from "../lib/streaming-config";
 
 interface LearnChatMessageProps {
   message: LearnMessage;
@@ -45,7 +45,25 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (message.textParts || message.toolCalls || message.reasoningParts) ? (
             <StreamErrorBoundary>
-              <StreamingMessage message={message} />
+              <StreamingMessage
+                message={message}
+                filterTextParts={(id) => id !== FINAL_ANSWER_ID}
+                renderTextPart={(part) => {
+                  // Render final answer separately
+                  if (part.id === FINAL_ANSWER_ID) {
+                    return <StreamTextPart key={part.id} part={part} />;
+                  }
+                  // Regular text parts
+                  return <StreamTextPart key={part.id} part={part} />;
+                }}
+                finalContentIds={[FINAL_ANSWER_ID]}
+              />
+              {/* Render final answer at the end if it exists */}
+              {message.textParts?.find((p) => p.id === FINAL_ANSWER_ID) && (
+                <StreamTextPart
+                  part={message.textParts.find((p) => p.id === FINAL_ANSWER_ID)!}
+                />
+              )}
             </StreamErrorBoundary>
           ) : (
             <div className="prose prose-sm max-w-none dark:prose-invert prose-gray [&>*]:!text-foreground [&_*]:!text-foreground">
