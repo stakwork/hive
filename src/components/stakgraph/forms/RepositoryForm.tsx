@@ -34,6 +34,25 @@ export default function RepositoryForm({
           The URL of the repository containing your project code
         </p>
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="defaultBranch">Branch</Label>
+        <Input
+          id="defaultBranch"
+          type="text"
+          placeholder="main"
+          value={data.defaultBranch}
+          onChange={(e) => handleInputChange("defaultBranch", e.target.value)}
+          className={errors.defaultBranch ? "border-destructive" : ""}
+          disabled={loading}
+        />
+        {errors.defaultBranch && (
+          <p className="text-sm text-destructive">{errors.defaultBranch}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          The branch to use for this repository
+        </p>
+      </div>
     </div>
   );
 }

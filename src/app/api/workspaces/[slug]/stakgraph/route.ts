@@ -26,6 +26,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required"),
   repositoryUrl: z.string().url("Invalid repository URL"),
+  defaultBranch: z.string().optional().default("main"),
   swarmUrl: z.string().url("Invalid swarm URL"),
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
   swarmApiKey: z.string().optional(),
@@ -140,6 +141,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: swarm.name || "",
         description: swarm.repositoryDescription || "",
         repositoryUrl: swarm.repositoryUrl || "",
+        defaultBranch: swarm.defaultBranch || "main",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
@@ -271,6 +273,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       repositoryName: settings.name,
       repositoryDescription: settings.description,
       repositoryUrl: settings.repositoryUrl,
+      defaultBranch: settings.defaultBranch,
       swarmUrl: settings.swarmUrl,
       status: SwarmStatus.ACTIVE, // auto active
       swarmSecretAlias: settings.swarmSecretAlias,
