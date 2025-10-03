@@ -92,9 +92,13 @@ function normalizeResponse(
     const props = (o?.properties as Record<string, unknown> | undefined) || undefined;
     const name = (o?.name as string) || (props?.name as string) || "";
     const file = (o?.file as string) || (props?.file as string) || "";
+    const ref_id = (o?.ref_id as string) || "";
     const weight = typeof o?.weight === "number" ? (o?.weight as number) : 0;
     const testCount = typeof o?.test_count === "number" ? (o?.test_count as number) : 0;
-    return { name, file, weight, test_count: testCount };
+    const covered = typeof o?.covered === "boolean" ? (o?.covered as boolean) : testCount > 0;
+    const body_length = typeof o?.body_length === "number" ? (o?.body_length as number) : null;
+    const line_count = typeof o?.line_count === "number" ? (o?.line_count as number) : null;
+    return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count };
   };
 
     if (isItemsOrNodes(payload)) {
