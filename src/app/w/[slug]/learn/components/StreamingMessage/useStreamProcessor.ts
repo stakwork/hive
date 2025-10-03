@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 import type { LearnMessage } from "@/types/learn";
+import { FINAL_ANSWER_ID, FINAL_ANSWER_TOOL, WEB_SEARCH_TOOL } from "./constants";
+import { toolProcessors, type WebSearchResult } from "./helpers";
 
 export function useStreamProcessor() {
   const processStream = useCallback(
@@ -33,7 +35,11 @@ export function useStreamProcessor() {
       let error: string | undefined;
       let finalAnswer: string | undefined;
       const finalAnswerToolIds = new Set<string>();
-      let webSearchResults: Array<{ url: string; title?: string }> = [];
+      let webSearchResults: WebSearchResult[] = [];
+
+      // Debounce mechanism
+      let debounceTimer: NodeJS.Timeout | null = null;
+      const DEBOUNCE_MS = 50;
 
       const updateMessage = () => {
         // Build text parts array with final answer at the end
@@ -44,7 +50,7 @@ export function useStreamProcessor() {
 
         if (finalAnswer) {
           allTextParts.push({
-            id: "final-answer",
+            id: FINAL_ANSWER_ID,
             content: finalAnswer,
           });
         }
@@ -63,6 +69,13 @@ export function useStreamProcessor() {
           })),
           error,
         });
+      };
+
+      const debouncedUpdate = () => {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+        }
+        debounceTimer = setTimeout(updateMessage, DEBOUNCE_MS);
       };
 
       while (true) {
@@ -89,7 +102,7 @@ export function useStreamProcessor() {
               reasoningParts.set(data.id, (reasoningParts.get(data.id) || "") + data.delta);
             } else if (data.type === "tool-input-start") {
               // Track final_answer but don't show as a tool bubble
-              if (data.toolName === "final_answer") {
+              if (data.toolName === FINAL_ANSWER_TOOL) {
                 finalAnswerToolIds.add(data.toolCallId);
               } else {
                 toolCalls.set(data.toolCallId, {
@@ -131,44 +144,15 @@ export function useStreamProcessor() {
             } else if (data.type === "tool-output-available") {
               const existing = toolCalls.get(data.toolCallId);
 
-              // Capture web search results
-              if (existing?.toolName === "web_search" && Array.isArray(data.output)) {
-                webSearchResults = data.output.map((result: { url: string; title?: string }) => ({
-                  url: result.url,
-                  title: result.title,
-                }));
+              // Process tool-specific outputs
+              if (existing?.toolName === WEB_SEARCH_TOOL) {
+                webSearchResults = toolProcessors[WEB_SEARCH_TOOL](data.output);
               }
 
-              // Final output available - ensure final_answer is cleaned up
+              // Process final answer
               if (finalAnswerToolIds.has(data.toolCallId)) {
-                let answer = typeof data.output === "string"
-                  ? data.output
-                  : (data.output as { answer?: string })?.answer || JSON.stringify(data.output);
-
-                // Clean up XML tags if present and convert citations to links
-                if (typeof answer === "string") {
-                  answer = answer
-                    .replace(/<function_calls>\s*/gi, "")
-                    .replace(/<\/function_calls>\s*/gi, "")
-                    .replace(/<invoke[^>]*>\s*/gi, "")
-                    .replace(/<\/invoke>\s*/gi, "")
-                    .replace(/<parameter[^>]*>/gi, "")
-                    .replace(/<\/parameter>\s*/gi, "")
-                    .trim();
-
-                  // Convert <cite index="X-Y">text</cite> to markdown links
-                  answer = answer.replace(/<cite index="(\d+)-\d+">(.*?)<\/cite>/g, (_match: string, index: string, text: string) => {
-                    const resultIndex = parseInt(index) - 1; // Convert to 0-indexed
-                    if (webSearchResults[resultIndex]) {
-                      const result = webSearchResults[resultIndex];
-                      return `[${text}](${result.url})`;
-                    }
-                    return text;
-                  });
-                }
-
-                // Set the final cleaned answer
-                textParts.set("final-answer", answer);
+                const answer = toolProcessors[FINAL_ANSWER_TOOL](data.output, webSearchResults);
+                textParts.set(FINAL_ANSWER_ID, answer);
                 finalAnswer = answer;
               } else if (existing) {
                 toolCalls.set(data.toolCallId, {
@@ -192,12 +176,17 @@ export function useStreamProcessor() {
 
             // Only update if there's content to show
             if (textParts.size > 0 || toolCalls.size > 0 || reasoningParts.size > 0 || finalAnswer || error) {
-              updateMessage();
+              debouncedUpdate();
             }
           } catch (parseError) {
             console.error("Failed to parse stream chunk:", parseError);
           }
         }
+      }
+
+      // Clear any pending debounced updates
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
       }
 
       // Finalize - build final text parts with final answer at the end
@@ -208,7 +197,7 @@ export function useStreamProcessor() {
 
       if (finalAnswer) {
         finalTextParts.push({
-          id: "final-answer",
+          id: FINAL_ANSWER_ID,
           content: finalAnswer,
         });
       }

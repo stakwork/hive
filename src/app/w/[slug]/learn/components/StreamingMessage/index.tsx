@@ -4,6 +4,7 @@ import { LearnMessage } from "@/types/learn";
 import { StreamTextPart } from "./StreamTextPart";
 import { StreamToolCall } from "./StreamToolCall";
 import { StreamReasoningPart } from "./StreamReasoningPart";
+import { FINAL_ANSWER_ID } from "./constants";
 
 interface StreamingMessageProps {
   message: LearnMessage;
@@ -11,8 +12,8 @@ interface StreamingMessageProps {
 
 export function StreamingMessage({ message }: StreamingMessageProps) {
   // Separate final answer from other text parts
-  const regularTextParts = message.textParts?.filter(part => part.id !== "final-answer") || [];
-  const finalAnswerPart = message.textParts?.find(part => part.id === "final-answer");
+  const regularTextParts = message.textParts?.filter(part => part.id !== FINAL_ANSWER_ID) || [];
+  const finalAnswerPart = message.textParts?.find(part => part.id === FINAL_ANSWER_ID);
 
   return (
     <div className="flex flex-col gap-2">
