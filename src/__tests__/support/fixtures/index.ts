@@ -4,4 +4,3 @@ export * from "./swarm";
 export * from "./repository";
 export * from "./database";
 export * from "./static-fixtures";
-export * from "./stakwork";
