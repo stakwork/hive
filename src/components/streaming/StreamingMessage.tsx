@@ -7,15 +7,14 @@ import { StreamReasoningPart } from "./StreamReasoningPart";
 
 interface StreamingMessageProps {
   message: BaseStreamingMessage;
-  filterTextParts?: (partId: string) => boolean;
-  renderTextPart?: (part: { id: string; content: string }) => React.ReactNode;
   textPartClassName?: string;
   reasoningPartClassName?: string;
   /**
-   * IDs of text parts that should be considered as "final content" for showing thinking indicator
-   * If specified, thinking indicator shows when streaming but these parts don't exist yet
+   * ID of text part that should be rendered last (e.g., "final-answer")
+   * This part will be filtered from the main content and rendered at the end
+   * Also controls "Thinking..." indicator - shown when streaming but this part doesn't exist yet
    */
-  finalContentIds?: string[];
+  finalTextPartId?: string;
 }
 
 /**
@@ -26,35 +25,31 @@ interface StreamingMessageProps {
  * <StreamingMessage message={message} />
  *
  * @example
- * // With custom filtering and rendering
- * <StreamingMessage
- *   message={message}
- *   filterTextParts={(id) => id !== "final-answer"}
- *   renderTextPart={(part) => <CustomTextPart part={part} />}
- * />
+ * // With final answer rendered separately
+ * <StreamingMessage message={message} finalTextPartId="final-answer" />
  */
 export function StreamingMessage({
   message,
-  filterTextParts,
-  renderTextPart,
   textPartClassName,
   reasoningPartClassName,
-  finalContentIds = [],
+  finalTextPartId,
 }: StreamingMessageProps) {
-  const textParts = filterTextParts
-    ? message.textParts?.filter((part) => filterTextParts(part.id))
+  // Separate final text part from regular text parts
+  const regularTextParts = finalTextPartId
+    ? message.textParts?.filter((part) => part.id !== finalTextPartId)
     : message.textParts;
+
+  const finalTextPart = finalTextPartId
+    ? message.textParts?.find((part) => part.id === finalTextPartId)
+    : undefined;
 
   // Determine if we should show "Thinking..."
   const shouldShowThinking = () => {
     if (!message.isStreaming) return false;
 
-    // If finalContentIds specified, check if any of those parts exist
-    if (finalContentIds.length > 0) {
-      const hasFinalContent = finalContentIds.some((id) =>
-        message.textParts?.some((part) => part.id === id)
-      );
-      return !hasFinalContent;
+    // If finalTextPartId specified, show thinking until that part exists
+    if (finalTextPartId) {
+      return !finalTextPart;
     }
 
     // Default: show thinking if no textParts and no toolCalls
@@ -77,13 +72,9 @@ export function StreamingMessage({
         />
       ))}
 
-      {textParts?.map((part) =>
-        renderTextPart ? (
-          <div key={part.id}>{renderTextPart(part)}</div>
-        ) : (
-          <StreamTextPart key={part.id} part={part} className={textPartClassName} />
-        )
-      )}
+      {regularTextParts?.map((part) => (
+        <StreamTextPart key={part.id} part={part} className={textPartClassName} />
+      ))}
 
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="bg-muted/50 border border-border/50 rounded-lg p-2 my-1">
@@ -108,6 +99,11 @@ export function StreamingMessage({
           ></div>
           <span className="ml-2 text-xs">Thinking...</span>
         </div>
+      )}
+
+      {/* Render final text part at the end */}
+      {finalTextPart && (
+        <StreamTextPart part={finalTextPart} className={textPartClassName} />
       )}
     </div>
   );
