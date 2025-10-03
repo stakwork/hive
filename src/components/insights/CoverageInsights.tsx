@@ -29,18 +29,18 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
     <TableHead className={className}>
       <button
         onClick={() => onSort(sortKey)}
-        className="flex items-center gap-1 hover:text-foreground transition-colors font-medium cursor-pointer select-none"
+        className="flex items-center gap-1.5 hover:text-foreground transition-colors font-medium cursor-pointer select-none -mx-2 px-2 py-1 rounded hover:bg-muted/50 w-full"
         type="button"
       >
         <span className={isActive ? "text-foreground" : ""}>{label}</span>
         {isActive ? (
           sortDirection === "asc" ? (
-            <ArrowUp className="h-3.5 w-3.5 transition-transform" />
+            <ArrowUp className="h-4 w-4 transition-transform flex-shrink-0" />
           ) : (
-            <ArrowDown className="h-3.5 w-3.5 transition-transform" />
+            <ArrowDown className="h-4 w-4 transition-transform flex-shrink-0" />
           )
         ) : (
-          <ArrowUpDown className="h-3.5 w-3.5 opacity-40 transition-opacity" />
+          <ArrowUpDown className="h-4 w-4 opacity-30 group-hover:opacity-50 transition-opacity flex-shrink-0" />
         )}
       </button>
     </TableHead>
@@ -252,13 +252,19 @@ export function CoverageInsights() {
                 <TableBody>
                   {rows.map((r, i) => (
                     <TableRow key={`${r.name}-${r.file}-${params.offset}-${i}`} className="hover:bg-muted/50 transition-colors">
-                      <TableCell className="truncate max-w-[280px] font-mono text-sm">{r.name}</TableCell>
-                      <TableCell className="truncate max-w-[320px] text-muted-foreground text-xs">{r.file}</TableCell>
-                      <TableCell className="text-right font-medium">{r.coverage}</TableCell>
-                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                      <TableCell className="truncate max-w-[280px] font-mono text-sm" title={r.name}>
+                        {r.name}
+                      </TableCell>
+                      <TableCell className="truncate max-w-[320px] text-muted-foreground text-xs" title={r.file}>
+                        {r.file}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums" title={`${r.coverage} test${r.coverage !== 1 ? 's' : ''}`}>
+                        {r.coverage}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums text-sm" title={r.bodyLength != null ? `${r.bodyLength.toLocaleString()} characters` : "N/A"}>
                         {r.bodyLength != null ? r.bodyLength.toLocaleString() : "-"}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                      <TableCell className="text-right text-muted-foreground tabular-nums text-sm" title={r.lineCount != null ? `${r.lineCount.toLocaleString()} lines` : "N/A"}>
                         {r.lineCount != null ? r.lineCount.toLocaleString() : "-"}
                       </TableCell>
                       <TableCell className="text-right">
@@ -270,7 +276,7 @@ export function CoverageInsights() {
               </Table>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pt-1">
               <div className="text-xs text-muted-foreground">
                 Page {page}
                 {totalPages ? ` of ${totalPages}` : ""}
@@ -288,6 +294,7 @@ export function CoverageInsights() {
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={!hasPrevPage || filterLoading}
                   onMouseEnter={() => hasPrevPage && prefetchPrev()}
+                  className="min-w-[80px]"
                 >
                   Previous
                 </Button>
@@ -297,6 +304,7 @@ export function CoverageInsights() {
                   onClick={() => setPage(page + 1)}
                   disabled={!hasNextPage || filterLoading}
                   onMouseEnter={() => hasNextPage && prefetchNext()}
+                  className="min-w-[80px]"
                 >
                   Next
                 </Button>

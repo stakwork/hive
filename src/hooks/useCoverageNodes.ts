@@ -43,8 +43,6 @@ export function useCoverageNodes() {
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
-      console.log("[Coverage Nodes] Server Response:", json);
-      console.log("[Coverage Nodes] Items:", json.data?.items);
       if (!res.ok || !json.success) {
         throw new Error(json.message || "Failed to fetch coverage nodes");
       }
@@ -77,7 +75,6 @@ export function useCoverageNodes() {
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
-        console.log("[Coverage Nodes Prefetch] Server Response:", json);
         if (!res.ok || !json.success) {
           throw new Error(json.message || "Failed to fetch coverage nodes");
         }

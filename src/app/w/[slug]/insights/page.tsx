@@ -87,7 +87,7 @@ export default function InsightsPage() {
   );
 
   // Set up workspace Pusher connection
-  const { isConnected, error: pusherError } = usePusherConnection({
+  const { error: pusherError } = usePusherConnection({
     workspaceSlug: workspace?.slug || null,
     onRecommendationsUpdated: handleRecommendationsUpdated,
   });
