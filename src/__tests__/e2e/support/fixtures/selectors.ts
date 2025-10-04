@@ -46,6 +46,14 @@ export const selectors = {
     createButton: 'button:has-text("Create")',
   },
 
+  workspaceDetails: {
+    card: '[data-testid="workspace-details-card"]',
+    nameInput: '[data-testid="workspace-name-input"]',
+    slugInput: '[data-testid="workspace-slug-input"]',
+    descriptionInput: '[data-testid="workspace-description-input"]',
+    updateButton: '[data-testid="workspace-update-button"]',
+  },
+
   workspaceMembers: {
     card: '[data-testid="workspace-members-card"]',
     addButton: '[data-testid="add-member-button"]',

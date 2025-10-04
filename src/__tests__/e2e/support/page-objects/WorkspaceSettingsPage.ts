@@ -89,6 +89,109 @@ export class WorkspaceSettingsPage {
     await expect(row).toHaveCount(0, { timeout: 10000 });
   }
 
+  // Workspace Details Editing Methods
+
+  async expectWorkspaceDetailsVisible(): Promise<void> {
+    await expect(this.page.locator(selectors.workspaceDetails.card)).toBeVisible({ timeout: 10000 });
+  }
+
+  async getWorkspaceName(): Promise<string> {
+    const input = this.page.locator(selectors.workspaceDetails.nameInput);
+    return (await input.inputValue()) || '';
+  }
+
+  async getWorkspaceSlug(): Promise<string> {
+    const input = this.page.locator(selectors.workspaceDetails.slugInput);
+    return (await input.inputValue()) || '';
+  }
+
+  async getWorkspaceDescription(): Promise<string> {
+    const input = this.page.locator(selectors.workspaceDetails.descriptionInput);
+    return (await input.inputValue()) || '';
+  }
+
+  async updateWorkspaceName(name: string): Promise<void> {
+    const input = this.page.locator(selectors.workspaceDetails.nameInput);
+    await input.clear();
+    await input.fill(name);
+  }
+
+  async updateWorkspaceSlug(slug: string): Promise<void> {
+    const input = this.page.locator(selectors.workspaceDetails.slugInput);
+    await input.clear();
+    await input.fill(slug);
+  }
+
+  async updateWorkspaceDescription(description: string): Promise<void> {
+    const input = this.page.locator(selectors.workspaceDetails.descriptionInput);
+    await input.clear();
+    await input.fill(description);
+  }
+
+  async submitWorkspaceUpdate(): Promise<void> {
+    const button = this.page.locator(selectors.workspaceDetails.updateButton);
+    await expect(button).toBeEnabled({ timeout: 5000 });
+    await button.click();
+  }
+
+  async expectUpdateButtonDisabled(): Promise<void> {
+    const button = this.page.locator(selectors.workspaceDetails.updateButton);
+    await expect(button).toBeDisabled({ timeout: 5000 });
+  }
+
+  async expectUpdateButtonEnabled(): Promise<void> {
+    const button = this.page.locator(selectors.workspaceDetails.updateButton);
+    await expect(button).toBeEnabled({ timeout: 5000 });
+  }
+
+  async updateWorkspaceDetails(options: {
+    name?: string;
+    slug?: string;
+    description?: string;
+  }): Promise<void> {
+    if (options.name !== undefined) {
+      await this.updateWorkspaceName(options.name);
+    }
+    if (options.slug !== undefined) {
+      await this.updateWorkspaceSlug(options.slug);
+    }
+    if (options.description !== undefined) {
+      await this.updateWorkspaceDescription(options.description);
+    }
+    await this.submitWorkspaceUpdate();
+  }
+
+  async expectWorkspaceDetails(options: {
+    name?: string;
+    slug?: string;
+    description?: string;
+  }): Promise<void> {
+    if (options.name !== undefined) {
+      expect(await this.getWorkspaceName()).toBe(options.name);
+    }
+    if (options.slug !== undefined) {
+      expect(await this.getWorkspaceSlug()).toBe(options.slug);
+    }
+    if (options.description !== undefined) {
+      expect(await this.getWorkspaceDescription()).toBe(options.description);
+    }
+  }
+
+  async expectSuccessToast(): Promise<void> {
+    const toast = this.page.locator('text="Workspace updated successfully"');
+    await expect(toast).toBeVisible({ timeout: 10000 });
+  }
+
+  async expectErrorToast(message?: string): Promise<void> {
+    if (message) {
+      const toast = this.page.locator(`text="${message}"`);
+      await expect(toast).toBeVisible({ timeout: 10000 });
+    } else {
+      const toast = this.page.locator('[role="alert"], [role="status"]').filter({ hasText: /error|failed/i });
+      await expect(toast.first()).toBeVisible({ timeout: 10000 });
+    }
+  }
+
   private getRoleActionSelector(role: WorkspaceRole): string | undefined {
     switch (role) {
       case WorkspaceRole.ADMIN:

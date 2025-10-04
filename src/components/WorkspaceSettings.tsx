@@ -95,7 +95,7 @@ export function WorkspaceSettings() {
   }
 
   return (
-    <Card>
+    <Card data-testid="workspace-details-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Edit3 className="w-5 h-5" />
@@ -116,6 +116,7 @@ export function WorkspaceSettings() {
                   <FormLabel>Workspace Name</FormLabel>
                   <FormControl>
                     <Input 
+                      data-testid="workspace-name-input"
                       placeholder="The display name for your workspace" 
                       {...field} 
                       disabled={isSubmitting}
@@ -138,6 +139,7 @@ export function WorkspaceSettings() {
                         /w/
                       </span>
                       <Input 
+                        data-testid="workspace-slug-input"
                         placeholder="lowercase, use hyphens for spaces" 
                         {...field} 
                         disabled={isSubmitting}
@@ -157,6 +159,7 @@ export function WorkspaceSettings() {
                   <FormLabel>Description (Optional)</FormLabel>
                   <FormControl>
                     <Textarea 
+                      data-testid="workspace-description-input"
                       placeholder="A brief description of your workspace"
                       className="resize-none"
                       {...field} 
@@ -170,6 +173,7 @@ export function WorkspaceSettings() {
 
             <div className="flex justify-end">
               <Button 
+                data-testid="workspace-update-button"
                 type="submit" 
                 disabled={isSubmitting || !form.formState.isDirty}
               >
