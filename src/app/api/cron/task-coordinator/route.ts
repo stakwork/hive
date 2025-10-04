@@ -2,34 +2,14 @@ import { executeTaskCoordinatorRuns } from "@/services/task-coordinator-cron";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Cron endpoint for automated Task Coordinator execution
- * Protected by CRON_SECRET environment variable
+ * GET endpoint for Vercel cron execution and health check
+ * Vercel cron jobs trigger GET requests, not POST
  */
-export async function POST(request: NextRequest) {
-
-  console.log("Task POST Coordinator called");
+export async function GET(request: NextRequest) {
+  console.log("Task Coordinator GET called");
+  console.log(request);
 
   try {
-    // Security: Verify cron secret
-    const authHeader = request.headers.get("authorization");
-    const expectedSecret = process.env.CRON_SECRET;
-
-    if (!expectedSecret) {
-      console.error("[TaskCoordinatorCron] CRON_SECRET not configured");
-      return NextResponse.json(
-        { error: "Cron functionality not configured" },
-        { status: 503 }
-      );
-    }
-
-    if (!authHeader || authHeader !== `Bearer ${expectedSecret}`) {
-      console.error("[TaskCoordinatorCron] Invalid or missing authorization");
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     // Check if task coordinator is enabled
     const taskCoordinatorEnabled = process.env.TASK_COORDINATOR_ENABLED === "true";
     if (!taskCoordinatorEnabled) {
@@ -79,53 +59,6 @@ export async function POST(request: NextRequest) {
         error: "Internal server error",
         timestamp: new Date().toISOString()
       },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * GET endpoint for health check and configuration info
- */
-export async function GET(request: NextRequest) {
-
-
-  console.log("Task GET Coordinator Health Check called");
-
-  try {
-    // Security: Verify cron secret for GET as well
-    const authHeader = request.headers.get("authorization");
-    const expectedSecret = process.env.CRON_SECRET;
-
-    if (!expectedSecret) {
-      return NextResponse.json(
-        { error: "Cron functionality not configured" },
-        { status: 503 }
-      );
-    }
-
-    if (!authHeader || authHeader !== `Bearer ${expectedSecret}`) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const taskCoordinatorEnabled = process.env.TASK_COORDINATOR_ENABLED === "true";
-
-    return NextResponse.json({
-      enabled: taskCoordinatorEnabled,
-      schedule: "* * * * *", // Every minute
-      scheduleSource: "vercel.json",
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[TaskCoordinatorCron] Health check error:", errorMessage);
-
-    return NextResponse.json(
-      { error: "Internal server error" },
       { status: 500 }
     );
   }
