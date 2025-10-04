@@ -102,6 +102,8 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           runningVms: data.status.running_vms,
           pendingVms: data.status.pending_vms,
           failedVms: data.status.failed_vms,
+          usedVms: data.status.used_vms,
+          unusedVms: data.status.unused_vms,
           lastCheck: data.status.last_check,
         },
       };
