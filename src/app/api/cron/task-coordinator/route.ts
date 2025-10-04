@@ -1,11 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
 import { executeTaskCoordinatorRuns } from "@/services/task-coordinator-cron";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Cron endpoint for automated Task Coordinator execution
  * Protected by CRON_SECRET environment variable
  */
 export async function POST(request: NextRequest) {
+
+  console.log("Task POST Coordinator called");
+
   try {
     // Security: Verify cron secret
     const authHeader = request.headers.get("authorization");
@@ -85,6 +88,10 @@ export async function POST(request: NextRequest) {
  * GET endpoint for health check and configuration info
  */
 export async function GET(request: NextRequest) {
+
+
+  console.log("Task GET Coordinator Health Check called");
+
   try {
     // Security: Verify cron secret for GET as well
     const authHeader = request.headers.get("authorization");
