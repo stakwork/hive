@@ -1,0 +1,186 @@
+"use client";
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
+import { useToast } from "@/components/ui/use-toast";
+import type { WorkspaceWithAccess } from "@/types/workspace";
+
+interface GeneralTabProps {
+  workspace: WorkspaceWithAccess;
+  refreshCurrentWorkspace: () => Promise<void>;
+  isSubmitting: boolean;
+  setIsSubmitting: (value: boolean) => void;
+}
+
+export function GeneralTab({
+  workspace,
+  refreshCurrentWorkspace,
+  isSubmitting,
+  setIsSubmitting,
+}: GeneralTabProps) {
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const form = useForm<UpdateWorkspaceInput>({
+    resolver: zodResolver(updateWorkspaceSchema),
+    defaultValues: {
+      name: workspace?.name || "",
+      slug: workspace?.slug || "",
+      description: workspace?.description || "",
+    },
+  });
+
+  const onSubmit = async (data: UpdateWorkspaceInput) => {
+    if (!workspace) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update workspace");
+      }
+
+      toast({
+        title: "Success",
+        description: "Workspace updated successfully",
+      });
+
+      // If slug changed, redirect to new URL
+      if (result.slugChanged) {
+        const currentPath = window.location.pathname.replace(
+          `/w/${workspace.slug}`,
+          ""
+        );
+        router.push(`/w/${result.slugChanged}${currentPath}`);
+      } else {
+        // Just refresh the workspace data
+        await refreshCurrentWorkspace();
+      }
+    } catch (error) {
+      console.error("Error updating workspace:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to update workspace",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Workspace Details</CardTitle>
+        <CardDescription>
+          Update your workspace name, URL, and description
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Workspace Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="The display name for your workspace"
+                      {...field}
+                      disabled={isSubmitting}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="slug"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Workspace URL</FormLabel>
+                  <FormControl>
+                    <div className="flex items-center">
+                      <span className="text-sm text-muted-foreground mr-1">
+                        /w/
+                      </span>
+                      <Input
+                        placeholder="lowercase, use hyphens for spaces"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="A brief description of your workspace"
+                      className="resize-none"
+                      {...field}
+                      disabled={isSubmitting}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={isSubmitting || !form.formState.isDirty}
+              >
+                {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {isSubmitting ? "Updating..." : "Update Workspace"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
+  );
+}

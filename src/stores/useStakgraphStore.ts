@@ -203,20 +203,9 @@ export const useStakgraphStore = create<StakgraphStore>()(
       // Reset previous states
       set({ errors: {}, saved: false });
 
-      // Validation - only validate fields that are on the VM config page
+      // Validation - only validate VM-specific fields that are on the stakgraph/pool config page
       const newErrors: Record<string, string> = {};
 
-      // Repository and Swarm settings are now in Settings page
-      // Only validate if they are present (for backward compatibility)
-      if (state.formData.repositoryUrl && !isValidUrl(state.formData.repositoryUrl.trim())) {
-        newErrors.repositoryUrl = "Please enter a valid URL";
-      }
-
-      if (state.formData.swarmUrl && !isValidUrl(state.formData.swarmUrl.trim())) {
-        newErrors.swarmUrl = "Please enter a valid URL";
-      }
-
-      // VM-specific validations
       if (!state.formData.poolName.trim()) {
         newErrors.poolName = "Pool Name is required";
       }

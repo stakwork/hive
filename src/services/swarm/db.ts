@@ -55,7 +55,6 @@ export const select = {
   createdAt: true,
   updatedAt: true,
   workspaceId: true,
-  githubInstallationId: true,
   instanceType: true,
   repositoryName: true,
   repositoryDescription: true,

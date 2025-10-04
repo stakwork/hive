@@ -25,9 +25,10 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 // Validation schema for stakgraph settings
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  repositoryUrl: z.string().url("Invalid repository URL"),
-  swarmUrl: z.string().url("Invalid swarm URL"),
-  swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
+  repositoryUrl: z.union([z.literal(""), z.string().url("Invalid repository URL")]),
+  defaultBranch: z.string().optional().default("main"),
+  swarmUrl: z.union([z.literal(""), z.string().url("Invalid swarm URL")]),
+  swarmSecretAlias: z.union([z.literal(""), z.string().min(1, "Swarm API key is required")]),
   swarmApiKey: z.string().optional(),
   poolName: z.string().min(1, "Pool name is required"),
   poolCpu: z.string().optional(),

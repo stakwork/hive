@@ -22,6 +22,7 @@ export interface StakgraphSettings {
   name: string;
   description: string;
   repositoryUrl: string;
+  defaultBranch?: string;
   swarmUrl: string;
   swarmSecretAlias: string;
   swarmApiKey?: string;
