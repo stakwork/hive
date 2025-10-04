@@ -141,6 +141,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: swarm.name || "",
         description: swarm.repositoryDescription || "",
         repositoryUrl: swarm.repositoryUrl || "",
+        defaultBranch: swarm.defaultBranch || "main",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
@@ -272,6 +273,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       repositoryName: settings.name,
       repositoryDescription: settings.description,
       repositoryUrl: settings.repositoryUrl,
+      defaultBranch: settings.defaultBranch,
       swarmUrl: settings.swarmUrl,
       status: SwarmStatus.ACTIVE, // auto active
       swarmSecretAlias: settings.swarmSecretAlias,

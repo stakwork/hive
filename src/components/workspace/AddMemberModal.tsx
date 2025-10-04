@@ -158,7 +158,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" data-testid="add-member-modal">
         <DialogHeader>
           <DialogTitle>Add Member</DialogTitle>
           <DialogDescription>
@@ -167,7 +167,11 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4"
+            data-testid="add-member-form"
+          >
             <FormField
               control={form.control}
               name="githubUsername"
@@ -187,6 +191,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                           field.onChange(e.target.value);
                           setSelectedUser(null);
                         }}
+                        data-testid="add-member-github-input"
                       />
                     </div>
                   </FormControl>
@@ -274,15 +279,35 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                   <FormLabel>Role</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger data-testid="add-member-role-trigger">
                         <SelectValue placeholder="Select a role" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value={WorkspaceRole.VIEWER}>{RoleLabels[WorkspaceRole.VIEWER]}</SelectItem>
-                      <SelectItem value={WorkspaceRole.DEVELOPER}>{RoleLabels[WorkspaceRole.DEVELOPER]}</SelectItem>
-                      <SelectItem value={WorkspaceRole.PM}>{RoleLabels[WorkspaceRole.PM]}</SelectItem>
-                      <SelectItem value={WorkspaceRole.ADMIN}>{RoleLabels[WorkspaceRole.ADMIN]}</SelectItem>
+                      <SelectItem
+                        value={WorkspaceRole.VIEWER}
+                        data-testid="role-option-viewer"
+                      >
+                        {RoleLabels[WorkspaceRole.VIEWER]}
+                      </SelectItem>
+                      <SelectItem
+                        value={WorkspaceRole.DEVELOPER}
+                        data-testid="role-option-developer"
+                      >
+                        {RoleLabels[WorkspaceRole.DEVELOPER]}
+                      </SelectItem>
+                      <SelectItem
+                        value={WorkspaceRole.PM}
+                        data-testid="role-option-pm"
+                      >
+                        {RoleLabels[WorkspaceRole.PM]}
+                      </SelectItem>
+                      <SelectItem
+                        value={WorkspaceRole.ADMIN}
+                        data-testid="role-option-admin"
+                      >
+                        {RoleLabels[WorkspaceRole.ADMIN]}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>
@@ -300,12 +325,18 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
             )}
 
             <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={handleClose}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClose}
+                data-testid="add-member-cancel"
+              >
                 Cancel
               </Button>
               <Button 
                 type="submit" 
                 disabled={isSubmitting || !form.watch("githubUsername")}
+                data-testid="add-member-submit"
               >
                 {isSubmitting ? "Adding..." : "Add Member"}
               </Button>

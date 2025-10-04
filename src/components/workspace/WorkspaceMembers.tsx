@@ -134,7 +134,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
 
   return (
     <>
-      <Card>
+      <Card data-testid="workspace-members-card">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -147,7 +147,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
               </CardDescription>
             </div>
             {canAdmin && (
-              <Button onClick={() => setShowAddModal(true)}>
+              <Button onClick={() => setShowAddModal(true)} data-testid="add-member-button">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Member
               </Button>
@@ -169,14 +169,22 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
               ))}
             </div>
           ) : (members.length === 0 && !owner) ? (
-            <div className="text-center py-6 text-muted-foreground">
+            <div
+              className="text-center py-6 text-muted-foreground"
+              data-testid="members-empty-state"
+            >
               No members found
             </div>
           ) : (
             <div className="space-y-3">
               {/* Render owner first if present */}
               {owner && (
-                <div key={`owner-${owner.id}`} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                <div
+                  key={`owner-${owner.id}`}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
+                  data-testid="workspace-owner-row"
+                  data-owner-id={owner.userId}
+                >
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
                       <AvatarImage 
@@ -213,7 +221,13 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
               
               {/* Render regular members */}
               {members.map((member) => (
-                <div key={member.id} className="flex items-center justify-between p-3 rounded-lg border">
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between p-3 rounded-lg border"
+                  data-testid="workspace-member-row"
+                  data-member-id={member.userId}
+                  data-member-username={member.user.github?.username || member.user.email || ""}
+                >
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
                       <AvatarImage 
@@ -241,34 +255,53 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={getRoleBadgeVariant(member.role)}>
+                    <Badge
+                      variant={getRoleBadgeVariant(member.role)}
+                      data-testid="member-role-badge"
+                    >
                       {member.role}
                     </Badge>
                     {canAdmin && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid="member-actions-button"
+                          >
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {member.role !== "ADMIN" && (
-                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "ADMIN")}>
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateRole(member.userId, "ADMIN")}
+                              data-testid="member-action-make-admin"
+                            >
                               Make Admin
                             </DropdownMenuItem>
                           )}
                           {member.role !== "PM" && (
-                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "PM")}>
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateRole(member.userId, "PM")}
+                              data-testid="member-action-make-pm"
+                            >
                               Make PM
                             </DropdownMenuItem>
                           )}
                           {member.role !== "DEVELOPER" && (
-                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "DEVELOPER")}>
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateRole(member.userId, "DEVELOPER")}
+                              data-testid="member-action-make-developer"
+                            >
                               Make Developer
                             </DropdownMenuItem>
                           )}
                           {member.role !== "VIEWER" && (
-                            <DropdownMenuItem onClick={() => handleUpdateRole(member.userId, "VIEWER")}>
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateRole(member.userId, "VIEWER")}
+                              data-testid="member-action-make-viewer"
+                            >
                               Make Viewer
                             </DropdownMenuItem>
                           )}
@@ -278,6 +311,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                               member.user.name || member.user.github?.username || "this member"
                             )}
                             className="text-destructive"
+                            data-testid="member-action-remove"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Remove
@@ -311,6 +345,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
         cancelText="Cancel"
         variant="destructive"
         onConfirm={confirmRemoveMember}
+        testId="remove-member-dialog"
       />
     </>
   );

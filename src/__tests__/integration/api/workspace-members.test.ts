@@ -1,15 +1,26 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { GET, POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH, DELETE } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
-
-// Mock NextAuth - only external dependency
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectSuccess,
+  expectUnauthorized,
+  expectNotFound,
+  expectForbidden,
+  expectError,
+  expectMemberLeft,
+  generateUniqueId,
+  createGetRequest,
+  createPostRequest,
+  createPatchRequest,
+  createDeleteRequest,
+  getMockedSession,
+} from "@/__tests__/support/helpers";
 
 // Mock GitHub API calls for addWorkspaceMember (external service)
 vi.mock("@/services/github", () => ({
@@ -25,76 +36,34 @@ vi.mock("@/services/github", () => ({
   }),
 }));
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
-
 describe("Workspace Members API Integration Tests", () => {
   async function createTestWorkspaceWithUsers() {
-    // Use transaction to create all test data atomically
-    return await db.$transaction(async (tx) => {
-      // Create workspace owner with real database operations
-      const ownerUser = await tx.user.create({
-        data: {
-          id: `owner-${Date.now()}-${Math.random()}`,
-          email: `owner-${Date.now()}@example.com`,
-          name: "Owner User",
+    const scenario = await createTestWorkspaceScenario({
+      owner: {
+        name: "Owner User",
+      },
+      members: [
+        {
+          user: { name: "Member User" },
+          role: "DEVELOPER",
+          withGitHubAuth: true,
+          githubUsername: "testuser"
         },
-      });
-
-      // Create workspace owned by owner
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `Test Workspace ${Date.now()}`,
-          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-          ownerId: ownerUser.id,
-        },
-      });
-
-      // Create a regular member user
-      const memberUser = await tx.user.create({
-        data: {
-          id: `member-${Date.now()}-${Math.random()}`,
-          email: `member-${Date.now()}@example.com`,
-          name: "Member User",
-        },
-      });
-
-      // Create GitHub auth for member user (needed for member operations)
-      await tx.gitHubAuth.create({
-        data: {
-          userId: memberUser.id,
-          githubUserId: `github-${Date.now()}`,
-          githubUsername: "testuser",
-          name: "Test User",
-          bio: "Test bio",
-          publicRepos: 10,
-          followers: 5,
-        },
-      });
-
-      // Create target user for operations
-      const targetUser = await tx.user.create({
-        data: {
-          id: `target-${Date.now()}-${Math.random()}`,
-          email: `target-${Date.now()}@example.com`,
-          name: "Target User",
-        },
-      });
-
-      // Create GitHub auth for target user
-      await tx.gitHubAuth.create({
-        data: {
-          userId: targetUser.id,
-          githubUserId: `github-target-${Date.now()}`,
-          githubUsername: "targetuser",
-          name: "Target User",
-          bio: "Target bio",
-          publicRepos: 5,
-          followers: 3,
-        },
-      });
-
-      return { ownerUser, workspace, memberUser, targetUser };
+      ],
     });
+
+    const targetUser = await createTestUser({
+      name: "Target User",
+      withGitHubAuth: true,
+      githubUsername: "targetuser",
+    });
+
+    return {
+      ownerUser: scenario.owner,
+      workspace: scenario.workspace,
+      memberUser: scenario.members[0],
+      targetUser,
+    };
   }
 
   beforeEach(async () => {
@@ -104,26 +73,16 @@ describe("Workspace Members API Integration Tests", () => {
   describe("GET /api/workspaces/[slug]/members", () => {
     test("should return workspace members with real database operations", async () => {
       const { ownerUser, workspace, memberUser } = await createTestWorkspaceWithUsers();
-      
-      // Add member to workspace with real database operations
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: memberUser.id,
-          role: WorkspaceRole.DEVELOPER,
-        },
-      });
+
+      // Member already created by createTestWorkspaceScenario (no need to create again)
 
       // Mock session with owner user
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.members).toHaveLength(1);
       expect(data.members[0].user.name).toBe("Member User");
       expect(data.members[0].role).toBe("DEVELOPER");
@@ -142,29 +101,23 @@ describe("Workspace Members API Integration Tests", () => {
     test("should return 401 when user not authenticated", async () => {
       const { workspace } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue(null);
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
       
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data).toEqual({ error: "Unauthorized" });
+      await expectUnauthorized(response);
     });
 
     test("should return 404 for non-existent workspace", async () => {
       const { ownerUser } = await createTestWorkspaceWithUsers();
-      
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
 
-      const request = new NextRequest("http://localhost:3000/api/workspaces/nonexistent/members");
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest("http://localhost:3000/api/workspaces/nonexistent/members");
       const response = await GET(request, { params: Promise.resolve({ slug: "nonexistent" }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data).toEqual({ error: "Workspace not found or access denied" });
+      await expectNotFound(response, "Workspace not found or access denied");
     });
   });
 
@@ -172,21 +125,15 @@ describe("Workspace Members API Integration Tests", () => {
     test("should add workspace member successfully with real database operations", async () => {
       const { ownerUser, workspace, targetUser } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        body: JSON.stringify({
-          githubUsername: "targetuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "targetuser",
+        role: WorkspaceRole.DEVELOPER,
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(201);
+      const data = await expectSuccess(response, 201);
       expect(data.member.role).toBe("DEVELOPER");
       expect(data.member.user.name).toBe("Target User");
 
@@ -201,121 +148,83 @@ describe("Workspace Members API Integration Tests", () => {
     test("should return 400 for missing required fields", async () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        body: JSON.stringify({
-          githubUsername: "targetuser",
-          // Missing role
-        }),
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "targetuser",
+        // Missing role
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error).toContain("required");
+      await expectError(response, "required", 400);
 
-      // Verify no member was added to database
+      // Verify no NEW member was added (still just the 1 existing member)
       const membersInDb = await db.workspaceMember.findMany({
         where: { workspaceId: workspace.id },
       });
-      expect(membersInDb).toHaveLength(0);
+      expect(membersInDb).toHaveLength(1);
     });
 
     test("should return 403 for insufficient permissions", async () => {
       const { workspace, memberUser, targetUser } = await createTestWorkspaceWithUsers();
-      
+
       // Create non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: `nonadmin-${Date.now()}-${Math.random()}`,
-          email: `nonadmin-${Date.now()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: nonAdminUser.id, email: nonAdminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        body: JSON.stringify({
-          githubUsername: "targetuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "targetuser",
+        role: WorkspaceRole.DEVELOPER,
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.error).toBe("Admin access required");
+      await expectForbidden(response, "Admin access required");
 
-      // Verify no member was added to database
+      // Verify no NEW member was added (still just the 1 existing member)
       const membersInDb = await db.workspaceMember.findMany({
         where: { workspaceId: workspace.id },
       });
-      expect(membersInDb).toHaveLength(0);
+      expect(membersInDb).toHaveLength(1);
     });
 
     test("should prevent adding non-existent GitHub user", async () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        body: JSON.stringify({
-          githubUsername: "nonexistentuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "nonexistentuser",
+        role: WorkspaceRole.DEVELOPER,
       });
       const response = await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toContain("not found");
+      await expectNotFound(response, "not found");
 
-      // Verify no member was added to database
+      // Verify no NEW member was added (still just the 1 existing member)
       const membersInDb = await db.workspaceMember.findMany({
         where: { workspaceId: workspace.id },
       });
-      expect(membersInDb).toHaveLength(0);
+      expect(membersInDb).toHaveLength(1);
     });
   });
 
   describe("PATCH /api/workspaces/[slug]/members/[userId]", () => {
     test("should update member role successfully with real database operations", async () => {
       const { ownerUser, workspace, memberUser } = await createTestWorkspaceWithUsers();
-      
-      // Add member to workspace first
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: memberUser.id,
-          role: WorkspaceRole.DEVELOPER,
-        },
-      });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      // Member already created by createTestWorkspaceScenario
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ role: WorkspaceRole.PM }),
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createPatchRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`, {
+        role: WorkspaceRole.PM,
       });
-      const response = await PATCH(request, { 
+      const response = await PATCH(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
       });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.member.role).toBe("PM");
 
       // Verify role was actually updated in database
@@ -327,38 +236,22 @@ describe("Workspace Members API Integration Tests", () => {
 
     test("should return 403 for insufficient permissions", async () => {
       const { workspace, memberUser } = await createTestWorkspaceWithUsers();
-      
-      // Add member to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: memberUser.id,
-          role: WorkspaceRole.DEVELOPER,
-        },
-      });
+
+      // Member already created by createTestWorkspaceScenario
 
       // Create non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: `nonadmin-${Date.now()}-${Math.random()}`,
-          email: `nonadmin-${Date.now()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: nonAdminUser.id, email: nonAdminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ role: WorkspaceRole.PM }),
+      const request = createPatchRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`, {
+        role: WorkspaceRole.PM,
       });
-      const response = await PATCH(request, { 
+      const response = await PATCH(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
       });
 
-      expect(response.status).toBe(403);
+      await expectForbidden(response);
 
       // Verify role was not changed in database
       const memberInDb = await db.workspaceMember.findFirst({
@@ -370,98 +263,55 @@ describe("Workspace Members API Integration Tests", () => {
     test("should return 404 for non-existent member", async () => {
       const { ownerUser, workspace, targetUser } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ role: WorkspaceRole.PM }),
+      const request = createPatchRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.PM,
       });
-      const response = await PATCH(request, { 
+      const response = await PATCH(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
       });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Member not found");
+      await expectNotFound(response, "Member not found");
     });
   });
 
   describe("DELETE /api/workspaces/[slug]/members/[userId]", () => {
     test("should remove member successfully with real database operations", async () => {
       const { ownerUser, workspace, memberUser } = await createTestWorkspaceWithUsers();
-      
-      // Add member to workspace first
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: memberUser.id,
-          role: WorkspaceRole.DEVELOPER,
-        },
-      });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      // Member already created by createTestWorkspaceScenario
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`, {
-        method: "DELETE",
-      });
-      const response = await DELETE(request, { 
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`);
+      const response = await DELETE(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
       });
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
+      const data = await expectSuccess(response);
       expect(data.success).toBe(true);
 
-      // Verify member was soft-deleted in database (leftAt should be set)
-      const memberInDb = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: memberUser.id },
-      });
-      expect(memberInDb?.leftAt).toBeTruthy();
-
-      // Verify member is no longer active
-      const activeMemberInDb = await db.workspaceMember.findFirst({
-        where: { workspaceId: workspace.id, userId: memberUser.id, leftAt: null },
-      });
-      expect(activeMemberInDb).toBeNull();
+      // Verify member was soft-deleted in database
+      await expectMemberLeft(workspace.id, memberUser.id);
     });
 
     test("should return 403 for insufficient permissions", async () => {
       const { workspace, memberUser } = await createTestWorkspaceWithUsers();
-      
-      // Add member to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: memberUser.id,
-          role: WorkspaceRole.DEVELOPER,
-        },
-      });
+
+      // Member already created by createTestWorkspaceScenario
 
       // Create non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: `nonadmin-${Date.now()}-${Math.random()}`,
-          email: `nonadmin-${Date.now()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: nonAdminUser.id, email: nonAdminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`, {
-        method: "DELETE",
-      });
-      const response = await DELETE(request, { 
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`);
+      const response = await DELETE(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
       });
 
-      expect(response.status).toBe(403);
+      await expectForbidden(response);
 
       // Verify member was not removed from database
       const memberInDb = await db.workspaceMember.findFirst({
@@ -473,20 +323,14 @@ describe("Workspace Members API Integration Tests", () => {
     test("should prevent removing workspace owner", async () => {
       const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${ownerUser.id}`, {
-        method: "DELETE",
-      });
-      const response = await DELETE(request, { 
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${ownerUser.id}`);
+      const response = await DELETE(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: ownerUser.id })
       });
-      const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("Cannot remove workspace owner");
+      await expectError(response, "Cannot remove workspace owner", 400);
 
       // Verify workspace still exists and owner is unchanged
       const workspaceInDb = await db.workspace.findUnique({
@@ -498,20 +342,14 @@ describe("Workspace Members API Integration Tests", () => {
     test("should return 404 for non-existent member", async () => {
       const { ownerUser, workspace, targetUser } = await createTestWorkspaceWithUsers();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: ownerUser.id, email: ownerUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const request = new NextRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "DELETE",
-      });
-      const response = await DELETE(request, { 
+      const request = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${targetUser.id}`);
+      const response = await DELETE(request, {
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
       });
-      const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Member not found");
+      await expectNotFound(response, "Member not found");
     });
   });
 });

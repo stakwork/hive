@@ -24,15 +24,9 @@ export default function DashboardPage() {
   const [shouldShowSwarmLoader, setShouldShowSwarmLoader] = useState(false);
   const [ingestError, setIngestError] = useState(false);
 
-  const poolState = workspace?.poolState;
-
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
 
-  console.log('codeIsSynced--codeIsSynced--codeIsSynced', codeIsSynced)
 
-  const isEnvironmentSetup = poolState === "COMPLETE";
-
-  console.log(isEnvironmentSetup);
 
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
@@ -58,14 +52,12 @@ export default function DashboardPage() {
 
       isRequestPendingRef.current = true;
       try {
-        console.log('Polling ingest status...');
         const res = await fetch(
           `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
         );
         const { apiResult } = await res.json();
         const { data } = apiResult;
 
-        console.log(apiResult);
 
         if (apiResult.status === 500) {
           setIngestError(true);
@@ -400,8 +392,6 @@ export default function DashboardPage() {
     }
   }, [searchParams, toast, completeSwarmSetup]);
 
-  console.log(workspace, slug);
-
   // Determine if swarm is ready - repositories exist (swarm is created and setup is complete)
   const isSwarmReady = workspace &&
     workspace.repositories &&
@@ -416,14 +406,18 @@ export default function DashboardPage() {
         <div className="w-full h-full flex flex-col items-center justify-center">
           <PageHeader title="Welcome to your development workspace" />
           {isSwarmReady ? <Gitsee /> : (
-            <div className="flex flex-col items-center space-y-4">
-              <div className="w-16 h-16 bg-[#16a34a] rounded-full animate-pulse"></div>
-              {workspace?.repositories?.[0]?.name && (
-                <p className="text-lg font-medium text-muted-foreground">
-                  {workspace.repositories[0].name}
-                </p>
-              )}
-            </div>
+            <Card className="max-w-2xl">
+              <CardContent>
+                <div className="flex flex-col items-center justify-center space-y-4" style={{ width: "500px", height: "500px" }}>
+                  <div className="w-16 h-16 bg-[#16a34a] rounded-full animate-pulse"></div>
+                  {workspace?.repositories?.[0]?.name && (
+                    <p className="text-lg font-medium text-muted-foreground">
+                      {workspace.repositories[0].name}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
@@ -462,9 +456,6 @@ export default function DashboardPage() {
         ) : (
           <EmptyState workspaceSlug={slug} />
         ))}
-
-      {/* Only render Gitsee when swarm is ready */}
-      {isSwarmReady && <Gitsee />}
     </div>
   );
 }

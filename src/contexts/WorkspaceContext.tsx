@@ -100,9 +100,6 @@ export function WorkspaceProvider({
   const refreshWorkspaces = useCallback(async () => {
     if (status !== "authenticated") return;
 
-    setLoading(true);
-    setError(null);
-
     try {
       const fetchedWorkspaces = await fetchWorkspaces();
       setWorkspaces(fetchedWorkspaces);
@@ -110,8 +107,6 @@ export function WorkspaceProvider({
       setError(
         err instanceof Error ? err.message : "Failed to load workspaces",
       );
-    } finally {
-      setLoading(false);
     }
   }, [fetchWorkspaces, status]);
 

@@ -1,16 +1,16 @@
 "use client";
 
-import { EnvironmentForm, ServicesForm } from "@/components/stakgraph";
+import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
+import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { Loader2, Save, ArrowLeft } from "lucide-react";
-import { useEffect } from "react";
+import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function StakgraphPage() {
   const { slug, refreshCurrentWorkspace } = useWorkspace();
@@ -24,6 +24,9 @@ export default function StakgraphPage() {
     saved,
     loadSettings,
     saveSettings,
+    handleProjectInfoChange,
+    handleRepositoryChange,
+    handleSwarmChange,
     handleEnvironmentChange,
     handleEnvVarsChange,
     handleServicesChange,
@@ -101,6 +104,37 @@ export default function StakgraphPage() {
             )}
 
             <div className="space-y-6">
+              <ProjectInfoForm
+                data={{
+                  name: formData.name,
+                  description: formData.description,
+                }}
+                errors={errors}
+                loading={loading}
+                onChange={handleProjectInfoChange}
+              />
+
+              <RepositoryForm
+                data={{
+                  repositoryUrl: formData.repositoryUrl,
+                  defaultBranch: formData.defaultBranch
+                }}
+                errors={errors}
+                loading={loading}
+                onChange={handleRepositoryChange}
+              />
+
+              <SwarmForm
+                data={{
+                  swarmUrl: formData.swarmUrl,
+                  swarmApiKey: formData.swarmApiKey || "",
+                  swarmSecretAlias: formData.swarmSecretAlias,
+                }}
+                errors={errors}
+                loading={loading}
+                onChange={handleSwarmChange}
+              />
+
               <EnvironmentForm
                 data={{
                   poolName: formData.poolName,

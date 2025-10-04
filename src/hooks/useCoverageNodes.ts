@@ -32,7 +32,13 @@ export function useCoverageNodes() {
       qp.set("node_type", nodeType);
       qp.set("limit", String(limit));
       qp.set("offset", String(offset));
-      qp.set("sort", sort);
+      if (sort === "body_length") {
+        qp.set("body_length", "true");
+      } else if (sort === "line_count") {
+        qp.set("line_count", "true");
+      } else {
+        qp.set("sort", sort);
+      }
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
@@ -57,7 +63,13 @@ export function useCoverageNodes() {
         qp.set("node_type", nodeType);
         qp.set("limit", String(limit));
         qp.set("offset", String(targetPage));
-        qp.set("sort", sort);
+        if (sort === "body_length") {
+          qp.set("body_length", "true");
+        } else if (sort === "line_count") {
+          qp.set("line_count", "true");
+        } else {
+          qp.set("sort", sort);
+        }
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();

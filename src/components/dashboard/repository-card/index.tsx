@@ -7,7 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
-import { Database, ExternalLink, GitBranch, Github, RefreshCw, Loader2 } from "lucide-react";
+import { Database, ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 export function RepositoryCard() {
@@ -110,7 +110,7 @@ export function RepositoryCard() {
 
   if (isSwarmBeingSetup) {
     return (
-      <Card>
+      <Card data-testid="repository-card">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -223,12 +223,10 @@ export function RepositoryCard() {
     return null;
   }
 
-  console.log(workspace)
-
   const repository = workspace.repositories[0];
 
   return (
-    <Card>
+    <Card data-testid="repository-card">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">

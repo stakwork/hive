@@ -6,7 +6,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
 import { askTools } from "@/lib/ai/askTools";
-import { generateText, hasToolCall, ModelMessage } from "ai";
+import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
     const model = await getModel(provider, apiKey, workspaceSlug);
-    const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat);
+    const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat, apiKey);
 
     const messages: ModelMessage[] = [
       { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     });
 
     try {
-      const { steps, text } = await generateText({
+      const result = streamText({
         model,
         tools,
         messages,
@@ -106,31 +106,41 @@ export async function GET(request: NextRequest) {
         onStepFinish: (sf) => logStep(sf.content),
       });
 
-      let final = "";
-      steps.reverse();
-      for (const step of steps) {
-        const final_answer = step.content.find((c) => {
-          return c.type === "tool-result" && c.toolName === "final_answer";
-        });
-        if (final_answer) {
-          final = (final_answer as unknown as { output: string }).output;
-        }
-      }
+      return result.toUIMessageStreamResponse();
 
-      // If no final_answer tool result found, check if it's in the text output
-      if (!final && text) {
-        const functionCallMatch = text.match(/<parameter name="answer">([\s\S]*?)<\/parameter>/);
-        if (functionCallMatch) {
-          final = functionCallMatch[1].trim();
-        } else {
-          // Fallback to using the raw text if no tool call found
-          final = text;
-        }
-      }
+      // const { steps, text } = await generateText({
+      //   model,
+      //   tools,
+      //   messages,
+      //   stopWhen: hasToolCall("final_answer"),
+      //   onStepFinish: (sf) => logStep(sf.content),
+      // });
 
-      console.log("🤖 Result:", final);
+      // let final = "";
+      // steps.reverse();
+      // for (const step of steps) {
+      //   const final_answer = step.content.find((c) => {
+      //     return c.type === "tool-result" && c.toolName === "final_answer";
+      //   });
+      //   if (final_answer) {
+      //     final = (final_answer as unknown as { output: string }).output;
+      //   }
+      // }
 
-      return NextResponse.json({ result: final }, { status: 200 });
+      // // If no final_answer tool result found, check if it's in the text output
+      // if (!final && text) {
+      //   const functionCallMatch = text.match(/<parameter name="answer">([\s\S]*?)<\/parameter>/);
+      //   if (functionCallMatch) {
+      //     final = functionCallMatch[1].trim();
+      //   } else {
+      //     // Fallback to using the raw text if no tool call found
+      //     final = text;
+      //   }
+      // }
+
+      // console.log("🤖 Result:", final);
+
+      // return NextResponse.json({ result: final }, { status: 200 });
     } catch (streamError) {
       console.error("❌ Error in streamText:", streamError);
       return NextResponse.json({ error: "Failed to create stream" }, { status: 500 });

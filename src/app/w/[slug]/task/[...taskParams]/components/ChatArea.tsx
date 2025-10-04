@@ -106,6 +106,7 @@ export function ChatArea({
                     transition={{ duration: 0.3, ease: "easeInOut" }}
                     className="text-lg font-semibold text-foreground truncate flex-1"
                     title={taskTitle}
+                    data-testid="task-title"
                   >
                     {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
                   </motion.h2>

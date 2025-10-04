@@ -1,16 +1,22 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { AssignableMemberRoles } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
-
-// Mock NextAuth - only external dependency
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectError,
+  expectUnauthorized,
+  expectForbidden,
+  generateUniqueId,
+  createPostRequest,
+  createPatchRequest,
+  getMockedSession,
+} from "@/__tests__/support/helpers";
 
 // Mock GitHub API calls for addWorkspaceMember (external service)
 vi.mock("@/services/github", () => ({
@@ -26,54 +32,21 @@ vi.mock("@/services/github", () => ({
   }),
 }));
 
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
-
 describe("Workspace Member Role API Integration Tests", () => {
   async function createTestWorkspaceWithAdminUser() {
-    // Use a transaction to ensure atomicity
-    return await db.$transaction(async (tx) => {
-      // Create admin user with real database operations
-      const adminUser = await tx.user.create({
-        data: {
-          id: `admin-${Date.now()}-${Math.random()}`,
-          email: `admin-${Date.now()}@example.com`,
-          name: "Admin User",
-        },
-      });
+    const scenario = await createTestWorkspaceScenario();
 
-      // Create workspace owned by admin
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `Test Workspace ${Date.now()}`,
-          slug: `test-workspace-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-          ownerId: adminUser.id,
-        },
-      });
-
-      // Create target user for member operations
-      const targetUser = await tx.user.create({
-        data: {
-          id: `user-${Date.now()}-${Math.random()}`,
-          email: `user-${Date.now()}@example.com`,
-          name: "Target User",
-        },
-      });
-
-      // Create GitHub auth for target user (needed for addWorkspaceMember)
-      await tx.gitHubAuth.create({
-        data: {
-          userId: targetUser.id,
-          githubUserId: "12345",
-          githubUsername: "testuser",
-          name: "Test User",
-          bio: "Test bio",
-          publicRepos: 10,
-          followers: 5,
-        },
-      });
-
-      return { adminUser, workspace, targetUser };
+    const targetUser = await createTestUser({
+      name: "Target User",
+      withGitHubAuth: true,
+      githubUsername: "testuser",
     });
+
+    return {
+      adminUser: scenario.owner,
+      workspace: scenario.workspace,
+      targetUser,
+    };
   }
 
   beforeEach(async () => {
@@ -86,17 +59,11 @@ describe("Workspace Member Role API Integration Tests", () => {
         const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
         
         // Mock session with real admin user
-        mockGetServerSession.mockResolvedValue({
-          user: { id: adminUser.id, email: adminUser.email },
-        });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            githubUsername: "testuser",
-            role: role,
-          }),
+        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+          githubUsername: "testuser",
+          role: role,
         });
 
         const response = await POST(request, { 
@@ -121,26 +88,18 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should reject OWNER role with real validation logic", async () => {
       const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.OWNER,
-        }),
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.OWNER,
       });
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: workspace.slug })
       });
 
-      expect(response.status).toBe(400);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Invalid role");
+      await expectError(response, "Invalid role", 400);
 
       // Verify no member was added to database
       const members = await db.workspaceMember.findMany({
@@ -152,26 +111,18 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should reject STAKEHOLDER role with real validation logic", async () => {
       const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.STAKEHOLDER,
-        }),
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.STAKEHOLDER,
       });
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: workspace.slug })
       });
 
-      expect(response.status).toBe(400);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Invalid role");
+      await expectError(response, "Invalid role", 400);
 
       // Verify no member was added to database
       const members = await db.workspaceMember.findMany({
@@ -186,26 +137,18 @@ describe("Workspace Member Role API Integration Tests", () => {
       for (const role of invalidRoles) {
         const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
         
-        mockGetServerSession.mockResolvedValue({
-          user: { id: adminUser.id, email: adminUser.email },
-        });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            githubUsername: "testuser",
-            role: role,
-          }),
+        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+          githubUsername: "testuser",
+          role: role,
         });
 
         const response = await POST(request, { 
           params: Promise.resolve({ slug: workspace.slug })
         });
 
-        expect(response.status).toBe(400);
-        const errorData = await response.json();
-        expect(errorData.error).toBe("Invalid role");
+        await expectError(response, "Invalid role", 400);
 
         // Verify no member was added to database
         const members = await db.workspaceMember.findMany({
@@ -219,49 +162,35 @@ describe("Workspace Member Role API Integration Tests", () => {
       const { workspace } = await createTestWorkspaceWithAdminUser();
       
       // Mock no session
-      mockGetServerSession.mockResolvedValue(null);
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.DEVELOPER,
       });
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: workspace.slug })
       });
 
-      expect(response.status).toBe(401);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Unauthorized");
+      await expectUnauthorized(response);
     });
 
     test("should require valid workspace access with real database lookup", async () => {
       const { adminUser } = await createTestWorkspaceWithAdminUser();
       
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest("http://localhost/api/workspaces/nonexistent/members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubUsername: "testuser",
-          role: WorkspaceRole.DEVELOPER,
-        }),
+      const request = createPostRequest("http://localhost/api/workspaces/nonexistent/members", {
+        githubUsername: "testuser",
+        role: WorkspaceRole.DEVELOPER,
       });
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: "nonexistent" })
       });
 
-      expect(response.status).toBe(403);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Admin access required");
+      await expectForbidden(response, "Admin access required");
     });
   });
 
@@ -269,24 +198,20 @@ describe("Workspace Member Role API Integration Tests", () => {
     test("should accept all assignable roles for role updates", async () => {
       for (const role of AssignableMemberRoles) {
         const { adminUser, workspace, targetUser } = await createTestWorkspaceWithAdminUser();
-        
-        // First add user as a member with VIEWER role
+
+        // First add user as a member with STAKEHOLDER role (not in AssignableMemberRoles)
         await db.workspaceMember.create({
           data: {
             workspaceId: workspace.id,
             userId: targetUser.id,
-            role: WorkspaceRole.VIEWER,
+            role: WorkspaceRole.STAKEHOLDER,
           },
         });
 
-        mockGetServerSession.mockResolvedValue({
-          user: { id: adminUser.id, email: adminUser.email },
-        });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
+        const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+          role,
         });
 
         const response = await PATCH(request, { 
@@ -319,23 +244,17 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: WorkspaceRole.OWNER }),
+      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.OWNER,
       });
 
       const response = await PATCH(request, { 
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
       });
 
-      expect(response.status).toBe(400);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Invalid role");
+      await expectError(response, "Invalid role", 400);
 
       // Verify original role was not changed in database
       const member = await db.workspaceMember.findFirst({
@@ -356,23 +275,17 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: adminUser.id, email: adminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: WorkspaceRole.STAKEHOLDER }),
+      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.STAKEHOLDER,
       });
 
       const response = await PATCH(request, { 
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
       });
 
-      expect(response.status).toBe(400);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Invalid role");
+      await expectError(response, "Invalid role", 400);
 
       // Verify original role was not changed in database
       const member = await db.workspaceMember.findFirst({
@@ -396,23 +309,17 @@ describe("Workspace Member Role API Integration Tests", () => {
           },
         });
 
-        mockGetServerSession.mockResolvedValue({
-          user: { id: adminUser.id, email: adminUser.email },
-        });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
+        const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+          role,
         });
 
         const response = await PATCH(request, { 
           params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
         });
 
-        expect(response.status).toBe(400);
-        const errorData = await response.json();
-        expect(errorData.error).toBe("Invalid role");
+        await expectError(response, "Invalid role", 400);
 
         // Verify original role was not changed in database
         const member = await db.workspaceMember.findFirst({
@@ -424,15 +331,9 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     test("should verify real permission checks for role updates", async () => {
       const { workspace, targetUser } = await createTestWorkspaceWithAdminUser();
-      
+
       // Create a non-admin user
-      const nonAdminUser = await db.user.create({
-        data: {
-          id: `nonadmin-${Date.now()}-${Math.random()}`,
-          email: `nonadmin-${Date.now()}@example.com`,
-          name: "Non Admin User",
-        },
-      });
+      const nonAdminUser = await createTestUser({ name: "Non Admin User" });
 
       // Add target user as a member first
       await db.workspaceMember.create({
@@ -444,23 +345,17 @@ describe("Workspace Member Role API Integration Tests", () => {
       });
 
       // Mock session with non-admin user
-      mockGetServerSession.mockResolvedValue({
-        user: { id: nonAdminUser.id, email: nonAdminUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
-      const request = new NextRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: WorkspaceRole.PM }),
+      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
+        role: WorkspaceRole.PM,
       });
 
       const response = await PATCH(request, { 
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
       });
 
-      expect(response.status).toBe(403);
-      const errorData = await response.json();
-      expect(errorData.error).toBe("Admin access required");
+      await expectForbidden(response, "Admin access required");
 
       // Verify role was not changed in database
       const member = await db.workspaceMember.findFirst({

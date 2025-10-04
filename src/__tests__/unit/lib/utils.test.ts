@@ -56,84 +56,71 @@ describe("utils", () => {
       vi.useRealTimers();
     });
 
-    it("should return 'just now' for very recent dates", () => {
+    it.each([
+      { seconds: 0, expected: "just now" },
+      { seconds: 30, expected: "just now" },
+      { seconds: 45, expected: "just now" },
+    ])("should return '$expected' for $seconds seconds ago", ({ seconds, expected }) => {
       const now = new Date();
-      expect(formatRelativeTime(now)).toBe("just now");
-      
-      const thirtySecondsAgo = new Date(now.getTime() - 30 * 1000);
-      expect(formatRelativeTime(thirtySecondsAgo)).toBe("just now");
+      const date = new Date(now.getTime() - seconds * 1000);
+      expect(formatRelativeTime(date)).toBe(expected);
     });
 
-    it("should format minutes correctly", () => {
+    it.each([
+      { minutes: 1, expected: "1 minute ago" },
+      { minutes: 5, expected: "5 minutes ago" },
+      { minutes: 30, expected: "30 minutes ago" },
+      { minutes: 59, expected: "59 minutes ago" },
+    ])("should return '$expected' for $minutes minutes ago", ({ minutes, expected }) => {
       const now = new Date();
-      const oneMinuteAgo = new Date(now.getTime() - 1 * 60 * 1000);
-      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-      const fiftyNineMinutesAgo = new Date(now.getTime() - 59 * 60 * 1000);
-
-      expect(formatRelativeTime(oneMinuteAgo)).toBe("1 minute ago");
-      expect(formatRelativeTime(fiveMinutesAgo)).toBe("5 minutes ago");
-      expect(formatRelativeTime(fiftyNineMinutesAgo)).toBe("59 minutes ago");
+      const date = new Date(now.getTime() - minutes * 60 * 1000);
+      expect(formatRelativeTime(date)).toBe(expected);
     });
 
-    it("should format hours correctly", () => {
+    it.each([
+      { hours: 1, expected: "1 hour ago" },
+      { hours: 5, expected: "5 hours ago" },
+      { hours: 12, expected: "12 hours ago" },
+      { hours: 23, expected: "23 hours ago" },
+    ])("should return '$expected' for $hours hours ago", ({ hours, expected }) => {
       const now = new Date();
-      const oneHourAgo = new Date(now.getTime() - 1 * 60 * 60 * 1000);
-      const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000);
-      const twentyThreeHoursAgo = new Date(now.getTime() - 23 * 60 * 60 * 1000);
-
-      expect(formatRelativeTime(oneHourAgo)).toBe("1 hour ago");
-      expect(formatRelativeTime(fiveHoursAgo)).toBe("5 hours ago");
-      expect(formatRelativeTime(twentyThreeHoursAgo)).toBe("23 hours ago");
+      const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
+      expect(formatRelativeTime(date)).toBe(expected);
     });
 
-    it("should format days correctly", () => {
+    it.each([
+      { days: 1, expected: "1 day ago" },
+      { days: 3, expected: "3 days ago" },
+      { days: 6, expected: "6 days ago" },
+    ])("should return '$expected' for $days days ago", ({ days, expected }) => {
       const now = new Date();
-      const oneDayAgo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
-      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-      const sixDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-
-      expect(formatRelativeTime(oneDayAgo)).toBe("1 day ago");
-      expect(formatRelativeTime(threeDaysAgo)).toBe("3 days ago");
-      expect(formatRelativeTime(sixDaysAgo)).toBe("6 days ago");
+      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      expect(formatRelativeTime(date)).toBe(expected);
     });
 
-    it("should format dates older than a week", () => {
+    it.each([
+      { days: 7 },
+      { days: 30 },
+      { days: 365 },
+    ])("should format dates $days days ago as formatted date string", ({ days }) => {
       const now = new Date();
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-      const oneWeekFormatted = formatRelativeTime(oneWeekAgo);
-      const oneMonthFormatted = formatRelativeTime(oneMonthAgo);
-
-      // Should return formatted date string
-      expect(oneWeekFormatted).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
-      expect(oneMonthFormatted).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
+      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      const result = formatRelativeTime(date);
+      expect(result).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
     });
 
     it("should handle string date inputs", () => {
       const now = new Date();
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-      
+
       expect(formatRelativeTime(fiveMinutesAgo.toISOString())).toBe("5 minutes ago");
       expect(formatRelativeTime("2024-01-15T11:55:00Z")).toBe("5 minutes ago");
-    });
-
-    it("should handle edge case of exactly 1 unit", () => {
-      const now = new Date();
-      const exactlyOneMinute = new Date(now.getTime() - 60 * 1000);
-      const exactlyOneHour = new Date(now.getTime() - 60 * 60 * 1000);
-      const exactlyOneDay = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-      expect(formatRelativeTime(exactlyOneMinute)).toBe("1 minute ago");
-      expect(formatRelativeTime(exactlyOneHour)).toBe("1 hour ago");
-      expect(formatRelativeTime(exactlyOneDay)).toBe("1 day ago");
     });
 
     it("should handle future dates", () => {
       const now = new Date();
       const futureDate = new Date(now.getTime() + 5 * 60 * 1000);
-      
-      // Future dates should still be processed (though they'll show as negative)
+
       const result = formatRelativeTime(futureDate);
       expect(result).toBe("just now");
     });

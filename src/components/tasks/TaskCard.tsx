@@ -27,6 +27,8 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
   return (
     <motion.div
       layout
+      data-testid="task-card"
+      data-task-id={task.id}
       className="p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors"
       onClick={handleClick}
       whileHover={{ scale: 1.005 }}

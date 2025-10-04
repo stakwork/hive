@@ -119,6 +119,7 @@ export function Sidebar({ user }: SidebarProps) {
             return (
               <li key={item.href}>
                 <Button
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                   variant={isActive ? "secondary" : "ghost"}
                   className={`w-full justify-start ${isActive
                     ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
@@ -144,6 +145,7 @@ export function Sidebar({ user }: SidebarProps) {
       {/* Settings */}
       <div className="p-4 pb-2">
         <Button
+          data-testid="settings-button"
           variant="ghost"
           className="w-full justify-start"
           onClick={() => handleNavigate("/settings")}

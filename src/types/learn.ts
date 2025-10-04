@@ -1,9 +1,8 @@
-export interface LearnMessage {
-  id: string;
-  content: string;
+import type { BaseStreamingMessage } from "./streaming";
+
+export interface LearnMessage extends BaseStreamingMessage {
   role: "user" | "assistant";
   timestamp: Date;
-  isError?: boolean;
 }
 
 export interface Learnings {

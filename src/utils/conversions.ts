@@ -42,6 +42,10 @@ export function stakgraphToRepositoryStatus(status: string): RepositoryStatus {
       return RepositoryStatus.PENDING;
     case "complete":
       return RepositoryStatus.SYNCED;
+    case "completed":
+      return RepositoryStatus.SYNCED;
+    case "synced":
+      return RepositoryStatus.SYNCED;
     case "failed":
       return RepositoryStatus.FAILED;
     default:
