@@ -462,6 +462,9 @@ model JanitorConfig {
   e2eTestsEnabled         Boolean @default(false) @map("e2e_tests_enabled")
   securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
 
+  // Task Coordinator automation
+  taskCoordinatorEnabled  Boolean @default(false) @map("task_coordinator_enabled")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
