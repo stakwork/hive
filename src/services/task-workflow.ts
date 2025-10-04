@@ -237,6 +237,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         repo2GraphUrl,
         attachments,
         mode,
+        taskSource: task.sourceType,
       });
 
       if (stakworkData.success) {
@@ -292,6 +293,7 @@ async function callStakworkAPI(params: {
   repo2GraphUrl: string;
   attachments?: string[];
   mode?: string;
+  taskSource?: string;
 }) {
   const {
     taskId,
@@ -305,6 +307,7 @@ async function callStakworkAPI(params: {
     repo2GraphUrl,
     attachments = [],
     mode = "default",
+    taskSource = "USER",
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -331,6 +334,7 @@ async function callStakworkAPI(params: {
     repo2graph_url: repo2GraphUrl,
     attachments,
     taskMode: mode,
+    taskSource: taskSource.toLowerCase(),
   };
 
   // Get workflow ID (replicating workflow selection logic)
