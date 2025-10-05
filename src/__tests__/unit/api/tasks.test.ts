@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
-import { POST } from "@/app/api/tasks/route";
+import { POST, GET } from "@/app/api/tasks/route";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority } from "@prisma/client";
@@ -30,6 +30,8 @@ vi.mock("@/lib/db", () => ({
     },
     task: {
       create: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
     },
   },
 }));
@@ -546,5 +548,488 @@ describe("POST /api/tasks - Unit Tests", () => {
 
     expect(response.status).toBe(201);
     expect(db.task.create).toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/tasks - Unit Tests", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetAllMocks();
+  });
+
+  const mockSession = {
+    user: { id: "user1" },
+  };
+
+  const mockWorkspace = {
+    id: "workspace1",
+    ownerId: "user1",
+    members: [{ role: "DEVELOPER" }],
+  };
+
+  const mockTasks = [
+    {
+      id: "task1",
+      title: "Test Task 1",
+      description: "Description 1",
+      status: TaskStatus.TODO,
+      priority: Priority.HIGH,
+      workflowStatus: null,
+      sourceType: "USER",
+      stakworkProjectId: null,
+      createdAt: new Date("2024-01-01"),
+      updatedAt: new Date("2024-01-01"),
+      assignee: {
+        id: "assignee1",
+        name: "Assignee User",
+        email: "assignee@example.com",
+      },
+      repository: {
+        id: "repo1",
+        name: "Test Repo",
+        repositoryUrl: "https://github.com/test/repo",
+      },
+      createdBy: {
+        id: "user1",
+        name: "Test User",
+        email: "test@example.com",
+        image: null,
+        githubAuth: {
+          githubUsername: "testuser",
+        },
+      },
+      _count: {
+        chatMessages: 5,
+      },
+    },
+    {
+      id: "task2",
+      title: "Test Task 2",
+      description: null,
+      status: TaskStatus.IN_PROGRESS,
+      priority: Priority.MEDIUM,
+      workflowStatus: null,
+      sourceType: "JANITOR",
+      stakworkProjectId: null,
+      createdAt: new Date("2024-01-02"),
+      updatedAt: new Date("2024-01-02"),
+      assignee: null,
+      repository: null,
+      createdBy: {
+        id: "user1",
+        name: "Test User",
+        email: "test@example.com",
+        image: null,
+        githubAuth: null,
+      },
+      _count: {
+        chatMessages: 0,
+      },
+    },
+  ];
+
+  test("should return tasks with default pagination", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(10);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data).toHaveLength(2);
+    expect(data.pagination).toMatchObject({
+      page: 1,
+      limit: 5,
+      totalCount: 10,
+      totalPages: 2,
+      hasMore: true,
+    });
+
+    expect(db.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "workspace1",
+          deleted: false,
+        },
+        skip: 0,
+        take: 5,
+      })
+    );
+  });
+
+  test("should handle custom pagination parameters", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue([mockTasks[0]]);
+    (db.task.count as Mock).mockResolvedValue(25);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1&page=3&limit=10",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pagination).toMatchObject({
+      page: 3,
+      limit: 10,
+      totalCount: 25,
+      totalPages: 3,
+      hasMore: false,
+    });
+
+    expect(db.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 20,
+        take: 10,
+      })
+    );
+  });
+
+  test("should enforce maximum limit of 100", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1&limit=200",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("Invalid pagination parameters");
+  });
+
+  test("should reject page less than 1", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1&page=0",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("Invalid pagination parameters");
+  });
+
+  test("should return 401 for unauthenticated user", async () => {
+    (getServerSession as Mock).mockResolvedValue(null);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe("Unauthorized");
+    expect(db.task.findMany).not.toHaveBeenCalled();
+  });
+
+  test("should return 401 for invalid user session", async () => {
+    (getServerSession as Mock).mockResolvedValue({ user: {} });
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe("Invalid user session");
+  });
+
+  test("should return 400 for missing workspaceId", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+
+    const request = new NextRequest("http://localhost:3000/api/tasks", {
+      method: "GET",
+    });
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("workspaceId query parameter is required");
+  });
+
+  test("should return 404 for non-existent workspace", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(null);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=nonexistent",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe("Workspace not found");
+  });
+
+  test("should return 403 for user without workspace access", async () => {
+    const workspaceWithoutAccess = {
+      id: "workspace1",
+      ownerId: "different-user",
+      members: [], // No members
+    };
+
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutAccess);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error).toBe("Access denied");
+    expect(db.task.findMany).not.toHaveBeenCalled();
+  });
+
+  test("should allow access for workspace owner", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue({
+      id: "workspace1",
+      ownerId: "user1",
+      members: [],
+    });
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(2);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(db.task.findMany).toHaveBeenCalled();
+  });
+
+  test("should allow access for workspace member", async () => {
+    const workspaceWithMember = {
+      id: "workspace1",
+      ownerId: "different-user",
+      members: [{ role: "DEVELOPER" }],
+    };
+
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithMember);
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(2);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(db.task.findMany).toHaveBeenCalled();
+  });
+
+  test("should include all related entities in response", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(2);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.data[0]).toHaveProperty("assignee");
+    expect(data.data[0]).toHaveProperty("repository");
+    expect(data.data[0]).toHaveProperty("createdBy");
+    expect(data.data[0]).toHaveProperty("_count");
+    expect(data.data[0].assignee).toMatchObject({
+      id: "assignee1",
+      name: "Assignee User",
+      email: "assignee@example.com",
+    });
+  });
+
+  test("should handle includeLatestMessage flag", async () => {
+    const tasksWithMessages = mockTasks.map((task) => ({
+      ...task,
+      chatMessages: [
+        {
+          id: "msg1",
+          timestamp: new Date(),
+          artifacts: [{ id: "art1", type: "FORM" }],
+        },
+      ],
+    }));
+
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue(tasksWithMessages);
+    (db.task.count as Mock).mockResolvedValue(2);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1&includeLatestMessage=true",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(db.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          chatMessages: expect.objectContaining({
+            orderBy: { timestamp: "desc" },
+            take: 1,
+          }),
+        }),
+      })
+    );
+  });
+
+  test("should return empty array when no tasks exist", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue([]);
+    (db.task.count as Mock).mockResolvedValue(0);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data).toEqual([]);
+    expect(data.pagination).toMatchObject({
+      page: 1,
+      limit: 5,
+      totalCount: 0,
+      totalPages: 0,
+      hasMore: false,
+    });
+  });
+
+  test("should handle database errors gracefully", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockRejectedValue(
+      new Error("Database connection failed")
+    );
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe("Failed to fetch tasks");
+  });
+
+  test("should filter soft-deleted tasks", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(2);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    await GET(request);
+
+    expect(db.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deleted: false,
+        }),
+      })
+    );
+  });
+
+  test("should order tasks by createdAt descending", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(2);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1",
+      { method: "GET" }
+    );
+
+    await GET(request);
+
+    expect(db.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: {
+          createdAt: "desc",
+        },
+      })
+    );
+  });
+
+  test("should calculate pagination metadata correctly", async () => {
+    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.task.findMany as Mock).mockResolvedValue(mockTasks);
+    (db.task.count as Mock).mockResolvedValue(47);
+
+    const request = new NextRequest(
+      "http://localhost:3000/api/tasks?workspaceId=workspace1&page=5&limit=10",
+      { method: "GET" }
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pagination).toMatchObject({
+      page: 5,
+      limit: 10,
+      totalCount: 47,
+      totalPages: 5,
+      hasMore: false,
+    });
   });
 });

@@ -69,6 +69,7 @@ export const cleanup = {
 
 export async function resetDatabase() {
   try {
+    // Delete in dependency order (child tables first to respect foreign key constraints)
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
@@ -78,15 +79,16 @@ export async function resetDatabase() {
     await db.janitorConfig.deleteMany();
     await db.repository.deleteMany();
     await db.swarm.deleteMany();
-    await db.workspaceMember.deleteMany();
-    await db.workspace.deleteMany();
-    await db.session.deleteMany();
-    await db.account.deleteMany();
-    await db.gitHubAuth.deleteMany();
+    await db.session.deleteMany(); // Sessions before users
+    await db.account.deleteMany(); // Accounts before users
+    await db.workspaceMember.deleteMany(); // Members before workspace/users
+    await db.workspace.deleteMany(); // Workspace before users (owner references)
+    await db.gitHubAuth.deleteMany(); // GitHub auth before users
     await db.sourceControlToken.deleteMany();
     await db.sourceControlOrg.deleteMany();
-    await db.user.deleteMany();
+    await db.user.deleteMany(); // Users last
   } catch (error) {
+    console.warn("Standard reset failed, attempting aggressive reset:", error);
     await aggressiveReset();
   }
 }

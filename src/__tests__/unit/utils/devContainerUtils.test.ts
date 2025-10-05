@@ -4,7 +4,7 @@ import {
   formatPM2Apps,
   getPM2AppsContent
 } from "@/utils/devContainerUtils";
-import type { ServiceDataConfig } from "@/types/devContainer";
+import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 describe("DevContainer Utils - Unit Tests", () => {
   beforeEach(() => {
