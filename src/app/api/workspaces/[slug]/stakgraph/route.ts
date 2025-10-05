@@ -26,7 +26,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required"),
   repositoryUrl: z.string().url("Invalid repository URL"),
-  defaultBranch: z.string().optional().default("main"),
+  defaultBranch: z.string().optional(),
   swarmUrl: z.string().url("Invalid swarm URL"),
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
   swarmApiKey: z.string().optional(),
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: swarm.name || "",
         description: swarm.repositoryDescription || "",
         repositoryUrl: swarm.repositoryUrl || "",
-        defaultBranch: swarm.defaultBranch || "main",
+        defaultBranch: swarm.defaultBranch || "",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
@@ -331,7 +331,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       });
 
       // Update defaultBranch from GitHub if it's different and user didn't provide a custom value
-      console.log("=====> GitHub defaultBranch:", defaultBranch, "User provided:", settings.defaultBranch, "in request body:", body.defaultBranch);
+      console.log(
+        "=====> GitHub defaultBranch:",
+        defaultBranch,
+        "User provided:",
+        settings.defaultBranch,
+        "in request body:",
+        body.defaultBranch,
+      );
       const userProvidedBranch = body.defaultBranch && body.defaultBranch !== "main";
       if (defaultBranch && !userProvidedBranch && defaultBranch !== settings.defaultBranch) {
         console.log("=====> Updating swarm defaultBranch to:", defaultBranch);
