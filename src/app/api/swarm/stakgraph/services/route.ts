@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -30,8 +30,7 @@ export async function GET(request: NextRequest) {
     if (!workspaceId && !swarmId) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Missing required fields: must provide either workspaceId or swarmId",
+          error: "Missing required fields: must provide either workspaceId or swarmId",
         },
         { status: 400 },
       );
@@ -44,11 +43,11 @@ export async function GET(request: NextRequest) {
     const swarm = await db.swarm.findFirst({ where });
 
     if (!swarm) {
-      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
+      return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
     }
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
+      return NextResponse.json({ error: "Swarm URL or API key not set" }, { status: 400 });
     }
 
     // Check if services already exist in database (services defaults to [] in DB)
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!workspace) {
-      return NextResponse.json({ success: false, message: "Workspace not found for swarm" }, { status: 404 });
+      return NextResponse.json({ error: "Workspace not found for swarm" }, { status: 404 });
     }
 
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
@@ -271,6 +270,6 @@ export async function GET(request: NextRequest) {
     console.error('[stakgraph/services] Unhandled error:', error);
     console.error('[stakgraph/services] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     console.error("Unhandled error:", error);
-    return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to ingest code" }, { status: 500 });
   }
 }
