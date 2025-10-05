@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type {
+  Repository,
   Swarm,
   User,
   Workspace,
@@ -15,6 +16,10 @@ import {
   createTestSwarm,
   type CreateTestSwarmOptions,
 } from "./swarm";
+import {
+  createTestRepository,
+  type CreateTestRepositoryOptions,
+} from "./repository";
 
 export interface CreateTestWorkspaceOptions {
   name?: string;
@@ -76,6 +81,8 @@ export interface CreateTestWorkspaceScenarioOptions {
   workspace?: Partial<Omit<CreateTestWorkspaceOptions, "ownerId">>;
   withSwarm?: boolean;
   swarm?: Partial<CreateTestSwarmOptions>;
+  withRepository?: boolean;
+  repository?: Partial<Omit<CreateTestRepositoryOptions, "workspaceId">>;
 }
 
 export interface TestWorkspaceScenarioResult {
@@ -84,6 +91,7 @@ export interface TestWorkspaceScenarioResult {
   members: User[];
   memberships: WorkspaceMember[];
   swarm: Swarm | null;
+  repository: Repository | null;
 }
 
 export async function createTestWorkspaceScenario(
@@ -96,6 +104,8 @@ export async function createTestWorkspaceScenario(
     workspace: workspaceOverrides = {},
     withSwarm = false,
     swarm: swarmOverrides = {},
+    withRepository = false,
+    repository: repositoryOverrides = {},
   } = options;
 
   const owner = await createTestUser({
@@ -162,11 +172,26 @@ export async function createTestWorkspaceScenario(
     });
   }
 
+  let repository: Repository | null = null;
+
+  if (withRepository) {
+    repository = await createTestRepository({
+      workspaceId: workspace.id,
+      name: repositoryOverrides.name,
+      repositoryUrl: repositoryOverrides.repositoryUrl,
+      branch: repositoryOverrides.branch,
+      status: repositoryOverrides.status,
+      testingFrameworkSetup: repositoryOverrides.testingFrameworkSetup,
+      playwrightSetup: repositoryOverrides.playwrightSetup,
+    });
+  }
+
   return {
     owner,
     workspace,
     members,
     memberships,
     swarm,
+    repository,
   };
 }

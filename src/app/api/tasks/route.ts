@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "5");
+    const limit = parseInt(searchParams.get("limit") || "20");
     const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
 
     if (!workspaceId) {
       return NextResponse.json(
-        { error: "workspaceId query parameter is required" },
+        { error: "workspaceId is required" },
         { status: 400 },
       );
     }
@@ -36,8 +36,7 @@ export async function GET(request: NextRequest) {
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
         {
-          error:
-            "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
+          error: "limit must be between 1 and 100"
         },
         { status: 400 },
       );
