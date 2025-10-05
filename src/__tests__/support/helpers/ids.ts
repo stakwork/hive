@@ -46,3 +46,18 @@ export function generateUniqueUsername(prefix: string = "user"): string {
 export function generateUniqueName(prefix: string = "Test"): string {
   return `${prefix} ${generateUniqueId()}`;
 }
+
+/**
+ * Generate a unique integer ID for testing (useful for database fields requiring integers)
+ * Generates a 32-bit safe integer that fits in PostgreSQL INT4 field
+ * @param prefix - Optional numeric prefix (will be multiplied by 1e6 and added to timestamp)
+ * @returns Unique integer ID that fits in INT4 (32-bit signed integer)
+ */
+export function generateUniqueIntId(prefix: number = 0): number {
+  // Use only the last 6 digits of timestamp to keep numbers smaller
+  const timestamp = Date.now() % 1000000; // Last 6 digits
+  const random = Math.floor(Math.random() * 1000); // 0-999
+  // Max value: 999 * 1e6 + 999999 + 999 = 999,999,999 + 999,999 + 999 = 1,000,999,997
+  // This fits comfortably within INT4 max value: 2,147,483,647
+  return prefix * 1000000 + timestamp + random;
+}
