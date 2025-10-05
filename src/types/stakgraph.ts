@@ -15,7 +15,7 @@ export interface StakgraphStatusResponse {
   result?: { nodes?: number; edges?: number };
 }
 
-export type UncoveredNodeType = "function" | "endpoint";
+export type UncoveredNodeType = "function" | "endpoint" | "class";
 
 export type TestStatus = "all" | "tested" | "untested";
 

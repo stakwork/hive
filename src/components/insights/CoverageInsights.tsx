@@ -10,7 +10,6 @@ import { Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useMemo } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
 
 interface SortableHeaderProps {
@@ -24,7 +23,7 @@ interface SortableHeaderProps {
 
 function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, className }: SortableHeaderProps) {
   const isActive = currentSort === sortKey;
-  
+
   return (
     <TableHead className={className}>
       <button
@@ -99,12 +98,25 @@ export function CoverageInsights() {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">Type:</span>
-              <Tabs value={params.nodeType} onValueChange={(v) => setNodeType(v as "endpoint" | "function")}>
-                <TabsList className="h-8">
-                  <TabsTrigger value="endpoint" className="text-xs px-3">Endpoints</TabsTrigger>
-                  <TabsTrigger value="function" className="text-xs px-3">Functions</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <Select
+                value={params.nodeType}
+                onValueChange={(v) => setNodeType(v as "endpoint" | "function" | "class")}
+              >
+                <SelectTrigger className="h-8 w-[120px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="endpoint" className="text-xs">
+                    Endpoints
+                  </SelectItem>
+                  <SelectItem value="function" className="text-xs">
+                    Functions
+                  </SelectItem>
+                  <SelectItem value="class" className="text-xs">
+                    Classes
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center gap-2">
@@ -114,9 +126,15 @@ export function CoverageInsights() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all" className="text-xs">All</SelectItem>
-                  <SelectItem value="tested" className="text-xs">Tested</SelectItem>
-                  <SelectItem value="untested" className="text-xs">Untested</SelectItem>
+                  <SelectItem value="all" className="text-xs">
+                    All
+                  </SelectItem>
+                  <SelectItem value="tested" className="text-xs">
+                    Tested
+                  </SelectItem>
+                  <SelectItem value="untested" className="text-xs">
+                    Untested
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -125,7 +143,9 @@ export function CoverageInsights() {
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between pb-2">
-          <CardTitle>{params.nodeType === "endpoint" ? "Endpoints" : "Functions"}</CardTitle>
+          <CardTitle>
+            {params.nodeType === "endpoint" ? "Endpoints" : params.nodeType === "function" ? "Functions" : "Classes"}
+          </CardTitle>
           {filterLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Filtering...
@@ -144,34 +164,26 @@ export function CoverageInsights() {
                       currentSort={params.sort}
                       sortDirection={params.sortDirection}
                       onSort={toggleSort}
-                      className="w-[25%]"
+                      className="w-[30%]"
                     />
-                    <TableHead className="w-[30%]">File</TableHead>
+                    <TableHead className="w-[40%]">File</TableHead>
                     <SortableHeader
                       label="Coverage"
                       sortKey="test_count"
                       currentSort={params.sort}
                       sortDirection={params.sortDirection}
                       onSort={toggleSort}
-                      className="w-[10%] text-right"
-                    />
-                    <SortableHeader
-                      label="Body Length"
-                      sortKey="body_length"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
                       className="w-[12%] text-right"
                     />
                     <SortableHeader
-                      label="Line Count"
+                      label="Lines"
                       sortKey="line_count"
                       currentSort={params.sort}
                       sortDirection={params.sortDirection}
                       onSort={toggleSort}
                       className="w-[10%] text-right"
                     />
-                    <TableHead className="w-[13%] text-right">Status</TableHead>
+                    <TableHead className="w-[8%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -185,9 +197,6 @@ export function CoverageInsights() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Skeleton className="h-4 w-8 ml-auto" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-4 w-12 ml-auto" />
                       </TableCell>
                       <TableCell className="text-right">
                         <Skeleton className="h-4 w-8 ml-auto" />
@@ -219,52 +228,50 @@ export function CoverageInsights() {
                       currentSort={params.sort}
                       sortDirection={params.sortDirection}
                       onSort={toggleSort}
-                      className="w-[25%]"
+                      className="w-[30%]"
                     />
-                    <TableHead className="w-[30%]">File</TableHead>
+                    <TableHead className="w-[40%]">File</TableHead>
                     <SortableHeader
                       label="Coverage"
                       sortKey="test_count"
                       currentSort={params.sort}
                       sortDirection={params.sortDirection}
                       onSort={toggleSort}
-                      className="w-[10%] text-right"
-                    />
-                    <SortableHeader
-                      label="Body Length"
-                      sortKey="body_length"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
                       className="w-[12%] text-right"
                     />
                     <SortableHeader
-                      label="Line Count"
+                      label="Lines"
                       sortKey="line_count"
                       currentSort={params.sort}
                       sortDirection={params.sortDirection}
                       onSort={toggleSort}
                       className="w-[10%] text-right"
                     />
-                    <TableHead className="w-[13%] text-right">Status</TableHead>
+                    <TableHead className="w-[8%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((r, i) => (
-                    <TableRow key={`${r.name}-${r.file}-${params.offset}-${i}`} className="hover:bg-muted/50 transition-colors">
-                      <TableCell className="truncate max-w-[280px] font-mono text-sm" title={r.name}>
+                    <TableRow
+                      key={`${r.name}-${r.file}-${params.offset}-${i}`}
+                      className="hover:bg-muted/50 transition-colors"
+                    >
+                      <TableCell className="truncate max-w-[320px] font-mono text-sm" title={r.name}>
                         {r.name}
                       </TableCell>
-                      <TableCell className="truncate max-w-[320px] text-muted-foreground text-xs" title={r.file}>
+                      <TableCell className="truncate max-w-[400px] text-muted-foreground text-xs" title={r.file}>
                         {r.file}
                       </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums" title={`${r.coverage} test${r.coverage !== 1 ? 's' : ''}`}>
+                      <TableCell
+                        className="text-right font-medium tabular-nums"
+                        title={`${r.coverage} test${r.coverage !== 1 ? "s" : ""}`}
+                      >
                         {r.coverage}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground tabular-nums text-sm" title={r.bodyLength != null ? `${r.bodyLength.toLocaleString()} characters` : "N/A"}>
-                        {r.bodyLength != null ? r.bodyLength.toLocaleString() : "-"}
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground tabular-nums text-sm" title={r.lineCount != null ? `${r.lineCount.toLocaleString()} lines` : "N/A"}>
+                      <TableCell
+                        className="text-right text-muted-foreground tabular-nums text-sm"
+                        title={r.lineCount != null ? `${r.lineCount.toLocaleString()} lines` : "N/A"}
+                      >
                         {r.lineCount != null ? r.lineCount.toLocaleString() : "-"}
                       </TableCell>
                       <TableCell className="text-right">

@@ -23,10 +23,10 @@ type ParsedParams = {
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
   const nodeTypeParam = (searchParams.get("node_type") || searchParams.get("nodeType") || "endpoint").toLowerCase();
-  if (nodeTypeParam !== "endpoint" && nodeTypeParam !== "function") {
+  if (nodeTypeParam !== "endpoint" && nodeTypeParam !== "function" && nodeTypeParam !== "class") {
     return {
       error: NextResponse.json(
-        { success: false, message: "Invalid node_type. Use 'endpoint' or 'function'." },
+        { success: false, message: "Invalid node_type. Use 'endpoint', 'function', or 'class'." },
         { status: 400 },
       ),
     } as const;
