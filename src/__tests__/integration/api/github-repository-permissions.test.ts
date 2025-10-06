@@ -54,29 +54,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        // Mock successful GitHub API response with push permission
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: true,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -125,28 +108,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: true,
-            default_branch: "main",
-            permissions: {
-              admin: true,
-              maintain: false,
-              push: false,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.adminPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -168,28 +135,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: true,
-              push: false,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.maintainPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -211,28 +162,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: false,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.pullOnlyPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -278,7 +213,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/octocat/Hello-World",
+            repositoryUrl: testRepositoryUrls.octocat,
           }
         );
 
@@ -326,7 +261,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "git@github.com:nodejs/node.git",
+            repositoryUrl: testRepositoryUrls.ssh,
           }
         );
 
@@ -351,28 +286,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: true,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo.git",
+            repositoryUrl: testRepositoryUrls.httpsWithGit,
           }
         );
 
@@ -390,7 +309,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -408,7 +327,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -433,7 +352,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -464,7 +383,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -507,7 +426,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://gitlab.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.invalid,
           }
         );
 
@@ -529,7 +448,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "not-a-valid-url",
+            repositoryUrl: testRepositoryUrls.malformed,
           }
         );
 
@@ -553,11 +472,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: false,
-          status: 404,
-          statusText: "Not Found",
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.repositoryNotFound);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
@@ -588,11 +503,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: false,
-          status: 403,
-          statusText: "Forbidden",
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.accessForbidden);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
@@ -620,16 +531,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: false,
-          status: 500,
-          statusText: "Internal Server Error",
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.serverError);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -657,7 +564,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -685,7 +592,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -711,23 +618,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "scoped-repo",
-            full_name: "specific-owner/scoped-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: true,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
@@ -771,23 +662,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken: "token_for_org2",
         });
 
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            name: "repo-in-org2",
-            full_name: "org2/repo-in-org2",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: true,
-              triage: false,
-              pull: true,
-            },
-          }),
-        });
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
@@ -822,7 +697,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
           {
-            repositoryUrl: "https://github.com/test-owner/test-repo",
+            repositoryUrl: testRepositoryUrls.https,
           }
         );
 
@@ -872,28 +747,12 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         accessToken,
       });
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          name: "test-repo",
-          full_name: "test-owner/test-repo",
-          private: false,
-          default_branch: "main",
-          permissions: {
-            admin: false,
-            maintain: false,
-            push: true,
-            triage: false,
-            pull: true,
-          },
-        }),
-      });
+      mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
       const request = createGetRequest(
         "http://localhost:3000/api/github/repository/permissions",
         {
-          repositoryUrl: "https://github.com/test-owner/test-repo",
+          repositoryUrl: testRepositoryUrls.https,
         }
       );
 
@@ -955,7 +814,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       const request = createGetRequest(
         "http://localhost:3000/api/github/repository/permissions",
         {
-          repositoryUrl: "https://github.com/test-owner/test-repo",
+          repositoryUrl: testRepositoryUrls.https,
           workspaceSlug: "my-workspace",
         }
       );
