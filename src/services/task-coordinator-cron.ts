@@ -110,7 +110,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
         console.log(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
 
-        // Accept recommendations up to available pod count
+        // Accept recommendations while reserving 1 pod (only processes when 2+ pods available)
         for (const recommendation of pendingRecommendations) {
           try {
             console.log(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`);
