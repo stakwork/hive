@@ -1,0 +1,79 @@
+
+> hive@0.1.0 test:integration
+> TEST_SUITE=integration vitest run src/__tests__/integration --run --testNamePattern=returns hasTokens: true when workspace has sourceControlOrg and user has tokens
+
+
+ RUN  v3.2.4 /workspaces/hive
+
+stdout | src/__tests__/integration/api/github-app-status.test.ts > GET /api/github/app/status > Workspace-Specific Token Checks > returns hasTokens: true when workspace has sourceControlOrg and user has tokens
+prisma:info Starting a postgresql pool with 9 connections.
+
+ ❯ src/__tests__/integration/api/github-app-status.test.ts (19 tests | 1 failed | 18 skipped) 1823ms
+   ↓ GET /api/github/app/status > Authentication > returns safe defaults for unauthenticated users
+   ↓ GET /api/github/app/status > Authentication > returns safe defaults when session has no user id
+   ↓ GET /api/github/app/status > Global Token Check (No Workspace) > returns hasTokens: true when user has GitHub App tokens
+   ↓ GET /api/github/app/status > Global Token Check (No Workspace) > returns hasTokens: false when user has no tokens
+   ↓ GET /api/github/app/status > Workspace Access Validation > returns 403 when user lacks workspace access
+   ↓ GET /api/github/app/status > Workspace Access Validation > validates workspace access before checking tokens
+   × GET /api/github/app/status > Workspace-Specific Token Checks > returns hasTokens: true when workspace has sourceControlOrg and user has tokens 177ms
+     → expected { hasTokens: false, …(1) } to deeply equal { hasTokens: true, …(1) }
+   ↓ GET /api/github/app/status > Workspace-Specific Token Checks > returns hasTokens: false when workspace has sourceControlOrg but user has no tokens
+   ↓ GET /api/github/app/status > Auto-Linking Logic > auto-links workspace to existing SourceControlOrg when repository URL matches
+   ↓ GET /api/github/app/status > Auto-Linking Logic > auto-links using repositoryUrl parameter when provided
+   ↓ GET /api/github/app/status > Auto-Linking Logic > returns hasTokens: false when SourceControlOrg does not exist yet
+   ↓ GET /api/github/app/status > Repository Access Verification > checks repository access when workspace has tokens and repository URL
+   ↓ GET /api/github/app/status > Repository Access Verification > checks repository access using repositoryUrl parameter
+   ↓ GET /api/github/app/status > Repository Access Verification > skips repository check when installationId is missing
+   ↓ GET /api/github/app/status > Repository Access Verification > skips repository check when no repository URL is available
+   ↓ GET /api/github/app/status > Error Handling > returns safe defaults when an error occurs
+   ↓ GET /api/github/app/status > Error Handling > returns safe defaults when workspace validation throws error
+   ↓ GET /api/github/app/status > Edge Cases > handles workspace with no swarm and no repositoryUrl parameter
+   ↓ GET /api/github/app/status > Edge Cases > prioritizes repositoryUrl parameter over swarm repositoryUrl
+ ↓ src/__tests__/integration/api/auth-revoke-github.test.ts (15 tests | 15 skipped)
+ ↓ src/__tests__/integration/api/chat-message.test.ts (15 tests | 15 skipped)
+ ↓ src/__tests__/integration/api/chat-messages-get.test.ts (14 tests | 14 skipped)
+ ↓ src/__tests__/integration/api/github-repository-permissions.test.ts (27 tests | 27 skipped)
+ ↓ src/__tests__/integration/api/github-users-search.test.ts (9 tests | 9 skipped)
+ ↓ src/__tests__/integration/api/janitors.test.ts (20 tests | 20 skipped)
+ ↓ src/__tests__/integration/api/repository-update.test.ts (10 tests | 10 skipped)
+ ↓ src/__tests__/integration/api/stakwork-create-customer.test.ts (2 tests | 2 skipped)
+ ↓ src/__tests__/integration/api/swarm-authorization.test.ts (17 tests | 17 skipped)
+ ↓ src/__tests__/integration/api/swarm-stakgraph-services.test.ts (1 test | 1 skipped)
+ ↓ src/__tests__/integration/api/workspace-member-roles.test.ts (11 tests | 11 skipped)
+ ↓ src/__tests__/integration/api/workspace-members.test.ts (14 tests | 14 skipped)
+ ↓ src/__tests__/integration/api/workspace-update.test.ts (12 tests | 12 skipped)
+ ↓ src/__tests__/integration/api/workspaces-stakgraph.test.ts (1 test | 1 skipped)
+ ↓ src/__tests__/integration/api/workspaces.test.ts (6 tests | 6 skipped)
+ ↓ src/__tests__/integration/services/stakgraph-status.test.ts (7 tests | 7 skipped)
+ ↓ src/__tests__/integration/services/workspace.test.ts (16 tests | 16 skipped)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/integration/api/github-app-status.test.ts > GET /api/github/app/status > Workspace-Specific Token Checks > returns hasTokens: true when workspace has sourceControlOrg and user has tokens
+AssertionError: expected { hasTokens: false, …(1) } to deeply equal { hasTokens: true, …(1) }
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "hasRepoAccess": false,[22m
+[32m-   "hasTokens": true,[39m
+[31m+   "hasTokens": false,[39m
+[2m  }[22m
+
+ ❯ src/__tests__/integration/api/github-app-status.test.ts:235:20
+    233| 
+    234|       const data = await expectSuccess(response, 200);
+    235|       expect(data).toEqual({
+       |                    ^
+    236|         hasTokens: true,
+    237|         hasRepoAccess: false,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 17 skipped (18)
+      Tests  1 failed | 215 skipped (216)
+   Start at  16:29:38
+   Duration  4.00s (transform 627ms, setup 310ms, collect 1.09s, tests 1.82s, environment 356ms, prepare 243ms)
+

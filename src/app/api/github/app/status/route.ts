@@ -42,23 +42,38 @@ export async function GET(request: Request) {
         },
       });
 
+      console.log("[STATUS ROUTE DEBUG] workspace found:", JSON.stringify({
+        id: workspace?.id,
+        sourceControlOrgId: workspace?.sourceControlOrgId,
+        sourceControlOrg: workspace?.sourceControlOrg ? {
+          id: workspace.sourceControlOrg.id,
+          githubLogin: workspace.sourceControlOrg.githubLogin,
+        } : null
+      }, null, 2));
+
       if (workspace?.sourceControlOrg) {
         // Workspace is linked to a SourceControlOrg - check if user has tokens for it
-        const sourceControlToken = await db.sourceControlToken.findUnique({
+        const sourceControlToken = await db.sourceControlToken.findFirst({
           where: {
-            userId_sourceControlOrgId: {
-              userId: session.user.id,
-              sourceControlOrgId: workspace.sourceControlOrg.id,
-            },
+            userId: session.user.id,
+            sourceControlOrgId: workspace.sourceControlOrg.id,
           },
         });
+        
+        console.log("[STATUS ROUTE DEBUG] token query:", {
+          userId: session.user.id,
+          sourceControlOrgId: workspace.sourceControlOrg.id,
+          foundToken: !!sourceControlToken
+        });
+        
         hasTokens = !!sourceControlToken;
 
         // Check repository access if we have tokens and a repository URL
         if (
           hasTokens &&
           (repositoryUrl || workspace?.swarm?.repositoryUrl) &&
-          workspace?.sourceControlOrg?.githubInstallationId
+          workspace?.sourceControlOrg?.githubInstallationId &&
+          workspace?.sourceControlOrg?.githubInstallationId > 0 // Skip if -1 (missing/invalid)
         ) {
           const repoUrl = repositoryUrl || workspace?.swarm?.repositoryUrl;
           console.log("[STATUS ROUTE] Checking repository access:", {
@@ -108,12 +123,10 @@ export async function GET(request: Request) {
             });
 
             // Now check if user has tokens for it
-            const sourceControlToken = await db.sourceControlToken.findUnique({
+            const sourceControlToken = await db.sourceControlToken.findFirst({
               where: {
-                userId_sourceControlOrgId: {
-                  userId: session.user.id,
-                  sourceControlOrgId: sourceControlOrg.id,
-                },
+                userId: session.user.id,
+                sourceControlOrgId: sourceControlOrg.id,
               },
             });
             hasTokens = !!sourceControlToken;

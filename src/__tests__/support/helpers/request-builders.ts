@@ -7,9 +7,12 @@ export function createGetRequest(
   url: string,
   searchParams?: Record<string, string>
 ): NextRequest {
+  // Ensure URL is absolute - add localhost:3000 if it starts with /
+  const baseUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+  
   const fullUrl = searchParams
-    ? `${url}?${new URLSearchParams(searchParams).toString()}`
-    : url;
+    ? `${baseUrl}?${new URLSearchParams(searchParams).toString()}`
+    : baseUrl;
 
   return new NextRequest(fullUrl, {
     method: "GET",
@@ -23,7 +26,10 @@ export function createPostRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  // Ensure URL is absolute - add localhost:3000 if it starts with /
+  const baseUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+  
+  return new NextRequest(baseUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -39,7 +45,10 @@ export function createPutRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  // Ensure URL is absolute - add localhost:3000 if it starts with /
+  const baseUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+  
+  return new NextRequest(baseUrl, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -55,7 +64,10 @@ export function createPatchRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  // Ensure URL is absolute - add localhost:3000 if it starts with /
+  const baseUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+  
+  return new NextRequest(baseUrl, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -68,7 +80,10 @@ export function createPatchRequest(
  * Creates a DELETE request
  */
 export function createDeleteRequest(url: string): NextRequest {
-  return new NextRequest(url, {
+  // Ensure URL is absolute - add localhost:3000 if it starts with /
+  const baseUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+  
+  return new NextRequest(baseUrl, {
     method: "DELETE",
   });
 }
@@ -82,6 +97,9 @@ export function createRequestWithHeaders(
   headers: Record<string, string>,
   body?: object
 ): NextRequest {
+  // Ensure URL is absolute - add localhost:3000 if it starts with /
+  const baseUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+  
   const options: RequestInit = {
     method,
     headers,
@@ -91,5 +109,5 @@ export function createRequestWithHeaders(
     options.body = JSON.stringify(body);
   }
 
-  return new NextRequest(url, options);
+  return new NextRequest(baseUrl, options);
 }
