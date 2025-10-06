@@ -18,6 +18,9 @@ vi.mock("@/lib/db", () => ({
     chatMessage: {
       create: vi.fn(),
     },
+    workspace: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 vi.mock("@/lib/env", () => ({
@@ -98,17 +101,18 @@ describe("POST /api/chat/message", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Setup default mocks
     mockGetServerSession.mockResolvedValue(mockSession);
     mockDb.task.findFirst.mockResolvedValue(mockTask as any);
     mockDb.user.findUnique.mockResolvedValue(mockUser as any);
     mockDb.chatMessage.create.mockResolvedValue(mockChatMessage as any);
     mockDb.task.update.mockResolvedValue({} as any);
+    mockDb.workspace.findUnique.mockResolvedValue({ slug: 'test-workspace' } as any);
     
     mockGetGithubUsernameAndPAT.mockResolvedValue({
       username: "testuser",
-      appAccessToken: "token123",
+      token: "token123",
     });
 
     mockGetS3Service.mockReturnValue({
@@ -552,7 +556,7 @@ describe("POST /api/chat/message", () => {
     it("should include GitHub credentials in Stakwork payload", async () => {
       const githubCreds = {
         username: "testuser",
-        appAccessToken: "github-token",
+        token: "github-token",
       };
       mockGetGithubUsernameAndPAT.mockResolvedValue(githubCreds);
 

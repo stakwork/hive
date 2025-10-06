@@ -10,6 +10,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { WorkspaceWithRole } from "@/types/workspace";
 import { Building2, ChevronsUpDown, Plus, Lock } from "lucide-react";
@@ -68,13 +69,10 @@ export function WorkspaceSwitcher({
   if (loading) {
     return (
       <div className="p-4 border-b">
-        <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/50">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted animate-pulse">
-            <Building2 className="w-4 h-4 text-muted-foreground" />
-          </div>
-          <div className="text-left flex-1">
-            <div className="h-4 bg-muted rounded animate-pulse mb-1"></div>
-            <div className="h-3 bg-muted rounded animate-pulse w-20"></div>
+        <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <Skeleton className="w-8 h-8 rounded-lg" />
+          <div className="text-left flex-1 space-y-1">
+            <Skeleton className="h-4 w-32" />
           </div>
           <ChevronsUpDown className="w-4 h-4 ml-2 opacity-30" />
         </div>

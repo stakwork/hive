@@ -54,6 +54,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
           onKeyDown={handleKeyDown}
           className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-16 rounded-3xl shadow-none"
           autoFocus
+          data-testid="task-start-input"
         />
         <Button
           type="button"
@@ -64,6 +65,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
           disabled={!hasText}
           onClick={handleClick}
           tabIndex={0}
+          data-testid="task-start-submit"
         >
           <ArrowUp className="w-4 h-4" />
         </Button>

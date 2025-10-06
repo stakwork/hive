@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TestTube, FunctionSquare, Globe, Loader2, Target } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
@@ -47,20 +48,20 @@ export function TestCoverageCard() {
     fetchTestCoverage();
   }, [workspaceId, fetchTestCoverage]);
   const getPercentageColor = (percent: number) => {
-    if (percent >= 70) return "text-green-600 border-green-200 bg-green-50";
-    if (percent >= 15) return "text-yellow-600 border-yellow-200 bg-yellow-50";
+    if (percent >= 20) return "text-green-600 border-green-200 bg-green-50";
+    if (percent >= 10) return "text-yellow-600 border-yellow-200 bg-yellow-50";
     return "text-red-600 border-red-200 bg-red-50";
   };
 
   const getProgressColor = (percent: number) => {
-    if (percent >= 70) return "bg-green-500";
-    if (percent >= 15) return "bg-yellow-500";
+    if (percent >= 20) return "bg-green-500";
+    if (percent >= 10) return "bg-yellow-500";
     return "bg-red-500";
   };
 
   if (isLoading) {
     return (
-      <Card>
+      <Card data-testid="coverage-card">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TestTube className="h-5 w-5 text-blue-500" />
@@ -69,8 +70,23 @@ export function TestCoverageCard() {
           <CardDescription>Code coverage analysis from your test suite</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="space-y-6">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Skeleton className="h-4 w-4" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                  <Skeleton className="h-5 w-12 rounded-full" />
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+                <div className="flex justify-between">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -79,7 +95,7 @@ export function TestCoverageCard() {
 
   if (error) {
     return (
-      <Card>
+      <Card data-testid="coverage-card">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TestTube className="h-5 w-5 text-blue-500" />
@@ -98,7 +114,7 @@ export function TestCoverageCard() {
 
   if (!data) {
     return (
-      <Card>
+      <Card data-testid="coverage-card">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TestTube className="h-5 w-5 text-blue-500" />
@@ -116,7 +132,7 @@ export function TestCoverageCard() {
   }
 
   return (
-    <Card>
+    <Card data-testid="coverage-card">
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
           <TestTube className="h-5 w-5 text-blue-500" />

@@ -15,11 +15,12 @@ export async function GET() {
 
     const userId = (session.user as { id: string }).id;
 
+    // Use user's OAuth token for repository listing (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);
-    if (!githubProfile?.pat) {
+    if (!githubProfile?.token) {
       return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
-    const pat = githubProfile.appAccessToken || githubProfile.pat;
+    const pat = githubProfile.token;
 
     // Fetch repositories from GitHub API
     const response = await axios.get("https://api.github.com/user/repos", {

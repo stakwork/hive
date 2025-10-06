@@ -1,13 +1,14 @@
-import { ReactNode, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useModal } from "@/components/modals/ModlaProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { LucideIcon, Loader2, Play, Clock } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
+import { Clock, Loader2, LucideIcon, Play } from "lucide-react";
+import { ReactNode, useEffect } from "react";
 
 export interface JanitorItem {
   id: string;
@@ -41,7 +42,9 @@ export function JanitorSection({
 }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
-  
+
+  const open = useModal();
+
   // Get state and actions from store
   const {
     janitorConfig,
@@ -72,8 +75,14 @@ export function JanitorSection({
   };
 
   const handleToggle = async (janitor: JanitorItem) => {
+
+    if (workspace?.poolState !== "COMPLETE") {
+      open("ServicesWizard");
+      return;
+    }
+
     if (comingSoon || janitor.comingSoon || !janitor.configKey || !workspace?.slug) return;
-    
+
     try {
       await toggleJanitor(workspace.slug, janitor.configKey);
     } catch (error) {
@@ -87,7 +96,7 @@ export function JanitorSection({
 
   const handleManualRun = async (janitor: JanitorItem) => {
     if (comingSoon || janitor.comingSoon || !workspace?.slug) return;
-    
+
     try {
       await runJanitor(workspace.slug, janitor.id);
       toast({
@@ -119,27 +128,24 @@ export function JanitorSection({
             const isOn = getJanitorState(janitor);
             const isRunning = isJanitorRunning(janitor);
             const isItemComingSoon = janitor.comingSoon || comingSoon;
-            
+
             return (
-              <div 
-                key={janitor.id} 
-                className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${
-                  isItemComingSoon ? 'opacity-60' : ''
-                }`}
+              <div
+                key={janitor.id}
+                className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${isItemComingSoon ? 'opacity-60' : ''
+                  }`}
               >
                 <div className="flex items-center space-x-3 flex-1">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${
-                    isOn 
-                      ? 'bg-green-50 border-green-200' 
-                      : 'bg-background border-gray-200'
-                  }`}>
-                    <Icon className={`h-4 w-4 ${
-                      isOn 
-                        ? 'text-green-600' 
-                        : 'text-muted-foreground'
-                    }`} />
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${isOn
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-background border-gray-200'
+                    }`}>
+                    <Icon className={`h-4 w-4 ${isOn
+                      ? 'text-green-600'
+                      : 'text-muted-foreground'
+                      }`} />
                   </div>
-                  
+
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="font-medium text-sm">{janitor.name}</span>
@@ -148,7 +154,7 @@ export function JanitorSection({
                     <p className="text-xs text-muted-foreground">{janitor.description}</p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   {isItemComingSoon ? (
                     <Clock className="h-4 w-4 text-gray-400" />

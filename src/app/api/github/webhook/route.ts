@@ -51,6 +51,15 @@ export async function POST(request: NextRequest) {
         branch: true,
         workspaceId: true,
         githubWebhookSecret: true,
+        workspace: {
+          select: {
+            swarm: {
+              select: {
+                defaultBranch: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -71,8 +80,9 @@ export async function POST(request: NextRequest) {
     }
 
     const repoDefaultBranch: string | undefined = payload?.repository?.default_branch;
+    const swarmDefaultBranch = repository.workspace?.swarm?.defaultBranch;
     const allowedBranches = new Set<string>(
-      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
+      [repository.branch, swarmDefaultBranch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
     );
 
     if (event === "push") {
@@ -88,14 +98,6 @@ export async function POST(request: NextRequest) {
       }
       if (!allowedBranches.has(pushedBranch)) {
         console.log("Pushed branch ", pushedBranch, "not allowed");
-        return NextResponse.json({ success: true }, { status: 202 });
-      }
-    } else if (event === "pull_request") {
-      const action: string | undefined = payload?.action;
-      const merged: boolean | undefined = payload?.pull_request?.merged;
-      const baseRef: string | undefined = payload?.pull_request?.base?.ref;
-      if (!(action === "closed" && merged && baseRef && allowedBranches.has(baseRef))) {
-        console.log("Pull request not allowed. action:", action);
         return NextResponse.json({ success: true }, { status: 202 });
       }
     } else {
@@ -126,10 +128,18 @@ export async function POST(request: NextRequest) {
     let username: string | undefined;
     let pat: string | undefined;
     if (ownerId) {
-      const creds = await getGithubUsernameAndPAT(ownerId);
-      if (creds) {
-        username = creds.username;
-        pat = creds.appAccessToken || creds.pat;
+      // Get workspace slug for the GitHub credentials
+      const workspaceData = await db.workspace.findUnique({
+        where: { id: repository.workspaceId },
+        select: { slug: true }
+      });
+
+      if (workspaceData) {
+        const creds = await getGithubUsernameAndPAT(ownerId, workspaceData.slug);
+        if (creds) {
+          username = creds.username;
+          pat = creds.token;
+        }
       }
     }
 
@@ -166,11 +176,14 @@ export async function POST(request: NextRequest) {
 
     try {
       const reqId = apiResult.data?.request_id;
+      console.log("REQUEST ID FROM ASYNC SYNC STAKGRAPH WEBHOOK", reqId);
       if (reqId) {
         await db.swarm.update({
           where: { id: swarm.id },
           data: { ingestRefId: reqId },
         });
+      } else {
+        console.error("NO REQUEST ID FROM ASYNC SYNC STAKGRAPH WEBHOOK");
       }
     } catch (e) {
       console.error("Failed to persist ingestRefId from async sync", e);

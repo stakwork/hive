@@ -1,7 +1,10 @@
+import { getServiceConfig } from "@/config/services";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
+import { getGithubWebhookCallbackUrl } from "@/lib/url";
+import { WebhookService } from "@/services/github/WebhookService";
 import { PoolManagerService } from "@/services/pool-manager";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
@@ -12,9 +15,6 @@ import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { WebhookService } from "@/services/github/WebhookService";
-import { getServiceConfig } from "@/config/services";
-import { getGithubWebhookCallbackUrl } from "@/lib/url";
 
 import { z } from "zod";
 
@@ -26,6 +26,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required"),
   repositoryUrl: z.string().url("Invalid repository URL"),
+  defaultBranch: z.string().optional(),
   swarmUrl: z.string().url("Invalid swarm URL"),
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
   swarmApiKey: z.string().optional(),
@@ -68,6 +69,7 @@ const stakgraphSettingsSchema = z.object({
         env: z.record(z.string()).optional(),
         language: z.string().optional(),
         interpreter: z.string().optional(),
+        cwd: z.string().optional(),
       }),
     )
     .optional()
@@ -139,6 +141,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: swarm.name || "",
         description: swarm.repositoryDescription || "",
         repositoryUrl: swarm.repositoryUrl || "",
+        defaultBranch: swarm.defaultBranch || "",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
@@ -206,6 +209,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  console.log("PUT request received");
+
   try {
     const session = await getServerSession(authOptions);
     const { slug } = await params;
@@ -268,6 +273,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       repositoryName: settings.name,
       repositoryDescription: settings.description,
       repositoryUrl: settings.repositoryUrl,
+      defaultBranch: settings.defaultBranch,
       swarmUrl: settings.swarmUrl,
       status: SwarmStatus.ACTIVE, // auto active
       swarmSecretAlias: settings.swarmSecretAlias,
@@ -324,7 +330,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         repositoryName: settings.name,
       });
 
-      if (defaultBranch) {
+      // Update defaultBranch from GitHub if it's different and user didn't provide a custom value
+      console.log(
+        "=====> GitHub defaultBranch:",
+        defaultBranch,
+        "User provided:",
+        settings.defaultBranch,
+        "in request body:",
+        body.defaultBranch,
+      );
+      const userProvidedBranch = body.defaultBranch && body.defaultBranch !== "main";
+      if (defaultBranch && !userProvidedBranch && defaultBranch !== settings.defaultBranch) {
+        console.log("=====> Updating swarm defaultBranch to:", defaultBranch);
         await db.swarm.update({
           where: { id: swarm.id },
           data: { defaultBranch },
@@ -345,7 +362,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           // TODO: This is a solution to preserve data structure.
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
-          const github_pat = await getGithubUsernameAndPAT(session?.user.id);
+          const github_pat = await getGithubUsernameAndPAT(userId, slug);
           await poolManager.updatePoolData(
             swarm.id,
             decryptedPoolApiKey,
@@ -361,7 +378,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             files,
             settings.poolCpu,
             settings.poolMemory,
-            github_pat?.appAccessToken || github_pat?.pat || "",
+            github_pat?.token || "",
             github_pat?.username || "",
           );
         }

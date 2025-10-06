@@ -1,20 +1,21 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { POST } from "@/app/api/auth/revoke-github/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-
-// Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+import {
+  createAuthenticatedSession,
+  mockUnauthenticatedSession,
+  expectSuccess,
+  expectUnauthorized,
+  expectError,
+  generateUniqueId,
+  getMockedSession,
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
 
 describe("POST /api/auth/revoke-github Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
@@ -35,8 +36,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       // Create test user with real database operations
       const testUser = await tx.user.create({
         data: {
-          id: `test-user-${Date.now()}-${Math.random()}`,
-          email: `test-${Date.now()}@example.com`,
+          id: generateUniqueId("test-user"),
+          email: `test-${generateUniqueId()}@example.com`,
           name: "Test User",
         },
       });
@@ -45,11 +46,11 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       const encryptedToken = encryptionService.encryptField("access_token", accessToken);
       const testAccount = await tx.account.create({
         data: {
-          id: `test-account-${Date.now()}-${Math.random()}`,
+          id: generateUniqueId("test-account"),
           userId: testUser.id,
           type: "oauth",
           provider: "github",
-          providerAccountId: `${Date.now()}`,
+          providerAccountId: generateUniqueId(),
           access_token: JSON.stringify(encryptedToken),
           scope: "read:user,repo",
         },
@@ -76,8 +77,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       if (includeSessions) {
         const session1 = await tx.session.create({
           data: {
-            id: `session-1-${Date.now()}`,
-            sessionToken: `session_token_1_${Date.now()}`,
+            id: generateUniqueId("session-1"),
+            sessionToken: `session_token_1_${generateUniqueId()}`,
             userId: testUser.id,
             expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30), // 30 days
           },
@@ -85,8 +86,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
         const session2 = await tx.session.create({
           data: {
-            id: `session-2-${Date.now()}`,
-            sessionToken: `session_token_2_${Date.now()}`,
+            id: generateUniqueId("session-2"),
+            sessionToken: `session_token_2_${generateUniqueId()}`,
             userId: testUser.id,
             expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30), // 30 days
           },
@@ -110,9 +111,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         await createTestUserWithGitHubAccount();
 
       // Mock successful session
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock successful GitHub API revocation
       mockFetch.mockResolvedValue({
@@ -121,14 +120,9 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         statusText: "No Content",
       });
 
-      const request = new NextRequest("http://localhost:3000/api/auth/revoke-github", {
-        method: "POST",
-      });
-
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
 
       // Verify GitHub API was called with correct parameters
@@ -171,9 +165,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle successful revocation even when GitHub API fails", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock GitHub API failure (but endpoint should still clean up database)
       mockFetch.mockResolvedValue({
@@ -183,9 +175,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       });
 
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
 
       // Verify database cleanup still occurred despite GitHub API failure
@@ -197,33 +188,24 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
     test("should handle revocation when no access token exists", async () => {
       // Create account without access token
-      const testUser = await db.user.create({
-        data: {
-          id: `test-user-no-token-${Date.now()}`,
-          email: `test-no-token-${Date.now()}@example.com`,
-          name: "Test User No Token",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User No Token" });
 
       const testAccount = await db.account.create({
         data: {
-          id: `test-account-no-token-${Date.now()}`,
+          id: generateUniqueId("test-account-no-token"),
           userId: testUser.id,
           type: "oauth",
           provider: "github",
-          providerAccountId: `${Date.now()}`,
+          providerAccountId: generateUniqueId(),
           // No access_token field
         },
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
 
       // Verify GitHub API was not called
@@ -239,18 +221,16 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
   describe("Authentication and authorization scenarios", () => {
     test("should return 401 for unauthenticated user", async () => {
-      mockGetServerSession.mockResolvedValue(null);
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const response = await POST();
-      const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data).toEqual({ error: "Unauthorized" });
+      await expectUnauthorized(response);
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
     test("should return 401 for session without user ID", async () => {
-      mockGetServerSession.mockResolvedValue({
+      getMockedSession().mockResolvedValue({
         user: { email: "test@example.com" }, // Missing id field
       });
 
@@ -264,17 +244,9 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
     test("should return 404 when no GitHub account exists", async () => {
       // Create user without GitHub account
-      const testUser = await db.user.create({
-        data: {
-          id: `test-user-no-github-${Date.now()}`,
-          email: `test-no-github-${Date.now()}@example.com`,
-          name: "Test User No GitHub",
-        },
-      });
+      const testUser = await createTestUser({ name: "Test User No GitHub" });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const response = await POST();
       const data = await response.json();
@@ -292,9 +264,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         accessToken: originalToken,
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -303,9 +273,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       });
 
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
 
       // Verify GitHub API was called with decrypted token
@@ -339,9 +308,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         },
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const response = await POST();
 
@@ -360,17 +327,14 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle network errors when calling GitHub API", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock network error
       mockFetch.mockRejectedValue(new Error("Network error"));
 
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
 
       // Verify database cleanup still occurred
@@ -391,7 +355,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         // Create fresh test data for each scenario
         const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-        mockGetServerSession.mockResolvedValue({
+        getMockedSession().mockResolvedValue({
           user: { id: testUser.id, email: testUser.email },
         });
 
@@ -421,9 +385,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         includeSessions: true,
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -438,9 +400,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(sessionsBefore.length).toBeGreaterThan(0);
 
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
 
       // Verify all sessions were deleted
@@ -455,9 +416,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
         includeSessions: false, // No sessions created
       });
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -466,9 +425,8 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       });
 
       const response = await POST();
-      const data = await response.json();
+      const data = await expectSuccess(response);
 
-      expect(response.status).toBe(200);
       expect(data).toEqual({ success: true });
     });
   });
@@ -477,13 +435,11 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should return 500 for unexpected database errors", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock database error by using invalid user ID
       const invalidUserId = "non-existent-user-id";
-      mockGetServerSession.mockResolvedValue({
+      getMockedSession().mockResolvedValue({
         user: { id: invalidUserId, email: "invalid@example.com" },
       });
 
@@ -497,9 +453,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle concurrent revocation attempts", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -524,9 +478,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
     test("should handle missing GitHub client credentials", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      mockGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email },
-      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Temporarily unset environment variables
       const originalClientId = process.env.GITHUB_CLIENT_ID;

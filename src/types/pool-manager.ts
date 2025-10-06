@@ -87,6 +87,10 @@ export interface DeletePoolRequest {
   name: string;
 }
 
+export interface DeleteUserRequest {
+  username: string;
+}
+
 export interface PoolUser {
   email: string;
   username: string;
@@ -114,4 +118,17 @@ export interface AuthBody {
 export interface PoolManagerAuthResponse {
   success: boolean;
   token: string;
+}
+
+export interface PoolStatus {
+  runningVms: number;
+  pendingVms: number;
+  failedVms: number;
+  usedVms: number;
+  unusedVms: number;
+  lastCheck: string;
+}
+
+export interface PoolStatusResponse {
+  status: PoolStatus;
 }

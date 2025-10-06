@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { getUserWorkspaces } from "@/services/workspace";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Building2, Plus, Users, Calendar, ArrowRight, Lock } from "lucide-react";
+import { Building2, Plus, Users, Calendar, ArrowRight, Lock, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { LogoutButton } from "./LogoutButton";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
@@ -20,11 +21,8 @@ export default async function WorkspacesPage() {
   const userId = (session.user as { id: string }).id;
   const userWorkspaces = await getUserWorkspaces(userId);
 
-  if (userWorkspaces.length === 0) {
-    redirect("/onboarding/workspace");
-  }
-
-  // Check if user is at workspace limit
+  // Don't redirect if no workspaces - show empty state instead
+  const hasWorkspaces = userWorkspaces.length > 0;
   const isAtLimit = userWorkspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
 
   return (
@@ -37,14 +35,26 @@ export default async function WorkspacesPage() {
               <Building2 className="w-6 h-6 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold mb-2">Choose Your Workspace</h1>
+          <h1 className="text-3xl font-bold mb-2">
+            {hasWorkspaces ? "Choose Your Workspace" : "Your Workspaces"}
+          </h1>
           <p className="text-muted-foreground">
-            Welcome back, {session.user.name || session.user.email}
+            Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}
           </p>
         </div>
 
         {/* Workspaces List */}
         <div className="space-y-3 mb-8">
+          {!hasWorkspaces && (
+            <>
+              {/* Empty State Message */}
+              <div className="text-center mb-6">
+                <p className="text-muted-foreground">
+                  No workspaces yet. Ask an admin to add you or create your own.
+                </p>
+              </div>
+            </>
+          )}
           {userWorkspaces.map((workspace) => (
             <Card key={workspace.id} className="group hover:shadow-md transition-all duration-200">
               <Link href={`/w/${workspace.slug}`} className="block">

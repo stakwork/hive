@@ -1,7 +1,7 @@
 "use client";
 
-import { useContext } from "react";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
+import { useContext } from "react";
 
 /**
  * Hook for workspace operations
@@ -28,6 +28,7 @@ export function useWorkspace() {
     refreshWorkspaces,
     refreshCurrentWorkspace,
     refreshTaskNotifications,
+    updateWorkspace,
     hasAccess,
   } = context;
 
@@ -55,6 +56,7 @@ export function useWorkspace() {
     refreshWorkspaces,
     refreshCurrentWorkspace,
     refreshTaskNotifications,
+    updateWorkspace,
 
     // Helper methods
     isOwner: role === "OWNER",

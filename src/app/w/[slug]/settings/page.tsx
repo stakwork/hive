@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
-import { VMConfigSection } from "@/components/vm-config";
+import { VMConfigSection } from "@/components/pool-status";
 import { PageHeader } from "@/components/ui/page-header";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { notFound } from "next/navigation";

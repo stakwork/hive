@@ -20,6 +20,7 @@ const initialState = {
   recommendationsLoading: false,
   showAll: false,
   runningJanitors: new Set<string>(),
+  taskCoordinatorEnabled: false,
 };
 
 type InsightsStore = {
@@ -31,11 +32,13 @@ type InsightsStore = {
   showAll: boolean;
   runningJanitors: Set<string>;
   workspaceSlug: string | null;
+  taskCoordinatorEnabled: boolean;
 
   // Actions
   fetchRecommendations: (slug: string) => Promise<void>;
   fetchJanitorConfig: (slug: string) => Promise<void>;
   toggleJanitor: (slug: string, configKey: string) => Promise<void>;
+  toggleTaskCoordinator: (slug: string) => Promise<void>;
   runJanitor: (slug: string, janitorId: string) => Promise<void>;
   acceptRecommendation: (id: string) => Promise<any>;
   dismissRecommendation: (id: string) => Promise<void>;
@@ -70,13 +73,16 @@ export const useInsightsStore = create<InsightsStore>()(
     // Fetch janitor config
     fetchJanitorConfig: async (slug: string) => {
       if (!slug) return;
-      
+
       try {
         set({ loading: true });
         const response = await fetch(`/api/workspaces/${slug}/janitors/config`);
         if (response.ok) {
           const data = await response.json();
-          set({ janitorConfig: data.config });
+          set({
+            janitorConfig: data.config,
+            taskCoordinatorEnabled: data.config.taskCoordinatorEnabled || false
+          });
         }
       } catch (error) {
         console.error("Error fetching janitor config:", error);
@@ -101,10 +107,40 @@ export const useInsightsStore = create<InsightsStore>()(
         
         if (response.ok) {
           const data = await response.json();
-          set({ janitorConfig: data.config });
+          set({
+            janitorConfig: data.config,
+            taskCoordinatorEnabled: data.config.taskCoordinatorEnabled || false
+          });
         }
       } catch (error) {
         console.error("Error toggling janitor:", error);
+        throw error;
+      }
+    },
+
+    // Toggle Task Coordinator
+    toggleTaskCoordinator: async (slug: string) => {
+      const state = get();
+      if (!slug) return;
+
+      try {
+        const response = await fetch(`/api/workspaces/${slug}/janitors/config`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskCoordinatorEnabled: !state.taskCoordinatorEnabled
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          set({
+            janitorConfig: data.config,
+            taskCoordinatorEnabled: data.config.taskCoordinatorEnabled || false
+          });
+        }
+      } catch (error) {
+        console.error("Error toggling Task Coordinator:", error);
         throw error;
       }
     },

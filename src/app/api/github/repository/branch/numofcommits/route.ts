@@ -20,11 +20,12 @@ export async function GET(request: Request) {
 
     const userId = (session.user as { id: string }).id;
 
+    // Use user's OAuth token for branch operations (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);
-    if (!githubProfile?.pat) {
+    if (!githubProfile?.token) {
       return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
     }
-    const pat = githubProfile.appAccessToken || githubProfile.pat;
+    const pat = githubProfile.token;
 
     function parseOwnerRepo(url: string): { owner: string; repo: string } {
       const u = url.replace(/\.git$/i, "");

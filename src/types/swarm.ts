@@ -1,9 +1,13 @@
 // Swarm-specific types and interfaces
 
 export interface CreateSwarmRequest {
-  name: string;
+  // name: string;
   instance_type: string;
   password?: string;
+}
+
+export interface StopSwarmRequest {
+  instance_id: string;
 }
 
 export interface Swarm {
@@ -21,7 +25,13 @@ export interface CreateSwarmResponse {
     swarm_id: string;
     address: string;
     x_api_key: string;
+    ec2_id: string;
   };
+}
+
+export interface StopSwarmResponse {
+  success: boolean;
+  message: string;
 }
 
 export interface ValidateUriResponse {

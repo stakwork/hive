@@ -438,10 +438,10 @@ describe("POST /api/chat/message Integration Tests", () => {
       mockDb.task.update.mockResolvedValue({} as any);
 
       // Mock GitHub profile
-      const { getGithubUsernameAndPAT } = require("@/lib/github");
+      const { getGithubUsernameAndPAT } = require("@/lib/auth/nextauth");
       getGithubUsernameAndPAT.mockResolvedValue({
         username: "testuser",
-        pat: "github_pat_test",
+        token: "github_pat_test",
       });
 
       // Mock Stakwork API call

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
+  BookOpen,
   CheckSquare,
   LayoutDashboard,
   Menu,
@@ -13,13 +14,13 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import { Badge } from "@/components/ui/badge";
 
 
 
@@ -60,13 +61,14 @@ const baseNavigationItems = [
   // { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
+  { icon: BookOpen, label: "Learn", href: "/learn" },
   // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
   const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
-  
+
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
@@ -90,7 +92,7 @@ export function Sidebar({ user }: SidebarProps) {
     if (href === "/tasks") {
       refreshTaskNotifications();
     }
-    
+
     if (workspaceSlug) {
       const fullPath =
         href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
@@ -117,6 +119,7 @@ export function Sidebar({ user }: SidebarProps) {
             return (
               <li key={item.href}>
                 <Button
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                   variant={isActive ? "secondary" : "ghost"}
                   className={`w-full justify-start ${isActive
                     ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
@@ -142,6 +145,7 @@ export function Sidebar({ user }: SidebarProps) {
       {/* Settings */}
       <div className="p-4 pb-2">
         <Button
+          data-testid="settings-button"
           variant="ghost"
           className="w-full justify-start"
           onClick={() => handleNavigate("/settings")}
@@ -185,7 +189,7 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-50`}
+        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
           <SidebarContent />

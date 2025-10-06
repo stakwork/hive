@@ -1,6 +1,6 @@
 "use client";
 
-import { TWizardStep } from "@/stores/useWizardStore";
+import { TWizardStep } from ".";
 import { componentsMap } from "./wizard-steps";
 import { DefaultStep } from "./wizard-steps/default-step";
 
@@ -12,10 +12,8 @@ interface WizardStepRendererProps {
 export function WizardStepRenderer({
   step,
   onNext,
-}: WizardStepRendererProps) {
+}: Readonly<WizardStepRendererProps>) {
   const StepComponent = componentsMap[step];
-
-  console.log("StepComponent", step);
 
   if (!StepComponent) {
     return <DefaultStep step={step} handleBackToStep={() => { }} />;

@@ -1,11 +1,13 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import SessionProvider from "@/providers/SessionProvider";
-import { ThemeProvider } from "@/providers/theme-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
+import SessionProvider from "@/providers/SessionProvider";
+import { ThemeProvider } from "@/providers/theme-provider";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import Script from "next/script";
+import "./globals.css";
+import ModalClient from "./ModalClient";
+import QueryProvider from "@/providers/QueryProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -37,7 +39,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>
-              <WorkspaceProvider>{children}</WorkspaceProvider>
+              <WorkspaceProvider>
+                <QueryProvider>
+                  <ModalClient>{children}</ModalClient>
+                </QueryProvider>
+              </WorkspaceProvider>
             </SessionProvider>
           </ThemeProvider>
         </ToastProvider>

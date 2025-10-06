@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { SwarmStatus, SwarmWizardStep, StepStatus } from "@prisma/client";
+import { SwarmStatus } from "@prisma/client";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
@@ -55,7 +55,7 @@ vi.mock("@/lib/encryption", () => {
           version: "1",
           encryptedAt: new Date().toISOString(),
         },
-      }))
+      })),
     ),
   };
 });
@@ -128,10 +128,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmApiKey",
-        "secret-api-key"
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmApiKey", "secret-api-key");
 
       expect(db.swarm.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -139,7 +136,7 @@ describe("saveOrUpdateSwarm", () => {
             swarmApiKey: expect.stringContaining("encrypted_secret-api-key"),
           }),
           select: expect.any(Object),
-        })
+        }),
       );
     });
 
@@ -152,10 +149,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmPassword",
-        "secret-password"
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmPassword", "secret-password");
 
       expect(db.swarm.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -163,7 +157,7 @@ describe("saveOrUpdateSwarm", () => {
             swarmPassword: expect.stringContaining("encrypted_secret-password"),
           }),
           select: expect.any(Object),
-        })
+        }),
       );
     });
 
@@ -241,27 +235,6 @@ describe("saveOrUpdateSwarm", () => {
         select: expect.any(Object),
       });
     });
-
-    it("should create a swarm with all wizard-related fields", async () => {
-      const params = {
-        workspaceId: mockWorkspaceId,
-        name: "test-swarm",
-        wizardStep: SwarmWizardStep.REPOSITORY_SELECTION,
-        stepStatus: StepStatus.COMPLETED,
-        wizardData: { selectedRepo: "test/repo", branch: "main" },
-      };
-
-      await saveOrUpdateSwarm(params);
-
-      expect(db.swarm.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          wizardStep: SwarmWizardStep.REPOSITORY_SELECTION,
-          stepStatus: StepStatus.COMPLETED,
-          wizardData: { selectedRepo: "test/repo", branch: "main" },
-        }),
-        select: expect.any(Object),
-      });
-    });
   });
 
   describe("when updating an existing swarm", () => {
@@ -270,7 +243,6 @@ describe("saveOrUpdateSwarm", () => {
       workspaceId: mockWorkspaceId,
       name: "existing-swarm",
       status: SwarmStatus.PENDING,
-      wizardData: { existingField: "value" },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -307,28 +279,6 @@ describe("saveOrUpdateSwarm", () => {
       });
     });
 
-    it("should merge wizard data when updating", async () => {
-      const params = {
-        workspaceId: mockWorkspaceId,
-        wizardData: { newField: "newValue", anotherField: 123 },
-      };
-
-      await saveOrUpdateSwarm(params);
-
-      expect(db.swarm.update).toHaveBeenCalledWith({
-        where: { workspaceId: mockWorkspaceId },
-        data: expect.objectContaining({
-          wizardData: {
-            existingField: "value", // preserved from existing
-            newField: "newValue", // added from params
-            anotherField: 123, // added from params
-          },
-          updatedAt: expect.any(Date),
-        }),
-        select: expect.any(Object),
-      });
-    });
-
     it("should update encrypted fields properly", async () => {
       const params = {
         workspaceId: mockWorkspaceId,
@@ -338,14 +288,8 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmApiKey",
-        "updated-api-key"
-      );
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "swarmPassword",
-        "updated-password"
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmApiKey", "updated-api-key");
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("swarmPassword", "updated-password");
 
       expect(db.swarm.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -356,7 +300,7 @@ describe("saveOrUpdateSwarm", () => {
             updatedAt: expect.any(Date),
           }),
           select: expect.any(Object),
-        })
+        }),
       );
     });
 
@@ -412,9 +356,7 @@ describe("saveOrUpdateSwarm", () => {
         name: "test-swarm",
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Database connection failed"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Database connection failed");
     });
 
     it("should handle create operation errors", async () => {
@@ -427,9 +369,7 @@ describe("saveOrUpdateSwarm", () => {
         name: "test-swarm",
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Failed to create swarm"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Failed to create swarm");
     });
 
     it("should handle update operation errors", async () => {
@@ -443,9 +383,7 @@ describe("saveOrUpdateSwarm", () => {
         status: SwarmStatus.ACTIVE,
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Failed to update swarm"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Failed to update swarm");
     });
   });
 
@@ -462,9 +400,7 @@ describe("saveOrUpdateSwarm", () => {
         swarmApiKey: "secret-key",
       };
 
-      await expect(saveOrUpdateSwarm(params)).rejects.toThrow(
-        "Encryption failed"
-      );
+      await expect(saveOrUpdateSwarm(params)).rejects.toThrow("Encryption failed");
     });
 
     it("should not call encryption for fields that are undefined", async () => {
@@ -510,16 +446,12 @@ describe("saveOrUpdateSwarm", () => {
         poolName: "test-pool",
         poolCpu: "4",
         poolMemory: "8Gi",
-        services: [{ baseURL: "https://service.com", apiKey: "key" }],
+        services: [{ name: "test-service", port: 3000, scripts: { start: "npm start" } }],
         swarmId: "custom-swarm-id",
         swarmSecretAlias: "secret-alias",
         ingestRefId: "ingest-ref-123",
-        wizardStep: SwarmWizardStep.ENVIRONMENT_SETUP,
-        stepStatus: StepStatus.IN_PROGRESS,
-        containerFiles: { "Dockerfile": "FROM node:18" },
-        wizardData: { customField: "value" },
+        containerFiles: { Dockerfile: "FROM node:18" },
         defaultBranch: "main",
-        githubInstallationId: "github-install-123",
       };
 
       await saveOrUpdateSwarm(params);
@@ -538,12 +470,8 @@ describe("saveOrUpdateSwarm", () => {
           poolCpu: "4",
           poolMemory: "8Gi",
           swarmSecretAlias: "secret-alias",
-          wizardStep: SwarmWizardStep.ENVIRONMENT_SETUP,
-          stepStatus: StepStatus.IN_PROGRESS,
-          containerFiles: { "Dockerfile": "FROM node:18" },
-          wizardData: { customField: "value" },
+          containerFiles: { Dockerfile: "FROM node:18" },
           defaultBranch: "main",
-          githubInstallationId: "github-install-123",
           swarmId: "custom-swarm-id",
           ingestRefId: "ingest-ref-123",
           // Verify encrypted fields are JSON strings
@@ -563,7 +491,7 @@ describe("saveOrUpdateSwarm", () => {
               }),
             }),
           ]),
-          services: [{ baseURL: "https://service.com", apiKey: "key" }],
+          services: [{ name: "test-service", port: 3000, scripts: { start: "npm start" } }],
         }),
         select: expect.any(Object),
       });

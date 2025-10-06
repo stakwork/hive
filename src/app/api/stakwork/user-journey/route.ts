@@ -113,9 +113,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
+    // Get workspace slug for GitHub credentials
+    const workspaceData = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspaceData) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
     // Get user's GitHub profile (access token and username)
-    const githubProfile = await getGithubUsernameAndPAT(userId);
-    const accessToken = githubProfile?.appAccessToken || githubProfile?.pat || null;
+    const githubProfile = await getGithubUsernameAndPAT(userId, workspaceData.slug);
+    const accessToken = githubProfile?.token || null;
     const username = githubProfile?.username || null;
 
     // Find the swarm associated with this workspace

@@ -28,6 +28,8 @@ import {
   WorkspaceWithRole,
 } from "@/types/workspace";
 import { WorkspaceRole } from "@prisma/client";
+import { getServiceConfig } from "@/config/services";
+import { SwarmService } from "@/services/swarm";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -38,7 +40,7 @@ function hasValidApiKey(stakworkApiKey: string | null): boolean {
   if (!stakworkApiKey) {
     return false;
   }
-  
+
   try {
     const decryptedKey = encryptionService.decryptField("stakworkApiKey", stakworkApiKey);
     return !!decryptedKey && decryptedKey.trim().length > 0;
@@ -142,7 +144,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true },
       },
       repositories: {
         select: {
@@ -152,6 +154,7 @@ export async function getWorkspaceById(
           branch: true,
           status: true,
           updatedAt: true,
+
         },
       },
     },
@@ -177,6 +180,8 @@ export async function getWorkspaceById(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+      ingestRefId: workspace.swarm?.ingestRefId || null,
+      poolState: workspace.swarm?.poolState || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -211,6 +216,8 @@ export async function getWorkspaceById(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    ingestRefId: workspace.swarm?.ingestRefId || null,
+    poolState: workspace.swarm?.poolState || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -236,7 +243,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true },
       },
       repositories: {
         select: {
@@ -271,6 +278,8 @@ export async function getWorkspaceBySlug(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+      ingestRefId: workspace.swarm?.ingestRefId || null,
+      poolState: workspace.swarm?.poolState || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -305,6 +314,8 @@ export async function getWorkspaceBySlug(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    ingestRefId: workspace.swarm?.ingestRefId || null,
+    poolState: workspace.swarm?.poolState || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -564,7 +575,6 @@ export async function deleteWorkspaceBySlug(
   // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
-
   if (!workspace) {
     throw new Error("Workspace not found or access denied");
   }
@@ -573,8 +583,137 @@ export async function deleteWorkspaceBySlug(
     throw new Error("Only workspace owners can delete workspaces");
   }
 
+  // Check for associated Swarm infrastructure
+  const swarm = await db.swarm.findFirst({
+    where: {
+      workspaceId: workspace.id,
+    },
+    select: {
+      id: true,
+      name: true,
+      poolApiKey: true,
+      ec2Id: true,
+    },
+  });
 
-  // Soft delete the workspace
+  // Delete associated pool and pool user in Pool Manager if it exists
+  if (swarm && swarm.poolApiKey) {
+    const poolName = swarm.id;
+    const poolManagerUrl = process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api";
+
+    // Delete pool using poolApiKey
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
+
+      if (decryptedApiKey) {
+        console.log(`Attempting to delete pool: ${poolName} for workspace: ${slug}`);
+        const response = await fetch(`${poolManagerUrl}/pools/${poolName}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${decryptedApiKey}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        console.log(`Delete pool response status: ${response.status}`);
+
+        if (!response.ok) {
+          // 401 means the pool API key is invalid/expired, 404 means pool doesn't exist
+          // Both cases mean we can proceed with workspace deletion
+          if (response.status === 401) {
+            console.log(`Pool API key appears invalid/expired for pool ${poolName}, proceeding with workspace deletion`);
+          } else if (response.status === 404) {
+            console.log(`Pool ${poolName} not found, proceeding with workspace deletion`);
+          } else {
+            throw new Error(`Pool deletion failed with status ${response.status}`);
+          }
+        } else {
+          console.log(`Successfully deleted pool ${poolName}`);
+        }
+      } else {
+        console.log(`No valid pool API key found for pool ${poolName}`);
+      }
+    } catch (error) {
+      // Log error but don't block workspace deletion
+      console.error(`Failed to delete pool ${poolName} for workspace ${slug}:`, error);
+    }
+
+    // Delete the pool user using admin authentication
+    if (swarm.name) {
+      try {
+        console.log(`Attempting to delete pool user: ${swarm.name} for workspace: ${slug}`);
+
+        // First authenticate with Pool Manager admin credentials
+        const authResponse = await fetch(`${poolManagerUrl}/auth/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: process.env.POOL_MANAGER_API_USERNAME,
+            password: process.env.POOL_MANAGER_API_PASSWORD,
+          }),
+        });
+
+        if (authResponse.ok) {
+          const authData = await authResponse.json();
+
+          if (authData.success && authData.token) {
+            // Delete the user using the admin token
+            const deleteResponse = await fetch(`${poolManagerUrl}/users/${swarm.name}`, {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${authData.token}`,
+                "Content-Type": "application/json",
+              },
+            });
+
+            if (!deleteResponse.ok && deleteResponse.status !== 404) {
+              console.error(`Pool user deletion returned status ${deleteResponse.status}`);
+              throw new Error(`Pool user deletion failed with status ${deleteResponse.status}`);
+            }
+
+            if (deleteResponse.ok) {
+              console.log(`Successfully deleted pool user ${swarm.name}`);
+            } else if (deleteResponse.status === 404) {
+              console.log(`Pool user ${swarm.name} not found, proceeding with workspace deletion`);
+            }
+          } else {
+            console.error(`Pool Manager authentication failed`);
+          }
+        } else {
+          console.error(`Pool Manager authentication request failed with status: ${authResponse.status}`);
+        }
+      } catch (error) {
+        // Log error but don't block workspace deletion
+        console.error(`Failed to delete pool user ${swarm.name} for workspace ${slug}:`, error);
+      }
+    }
+  }
+
+  // Deletes the ec2 instance
+  if (swarm?.ec2Id) {
+    try {
+      console.log(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
+
+      const swarmConfig = getServiceConfig("swarm");
+      const swarmService = new SwarmService(swarmConfig);
+      const apiResponse = await swarmService.stopSwarm({
+        instance_id: swarm.ec2Id,
+      });
+
+      if (!apiResponse?.success) {
+        throw new Error(`EC2 instance ${swarm.ec2Id} failed to delete`);
+      }
+
+      console.log(`Successfully deleted EC2 instance ${swarm.ec2Id}`);
+    } catch (error) {
+      // Log error but don't block workspace deletion
+      console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${slug}:`, error);
+    }
+  }
+
+  // Proceed with soft delete of workspace
   await softDeleteWorkspace(workspace.id);
 }
 

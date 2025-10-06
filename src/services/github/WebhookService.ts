@@ -37,7 +37,17 @@ export class WebhookService extends BaseServiceClass {
     defaultBranch: string | null;
     webhookId: number;
   }> {
-    const token = await this.getUserGithubAccessToken(userId);
+    // Get workspace slug for GitHub credentials
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
+
+    const token = await this.getUserGithubAccessToken(userId, workspace.slug);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
     const repository = await db.repository.upsert({
@@ -71,6 +81,7 @@ export class WebhookService extends BaseServiceClass {
       callbackUrl,
       events,
       active,
+      workspaceSlug: workspace.slug,
     });
 
     return {
@@ -112,6 +123,7 @@ export class WebhookService extends BaseServiceClass {
     callbackUrl,
     events = ["push", "pull_request"],
     active = true,
+    workspaceSlug,
   }: {
     userId: string;
     workspaceId: string;
@@ -119,8 +131,22 @@ export class WebhookService extends BaseServiceClass {
     callbackUrl: string;
     events?: string[];
     active?: boolean;
+    workspaceSlug?: string;
   }): Promise<{ id: number; secret: string }> {
-    const token = await this.getUserGithubAccessToken(userId);
+    // Get workspace slug for GitHub credentials if not provided
+    let slug = workspaceSlug;
+    if (!slug) {
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { slug: true }
+      });
+      if (!workspace) {
+        throw new Error("Workspace not found");
+      }
+      slug = workspace.slug;
+    }
+
+    const token = await this.getUserGithubAccessToken(userId, slug);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
     const repoRec = await db.repository.findUnique({
@@ -186,7 +212,17 @@ export class WebhookService extends BaseServiceClass {
   }
 
   async deleteRepoWebhook({ userId, repositoryUrl, workspaceId }: DeleteWebhookParams): Promise<void> {
-    const token = await this.getUserGithubAccessToken(userId);
+    // Get workspace slug for GitHub credentials
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { slug: true }
+    });
+
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
+
+    const token = await this.getUserGithubAccessToken(userId, workspace.slug);
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
 
     const repoRec = await db.repository.findUnique({
@@ -209,12 +245,12 @@ export class WebhookService extends BaseServiceClass {
     });
   }
 
-  private async getUserGithubAccessToken(userId: string): Promise<string> {
-    const githubProfile = await getGithubUsernameAndPAT(userId);
-    if (!githubProfile?.pat) {
+  private async getUserGithubAccessToken(userId: string, workspaceSlug: string): Promise<string> {
+    const githubProfile = await getGithubUsernameAndPAT(userId, workspaceSlug);
+    if (!githubProfile?.token) {
       throw new Error("GitHub access token not found for user");
     }
-    return githubProfile.appAccessToken || githubProfile.pat;
+    return githubProfile.token;
   }
 
   private async listHooks(

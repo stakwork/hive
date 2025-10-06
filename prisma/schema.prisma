@@ -78,33 +78,20 @@ model User {
   assignedTasks Task[] @relation("TaskAssignee")
 
   // Audit trail
-  createdFeatures    Feature[]   @relation("FeatureCreator")
-  updatedFeatures    Feature[]   @relation("FeatureUpdater")
-  createdUserStories UserStory[] @relation("UserStoryCreator")
-  updatedUserStories UserStory[] @relation("UserStoryUpdater")
   createdTasks       Task[]      @relation("TaskCreator")
   updatedTasks       Task[]      @relation("TaskUpdater")
-
-  // Comments and discussions
-  comments Comment[]
 
   // Janitor recommendations
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
   dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
 
+  // Source control tokens
+  sourceControlTokens SourceControlToken[]
+
   @@index([createdAt])
   @@index([deleted])
   @@index([email])
   @@map("users")
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@map("verification_tokens")
 }
 
 
@@ -139,6 +126,51 @@ model GitHubAuth {
 }
 
 // =============================================
+// SOURCE CONTROL INTEGRATION
+// =============================================
+
+model SourceControlOrg {
+  id                   String                @id @default(cuid())
+  type                 SourceControlOrgType  @default(ORG)
+  githubLogin          String                @unique // e.g. "anthropic", "evanfeenstra"
+  githubInstallationId Int                   @unique @map("github_installation_id")
+  name                 String?               // Display name
+  avatarUrl            String?               @map("avatar_url")
+  description          String?
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  // Relationships
+  tokens     SourceControlToken[]
+  workspaces Workspace[]
+
+  @@index([githubLogin])
+  @@index([githubInstallationId])
+  @@map("source_control_orgs")
+}
+
+model SourceControlToken {
+  id                  String           @id @default(cuid())
+  userId              String           @map("user_id")
+  sourceControlOrgId  String           @map("source_control_org_id")
+  token               String           // Encrypted app access token
+  refreshToken        String?          @map("refresh_token") // Encrypted refresh token
+  expiresAt           DateTime?        @map("expires_at")
+  scopes              String[]         @default([])
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  // Relationships
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceControlOrg SourceControlOrg @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceControlOrgId])
+  @@index([userId])
+  @@index([sourceControlOrgId])
+  @@map("source_control_tokens")
+}
+
+// =============================================
 // WORKSPACE & ORGANIZATION
 // =============================================
 
@@ -160,12 +192,15 @@ model Workspace {
   // Members of the workspace
   members WorkspaceMember[]
 
+  // Source control integration
+  sourceControlOrgId String?           @map("source_control_org_id")
+  sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: SetNull)
+
   // Infrastructure
   swarm        Swarm?
   repositories Repository[]
 
-  // PM Structure
-  products Product[]
+  // Tasks
   tasks    Task[]
 
   // Stakwork credentials
@@ -176,6 +211,7 @@ model Workspace {
 
   @@index([ownerId])
   @@index([deleted])
+  @@index([sourceControlOrgId])
   @@map("workspaces")
 }
 
@@ -206,10 +242,12 @@ model Swarm {
   swarmUrl     String?     @map("swarm_url") // https://{name}.sphinx.chat/api
   status       SwarmStatus @default(PENDING) // pending, active, failed, deleted
   instanceType String      @default("XL") @map("instance_type")
+  ec2Id        String?     @map("ec2_id")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
 
   // Stakgraph configuration fields
+  poolState             PoolState @default(NOT_STARTED) @map("pool_state")
   poolName              String? @map("pool_name")
   poolApiKey            String? @map("pool_api_key") // Pool API Key for Pool Manager
   poolCpu               String? @map("pool_cpu") // CPU allocation for pool tasks
@@ -223,10 +261,7 @@ model Swarm {
   environmentVariables  Json    @default("[]") @map("environment_variables")
   services              Json    @default("[]")
 
-  // Wizard progress tracking
-  wizardStep  SwarmWizardStep @default(WELCOME) @map("wizard_step")
-  stepStatus  StepStatus      @default(PENDING) @map("step_status")
-  wizardData  Json            @default("{}") @map("wizard_data")
+  // ingestion status tracking
   ingestRefId String?         @map("ingest_ref_id")
 
   // Generated container files
@@ -234,9 +269,6 @@ model Swarm {
 
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")
-
-  // GitHub App installation
-  githubInstallationId String? @map("github_installation_id")
 
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
@@ -259,7 +291,11 @@ model Repository {
   githubWebhookId     String? @map("github_webhook_id")
   githubWebhookSecret String? @map("github_webhook_secret")
 
-  // Repository belongs to workspace
+  // Test setup flags
+  testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
+  playwrightSetup       Boolean @default(false) @map("playwright_setup")
+
+  // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -269,133 +305,6 @@ model Repository {
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
   @@index([workspaceId])
   @@map("repositories")
-}
-
-// =============================================
-// PRODUCT MANAGEMENT HIERARCHY
-// =============================================
-
-model Product {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-  vision      String?
-
-  workspaceId String    @map("workspace_id")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  features Feature[]
-  roadmaps Roadmap[]
-
-  @@index([workspaceId])
-  @@index([deleted])
-  @@map("products")
-}
-
-// Goal / Objective
-model Feature {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-
-  productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // Phase support - 0 for main feature, 1,2,3... for phases
-  phase    Int       @default(0)
-  parentId String?   @map("parent_id")
-  parent   Feature?  @relation("FeaturePhases", fields: [parentId], references: [id])
-  phases   Feature[] @relation("FeaturePhases")
-
-  status   FeatureStatus @default(IDEA)
-  priority Priority      @default(MEDIUM)
-
-  // Audit fields
-  createdById String @map("created_by_id")
-  createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedById String @map("updated_by_id")
-  updatedBy   User   @relation("FeatureUpdater", fields: [updatedById], references: [id])
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  userStories  UserStory[]
-  requirements Requirement[]
-  roadmapItems RoadmapItem[]
-  comments     Comment[]     @relation("FeatureComments")
-
-  @@index([productId])
-  @@index([parentId])
-  @@index([status])
-  @@index([priority])
-  @@index([deleted])
-  @@map("features")
-}
-
-model UserStory {
-  id                 String  @id @default(cuid())
-  title              String
-  description        String?
-  acceptanceCriteria String? @map("acceptance_criteria")
-
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  priority    Priority    @default(MEDIUM)
-  storyPoints Int?        @map("story_points")
-  status      StoryStatus @default(BACKLOG)
-
-  // Audit fields
-  createdById String @map("created_by_id")
-  createdBy   User   @relation("UserStoryCreator", fields: [createdById], references: [id])
-  updatedById String @map("updated_by_id")
-  updatedBy   User   @relation("UserStoryUpdater", fields: [updatedById], references: [id])
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  comments Comment[] @relation("UserStoryComments")
-
-  @@index([featureId])
-  @@index([status])
-  @@index([priority])
-  @@index([deleted])
-  @@map("user_stories")
-}
-
-model Requirement {
-  id          String          @id @default(cuid())
-  title       String
-  description String?
-  type        RequirementType @default(FUNCTIONAL)
-
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  priority MoSCoWPriority    @default(SHOULD_HAVE)
-  status   RequirementStatus @default(DRAFT)
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  comments Comment[] @relation("RequirementComments")
-
-  @@index([featureId])
-  @@index([type])
-  @@index([status])
-  @@index([deleted])
-  @@map("requirements")
 }
 
 // Chat
@@ -441,7 +350,6 @@ model Task {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  comments     Comment[]     @relation("TaskComments")
   chatMessages ChatMessage[]
 
   @@index([workspaceId])
@@ -541,100 +449,6 @@ enum ArtifactType {
 }
 
 // =============================================
-// ROADMAP MANAGEMENT
-// =============================================
-
-model Roadmap {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-
-  productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  timeHorizon TimeHorizon @default(QUARTER) @map("time_horizon")
-  startDate   DateTime    @map("start_date")
-  endDate     DateTime    @map("end_date")
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  items RoadmapItem[]
-
-  @@index([productId])
-  @@index([deleted])
-  @@map("roadmaps")
-}
-
-model RoadmapItem {
-  id        String  @id @default(cuid())
-  roadmapId String  @map("roadmap_id")
-  roadmap   Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  plannedStartDate DateTime  @map("planned_start_date")
-  plannedEndDate   DateTime  @map("planned_end_date")
-  actualStartDate  DateTime? @map("actual_start_date")
-  actualEndDate    DateTime? @map("actual_end_date")
-
-  // Dependencies stored as array of roadmap item IDs
-  dependencies String[] @default([])
-  milestone    Boolean  @default(false)
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([roadmapId, featureId])
-  @@index([roadmapId])
-  @@index([featureId])
-  @@map("roadmap_items")
-}
-
-// =============================================
-// COMMUNICATION & COLLABORATION
-// =============================================
-
-model Comment {
-  id      String @id @default(cuid())
-  content String
-
-  // Polymorphic relationship - can comment on different entity types
-  entityType    CommentEntity @map("entity_type")
-  featureId     String?       @map("feature_id")
-  feature       Feature?      @relation("FeatureComments", fields: [featureId], references: [id], onDelete: Cascade)
-  userStoryId   String?       @map("user_story_id")
-  userStory     UserStory?    @relation("UserStoryComments", fields: [userStoryId], references: [id], onDelete: Cascade)
-  taskId        String?       @map("task_id")
-  task          Task?         @relation("TaskComments", fields: [taskId], references: [id], onDelete: Cascade)
-  requirementId String?       @map("requirement_id")
-  requirement   Requirement?  @relation("RequirementComments", fields: [requirementId], references: [id], onDelete: Cascade)
-
-  // Threading support
-  parentId String?   @map("parent_id")
-  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id])
-  replies  Comment[] @relation("CommentThread")
-
-  authorId String @map("author_id")
-  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  @@index([featureId])
-  @@index([userStoryId])
-  @@index([taskId])
-  @@index([requirementId])
-  @@index([authorId])
-  @@index([deleted])
-  @@map("comments")
-}
-
-// =============================================
 // JANITOR CONFIGURATION
 // =============================================
 
@@ -647,6 +461,9 @@ model JanitorConfig {
   integrationTestsEnabled Boolean @default(false) @map("integration_tests_enabled")
   e2eTestsEnabled         Boolean @default(false) @map("e2e_tests_enabled")
   securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
+
+  // Task Coordinator automation
+  taskCoordinatorEnabled  Boolean @default(false) @map("task_coordinator_enabled")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -745,19 +562,11 @@ enum RepositoryStatus {
   FAILED
 }
 
-enum FeatureStatus {
-  IDEA
-  PLANNED
-  IN_PROGRESS
-  DONE
-  CANCELLED
-}
-
-enum StoryStatus {
-  BACKLOG
-  IN_PROGRESS
-  DONE
-  CANCELLED
+enum PoolState {
+  NOT_STARTED
+  STARTED
+  FAILED
+  COMPLETE
 }
 
 enum TaskStatus {
@@ -781,41 +590,6 @@ enum Priority {
   MEDIUM
   HIGH
   CRITICAL
-}
-
-enum RequirementType {
-  FUNCTIONAL
-  NON_FUNCTIONAL
-  TECHNICAL
-  BUSINESS
-}
-
-enum MoSCoWPriority {
-  MUST_HAVE
-  SHOULD_HAVE
-  COULD_HAVE
-  WONT_HAVE
-}
-
-enum RequirementStatus {
-  DRAFT
-  APPROVED
-  IMPLEMENTED
-  REJECTED
-}
-
-enum TimeHorizon {
-  QUARTER
-  HALF_YEAR
-  YEAR
-  CUSTOM
-}
-
-enum CommentEntity {
-  FEATURE
-  USER_STORY
-  TASK
-  REQUIREMENT
 }
 
 enum SwarmWizardStep {
@@ -873,4 +647,9 @@ enum TaskSourceType {
   USER
   JANITOR
   SYSTEM
+}
+
+enum SourceControlOrgType {
+  ORG
+  USER
 }

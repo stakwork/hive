@@ -1,4 +1,4 @@
-import { StepStatus, WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, RepositoryStatus } from "@prisma/client";
 
 function normalizeStatus(status: string): string {
   return status.toLowerCase();
@@ -8,11 +8,6 @@ type StatusMapping = {
   [key: string]: string[];
 };
 
-const stepStatusMapping: StatusMapping = {
-  PROCESSING: ["inprogress", "in_progress", "running"],
-  COMPLETED: ["complete", "completed", "success"],
-  FAILED: ["fail", "error"],
-};
 
 const workflowStatusMapping: StatusMapping = {
   IN_PROGRESS: ["in_progress", "running", "processing"],
@@ -21,11 +16,7 @@ const workflowStatusMapping: StatusMapping = {
   HALTED: ["halted", "paused", "stopped"],
 };
 
-function mapStatus<T extends string>(
-  status: string,
-  mapping: StatusMapping,
-  defaultValue?: T,
-): T | null {
+function mapStatus<T extends string>(status: string, mapping: StatusMapping, defaultValue?: T): T | null {
   const normalized = normalizeStatus(status);
 
   for (const [enumValue, patterns] of Object.entries(mapping)) {
@@ -37,10 +28,27 @@ function mapStatus<T extends string>(
   return defaultValue || null;
 }
 
-export function mapStatusToStepStatus(status: string): StepStatus {
-  return mapStatus(status, stepStatusMapping, "PROCESSING") as StepStatus;
-}
 
 export function mapStakworkStatus(status: string): WorkflowStatus | null {
   return mapStatus(status, workflowStatusMapping) as WorkflowStatus | null;
+}
+
+
+export function stakgraphToRepositoryStatus(status: string): RepositoryStatus {
+  const normalized = normalizeStatus(status);
+
+  switch (normalized) {
+    case "inprogress":
+      return RepositoryStatus.PENDING;
+    case "complete":
+      return RepositoryStatus.SYNCED;
+    case "completed":
+      return RepositoryStatus.SYNCED;
+    case "synced":
+      return RepositoryStatus.SYNCED;
+    case "failed":
+      return RepositoryStatus.FAILED;
+    default:
+      throw new Error(`Unknown stakgraph status: ${status}`);
+  }
 }

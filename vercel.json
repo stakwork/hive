@@ -6,10 +6,13 @@
             "*": false
         }
     },
-    "crons": [
-        {
+    "crons": [{
             "path": "/api/cron/janitors",
             "schedule": "0 */6 * * *"
+        },
+        {
+            "path": "/api/cron/task-coordinator",
+            "schedule": "*/5 * * * *"
         }
     ]
 }

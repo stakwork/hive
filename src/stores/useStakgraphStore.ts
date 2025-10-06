@@ -18,6 +18,7 @@ const initialFormData: StakgraphSettings = {
   name: "",
   description: "",
   repositoryUrl: "",
+  defaultBranch: "main",
   swarmUrl: "",
   swarmSecretAlias: "",
   swarmApiKey: "",
@@ -131,6 +132,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
               name: settings.name || "",
               description: settings.description || "",
               repositoryUrl: settings.repositoryUrl || "",
+              defaultBranch: settings.defaultBranch || "main",
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",
@@ -269,6 +271,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           name: state.formData.name.trim(),
           description: state.formData.description.trim(),
           repositoryUrl: state.formData.repositoryUrl.trim(),
+          defaultBranch: state.formData.defaultBranch.trim(),
           swarmUrl: state.formData.swarmUrl.trim(),
           swarmSecretAlias: state.formData.swarmSecretAlias.trim(),
           poolName: state.formData.poolName.trim(),
@@ -394,6 +397,9 @@ export const useStakgraphStore = create<StakgraphStore>()(
       const newErrors = { ...state.errors };
       if (data.repositoryUrl !== undefined && newErrors.repositoryUrl) {
         delete newErrors.repositoryUrl;
+      }
+      if (data.defaultBranch !== undefined && newErrors.defaultBranch) {
+        delete newErrors.defaultBranch;
       }
       if (Object.keys(newErrors).length !== Object.keys(state.errors).length) {
         set({ errors: newErrors });

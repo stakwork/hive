@@ -1,12 +1,13 @@
-import { NextAuthOptions } from "next-auth";
-import GitHubProvider from "next-auth/providers/github";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
-import axios from "axios";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 import { getDefaultWorkspaceForUser } from "@/services/workspace";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import axios from "axios";
+import { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import GitHubProvider from "next-auth/providers/github";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -43,7 +44,7 @@ const getProviders = () => {
         clientSecret: process.env.GITHUB_CLIENT_SECRET!,
         authorization: {
           params: {
-            scope: "read:user user:email read:org repo admin:repo_hook admin:org_hook",
+            scope: "read:user user:email",
           },
         },
       }),
@@ -116,9 +117,40 @@ export const authOptions: NextAuthOptions = {
             user.id = existingUser.id;
           }
 
-          await ensureMockWorkspaceForUser(user.id as string);
+          // Create workspace atomically - this MUST succeed for auth to work
+          const workspaceSlug = await ensureMockWorkspaceForUser(user.id as string);
+
+          if (!workspaceSlug) {
+            logger.authError(
+              "Failed to create mock workspace - workspace slug is empty",
+              "SIGNIN_MOCK_WORKSPACE_FAILED",
+              { userId: user.id }
+            );
+            return false;
+          }
+
+          // Verify workspace was committed to DB before proceeding
+          // This ensures subsequent queries in middleware/pages will find it
+          const verifyWorkspace = await db.workspace.findFirst({
+            where: { ownerId: user.id as string, deleted: false },
+            select: { slug: true },
+          });
+
+          if (!verifyWorkspace) {
+            logger.authError(
+              "Mock workspace created but not found on verification - possible transaction issue",
+              "SIGNIN_MOCK_VERIFICATION_FAILED",
+              { userId: user.id, expectedSlug: workspaceSlug }
+            );
+            return false;
+          }
+
+          logger.authInfo("Mock workspace created successfully", "SIGNIN_MOCK_SUCCESS", {
+            userId: user.id,
+            workspaceSlug,
+          });
         } catch (error) {
-          console.error("Error handling mock authentication:", error);
+          logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
           return false;
         }
         return true;
@@ -192,14 +224,14 @@ export const authOptions: NextAuthOptions = {
             }
           }
         } catch (error) {
-          console.error("Error handling GitHub re-authentication:", error);
+          logger.authError("Failed to handle GitHub re-authentication", "SIGNIN_GITHUB", error);
         }
       }
       return true;
     },
     async session({ session, user, token }) {
       if (session.user) {
-        // For JWT sessions (mock provider), get data from token and attach default workspace
+        // For JWT sessions (mock provider), get data from token
         if (process.env.POD_URL && token) {
           (session.user as { id: string }).id = token.id as string;
           if (token.github) {
@@ -217,13 +249,28 @@ export const authOptions: NextAuthOptions = {
               followers?: number;
             };
           }
+
+          // Get workspace slug that was created in signIn callback
+          const uid = (session.user as { id: string }).id;
           try {
-            const uid = (session.user as { id: string }).id;
-            const ws = await getDefaultWorkspaceForUser(uid);
-            if (ws?.slug) {
-              (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = ws.slug;
+            const workspace = await db.workspace.findFirst({
+              where: { ownerId: uid, deleted: false },
+              select: { slug: true },
+            });
+
+            if (workspace?.slug) {
+              (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = workspace.slug;
+            } else {
+              // This should never happen if signIn callback succeeded
+              logger.authError(
+                "Mock workspace not found in session callback - signIn may have failed",
+                "SESSION_MOCK_WORKSPACE_MISSING",
+                { userId: uid }
+              );
             }
-          } catch {}
+          } catch (error) {
+            logger.authError("Failed to query mock workspace in session", "SESSION_MOCK", error);
+          }
           return session;
         }
 
@@ -318,12 +365,19 @@ export const authOptions: NextAuthOptions = {
                 },
               });
             } catch (err) {
+              console.log(err, "err");
               // If GitHub API fails, just skip
-              console.error("Failed to fetch GitHub profile:", err);
+              logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", {
+                hasAccount: !!account,
+                userId: user.id,
+              });
             }
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
-            console.log("GitHub account exists but token is revoked - user needs to re-authenticate");
+            logger.authInfo("GitHub account token revoked, re-authentication required", "SESSION_TOKEN_REVOKED", {
+              userId: user.id,
+              provider: account.provider,
+            });
           }
         }
 
@@ -376,7 +430,7 @@ export const authOptions: NextAuthOptions = {
           });
         }
       } catch (error) {
-        console.error("Error in linkAccount encryption:", error);
+        logger.authError("Failed to encrypt tokens during account linking", "LINKACCOUNT_ENCRYPTION", error);
       }
     },
   },
@@ -393,21 +447,25 @@ export const authOptions: NextAuthOptions = {
 
 interface GithubUsernameAndPAT {
   username: string;
-  pat: string;
-  appAccessToken: string | null;
+  token: string;
 }
 
 /**
- * Fetches the GitHub username and PAT (accessToken) for a given userId.
- * Returns { username, pat } or null if not found.
+ * Fetches the GitHub username and token for a given userId.
+ * If workspaceSlug is provided, uses workspace-specific app token.
+ * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
+ * Returns { username, token } or null if not found.
  */
-export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUsernameAndPAT | null> {
+export async function getGithubUsernameAndPAT(
+  userId: string,
+  workspaceSlug?: string,
+): Promise<GithubUsernameAndPAT | null> {
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
     return null;
   }
-  
+
   // Check for mock user (case insensitive, supports subdomains)
   if (user.email?.toLowerCase().includes("@mock.dev")) {
     return null;
@@ -418,54 +476,97 @@ export async function getGithubUsernameAndPAT(userId: string): Promise<GithubUse
   if (!githubAuth) {
     return null;
   }
-  
+
   // Check for valid username
-  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === '') {
+  if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === "") {
     return null;
   }
-  
-  // Get PAT from Account
-  const githubAccount = await db.account.findFirst({
-    where: { userId, provider: "github" },
-  });
-  
-  if (!githubAccount) {
-    return null;
-  }
-  
-  // Check if we have any access token (regular PAT or app token)
-  if (!githubAccount.access_token && !githubAccount.app_access_token) {
-    return null;
-  }
-  
-  let pat: string | undefined;
-  let appAccessToken: string | null = null;
-  
-  // Try regular PAT first
-  if (githubAccount.access_token) {
-    pat = encryptionService.decryptField("access_token", githubAccount.access_token);
-    
-    // Also decrypt app token if available
-    if (githubAccount.app_access_token) {
-      appAccessToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
+
+  // If no workspace provided, use user's OAuth token from Account table
+  if (!workspaceSlug) {
+    const account = await db.account.findFirst({
+      where: {
+        userId,
+        provider: "github",
+      },
+    });
+
+    if (!account?.access_token) {
+      return null;
     }
-  } else if (githubAccount.app_access_token) {
-    // Only app token available, use it as PAT too
-    const decryptedAppToken = encryptionService.decryptField("app_access_token", githubAccount.app_access_token);
-    pat = decryptedAppToken;
-    appAccessToken = decryptedAppToken;
-  } else {
+
+    try {
+      const encryptionService = EncryptionService.getInstance();
+      const token = encryptionService.decryptField("access_token", account.access_token);
+
+      return {
+        username: githubAuth.githubUsername,
+        token: token,
+      };
+    } catch (error) {
+      console.error("Failed to decrypt OAuth access token:", error);
+      return null;
+    }
+  }
+
+  // Get workspace and its source control org
+  const workspace = await db.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    include: {
+      sourceControlOrg: true,
+    },
+  });
+
+  if (!workspace?.sourceControlOrg) {
+    const account = await db.account.findFirst({
+      where: {
+        userId,
+        provider: "github",
+      },
+    });
+
+    if (!account?.access_token) {
+      return null;
+    }
+
+    try {
+      const encryptionService = EncryptionService.getInstance();
+      const token = encryptionService.decryptField("access_token", account.access_token);
+      console.error("=> falling back to personal access token!!! Not good");
+      return {
+        username: githubAuth.githubUsername,
+        token: token,
+      };
+    } catch (error) {
+      console.error("Failed to decrypt OAuth access token:", error);
+      return null;
+    }
+  }
+
+  // Get user's token for this source control org
+  const sourceControlToken = await db.sourceControlToken.findUnique({
+    where: {
+      userId_sourceControlOrgId: {
+        userId,
+        sourceControlOrgId: workspace.sourceControlOrg.id,
+      },
+    },
+  });
+
+  if (!sourceControlToken?.token) {
     return null;
   }
-  
-  // Ensure pat is defined
-  if (!pat) {
+
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    const token = encryptionService.decryptField("source_control_token", sourceControlToken.token);
+
+    return {
+      username: githubAuth.githubUsername,
+      token: token,
+    };
+  } catch (error) {
+    console.error("Failed to decrypt source control token:", error);
     return null;
   }
-  
-  return {
-    username: githubAuth.githubUsername,
-    pat,
-    appAccessToken,
-  };
 }

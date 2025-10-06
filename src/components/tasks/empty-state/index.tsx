@@ -1,5 +1,7 @@
 "use client";
 
+import { useModal } from "@/components/modals/ModlaProvider";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { FileText, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -17,6 +19,19 @@ interface EmptyStateProps {
 
 export function EmptyState({ workspaceSlug }: EmptyStateProps) {
   const router = useRouter();
+
+  const { workspace } = useWorkspace();
+
+  const open = useModal();
+
+  const handleClick = () => {
+    if (workspace?.poolState !== "COMPLETE") {
+      open("ServicesWizard");
+    } else {
+      router.push(`/w/${workspaceSlug}/task/new`);
+    }
+  }
+
 
   return (
     <Card>
@@ -30,7 +45,7 @@ export function EmptyState({ workspaceSlug }: EmptyStateProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Button onClick={() => router.push(`/w/${workspaceSlug}/task/new`)}>
+        <Button onClick={handleClick}>
           <Plus className="w-4 h-4 mr-2" />
           Create Your First Task
         </Button>

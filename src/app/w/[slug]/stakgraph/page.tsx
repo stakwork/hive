@@ -4,17 +4,18 @@ import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmFo
 import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
+import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { Webhook, Loader2, Save, ArrowLeft } from "lucide-react";
-import { useEffect } from "react";
+import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
   const router = useRouter();
+
   const {
     formData,
     errors,
@@ -33,6 +34,7 @@ export default function StakgraphPage() {
   } = useStakgraphStore();
 
   const { toast } = useToast();
+
 
   // Load existing settings on component mount
   useEffect(() => {
@@ -144,13 +146,13 @@ export default function StakgraphPage() {
         </Button>
       </div>
       <PageHeader
-        title="VM Configuration"
-        description="Configure your virtual machine settings for development environment"
+        title="Pool Status"
+        description="Configure your pool settings for development environment"
       />
 
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>VM Settings</CardTitle>
+          <CardTitle>Pool Settings</CardTitle>
           <div className="flex gap-2">
             {!formData.webhookEnsured && formData.repositoryUrl ? (
               <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
@@ -186,7 +188,10 @@ export default function StakgraphPage() {
               />
 
               <RepositoryForm
-                data={{ repositoryUrl: formData.repositoryUrl }}
+                data={{
+                  repositoryUrl: formData.repositoryUrl,
+                  defaultBranch: formData.defaultBranch
+                }}
                 errors={errors}
                 loading={loading}
                 onChange={handleRepositoryChange}
@@ -241,6 +246,7 @@ export default function StakgraphPage() {
           </form>
         </CardContent>
       </Card>
+
     </div>
   );
 }
