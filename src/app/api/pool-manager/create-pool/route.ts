@@ -35,6 +35,8 @@ async function withRetry<T>(
 }
 
 export async function POST(request: NextRequest) {
+  let requestBody: any = null;
+  
   try {
     const session = await getServerSession(authOptions);
 
@@ -46,8 +48,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { swarmId, workspaceId, container_files } = body;
+    requestBody = await request.json();
+    const { swarmId, workspaceId, container_files } = requestBody;
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
@@ -105,14 +107,6 @@ export async function POST(request: NextRequest) {
         containerFiles: container_files,
       });
       console.log("Saved new container files to database");
-    }
-
-    if (!swarm) {
-      return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
-    }
-
-    if (!swarm.workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     const isOwner = swarm.workspace.ownerId === userId;
@@ -197,7 +191,7 @@ export async function POST(request: NextRequest) {
       1000
     );
 
-    saveOrUpdateSwarm({
+    await saveOrUpdateSwarm({
       swarmId,
       workspaceId,
       poolName: swarmId,
@@ -207,13 +201,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
     console.error("Error creating Pool Manager pool:", error);
-    const body = await request.json();
-    const { workspaceId } = body;
+    
+    // Extract workspaceId from requestBody or re-parse if needed
+    let workspaceId: string | undefined;
+    try {
+      if (requestBody) {
+        workspaceId = requestBody.workspaceId;
+      } else {
+        // If requestBody is null, we need to clone and re-parse the request
+        const body = await request.json();
+        workspaceId = body.workspaceId;
+      }
+    } catch (parseError) {
+      console.error("Failed to parse request body in error handler:", parseError);
+    }
 
-    saveOrUpdateSwarm({
-      workspaceId,
-      poolState: 'FAILED',
-    });
+    if (workspaceId) {
+      await saveOrUpdateSwarm({
+        workspaceId,
+        poolState: 'FAILED',
+      });
+    }
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

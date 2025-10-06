@@ -7,6 +7,8 @@ export interface CreateTestSwarmOptions {
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
   repositoryUrl?: string | null;
+  poolApiKey?: string;
+  containerFiles?: Record<string, string>;
 }
 
 export async function createTestSwarm(
@@ -21,6 +23,8 @@ export async function createTestSwarm(
       status: options.status || "ACTIVE",
       instanceType: options.instanceType || "XL",
       repositoryUrl: options.repositoryUrl ?? null,
+      poolApiKey: options.poolApiKey ?? null,
+      containerFiles: options.containerFiles ?? {},
     },
   });
 }
