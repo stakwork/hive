@@ -154,16 +154,18 @@ export async function POST(
 
     let frontend = "";
 
+    // Handle port mapping selection
     if (appMappings.length === 1) {
+      // Single port available - use it
       frontend = appMappings[0][1];
-    } else {
-      for (const [key, value] of appMappings) {
-        console.log(">>> key", key);
-        console.log(">>> value", value);
-        if (key === "3000") {
-          frontend = value;
-          break;
-        }
+    } else if (appMappings.length > 1) {
+      // Multiple ports available - prefer port 3000, fallback to first port
+      const port3000Mapping = appMappings.find(([key]) => key === "3000");
+      if (port3000Mapping) {
+        frontend = port3000Mapping[1];
+      } else {
+        // No port 3000 found, use first available app port
+        frontend = appMappings[0][1];
       }
     }
 
