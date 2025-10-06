@@ -1,23 +1,21 @@
 "use client";
 
+import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { JanitorItem, JanitorSection } from "@/components/insights/JanitorSection";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
+import { TaskCoordinatorCard } from "@/components/insights/TaskCoordinatorCard";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
-import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { RecommendationsUpdatedEvent, usePusherConnection } from "@/hooks/usePusherConnection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getAllJanitorItems } from "@/lib/constants/janitor";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useInsightsStore } from "@/stores/useInsightsStore";
-import { BookOpen, GitPullRequest, Package, Shield, TestTube, Type, Wrench, Bot } from "lucide-react";
+import { BookOpen, GitPullRequest, Package, Shield, TestTube, Type, Wrench } from "lucide-react";
 import { redirect } from "next/navigation";
 import { useCallback, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 // Get all janitor items and separate them by category
 const allJanitors = getAllJanitorItems();
@@ -58,8 +56,6 @@ export default function InsightsPage() {
   const {
     fetchRecommendations,
     fetchJanitorConfig,
-    toggleTaskCoordinator,
-    taskCoordinatorEnabled,
     reset
   } = useInsightsStore();
   const { toast } = useToast();
@@ -129,52 +125,7 @@ export default function InsightsPage() {
 
         <RecommendationsSection />
 
-        {/* Task Coordinator Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5 text-blue-500" />
-              Task Coordinator
-            </CardTitle>
-            <CardDescription>
-              Automatically accept high-priority recommendations when pods are available
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="task-coordinator"
-                checked={taskCoordinatorEnabled}
-                onCheckedChange={async () => {
-                  if (!workspace?.slug) return;
-                  try {
-                    await toggleTaskCoordinator(workspace.slug);
-                    toast({
-                      title: taskCoordinatorEnabled ? "Task Coordinator disabled" : "Task Coordinator enabled",
-                      description: taskCoordinatorEnabled
-                        ? "Recommendations will no longer be automatically accepted"
-                        : "High-priority recommendations will be automatically accepted when pods are available",
-                    });
-                  } catch (error) {
-                    toast({
-                      title: "Error",
-                      description: "Failed to toggle Task Coordinator",
-                      variant: "destructive",
-                    });
-                  }
-                }}
-              />
-              <Label htmlFor="task-coordinator">
-                {taskCoordinatorEnabled ? "Enabled" : "Disabled"}
-              </Label>
-            </div>
-            {taskCoordinatorEnabled && (
-              <p className="text-sm text-muted-foreground mt-2">
-                ✓ Monitoring available pods every minute for automatic task creation
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <TaskCoordinatorCard />
 
         <JanitorSection
           title="Testing"

@@ -59,6 +59,15 @@ export default function DashboardPage() {
         const { data } = apiResult;
 
 
+        if (!apiResult.ok) {
+          setIngestError(true);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          return;
+        }
+
         if (apiResult.status === 500) {
           setIngestError(true);
           if (pollingIntervalRef.current) {
