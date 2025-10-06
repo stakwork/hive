@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -26,6 +26,53 @@ export function LearnChatInput({ onSend, disabled = false, onInputChange, onRefe
     }
   }, [transcript, onInputChange]);
 
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening();
+      onRefetchLearnings?.();
+    } else {
+      startListening();
+    }
+  }, [isListening, stopListening, startListening, onRefetchLearnings]);
+
+  useEffect(() => {
+    if (!isSupported || disabled) return;
+
+    let holdTimer: NodeJS.Timeout | null = null;
+    const HOLD_DURATION = 500; // ms
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control" && !e.repeat) {
+        holdTimer = setTimeout(() => {
+          if (!isListening) {
+            startListening();
+          }
+        }, HOLD_DURATION);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        if (isListening) {
+          stopListening();
+          onRefetchLearnings?.();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      if (holdTimer) clearTimeout(holdTimer);
+    };
+  }, [isSupported, disabled, isListening, startListening, stopListening, onRefetchLearnings]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || disabled) return;
@@ -38,15 +85,6 @@ export function LearnChatInput({ onSend, disabled = false, onInputChange, onRefe
     setInput("");
     resetTranscript();
     await onSend(message);
-  };
-
-  const toggleListening = () => {
-    if (isListening) {
-      stopListening();
-      onRefetchLearnings?.();
-    } else {
-      startListening();
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
