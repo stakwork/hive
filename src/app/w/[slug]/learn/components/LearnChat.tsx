@@ -24,12 +24,17 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
   const { processStream } = useStreamProcessor<LearnMessage>({
     toolProcessors: learnToolProcessors,
     hiddenTools: ["final_answer"],
     hiddenToolTextIds: { final_answer: "final-answer" },
   });
   const hasReceivedContentRef = useRef(false);
+
+  const triggerRefetch = () => {
+    setRefetchTrigger((prev) => prev + 1);
+  };
 
   const handleSend = async (content: string) => {
     if (!content.trim()) return;
@@ -128,6 +133,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           onInputChange={setCurrentInput}
           mode={mode}
           onModeChange={setMode}
+          onRefetchLearnings={triggerRefetch}
         />
       </div>
       <div className="fixed top-1 right-1 h-full">
@@ -135,6 +141,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           workspaceSlug={workspaceSlug}
           onPromptClick={handlePromptClick}
           currentQuestion={currentInput.trim() || undefined}
+          refetchTrigger={refetchTrigger}
         />
       </div>
     </div>

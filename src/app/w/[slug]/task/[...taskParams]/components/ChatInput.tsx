@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Mic, MicOff } from "lucide-react";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 
 interface ChatInputProps {
   logs: LogEntry[];
@@ -29,11 +33,33 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+    useSpeechRecognition();
 
   useEffect(() => {
     const mode = localStorage.getItem("task_mode");
     setMode(mode || "live");
   }, []);
+
+  useEffect(() => {
+    if (transcript) {
+      setInput(transcript);
+    }
+  }, [transcript]);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  }, [isListening, stopListening, startListening]);
+
+  useControlKeyHold({
+    onStart: startListening,
+    onStop: stopListening,
+    enabled: isSupported && !disabled,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +67,13 @@ export function ChatInput({
     if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled)
       return;
 
+    if (isListening) {
+      stopListening();
+    }
+
     const message = input.trim();
     setInput("");
+    resetTranscript();
     await onSend(message);
   };
 
@@ -69,7 +100,7 @@ export function ChatInput({
         className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10"
       >
         <Input
-          placeholder="Type your message..."
+          placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           className="flex-1"
@@ -77,6 +108,27 @@ export function ChatInput({
           disabled={disabled}
           data-testid="chat-message-input"
         />
+        {isSupported && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isListening ? "default" : "outline"}
+                  onClick={toggleListening}
+                  disabled={disabled}
+                  className="px-3"
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isListening ? "Stop recording" : "Start voice input"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <Button
           type="submit"
           disabled={
