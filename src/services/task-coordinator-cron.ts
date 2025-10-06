@@ -35,7 +35,14 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       },
       include: {
         janitorConfig: true,
-        swarm: true
+        swarm: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
       }
     });
 
@@ -111,26 +118,10 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
             // Use the existing acceptJanitorRecommendation service
             const { acceptJanitorRecommendation } = await import("@/services/janitor");
 
-            // Get the workspace owner to use as the accepting user
-            const workspaceOwner = await db.workspaceMember.findFirst({
-              where: {
-                workspaceId: workspace.id,
-                role: "OWNER"
-              },
-              include: {
-                user: true
-              }
-            });
-
-            if (!workspaceOwner) {
-              console.error(`[TaskCoordinator] No owner found for workspace ${workspace.slug}, skipping recommendation ${recommendation.id}`);
-              continue;
-            }
-
             // Accept the recommendation - this will create a task with sourceType: JANITOR
             await acceptJanitorRecommendation(
               recommendation.id,
-              workspaceOwner.userId, // Use workspace owner as the accepting user
+              workspace.owner.id, // Use workspace owner as the accepting user
               {} // No specific assignee or repository
             );
 
