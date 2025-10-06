@@ -10,6 +10,7 @@ import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 
 interface ChatInputProps {
   logs: LogEntry[];
@@ -54,42 +55,11 @@ export function ChatInput({
     }
   }, [isListening, stopListening, startListening]);
 
-  useEffect(() => {
-    if (!isSupported || disabled) return;
-
-    let holdTimer: NodeJS.Timeout | null = null;
-    const HOLD_DURATION = 500; // ms
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Control" && !e.repeat) {
-        holdTimer = setTimeout(() => {
-          if (!isListening) {
-            startListening();
-          }
-        }, HOLD_DURATION);
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Control") {
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-        if (isListening) {
-          stopListening();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      if (holdTimer) clearTimeout(holdTimer);
-    };
-  }, [isSupported, disabled, isListening, startListening, stopListening]);
+  useControlKeyHold({
+    onStart: startListening,
+    onStop: stopListening,
+    enabled: isSupported && !disabled,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

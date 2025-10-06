@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Send, Mic, MicOff } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 
 interface LearnChatInputProps {
   onSend: (message: string) => Promise<void>;
@@ -35,43 +36,14 @@ export function LearnChatInput({ onSend, disabled = false, onInputChange, onRefe
     }
   }, [isListening, stopListening, startListening, onRefetchLearnings]);
 
-  useEffect(() => {
-    if (!isSupported || disabled) return;
-
-    let holdTimer: NodeJS.Timeout | null = null;
-    const HOLD_DURATION = 500; // ms
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Control" && !e.repeat) {
-        holdTimer = setTimeout(() => {
-          if (!isListening) {
-            startListening();
-          }
-        }, HOLD_DURATION);
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Control") {
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-        if (isListening) {
-          stopListening();
-          onRefetchLearnings?.();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      if (holdTimer) clearTimeout(holdTimer);
-    };
-  }, [isSupported, disabled, isListening, startListening, stopListening, onRefetchLearnings]);
+  useControlKeyHold({
+    onStart: startListening,
+    onStop: useCallback(() => {
+      stopListening();
+      onRefetchLearnings?.();
+    }, [stopListening, onRefetchLearnings]),
+    enabled: isSupported && !disabled,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

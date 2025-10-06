@@ -14,6 +14,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const [transcript, setTranscript] = useState("");
   const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const isStartingRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -49,6 +50,12 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
 
         recognition.onend = () => {
           setIsListening(false);
+          isStartingRef.current = false;
+        };
+
+        recognition.onstart = () => {
+          setIsListening(true);
+          isStartingRef.current = false;
         };
 
         recognitionRef.current = recognition;
@@ -63,19 +70,41 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   }, []);
 
   const startListening = useCallback(() => {
-    if (recognitionRef.current && !isListening) {
-      setTranscript("");
-      recognitionRef.current.start();
-      setIsListening(true);
+    if (recognitionRef.current && !isStartingRef.current) {
+      setIsListening((current) => {
+        if (!current && !isStartingRef.current) {
+          isStartingRef.current = true;
+          setTranscript("");
+          try {
+            recognitionRef.current?.start();
+          } catch (error) {
+            console.error("Error starting speech recognition:", error);
+            isStartingRef.current = false;
+            return false;
+          }
+          return true;
+        }
+        return current;
+      });
     }
-  }, [isListening]);
+  }, []);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+    if (recognitionRef.current) {
+      setIsListening((current) => {
+        if (current) {
+          isStartingRef.current = false;
+          try {
+            recognitionRef.current?.stop();
+          } catch (error) {
+            console.error("Error stopping speech recognition:", error);
+          }
+          return false;
+        }
+        return current;
+      });
     }
-  }, [isListening]);
+  }, []);
 
   const resetTranscript = useCallback(() => {
     setTranscript("");
