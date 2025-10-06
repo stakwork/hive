@@ -8,7 +8,7 @@ import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
-const encryptionService: EncryptionService = EncryptionService.getInstance();
+const encryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,18 +38,21 @@ export async function POST(request: NextRequest) {
         where: { id: workspaceId, deleted: false },
       });
 
-      if (workspace) {
-        const encryptedStakworkApiKey = encryptionService.encryptField(
-          "stakworkApiKey",
-          token || "",
-        );
-        await db.workspace.update({
-          where: { id: workspace.id },
-          data: {
-            stakworkApiKey: JSON.stringify(encryptedStakworkApiKey),
-          },
-        });
+      if (!workspace) {
+        // If workspace not found, still proceed but don't encrypt/save token
+        return NextResponse.json({ token }, { status: 201 });
       }
+
+      const encryptedStakworkApiKey = encryptionService.encryptField(
+        "stakworkApiKey",
+        token || "",
+      );
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: {
+          stakworkApiKey: JSON.stringify(encryptedStakworkApiKey),
+        },
+      });
 
       const swarm = await db.swarm.findFirst({
         where: {
@@ -57,37 +60,39 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const sanitizedSecretAlias = (swarm?.swarmSecretAlias || "").replace(
-        /{{(.*?)}}/g,
-        "$1",
-      );
-      let decryptedSwarmApiKey = encryptionService.decryptField(
-        "swarmApiKey",
-        swarm?.swarmApiKey || "",
-      );
-      try {
-        const maybeEncryptedAgain = JSON.parse(decryptedSwarmApiKey);
-        if (
-          maybeEncryptedAgain &&
-          typeof maybeEncryptedAgain === "object" &&
-          "data" in maybeEncryptedAgain &&
-          "iv" in maybeEncryptedAgain &&
-          "tag" in maybeEncryptedAgain
-        ) {
-          decryptedSwarmApiKey = encryptionService.decryptField(
-            "swarmApiKey",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            maybeEncryptedAgain as any,
+      if (swarm?.swarmApiKey) {
+        const sanitizedSecretAlias = (swarm?.swarmSecretAlias || "").replace(
+          /{{(.*?)}}/g,
+          "$1",
+        );
+        let decryptedSwarmApiKey = encryptionService.decryptField(
+          "swarmApiKey",
+          swarm.swarmApiKey,
+        );
+        try {
+          const maybeEncryptedAgain = JSON.parse(decryptedSwarmApiKey);
+          if (
+            maybeEncryptedAgain &&
+            typeof maybeEncryptedAgain === "object" &&
+            "data" in maybeEncryptedAgain &&
+            "iv" in maybeEncryptedAgain &&
+            "tag" in maybeEncryptedAgain
+          ) {
+            decryptedSwarmApiKey = encryptionService.decryptField(
+              "swarmApiKey",
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              maybeEncryptedAgain as any,
+            );
+          }
+        } catch {}
+
+        if (sanitizedSecretAlias && token) {
+          await stakworkService().createSecret(
+            sanitizedSecretAlias,
+            decryptedSwarmApiKey,
+            token,
           );
         }
-      } catch {}
-
-      if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
-        await stakworkService().createSecret(
-          sanitizedSecretAlias,
-          decryptedSwarmApiKey,
-          token,
-        );
       }
 
       return NextResponse.json({ token }, { status: 201 });
