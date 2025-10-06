@@ -71,8 +71,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         const availablePods = poolStatusResponse.status.unusedVms;
         console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
 
-        if (availablePods === 0) {
-          console.log(`[TaskCoordinator] No available pods for workspace ${workspace.slug}, skipping`);
+        if (availablePods <= 1) {
+          console.log(`[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`);
           continue;
         }
 
