@@ -240,7 +240,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         taskSource: task.sourceType,
       });
 
-      if (stakworkData.success) {
+      if (stakworkData && stakworkData.success) {
         const updateData: any = {
           workflowStatus: "IN_PROGRESS",
           workflowStartedAt: new Date(),
@@ -265,6 +265,7 @@ async function createChatMessageAndTriggerStakwork(params: {
       }
     } catch (error) {
       console.error("Error calling Stakwork:", error);
+      stakworkData = null;
       await db.task.update({
         where: { id: taskId },
         data: { workflowStatus: "FAILED" },
