@@ -18,6 +18,7 @@ interface LearnChatAreaProps {
   onInputChange?: (input: string) => void;
   mode: "learn" | "chat";
   onModeChange: (mode: "learn" | "chat") => void;
+  onRefetchLearnings?: () => void;
 }
 
 export function LearnChatArea({
@@ -27,6 +28,7 @@ export function LearnChatArea({
   onInputChange,
   mode,
   onModeChange,
+  onRefetchLearnings,
 }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -138,7 +140,12 @@ export function LearnChatArea({
 
       {/* Input - Fixed at bottom of viewport */}
       <div className="absolute bottom-0 left-0 right-0 bg-background border-t shadow-lg">
-        <LearnChatInput onSend={onSend} disabled={isLoading} onInputChange={onInputChange} />
+        <LearnChatInput
+          onSend={onSend}
+          disabled={isLoading}
+          onInputChange={onInputChange}
+          onRefetchLearnings={onRefetchLearnings}
+        />
       </div>
     </div>
   );

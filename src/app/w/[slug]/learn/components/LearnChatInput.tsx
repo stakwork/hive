@@ -11,9 +11,10 @@ interface LearnChatInputProps {
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   onInputChange?: (input: string) => void;
+  onRefetchLearnings?: () => void;
 }
 
-export function LearnChatInput({ onSend, disabled = false, onInputChange }: LearnChatInputProps) {
+export function LearnChatInput({ onSend, disabled = false, onInputChange, onRefetchLearnings }: LearnChatInputProps) {
   const [input, setInput] = useState("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
@@ -42,6 +43,7 @@ export function LearnChatInput({ onSend, disabled = false, onInputChange }: Lear
   const toggleListening = () => {
     if (isListening) {
       stopListening();
+      onRefetchLearnings?.();
     } else {
       startListening();
     }
