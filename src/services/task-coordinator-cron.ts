@@ -105,7 +105,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
               createdAt: "asc" // Oldest first for same priority
             }
           ],
-          take: availablePods // Only take as many as we have pods
+          take: 1 // Only process one recommendation at a time
         });
 
         console.log(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
