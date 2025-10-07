@@ -74,7 +74,7 @@ function getActionDisplay(action: Action): React.ReactNode {
         const elementDesc = getElementDescription(action);
         return (
           <>
-            Click <span className="text-primary">"{action.locator.text}"</span>
+            Click <span className="text-primary">&quot;{action.locator.text}&quot;</span>
             {elementDesc !== "element" && <span className="text-muted-foreground"> ({elementDesc})</span>}
           </>
         );
@@ -86,11 +86,12 @@ function getActionDisplay(action: Action): React.ReactNode {
         </>
       );
     case "input":
-      const inputValue = action.value && action.value.length > 30 ? action.value.substring(0, 30) + "..." : action.value;
+      const inputValue =
+        action.value && action.value.length > 30 ? action.value.substring(0, 30) + "..." : action.value;
       const inputDesc = getElementDescription(action);
       return (
         <>
-          Type <span className="text-primary">"{inputValue}"</span>
+          Type <span className="text-primary">&quot;{inputValue}&quot;</span>
           {inputDesc !== "element" && <span className="text-muted-foreground"> in {inputDesc}</span>}
         </>
       );
@@ -106,7 +107,7 @@ function getActionDisplay(action: Action): React.ReactNode {
       } else if (action.formType === "select") {
         return (
           <>
-            Select <span className="text-primary">"{action.value}"</span>
+            Select <span className="text-primary">&quot;{action.value}&quot;</span>
             {formDesc !== "element" && <span className="text-muted-foreground"> from {formDesc}</span>}
           </>
         );
@@ -118,11 +119,12 @@ function getActionDisplay(action: Action): React.ReactNode {
         </>
       );
     case "assertion":
-      const assertText = action.value && action.value.length > 30 ? action.value.substring(0, 30) + "..." : action.value;
+      const assertText =
+        action.value && action.value.length > 30 ? action.value.substring(0, 30) + "..." : action.value;
       const assertDesc = getElementDescription(action);
       return (
         <>
-          Assert <span className="text-primary">"{assertText}"</span>
+          Assert <span className="text-primary">&quot;{assertText}&quot;</span>
           {assertDesc !== "element" && <span className="text-muted-foreground"> in {assertDesc}</span>}
         </>
       );
@@ -176,7 +178,7 @@ export function ActionsList({ actions, onRemoveAction, onClearAll, isRecording }
               <div
                 key={action.id}
                 className={`flex items-center justify-between rounded border-l-4 ${getActionBorderColor(
-                  action.kind
+                  action.kind,
                 )} bg-muted/50 p-2 transition-colors hover:bg-muted`}
               >
                 <div className="flex-1 text-sm overflow-hidden text-ellipsis whitespace-nowrap">

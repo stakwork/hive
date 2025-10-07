@@ -2,7 +2,21 @@
 
 import { Button } from "@/components/ui/button";
 import { useState, useCallback } from "react";
-import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause, ChevronUp, ChevronDown, CheckCircle2 } from "lucide-react";
+import {
+  Monitor,
+  RefreshCw,
+  ExternalLink,
+  Circle,
+  Square,
+  Target,
+  FlaskConical,
+  Bug,
+  Play,
+  Pause,
+  ChevronUp,
+  ChevronDown,
+  CheckCircle2,
+} from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import { usePlaywrightReplay } from "@/hooks/useStaktrakReplay";
@@ -52,16 +66,19 @@ export function BrowserArtifactPanel({
     enableAssertionMode,
     disableAssertionMode,
     generatedPlaywrightTest,
-    setGeneratedPlaywrightTest,
     capturedActions,
     showActions,
     removeAction,
     clearAllActions,
     toggleActionsView,
-  } = useStaktrak(activeContent?.url, () => {
-    // Open modal when test is generated
-    setIsTestModalOpen(true);
-  }, showAssertionToast);
+  } = useStaktrak(
+    activeContent?.url,
+    () => {
+      // Open modal when test is generated
+      setIsTestModalOpen(true);
+    },
+    showAssertionToast,
+  );
 
   // Use playwright replay hook
   const { isPlaywrightReplaying, startPlaywrightReplay, stopPlaywrightReplay } = usePlaywrightReplay(iframeRef);
@@ -169,6 +186,20 @@ export function BrowserArtifactPanel({
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
+                            <Button variant="ghost" size="sm" onClick={toggleActionsView} className="h-8 w-8 p-0">
+                              {showActions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {showActions ? "Hide" : "Show"} Actions ({capturedActions.length})
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {isSetup && isRecording && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -188,25 +219,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {isSetup && isRecording && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={toggleActionsView}
-                              className="h-8 w-8 p-0"
-                            >
-                              {showActions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            {showActions ? "Hide" : "Show"} Actions ({capturedActions.length})
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+
                     {generatedPlaywrightTest && (
                       <TooltipProvider>
                         <Tooltip>
@@ -347,12 +360,8 @@ export function BrowserArtifactPanel({
                     <div className="pointer-events-auto flex items-start gap-3 rounded-lg border border-border bg-background/95 backdrop-blur-sm p-4 shadow-lg">
                       <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
                       <div className="flex flex-col gap-1">
-                        <div className="font-semibold text-sm text-foreground">
-                          Assertion captured
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          "{assertionToast.text}"
-                        </div>
+                        <div className="font-semibold text-sm text-foreground">Assertion captured</div>
+                        <div className="text-sm text-muted-foreground">&quot;{assertionToast.text}&quot;</div>
                       </div>
                     </div>
                   </div>

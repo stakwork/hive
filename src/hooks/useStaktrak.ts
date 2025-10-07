@@ -53,7 +53,7 @@ declare global {
 export const useStaktrak = (
   initialUrl?: string,
   onTestGenerated?: (test: string) => void,
-  onAssertionCaptured?: (text: string) => void
+  onAssertionCaptured?: (text: string) => void,
 ) => {
   const [currentUrl, setCurrentUrl] = useState<string | null>(initialUrl || null);
   const [isSetup, setIsSetup] = useState(false);
@@ -95,6 +95,7 @@ export const useStaktrak = (
     sendCommand(iframeRef, "staktrak-stop");
     setIsRecording(false);
     setIsAssertionMode(false);
+    setShowActions(false);
   };
 
   const enableAssertionMode = () => {
@@ -124,7 +125,7 @@ export const useStaktrak = (
   };
 
   const toggleActionsView = () => {
-    setShowActions(prev => !prev);
+    setShowActions((prev) => !prev);
   };
 
   function cleanInitialUrl(url: string) {
