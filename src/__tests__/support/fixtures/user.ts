@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import type { User, GitHubAuth } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
@@ -34,6 +35,7 @@ export async function createTestUser(
   });
 
   if (options.withGitHubAuth) {
+    // Create GitHub auth
     await db.gitHubAuth.create({
       data: {
         userId: user.id,
@@ -43,6 +45,21 @@ export async function createTestUser(
         bio: "Test bio",
         publicRepos: 10,
         followers: 5,
+      },
+    });
+
+    // Create OAuth Account with encrypted access token
+    const encryptionService = EncryptionService.getInstance();
+    const mockAccessToken = `gho_test_token_${generateUniqueId("token")}`;
+    const encryptedToken = encryptionService.encryptField("access_token", mockAccessToken);
+
+    await db.account.create({
+      data: {
+        userId: user.id,
+        type: "oauth",
+        provider: "github",
+        providerAccountId: generateUniqueId("provider-account"),
+        access_token: JSON.stringify(encryptedToken),
       },
     });
   }
