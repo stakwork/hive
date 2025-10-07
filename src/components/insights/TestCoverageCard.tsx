@@ -48,14 +48,14 @@ export function TestCoverageCard() {
     fetchTestCoverage();
   }, [workspaceId, fetchTestCoverage]);
   const getPercentageColor = (percent: number) => {
-    if (percent >= 20) return "text-green-600 border-green-200 bg-green-50";
-    if (percent >= 10) return "text-yellow-600 border-yellow-200 bg-yellow-50";
+    if (percent >= 70) return "text-green-600 border-green-200 bg-green-50";
+    if (percent >= 15) return "text-yellow-600 border-yellow-200 bg-yellow-50";
     return "text-red-600 border-red-200 bg-red-50";
   };
 
   const getProgressColor = (percent: number) => {
-    if (percent >= 20) return "bg-green-500";
-    if (percent >= 10) return "bg-yellow-500";
+    if (percent >= 70) return "bg-green-500";
+    if (percent >= 15) return "bg-yellow-500";
     return "bg-red-500";
   };
 
