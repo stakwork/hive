@@ -4,6 +4,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { TestCoverageData } from "@/types/test-coverage";
 
 export const runtime = "nodejs";
 
@@ -33,13 +34,20 @@ export async function GET(request: NextRequest) {
     if (process.env.NODE_ENV === "development" && isLocalHost) {
       const url = `http://0.0.0.0:7799${endpoint}`;
       const resp = await fetch(url);
-      const data = await resp.json().catch(() => ({}));
+      const data = (await resp.json().catch(() => ({}))) as TestCoverageData;
       if (!resp.ok) {
         return NextResponse.json(
           { success: false, message: "Failed to fetch test coverage (dev)", details: data },
           { status: resp.status },
         );
       }
+
+      // For E2E tests: set covered = total so it displays as 100%
+      if (data.e2e_tests && data.e2e_tests.total !== undefined) {
+        data.e2e_tests.covered = data.e2e_tests.total;
+        data.e2e_tests.percent = data.e2e_tests.total > 0 ? 100 : 0;
+      }
+
       return NextResponse.json(
         {
           success: true,
@@ -89,19 +97,27 @@ export async function GET(request: NextRequest) {
 
     if (!apiResult.ok) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           message: "Failed to fetch test coverage data",
-          details: apiResult.data 
+          details: apiResult.data
         },
         { status: apiResult.status },
       );
     }
 
+    const data = apiResult.data as TestCoverageData;
+
+    // For E2E tests: set covered = total so it displays as 100%
+    if (data.e2e_tests && data.e2e_tests.total !== undefined) {
+      data.e2e_tests.covered = data.e2e_tests.total;
+      data.e2e_tests.percent = data.e2e_tests.total > 0 ? 100 : 0;
+    }
+
     return NextResponse.json(
       {
         success: true,
-        data: apiResult.data,
+        data,
       },
       { status: 200 },
     );

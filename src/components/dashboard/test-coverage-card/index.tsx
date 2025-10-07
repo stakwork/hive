@@ -79,7 +79,7 @@ export function TestCoverageCard() {
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">E2E</span>
               <span className="text-sm font-medium">
-                {testCoverage?.e2e_tests?.total > 0 ? "100.0" : "0.0"}%
+                {testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%
               </span>
             </div>
           </div>
