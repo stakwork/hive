@@ -50,7 +50,11 @@ declare global {
   }
 }
 
-export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string) => void) => {
+export const useStaktrak = (
+  initialUrl?: string,
+  onTestGenerated?: (test: string) => void,
+  onAssertionCaptured?: (text: string) => void
+) => {
   const [currentUrl, setCurrentUrl] = useState<string | null>(initialUrl || null);
   const [isSetup, setIsSetup] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -63,11 +67,13 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const recorderRef = useRef<RecordingManager | null>(null);
   const onTestGeneratedRef = useRef(onTestGenerated);
+  const onAssertionCapturedRef = useRef(onAssertionCaptured);
 
-  // Keep callback ref up to date
+  // Keep callback refs up to date
   useEffect(() => {
     onTestGeneratedRef.current = onTestGenerated;
-  }, [onTestGenerated]);
+    onAssertionCapturedRef.current = onAssertionCaptured;
+  }, [onTestGenerated, onAssertionCaptured]);
 
   const startRecording = () => {
     // Lazy initialize RecordingManager on first recording
@@ -150,6 +156,13 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
                 recorderRef.current.handleEvent(staktrakEvent.data.eventType, staktrakEvent.data.data);
                 // Update captured actions in real-time
                 setCapturedActions(recorderRef.current.getActions());
+
+                // Show notification for assertions
+                if (staktrakEvent.data.eventType === "assertion" && onAssertionCapturedRef.current) {
+                  const assertionData = staktrakEvent.data.data as any;
+                  const assertionText = assertionData.value || "Element";
+                  onAssertionCapturedRef.current(assertionText);
+                }
               } catch (error) {
                 console.error("Error handling staktrak event:", error);
               }
@@ -170,10 +183,6 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
                 console.error("Error generating Playwright test:", error);
               }
             }
-            break;
-
-          case "staktrak-selection":
-            // Handle element selection for assertions
             break;
 
           case "staktrak-page-navigation":

@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
-import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause, ChevronUp, ChevronDown } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause, ChevronUp, ChevronDown, CheckCircle2 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import { usePlaywrightReplay } from "@/hooks/useStaktrakReplay";
@@ -25,10 +25,20 @@ export function BrowserArtifactPanel({
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [assertionToast, setAssertionToast] = useState<{ text: string; id: number } | null>(null);
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
   const activeContent = activeArtifact?.content as BrowserContent;
+
+  // Local toast handler
+  const showAssertionToast = useCallback((text: string) => {
+    const id = Date.now();
+    setAssertionToast({ text, id });
+    setTimeout(() => {
+      setAssertionToast(null);
+    }, 3000);
+  }, []);
 
   // Use staktrak hook with all the functions
   const {
@@ -51,7 +61,7 @@ export function BrowserArtifactPanel({
   } = useStaktrak(activeContent?.url, () => {
     // Open modal when test is generated
     setIsTestModalOpen(true);
-  });
+  }, showAssertionToast);
 
   // Use playwright replay hook
   const { isPlaywrightReplaying, startPlaywrightReplay, stopPlaywrightReplay } = usePlaywrightReplay(iframeRef);
@@ -330,6 +340,22 @@ export function BrowserArtifactPanel({
                     isSubmitting={isSubmittingDebug}
                     onDebugSelection={handleDebugSelection}
                   />
+                )}
+                {/* Assertion toast - only active for the current tab */}
+                {isActive && assertionToast && (
+                  <div className="absolute top-4 right-4 z-50 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="pointer-events-auto flex items-start gap-3 rounded-lg border border-border bg-background/95 backdrop-blur-sm p-4 shadow-lg">
+                      <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex flex-col gap-1">
+                        <div className="font-semibold text-sm text-foreground">
+                          Assertion captured
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          "{assertionToast.text}"
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
