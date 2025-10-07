@@ -236,8 +236,8 @@ export function TestCoverageCard() {
               {metricType === "absolute" ? (
                 <MetricDisplay
                   label="Test Coverage"
-                  percent={data.e2e_tests.total > 0 ? 100 : 0}
-                  covered={data.e2e_tests.total || 0}
+                  percent={data.e2e_tests.percent || 0}
+                  covered={data.e2e_tests.covered || 0}
                   total={data.e2e_tests.total || 0}
                 />
               ) : (
