@@ -68,7 +68,7 @@ export async function expectUnauthorized(
 ): Promise<void> {
   expect(response.status).toBe(401);
   const data = await response.json();
-  expect(data.error).toBe("Unauthorized");
+  expect(data.message).toBe("Unauthorized");
 }
 
 /**

@@ -14,6 +14,8 @@ interface TestEnvDefaults {
   SWARM_SUPER_ADMIN_URL: string;
   STAKWORK_CUSTOMERS_EMAIL: string;
   STAKWORK_CUSTOMERS_PASSWORD: string;
+  GITHUB_APP_SLUG: string;
+  GITHUB_APP_CLIENT_ID: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
@@ -28,6 +30,8 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   SWARM_SUPER_ADMIN_URL: "https://super.test",
   STAKWORK_CUSTOMERS_EMAIL: "c@test.local",
   STAKWORK_CUSTOMERS_PASSWORD: "secret",
+  GITHUB_APP_SLUG: "test-github-app",
+  GITHUB_APP_CLIENT_ID: "test-github-client-id",
 };
 
 /**

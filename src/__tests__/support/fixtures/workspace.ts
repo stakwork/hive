@@ -22,6 +22,7 @@ export interface CreateTestWorkspaceOptions {
   slug?: string;
   ownerId: string;
   stakworkApiKey?: string | null;
+  skipSwarm?: boolean;
 }
 
 export interface CreateTestMembershipOptions {
@@ -36,16 +37,28 @@ export async function createTestWorkspace(
 ): Promise<Workspace> {
   const uniqueId = generateUniqueId("workspace");
 
+  const workspaceData: any = {
+    name: options.name || `Test Workspace ${uniqueId}`,
+    description:
+      options.description === undefined ? null : options.description,
+    slug: options.slug || `test-workspace-${uniqueId}`,
+    ownerId: options.ownerId,
+    stakworkApiKey:
+      options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
+  };
+
+  // Only create swarm if not explicitly skipped
+  if (!options.skipSwarm) {
+    workspaceData.swarm = {
+      create: {
+        name: `swarm-${uniqueId}`,
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      },
+    };
+  }
+
   return db.workspace.create({
-    data: {
-      name: options.name || `Test Workspace ${uniqueId}`,
-      description:
-        options.description === undefined ? null : options.description,
-      slug: options.slug || `test-workspace-${uniqueId}`,
-      ownerId: options.ownerId,
-      stakworkApiKey:
-        options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
-    },
+    data: workspaceData,
   });
 }
 
