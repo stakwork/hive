@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccessById } from "@/services/workspace";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType, NodesResponse } from "@/types/stakgraph";
@@ -94,6 +95,7 @@ function normalizeResponse(
   nodeType: UncoveredNodeType,
   limit: number,
   offset: number,
+  ignoreDirs?: string | null,
 ): CoverageNodesResponse {
   let items: CoverageNodeConcise[] = [];
   const mapToConcise = (n: unknown): CoverageNodeConcise => {
@@ -135,6 +137,7 @@ function normalizeResponse(
       total_count,
       total_pages,
       total_returned,
+      ignoreDirs: ignoreDirs || "",
     },
   };
 }
@@ -149,12 +152,29 @@ export async function GET(request: NextRequest) {
     const { searchParams, hostname } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId") || searchParams.get("id");
     const swarmId = searchParams.get("swarmId");
-    const ignoreDirs = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
+    const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
     const { nodeType, limit, offset } = parsed;
-    const endpointPath = buildEndpointPath(parsed, ignoreDirs);
+
+    let finalIgnoreDirs = ignoreDirsParam;
+
+    if (workspaceId && !swarmId) {
+      const primaryRepo = await getPrimaryRepository(workspaceId);
+      if (primaryRepo) {
+        if (!ignoreDirsParam) {
+          finalIgnoreDirs = primaryRepo.ignoreDirs || "";
+        } else if (ignoreDirsParam !== primaryRepo.ignoreDirs) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { ignoreDirs: ignoreDirsParam },
+          });
+        }
+      }
+    }
+
+    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs);
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
@@ -168,7 +188,7 @@ export async function GET(request: NextRequest) {
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as Payload, nodeType, limit, offset);
+      const response = normalizeResponse(data as Payload, nodeType, limit, offset, finalIgnoreDirs);
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -215,7 +235,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset);
+    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset, finalIgnoreDirs);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);

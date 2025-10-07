@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CoverageNodesResponse } from "@/types/stakgraph";
@@ -15,6 +15,7 @@ export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
   const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs } = useCoverageStore();
+  const hasInitializedIgnoreDirs = useRef(false);
 
   const queryKey = useMemo(
     () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs],
@@ -53,6 +54,16 @@ export function useCoverageNodes() {
 
   const hasNextPage = Boolean(query.data?.data?.hasNextPage);
   const hasPrevPage = offset > 0;
+
+  useEffect(() => {
+    if (!hasInitializedIgnoreDirs.current && query.data?.data?.ignoreDirs !== undefined) {
+      const apiIgnoreDirs = query.data.data.ignoreDirs;
+      if (apiIgnoreDirs !== ignoreDirs) {
+        setIgnoreDirs(apiIgnoreDirs);
+      }
+      hasInitializedIgnoreDirs.current = true;
+    }
+  }, [query.data?.data?.ignoreDirs, ignoreDirs, setIgnoreDirs]);
 
   const prefetch = async (targetPage: number) => {
     if (!workspaceId) return;
