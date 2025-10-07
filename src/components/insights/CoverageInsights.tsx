@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
 
 interface SortableHeaderProps {
@@ -66,6 +67,33 @@ export function CoverageInsights() {
     prefetchNext,
     prefetchPrev,
   } = useCoverageNodes();
+
+  const { ignoreDirs, setIgnoreDirs } = useCoverageNodes();
+
+  // Local state for the input value (for immediate UI feedback)
+  const [inputValue, setInputValue] = useState(ignoreDirs);
+
+  // Debounce effect: update store after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (inputValue !== ignoreDirs) {
+        // Clean up the input: trim whitespace, remove trailing commas, filter empty values
+        const cleaned = inputValue
+          .split(',')
+          .map(dir => dir.trim())
+          .filter(dir => dir.length > 0)
+          .join(',');
+        setIgnoreDirs(cleaned);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [inputValue, ignoreDirs, setIgnoreDirs]);
+
+  // Sync input with store when store changes externally
+  useEffect(() => {
+    setInputValue(ignoreDirs);
+  }, [ignoreDirs]);
 
   const hasItems = items && items.length > 0;
 
@@ -137,6 +165,17 @@ export function CoverageInsights() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Ignore dirs:</span>
+              <Input
+                type="text"
+                placeholder="e.g. testing, examples"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                className="h-8 w-[200px] text-xs"
+              />
             </div>
           </div>
         </div>

@@ -59,6 +59,15 @@ function buildQueryString(params: ParsedParams): string {
   return q.toString();
 }
 
+function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null): string {
+  const queryString = buildQueryString(params);
+  const q = new URLSearchParams(queryString);
+  if (ignoreDirs) {
+    q.set("ignore_dirs", ignoreDirs);
+  }
+  return `/tests/nodes?${q.toString()}`;
+}
+
 type ItemsOrNodes = { items?: CoverageNodeConcise[]; nodes?: CoverageNodeConcise[] };
 
 function isItemsOrNodes(payload: unknown): payload is ItemsOrNodes {
@@ -140,11 +149,12 @@ export async function GET(request: NextRequest) {
     const { searchParams, hostname } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId") || searchParams.get("id");
     const swarmId = searchParams.get("swarmId");
+    const ignoreDirs = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
     const { nodeType, limit, offset } = parsed;
-    const endpointPath = `/tests/nodes?${buildQueryString(parsed)}`;
+    const endpointPath = buildEndpointPath(parsed, ignoreDirs);
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";

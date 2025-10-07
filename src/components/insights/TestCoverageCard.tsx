@@ -7,9 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useCoverageStore } from "@/stores/useCoverageStore";
 
 export function TestCoverageCard() {
   const { id: workspaceId } = useWorkspace();
+  const { ignoreDirs } = useCoverageStore();
   const [data, setData] = useState<TestCoverageData | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
@@ -25,7 +27,12 @@ export function TestCoverageCard() {
       setIsLoading(true);
       setError(undefined);
 
-      const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+      const params = new URLSearchParams({ workspaceId });
+      if (ignoreDirs) {
+        params.set("ignoreDirs", ignoreDirs);
+      }
+
+      const response = await fetch(`/api/tests/coverage?${params.toString()}`);
       const result = await response.json();
 
       if (!response.ok) {
@@ -42,11 +49,11 @@ export function TestCoverageCard() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, ignoreDirs]);
 
   useEffect(() => {
     fetchTestCoverage();
-  }, [workspaceId, fetchTestCoverage]);
+  }, [workspaceId, ignoreDirs, fetchTestCoverage]);
   const getPercentageColor = (percent: number) => {
     if (percent >= 20) return "text-green-600 border-green-200 bg-green-50";
     if (percent >= 10) return "text-yellow-600 border-yellow-200 bg-yellow-50";
