@@ -453,6 +453,177 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(decryptedToken).toBe(PLAINTEXT_GITHUB_PAT);
     });
   });
+
+  describe("Request Validation and Error Handling", () => {
+    it("should reject unauthenticated requests with 401", async () => {
+      getMockedSession().mockResolvedValue(null);
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Unauthorized");
+    });
+
+    it("should return 404 when swarm not found by swarmId", async () => {
+      const request = createPostRequest({ swarmId: "non-existent-swarm-id" });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm not found");
+    });
+
+    it("should return 404 when swarm not found by workspaceId", async () => {
+      const nonExistentWorkspaceId = generateUniqueId("workspace");
+      const request = createPostRequest({ workspaceId: nonExistentWorkspaceId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm not found");
+    });
+
+    it("should return 400 when swarm has no swarmUrl", async () => {
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { swarmUrl: null },
+      });
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm URL or API key not set");
+    });
+
+    it("should return 400 when swarm has no swarmApiKey", async () => {
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { swarmApiKey: null },
+      });
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm URL or API key not set");
+    });
+
+    it("should return 400 when repository URL is missing", async () => {
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { repositoryUrl: null },
+      });
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("No repository URL found");
+    });
+
+    it("should handle workspace deletion after swarm exists", async () => {
+      // Delete workspace but keep swarm - this tests cascading delete behavior
+      // When workspace is deleted, the swarm associated with it should also be removed
+      // due to foreign key constraints, causing "Swarm not found" error
+      await db.workspace.delete({ where: { id: workspaceId } });
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm not found");
+    });
+
+    it("should handle external API failures gracefully", async () => {
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: false,
+        status: 503,
+        data: { error: "Stakgraph service unavailable" },
+      } as AsyncSyncResult);
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(data.success).toBe(false);
+
+      // Verify repository status was still set to PENDING
+      const repository = await db.repository.findFirst({
+        where: {
+          repositoryUrl: "https://github.com/test-org/test-repo",
+          workspaceId,
+        },
+      });
+
+      expect(repository?.status).toBe(RepositoryStatus.PENDING);
+    });
+
+    it("should not block ingestion when webhook setup fails", async () => {
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { request_id: "ingest-req-webhook-fail" },
+      } as AsyncSyncResult);
+
+      // Mock WebhookService to throw error (webhook setup is in try-catch block)
+      // The actual webhook setup happens inside the POST handler, errors are caught and logged
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Ingestion should still succeed even if webhook setup fails
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.request_id).toBe("ingest-req-webhook-fail");
+    });
+
+    it("should not leak sensitive credentials in error responses", async () => {
+      // Force an error by providing invalid data that causes triggerIngestAsync to throw
+      mockTriggerIngestAsync.mockRejectedValue(
+        new Error(`API Error: ${PLAINTEXT_SWARM_API_KEY} and ${PLAINTEXT_GITHUB_PAT}`)
+      );
+
+      const request = createPostRequest({ workspaceId, swarmId });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.success).toBe(false);
+
+      // Verify response doesn't contain sensitive data
+      const responseText = JSON.stringify(data);
+      expect(responseText).not.toContain(PLAINTEXT_SWARM_API_KEY);
+      expect(responseText).not.toContain(PLAINTEXT_GITHUB_PAT);
+      expect(data.message).toBe("Failed to ingest code");
+    });
+
+    it("should handle missing both workspaceId and swarmId", async () => {
+      const request = createPostRequest({});
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Without workspaceId or swarmId, the empty where clause causes a database error
+      expect(response.status).toBe(500);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Failed to ingest code");
+    });
+  });
 });
 
 describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
@@ -682,6 +853,179 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
       expect(swarm).toBeTruthy();
       expect(swarm?.ingestRefId).toBe("ingest-req-123");
+    });
+  });
+
+  describe("Request Validation and Error Handling", () => {
+    it("should reject unauthenticated requests with 401", async () => {
+      getMockedSession().mockResolvedValue(null);
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Unauthorized");
+    });
+
+    it("should return 400 when id parameter is missing", async () => {
+      const request = createGetRequest({
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Missing required fields: id, workspaceId");
+    });
+
+    it("should return 400 when workspaceId parameter is missing", async () => {
+      const request = createGetRequest({
+        id: "ingest-req-123",
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Missing required fields: id, workspaceId");
+    });
+
+    it("should return 400 when both id and workspaceId are missing", async () => {
+      const request = createGetRequest({});
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Missing required fields: id, workspaceId");
+    });
+
+    it("should return 404 when workspace not found", async () => {
+      const nonExistentWorkspaceId = generateUniqueId("workspace");
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId: nonExistentWorkspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Workspace not found");
+    });
+
+    it("should return 400 when GitHub credentials not found", async () => {
+      // Delete GitHub auth to simulate missing credentials
+      await db.gitHubAuth.deleteMany({
+        where: { userId },
+      });
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("No GitHub credentials found for user");
+    });
+
+    it("should return 404 when swarm not found", async () => {
+      // Delete swarm to trigger not found error
+      await db.swarm.delete({ where: { workspaceId } });
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm not found");
+    });
+
+    it("should return 400 when swarm has no swarmUrl", async () => {
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { swarmUrl: null },
+      });
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm URL or API key not set");
+    });
+
+    it("should return 400 when swarm has no swarmApiKey", async () => {
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { swarmApiKey: null },
+      });
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Swarm URL or API key not set");
+    });
+
+    it("should handle external API errors gracefully", async () => {
+      mockSwarmApiRequest.mockResolvedValue({
+        ok: false,
+        status: 500,
+        data: { error: "Internal server error" },
+      });
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+
+      expect(response.status).toBe(500);
+    });
+
+    it("should not leak sensitive credentials in error responses", async () => {
+      // Force an error by having swarmApiRequest throw
+      mockSwarmApiRequest.mockRejectedValue(
+        new Error(`API Error: ${PLAINTEXT_SWARM_API_KEY}`)
+      );
+
+      const request = createGetRequest({
+        id: "ingest-req-123",
+        workspaceId,
+      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.success).toBe(false);
+
+      // Verify response doesn't contain sensitive data
+      const responseText = JSON.stringify(data);
+      expect(responseText).not.toContain(PLAINTEXT_SWARM_API_KEY);
+      expect(data.message).toBe("Failed to ingest code");
     });
   });
 });

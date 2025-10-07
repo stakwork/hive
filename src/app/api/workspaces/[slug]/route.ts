@@ -149,7 +149,8 @@ export async function PUT(
         : error instanceof Error &&
             (error.message.includes("Only workspace owners") ||
              error.message.includes("Only workspace") ||
-             error.message.includes("owners and admins"))
+             error.message.includes("owners and admins") ||
+             error.message.includes("can update workspace settings"))
           ? 403
           : error instanceof Error &&
               error.message.includes("already exists")
