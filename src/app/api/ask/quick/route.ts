@@ -7,7 +7,7 @@ import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
 import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
-import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/types/middleware";
+import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
