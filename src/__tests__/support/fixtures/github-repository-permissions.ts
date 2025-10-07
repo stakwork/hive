@@ -182,18 +182,21 @@ export const mockGitHubApiResponses = {
     ok: false,
     status: 404,
     statusText: "Not Found",
+    text: async () => "Not Found",
   },
 
   accessForbidden: {
     ok: false,
     status: 403,
     statusText: "Forbidden",
+    text: async () => "Forbidden",
   },
 
   serverError: {
     ok: false,
     status: 500,
     statusText: "Internal Server Error",
+    text: async () => "Internal Server Error",
   },
 };
 
