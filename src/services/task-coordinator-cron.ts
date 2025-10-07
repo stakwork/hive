@@ -71,8 +71,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         const availablePods = poolStatusResponse.status.unusedVms;
         console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
 
-        if (availablePods === 0) {
-          console.log(`[TaskCoordinator] No available pods for workspace ${workspace.slug}, skipping`);
+        if (availablePods <= 1) {
+          console.log(`[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`);
           continue;
         }
 
@@ -110,7 +110,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
         console.log(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
 
-        // Accept recommendations up to available pod count
+        // Accept recommendations while reserving 1 pod (only processes when 2+ pods available)
         for (const recommendation of pendingRecommendations) {
           try {
             console.log(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`);
