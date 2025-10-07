@@ -11,7 +11,10 @@ export const MIDDLEWARE_HEADERS = {
 
 // Public routes that don't require authentication
 export const PUBLIC_ROUTES = [
-  "/api/auth",
+  "/", // Root page (redirects based on auth status)
+  "/auth", // Sign-in and authentication pages
+  "/onboarding", // Workspace onboarding flow
+  "/api/auth", // NextAuth API routes
   "/api/github/webhook",
   "/api/stakwork/webhook",
   "/api/janitors/webhook",
