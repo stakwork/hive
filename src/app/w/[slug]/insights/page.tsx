@@ -1,11 +1,12 @@
 "use client";
 
+import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { JanitorItem, JanitorSection } from "@/components/insights/JanitorSection";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
+import { TaskCoordinatorCard } from "@/components/insights/TaskCoordinatorCard";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
-import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { RecommendationsUpdatedEvent, usePusherConnection } from "@/hooks/usePusherConnection";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -52,7 +53,11 @@ const securityJanitors: JanitorItem[] = [
 export default function InsightsPage() {
   const canAccessInsights = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
-  const { fetchRecommendations, fetchJanitorConfig, reset } = useInsightsStore();
+  const {
+    fetchRecommendations,
+    fetchJanitorConfig,
+    reset
+  } = useInsightsStore();
   const { toast } = useToast();
 
   if (!canAccessInsights) {
@@ -78,7 +83,7 @@ export default function InsightsPage() {
   );
 
   // Set up workspace Pusher connection
-  const { isConnected, error: pusherError } = usePusherConnection({
+  const { error: pusherError } = usePusherConnection({
     workspaceSlug: workspace?.slug || null,
     onRecommendationsUpdated: handleRecommendationsUpdated,
   });
@@ -111,7 +116,7 @@ export default function InsightsPage() {
     <div className="space-y-6">
       <PageHeader title="Insights" description="Automated codebase analysis and recommendations" />
 
-      <div className="max-w-4xl space-y-6">
+      <div className="max-w-5xl space-y-6">
         {/* Content container */}
 
         <TestCoverageCard />
@@ -119,6 +124,8 @@ export default function InsightsPage() {
         <CoverageInsights />
 
         <RecommendationsSection />
+
+        <TaskCoordinatorCard />
 
         <JanitorSection
           title="Testing"

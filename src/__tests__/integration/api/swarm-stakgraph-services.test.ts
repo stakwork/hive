@@ -8,7 +8,7 @@ import {
   generateUniqueSlug,
   getMockedSession,
   createGetRequest,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 describe("GET /api/swarm/stakgraph/services", () => {
   const enc = EncryptionService.getInstance();

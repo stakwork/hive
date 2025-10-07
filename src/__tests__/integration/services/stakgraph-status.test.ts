@@ -3,8 +3,8 @@ import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
 import { db } from "@/lib/db";
 import type { WebhookPayload } from "@/types";
 import { RepositoryStatus } from "@prisma/client";
-import { generateUniqueId, expectRepositoryStatus } from "@/__tests__/helpers";
-import { createTestWorkspaceScenario, createTestRepository } from "@/__tests__/fixtures";
+import { generateUniqueId, expectRepositoryStatus } from "@/__tests__/support/helpers";
+import { createTestWorkspaceScenario, createTestRepository } from "@/__tests__/support/fixtures";
 
 describe("updateStakgraphStatus - Integration Tests", () => {
   let testWorkspaceId: string;

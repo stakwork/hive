@@ -5,10 +5,10 @@ import {
   expectSuccess,
   expectError,
   createRequestWithHeaders,
-} from "@/__tests__/helpers";
-import { createTestUser } from "@/__tests__/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/fixtures/workspace";
-import { createTestRepository } from "@/__tests__/fixtures/repository";
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestRepository } from "@/__tests__/support/fixtures/repository";
 
 describe("Repository Update API Integration Tests", () => {
   const TEST_API_KEY = "test-api-key-123";

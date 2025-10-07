@@ -74,7 +74,7 @@
     "d3": "^7.9.0",
     "ecpair": "^3.0.0",
     "framer-motion": "^12.23.0",
-    "gitsee": "^1.0.12",
+    "gitsee": "^1.0.13",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.3",
     "lucide-react": "^0.525.0",

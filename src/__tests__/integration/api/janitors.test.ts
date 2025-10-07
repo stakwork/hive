@@ -21,7 +21,7 @@ import {
   createPostRequest,
   createPutRequest,
   getMockedSession,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 // Mock Stakwork service
 vi.mock("@/lib/service-factory", () => ({

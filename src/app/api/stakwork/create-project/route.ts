@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!title || !description || !budget || !skills) {
+    if (!title || !description || budget === undefined || budget === null || !skills) {
       return NextResponse.json(
         {
           error: "Missing required fields: title, description, budget, skills",

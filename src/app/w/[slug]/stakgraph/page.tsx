@@ -188,7 +188,10 @@ export default function StakgraphPage() {
               />
 
               <RepositoryForm
-                data={{ repositoryUrl: formData.repositoryUrl }}
+                data={{
+                  repositoryUrl: formData.repositoryUrl,
+                  defaultBranch: formData.defaultBranch
+                }}
                 errors={errors}
                 loading={loading}
                 onChange={handleRepositoryChange}

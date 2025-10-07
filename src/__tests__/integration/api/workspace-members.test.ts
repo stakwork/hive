@@ -3,8 +3,8 @@ import { GET, POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH, DELETE } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
-import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/fixtures/workspace";
-import { createTestUser } from "@/__tests__/fixtures/user";
+import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
@@ -20,7 +20,7 @@ import {
   createPatchRequest,
   createDeleteRequest,
   getMockedSession,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 // Mock GitHub API calls for addWorkspaceMember (external service)
 vi.mock("@/services/github", () => ({

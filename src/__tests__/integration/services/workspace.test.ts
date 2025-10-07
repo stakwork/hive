@@ -13,9 +13,9 @@ import {
   WORKSPACE_ERRORS,
   WORKSPACE_LIMITS
 } from "@/lib/constants";
-import { createTestUser } from "@/__tests__/fixtures/user";
-import { createTestSwarm } from "@/__tests__/fixtures/swarm";
-import { generateUniqueSlug } from "@/__tests__/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
+import { generateUniqueSlug } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 
 describe("Workspace Service - Integration Tests", () => {

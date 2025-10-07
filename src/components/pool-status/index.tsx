@@ -62,7 +62,7 @@ export function VMConfigSection() {
 
 
   return (
-    <Card className="relative">
+    <Card className="relative" data-testid="vm-config-section">
       {isPoolActive && (
         <div className="absolute top-4 right-4">
           <DropdownMenu>
@@ -101,24 +101,35 @@ export function VMConfigSection() {
               <Skeleton className="h-4 w-32" />
             </div>
           ) : poolStatus ? (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <span className={poolStatus.status.runningVms > 0 ? "text-green-600" : "text-muted-foreground"}>
-                  {poolStatus.status.runningVms} running
+                <span className="text-green-600">
+                  {poolStatus.status.usedVms} in use
                 </span>
                 <span className="text-muted-foreground">•</span>
-                <span className={poolStatus.status.pendingVms > 0 ? "text-orange-600" : "text-muted-foreground"}>
-                  {poolStatus.status.pendingVms} pending
+                <span className="text-muted-foreground">
+                  {poolStatus.status.unusedVms} available
                 </span>
-                {poolStatus.status.failedVms > 0 && (
-                  <>
-                    <span className="text-muted-foreground">•</span>
+              </div>
+
+              {(poolStatus.status.pendingVms > 0 || poolStatus.status.failedVms > 0) && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {poolStatus.status.pendingVms > 0 && (
+                    <>
+                      <span className="text-orange-600">
+                        {poolStatus.status.pendingVms} pending
+                      </span>
+                      {poolStatus.status.failedVms > 0 && <span>•</span>}
+                    </>
+                  )}
+                  {poolStatus.status.failedVms > 0 && (
                     <span className="text-red-600">
                       {poolStatus.status.failedVms} failed
                     </span>
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
+
               {poolStatus.status.lastCheck && (
                 <div className="text-xs text-muted-foreground">
                   Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
@@ -133,7 +144,7 @@ export function VMConfigSection() {
             </div>
           ) : null
         ) : (
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 text-orange-700">
                 <Clock className="w-6 h-6" />

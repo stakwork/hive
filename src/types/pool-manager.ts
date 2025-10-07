@@ -124,6 +124,8 @@ export interface PoolStatus {
   runningVms: number;
   pendingVms: number;
   failedVms: number;
+  usedVms: number;
+  unusedVms: number;
   lastCheck: string;
 }
 

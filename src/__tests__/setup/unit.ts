@@ -1,8 +1,8 @@
 import "./global";
 import { beforeAll, afterAll, beforeEach } from "vitest";
-import { resetDbMock } from "../mocks/prisma";
+import { resetDbMock } from "../support/mocks/prisma";
 import { ensureTestEnv } from "./env";
-import "../mocks/env"; // Import env mock to prevent validation errors
+import "../support/mocks/env"; // Import env mock to prevent validation errors
 
 // Set environment variables for unit tests using shared helper
 ensureTestEnv();

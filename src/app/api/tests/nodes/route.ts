@@ -17,14 +17,16 @@ type ParsedParams = {
   offset: number;
   sort: string;
   coverage: "all" | "tested" | "untested";
+  bodyLength: boolean;
+  lineCount: boolean;
 };
 
 function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | { error: NextResponse } {
   const nodeTypeParam = (searchParams.get("node_type") || searchParams.get("nodeType") || "endpoint").toLowerCase();
-  if (nodeTypeParam !== "endpoint" && nodeTypeParam !== "function") {
+  if (nodeTypeParam !== "endpoint" && nodeTypeParam !== "function" && nodeTypeParam !== "class") {
     return {
       error: NextResponse.json(
-        { success: false, message: "Invalid node_type. Use 'endpoint' or 'function'." },
+        { success: false, message: "Invalid node_type. Use 'endpoint', 'function', or 'class'." },
         { status: 400 },
       ),
     } as const;
@@ -35,7 +37,9 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
   const sort = (searchParams.get("sort") || "test_count").toLowerCase();
   let coverage = (searchParams.get("coverage") || "all").toLowerCase();
   if (!["all", "tested", "untested"].includes(coverage)) coverage = "all";
-  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested" };
+  const bodyLength = searchParams.get("body_length") === "true";
+  const lineCount = searchParams.get("line_count") === "true";
+  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested", bodyLength, lineCount };
 }
 
 function buildQueryString(params: ParsedParams): string {
@@ -43,7 +47,13 @@ function buildQueryString(params: ParsedParams): string {
   q.set("node_type", params.nodeType);
   q.set("limit", String(params.limit));
   q.set("offset", String(params.offset));
-  if (params.sort) q.set("sort", String(params.sort));
+  if (params.bodyLength) {
+    q.set("body_length", "true");
+  } else if (params.lineCount) {
+    q.set("line_count", "true");
+  } else if (params.sort) {
+    q.set("sort", String(params.sort));
+  }
   if (params.coverage && params.coverage !== "all") q.set("coverage", params.coverage);
   q.set("concise", "true");
   return q.toString();
@@ -82,9 +92,13 @@ function normalizeResponse(
     const props = (o?.properties as Record<string, unknown> | undefined) || undefined;
     const name = (o?.name as string) || (props?.name as string) || "";
     const file = (o?.file as string) || (props?.file as string) || "";
+    const ref_id = (o?.ref_id as string) || "";
     const weight = typeof o?.weight === "number" ? (o?.weight as number) : 0;
     const testCount = typeof o?.test_count === "number" ? (o?.test_count as number) : 0;
-    return { name, file, weight, test_count: testCount };
+    const covered = typeof o?.covered === "boolean" ? (o?.covered as boolean) : testCount > 0;
+    const body_length = typeof o?.body_length === "number" ? (o?.body_length as number) : null;
+    const line_count = typeof o?.line_count === "number" ? (o?.line_count as number) : null;
+    return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count };
   };
 
     if (isItemsOrNodes(payload)) {

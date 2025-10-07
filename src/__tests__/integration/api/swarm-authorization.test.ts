@@ -13,7 +13,7 @@ import {
   createPostRequest,
   createPutRequest,
   getMockedSession,
-} from "@/__tests__/helpers";
+} from "@/__tests__/support/helpers";
 
 // Mock the SwarmService to avoid making real external API calls
 vi.mock("@/services/swarm", () => ({

@@ -14,11 +14,11 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, limit, offset, coverage, setOffset, setNodeType, setSort, setCoverage } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage } = useCoverageStore();
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, limit, offset, coverage],
-    [workspaceId, nodeType, sort, limit, offset, coverage],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -32,7 +32,14 @@ export function useCoverageNodes() {
       qp.set("node_type", nodeType);
       qp.set("limit", String(limit));
       qp.set("offset", String(offset));
-      qp.set("sort", sort);
+      qp.set("sort_direction", sortDirection);
+      if (sort === "body_length") {
+        qp.set("body_length", "true");
+      } else if (sort === "line_count") {
+        qp.set("line_count", "true");
+      } else {
+        qp.set("sort", sort);
+      }
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
@@ -48,7 +55,7 @@ export function useCoverageNodes() {
 
   const prefetch = async (targetPage: number) => {
     if (!workspaceId) return;
-    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, sort, limit, targetPage, coverage];
+    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, targetPage, coverage];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
       queryFn: async () => {
@@ -57,7 +64,14 @@ export function useCoverageNodes() {
         qp.set("node_type", nodeType);
         qp.set("limit", String(limit));
         qp.set("offset", String(targetPage));
-        qp.set("sort", sort);
+        qp.set("sort_direction", sortDirection);
+        if (sort === "body_length") {
+          qp.set("body_length", "true");
+        } else if (sort === "line_count") {
+          qp.set("line_count", "true");
+        } else {
+          qp.set("sort", sort);
+        }
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
@@ -74,7 +88,7 @@ export function useCoverageNodes() {
     loading: query.isLoading,
     filterLoading: query.isFetching && !query.isLoading,
     error: query.error ? (query.error as Error).message : null,
-    params: { nodeType, limit, offset, sort, coverage },
+    params: { nodeType, limit, offset, sort, sortDirection, coverage },
     page: query.data?.data?.page || 1,
     totalPages: query.data?.data?.total_pages,
     totalCount: query.data?.data?.total_count,
@@ -87,6 +101,8 @@ export function useCoverageNodes() {
     setNodeType,
     setLimit: (n: number) => useCoverageStore.setState({ limit: n, offset: 0 }),
     setSort,
+    setSortDirection,
+    toggleSort,
     setCoverage,
     setRoot: () => {},
     setConcise: () => {},

@@ -53,4 +53,4 @@ npm run test:watch
 
 ## Test Setup
 
-Global hooks live in `setup/global.ts`. Use `setup/unit.ts` and `setup/integration.ts` for suite-specific configuration. Shared builders are exported from `@/__tests__/fixtures`, and the `invokeRoute` helper in `@/__tests__/harness` standardises API route execution in tests.
+Global hooks live in `setup/global.ts`. Use `setup/unit.ts` and `setup/integration.ts` for suite-specific configuration. Shared builders are exported from `@/__tests__/support/fixtures`, and the `invokeRoute` helper in `@/__tests__/harness` standardises API route execution in tests.

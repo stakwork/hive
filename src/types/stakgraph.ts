@@ -15,7 +15,7 @@ export interface StakgraphStatusResponse {
   result?: { nodes?: number; edges?: number };
 }
 
-export type UncoveredNodeType = "function" | "endpoint";
+export type UncoveredNodeType = "function" | "endpoint" | "class";
 
 export type TestStatus = "all" | "tested" | "untested";
 
@@ -46,8 +46,12 @@ export interface NodesResponse {
 export interface CoverageNodeConcise {
   name: string;
   file: string;
+  ref_id: string;
   weight: number;
   test_count: number;
+  covered: boolean;
+  body_length: number | null;
+  line_count: number | null;
 }
 
 export interface CoverageNodesResponse {

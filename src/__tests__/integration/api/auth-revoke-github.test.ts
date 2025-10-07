@@ -10,8 +10,8 @@ import {
   expectError,
   generateUniqueId,
   getMockedSession,
-} from "@/__tests__/helpers";
-import { createTestUser } from "@/__tests__/fixtures/user";
+} from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
