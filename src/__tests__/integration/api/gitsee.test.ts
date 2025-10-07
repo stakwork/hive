@@ -15,11 +15,8 @@ import {
   getMockedSession,
   createPostRequest,
 } from "@/__tests__/support/helpers";
-import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
+import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/support/fixtures/workspace";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
-
-// Mock next-auth for session management
-vi.mock("next-auth/next");
 
 describe("GitSee API Integration Tests", () => {
   let ownerUser: User;
@@ -29,14 +26,11 @@ describe("GitSee API Integration Tests", () => {
   let swarm: Swarm;
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
+  const getApiUrl = (workspaceId: string) =>
+    `http://localhost:3000/api/gitsee?workspaceId=${workspaceId}`;
+
   beforeEach(async () => {
     vi.clearAllMocks();
-
-    // Set up encryption environment for tests
-    process.env.TOKEN_ENCRYPTION_KEY =
-      process.env.TOKEN_ENCRYPTION_KEY ||
-      "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
-    process.env.TOKEN_ENCRYPTION_KEY_ID = "test-key-id";
 
     // Create test workspace with swarm
     const scenario = await createTestWorkspaceScenario({
@@ -91,7 +85,7 @@ describe("GitSee API Integration Tests", () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -107,7 +101,7 @@ describe("GitSee API Integration Tests", () => {
       });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -130,7 +124,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -151,7 +145,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -165,7 +159,7 @@ describe("GitSee API Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -211,7 +205,7 @@ describe("GitSee API Integration Tests", () => {
       await db.swarm.delete({ where: { id: swarm.id } });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -247,7 +241,7 @@ describe("GitSee API Integration Tests", () => {
       };
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         requestBody
       );
 
@@ -268,33 +262,27 @@ describe("GitSee API Integration Tests", () => {
         })
       );
 
-      // Verify GitHub credentials were added to request body
+      // Verify request body format
       const fetchCallArgs = fetchSpy.mock.calls[0];
       const fetchBody = JSON.parse(fetchCallArgs[1]?.body as string);
-      
-      // Check if cloneOptions exists and has the required properties
+
+      // GitHub credentials may or may not be present depending on OAuth setup
+      // If present, verify they have the correct structure
       if (fetchBody.cloneOptions) {
         expect(fetchBody.cloneOptions).toHaveProperty("username");
         expect(fetchBody.cloneOptions).toHaveProperty("token");
-      } else {
-        // If no cloneOptions, this means GitHub auth failed - log for debugging
-        console.log("No cloneOptions found in request body:", fetchBody);
-        // Test should still pass if GitHub auth is not available (matches prod behavior)
-        expect(fetchBody).not.toHaveProperty("cloneOptions");
       }
     });
 
     test("should successfully proxy request without GitHub credentials", async () => {
       // Create user without GitHub auth
       const userWithoutGitHub = await createTestUser({ name: "No GitHub User" });
-      
+
       // Add user to workspace
-      await db.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: userWithoutGitHub.id,
-          role: WorkspaceRole.DEVELOPER,
-        },
+      await createTestMembership({
+        workspaceId: workspace.id,
+        userId: userWithoutGitHub.id,
+        role: WorkspaceRole.DEVELOPER,
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(userWithoutGitHub));
@@ -309,7 +297,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -331,7 +319,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -360,7 +348,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -383,7 +371,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -418,7 +406,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -433,7 +421,7 @@ describe("GitSee API Integration Tests", () => {
       fetchSpy.mockRejectedValue(new Error("Network error"));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -448,7 +436,7 @@ describe("GitSee API Integration Tests", () => {
       fetchSpy.mockRejectedValue(new Error("Request timeout"));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
@@ -479,7 +467,7 @@ describe("GitSee API Integration Tests", () => {
       };
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         requestBody
       );
 
@@ -514,7 +502,7 @@ describe("GitSee API Integration Tests", () => {
       };
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         requestBody
       );
 
@@ -523,20 +511,17 @@ describe("GitSee API Integration Tests", () => {
       const fetchCallArgs = fetchSpy.mock.calls[0];
       const fetchBody = JSON.parse(fetchCallArgs[1]?.body as string);
 
-      // Check if GitHub credentials were merged with existing cloneOptions
-      if (fetchBody.cloneOptions && fetchBody.cloneOptions.username && fetchBody.cloneOptions.token) {
-        expect(fetchBody.cloneOptions).toMatchObject({
-          username: expect.any(String),
-          token: expect.any(String),
-          branch: "custom-branch",
-          depth: 50,
-        });
-      } else {
-        // If no GitHub auth, verify existing cloneOptions are preserved
-        expect(fetchBody.cloneOptions).toMatchObject({
-          branch: "custom-branch",
-          depth: 50,
-        });
+      // Verify cloneOptions are preserved
+      expect(fetchBody.cloneOptions).toBeDefined();
+      expect(fetchBody.cloneOptions).toMatchObject({
+        branch: "custom-branch",
+        depth: 50,
+      });
+
+      // If GitHub credentials are available, verify they were merged
+      if (fetchBody.cloneOptions.username && fetchBody.cloneOptions.token) {
+        expect(fetchBody.cloneOptions.username).toEqual(expect.any(String));
+        expect(fetchBody.cloneOptions.token).toEqual(expect.any(String));
       }
     });
   });
@@ -562,7 +547,7 @@ describe("GitSee API Integration Tests", () => {
       );
 
       const request = createPostRequest(
-        `http://localhost:3000/api/gitsee?workspaceId=${workspace.id}`,
+        getApiUrl(workspace.id),
         { repoUrl: "https://github.com/test/repo" }
       );
 
