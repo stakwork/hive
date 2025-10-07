@@ -157,15 +157,10 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
             break;
 
           case "staktrak-results":
-            // Generate test using bulk data from staktrak-results
-            // Don't use RecordingManager.generateTest() because events aren't sent incrementally
-            if (window.PlaywrightGenerator?.generatePlaywrightTest && initialUrl && staktrakEvent.data.data) {
+            // Generate test from RecordingManager to respect removed actions
+            if (recorderRef.current && initialUrl) {
               try {
-                const bulkData = staktrakEvent.data.data;
-                const test = window.PlaywrightGenerator.generatePlaywrightTest(
-                  cleanInitialUrl(initialUrl),
-                  bulkData
-                );
+                const test = recorderRef.current.generateTest(cleanInitialUrl(initialUrl));
                 setGeneratedPlaywrightTest(test);
                 // Call the callback if provided
                 if (onTestGeneratedRef.current) {
