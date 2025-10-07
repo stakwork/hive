@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
-import { POST } from "@/app/api/workspaces/route";
+import { describe, test, expect, beforeEach } from "vitest";
+import { GET, POST, DELETE } from "@/app/api/workspaces/route";
 import { db } from "@/lib/db";
 import {
   WORKSPACE_ERRORS,
@@ -10,21 +10,16 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   expectSuccess,
-  expectUnauthorized,
   expectError,
   generateUniqueSlug,
+  createAuthenticatedPostRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedDeleteRequest,
   createPostRequest,
 } from "@/__tests__/support/helpers";
 
 describe("Workspace API - Integration Tests", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   describe("POST /api/workspaces", () => {
     test.each([
       {
@@ -119,20 +114,18 @@ describe("Workspace API - Integration Tests", () => {
       const context = await setup();
       const slug = (context as any).slug || generateUniqueSlug(requestData.name.toLowerCase().replace(/\s+/g, "-"));
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(context.user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        ...requestData,
-        slug,
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/workspaces",
+        { ...requestData, slug },
+        context.user
+      );
 
       const response = await POST(request);
       await assertions(response, context);
     });
 
     test("rejects unauthenticated requests", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
+      // Create request without middleware auth headers
       const request = createPostRequest("http://localhost:3000/api/workspaces", {
         name: "Test Workspace",
         slug: "test-workspace",
@@ -140,17 +133,20 @@ describe("Workspace API - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await expectUnauthorized(response);
+      // Should get 401 Unauthorized
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error).toBe("Unauthorized");
     });
 
     test("rejects missing required fields", async () => {
       const user = await createTestUser();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        description: "Missing name and slug",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/workspaces",
+        { description: "Missing name and slug" },
+        user
+      );
 
       const response = await POST(request);
 
