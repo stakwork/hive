@@ -9,26 +9,26 @@ import {
 } from "@/hooks/usePusherConnection";
 
 // SessionStorage key for persisting current page across navigation
-const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
+export const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
 
 // Helper functions for sessionStorage operations
-const saveCurrentPage = (workspaceId: string, page: number) => {
+export const saveCurrentPage = (workspaceId: string, page: number) => {
   if (typeof window !== "undefined") {
-    sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
+    window.sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
   }
 };
 
-const getStoredPage = (workspaceId: string): number => {
+export const getStoredPage = (workspaceId: string): number => {
   if (typeof window !== "undefined") {
-    const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
+    const stored = window.sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
     return stored ? parseInt(stored, 10) : 1;
   }
   return 1;
 };
 
-const clearStoredPage = (workspaceId: string) => {
+export const clearStoredPage = (workspaceId: string) => {
   if (typeof window !== "undefined") {
-    sessionStorage.removeItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
+    window.sessionStorage.removeItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
   }
 };
 
