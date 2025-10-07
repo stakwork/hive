@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { Repository, RepositoryStatus } from "@prisma/client";
+import type { Repository, RepositoryStatus, Prisma } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
 export interface CreateTestRepositoryOptions {
@@ -10,14 +10,18 @@ export interface CreateTestRepositoryOptions {
   status?: RepositoryStatus;
   testingFrameworkSetup?: boolean;
   playwrightSetup?: boolean;
+  githubWebhookId?: string | null;
+  githubWebhookSecret?: string | null;
+  tx?: Prisma.TransactionClient;
 }
 
 export async function createTestRepository(
   options: CreateTestRepositoryOptions,
 ): Promise<Repository> {
   const uniqueId = generateUniqueId("repo");
+  const client = options.tx || db;
 
-  return db.repository.create({
+  return client.repository.create({
     data: {
       name: options.name || `Test Repository ${uniqueId}`,
       repositoryUrl: options.repositoryUrl || `https://github.com/test/repo-${uniqueId}`,
@@ -26,6 +30,8 @@ export async function createTestRepository(
       status: options.status,
       testingFrameworkSetup: options.testingFrameworkSetup ?? false,
       playwrightSetup: options.playwrightSetup ?? false,
+      githubWebhookId: options.githubWebhookId ?? null,
+      githubWebhookSecret: options.githubWebhookSecret ?? null,
     },
   });
 }

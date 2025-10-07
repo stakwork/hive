@@ -9,6 +9,9 @@ import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 
 //
 export async function POST(request: NextRequest) {
+  console.log("🔍 Webhook handler reached");
+  console.log("Request URL:", request.url);
+  console.log("Request headers:", Object.fromEntries(request.headers.entries()));
   try {
     const signature = request.headers.get("x-hub-signature-256");
     const event = request.headers.get("x-github-event");
@@ -63,8 +66,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log("DEBUG: Repository lookup result:", { repository, webhookId });
+    
     if (!repository || !repository.githubWebhookSecret) {
-      console.error("Missing repository or githubWebhookSecret");
+      console.error("Missing repository or githubWebhookSecret", { 
+        repositoryFound: !!repository, 
+        hasWebhookSecret: !!repository?.githubWebhookSecret 
+      });
       return NextResponse.json({ success: false }, { status: 404 });
     }
 
@@ -111,11 +119,17 @@ export async function POST(request: NextRequest) {
     //   workspaceId: "123",
     // };
     // const swarm = mockSwarm;
+    console.log("DEBUG: Looking for swarm with workspaceId:", repository.workspaceId);
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: repository.workspaceId },
     });
-    if (!swarm || !swarm.name || !swarm.swarmApiKey) {
-      console.error("Missing swarm or swarmApiKey");
+    console.log("DEBUG: Swarm query result:", swarm);
+    if (!swarm) {
+      console.error("Missing swarm");
+      return NextResponse.json({ success: false }, { status: 400 });
+    }
+    if (!swarm.name || !swarm.swarmApiKey) {
+      console.error("Missing swarm name or swarmApiKey", { name: swarm.name, hasApiKey: !!swarm.swarmApiKey });
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -155,15 +169,7 @@ export async function POST(request: NextRequest) {
 
     const swarmHost = swarm.swarmUrl ? new URL(swarm.swarmUrl).host : `${swarm.name}.sphinx.chat`;
     console.log("Trigger sync at:", swarmHost, decryptedSwarmApiKey.slice(0, 2) + "...");
-    try {
-      await db.repository.update({
-        where: { id: repository.id },
-        data: { status: RepositoryStatus.PENDING },
-      });
-    } catch (err) {
-      console.error("Failed to set repository to PENDING", err);
-    }
-
+    
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
 
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
@@ -173,6 +179,16 @@ export async function POST(request: NextRequest) {
       username && pat ? { username, pat } : undefined,
       callbackUrl,
     );
+
+    // Update repository status to PENDING only after successful triggerAsyncSync call
+    try {
+      await db.repository.update({
+        where: { id: repository.id },
+        data: { status: RepositoryStatus.PENDING },
+      });
+    } catch (err) {
+      console.error("Failed to set repository to PENDING", err);
+    }
 
     try {
       const reqId = apiResult.data?.request_id;

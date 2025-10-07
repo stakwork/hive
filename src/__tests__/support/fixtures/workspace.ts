@@ -4,6 +4,7 @@ import type {
   User,
   Workspace,
   WorkspaceMember,
+  Prisma,
 } from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
@@ -22,6 +23,7 @@ export interface CreateTestWorkspaceOptions {
   slug?: string;
   ownerId: string;
   stakworkApiKey?: string | null;
+  tx?: Prisma.TransactionClient;
 }
 
 export interface CreateTestMembershipOptions {
@@ -29,14 +31,16 @@ export interface CreateTestMembershipOptions {
   userId: string;
   role?: WorkspaceRole;
   leftAt?: Date;
+  tx?: Prisma.TransactionClient;
 }
 
 export async function createTestWorkspace(
   options: CreateTestWorkspaceOptions,
 ): Promise<Workspace> {
   const uniqueId = generateUniqueId("workspace");
+  const client = options.tx || db;
 
-  return db.workspace.create({
+  return client.workspace.create({
     data: {
       name: options.name || `Test Workspace ${uniqueId}`,
       description:
@@ -52,7 +56,9 @@ export async function createTestWorkspace(
 export async function createTestMembership(
   options: CreateTestMembershipOptions,
 ): Promise<WorkspaceMember> {
-  return db.workspaceMember.create({
+  const client = options.tx || db;
+  
+  return client.workspaceMember.create({
     data: {
       workspaceId: options.workspaceId,
       userId: options.userId,

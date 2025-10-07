@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { User, GitHubAuth } from "@prisma/client";
+import type { User, GitHubAuth, Prisma } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
 export interface CreateTestUserOptions {
@@ -8,6 +8,7 @@ export interface CreateTestUserOptions {
   role?: "USER" | "ADMIN";
   withGitHubAuth?: boolean;
   githubUsername?: string;
+  tx?: Prisma.TransactionClient;
 }
 
 export async function createTestUser(
@@ -15,8 +16,9 @@ export async function createTestUser(
 ): Promise<User> {
   const uniqueId = generateUniqueId("user");
   const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
+  const client = options.tx || db;
 
-  const user = await db.user.create({
+  const user = await client.user.create({
     data: {
       name: options.name || `Test User ${uniqueId}`,
       email: options.email || `test-${uniqueId}@example.com`,
@@ -25,7 +27,7 @@ export async function createTestUser(
   });
 
   if (options.withGitHubAuth) {
-    await db.gitHubAuth.create({
+    await client.gitHubAuth.create({
       data: {
         userId: user.id,
         githubUserId: generateUniqueId("github"),
