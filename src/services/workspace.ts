@@ -72,10 +72,10 @@ export async function createWorkspace(
 
   // Check if the slug already exists
   const existing = await db.workspace.findUnique({
-    where: { slug: data.slug, deleted: false },
+    where: { slug: data.slug },
   });
 
-  if (existing) {
+  if (existing && !existing.deleted) {
     throw new Error(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
   }
 
