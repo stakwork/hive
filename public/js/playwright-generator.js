@@ -1,501 +1,414 @@
-"use strict";
-var PlaywrightGenerator = (() => {
-  var __defProp = Object.defineProperty;
-  var __defProps = Object.defineProperties;
-  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
-  var __getOwnPropNames = Object.getOwnPropertyNames;
-  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
-  var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __propIsEnum = Object.prototype.propertyIsEnumerable;
-  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-  var __spreadValues = (a, b) => {
-    for (var prop in b || (b = {}))
-      if (__hasOwnProp.call(b, prop))
-        __defNormalProp(a, prop, b[prop]);
-    if (__getOwnPropSymbols)
-      for (var prop of __getOwnPropSymbols(b)) {
-        if (__propIsEnum.call(b, prop))
-          __defNormalProp(a, prop, b[prop]);
+// src/playwright-generator.ts
+function convertToPlaywrightSelector(clickDetail) {
+  const { selectors } = clickDetail;
+  if (selectors.primary.includes("[data-testid=")) {
+    return selectors.primary;
+  }
+  if (selectors.primary.startsWith("#")) {
+    return selectors.primary;
+  }
+  if (selectors.text && (selectors.tagName === "button" || selectors.tagName === "a" || selectors.role === "button")) {
+    const cleanText = selectors.text.trim();
+    if (cleanText.length > 0 && cleanText.length <= 50) {
+      if (selectors.tagName === "button") {
+        return `button:has-text("${escapeTextForAssertion(cleanText)}")`;
       }
-    return a;
-  };
-  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
-  var __export = (target, all) => {
-    for (var name in all)
-      __defProp(target, name, { get: all[name], enumerable: true });
-  };
-  var __copyProps = (to, from, except, desc) => {
-    if (from && typeof from === "object" || typeof from === "function") {
-      for (let key of __getOwnPropNames(from))
-        if (!__hasOwnProp.call(to, key) && key !== except)
-          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+      if (selectors.tagName === "a") {
+        return `a:has-text("${escapeTextForAssertion(cleanText)}")`;
+      }
+      if (selectors.role === "button") {
+        return `[role="button"]:has-text("${escapeTextForAssertion(cleanText)}")`;
+      }
     }
-    return to;
-  };
-  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-  // src/playwright-generator.ts
-  var playwright_generator_exports = {};
-  __export(playwright_generator_exports, {
-    RecordingManager: () => RecordingManager,
-    generatePlaywrightTest: () => generatePlaywrightTest,
-    generatePlaywrightTestFromActions: () => generatePlaywrightTestFromActions
+  }
+  if (selectors.ariaLabel) {
+    return `[aria-label="${escapeTextForAssertion(selectors.ariaLabel)}"]`;
+  }
+  for (const fallback of selectors.fallbacks) {
+    if (isValidCSSSelector(fallback)) {
+      return fallback;
+    }
+  }
+  if (isValidCSSSelector(selectors.primary)) {
+    return selectors.primary;
+  }
+  if (selectors.role) {
+    return `[role="${selectors.role}"]`;
+  }
+  if (selectors.tagName === "input") {
+    const type = clickDetail.elementInfo.attributes.type;
+    const name = clickDetail.elementInfo.attributes.name;
+    if (type)
+      return `input[type="${type}"]`;
+    if (name)
+      return `input[name="${name}"]`;
+  }
+  if (selectors.xpath) {
+    return `xpath=${selectors.xpath}`;
+  }
+  return selectors.tagName;
+}
+function isValidCSSSelector(selector) {
+  if (!selector || selector.trim() === "")
+    return false;
+  try {
+    if (typeof document !== "undefined") {
+      document.querySelector(selector);
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function generatePlaywrightTest(url, trackingData) {
+  var _a;
+  if (!trackingData)
+    return generateEmptyTest(url);
+  const { clicks, inputChanges, assertions, userInfo, formElementChanges } = trackingData;
+  if (!((_a = clicks == null ? void 0 : clicks.clickDetails) == null ? void 0 : _a.length) && !(inputChanges == null ? void 0 : inputChanges.length) && !(assertions == null ? void 0 : assertions.length) && !(formElementChanges == null ? void 0 : formElementChanges.length)) {
+    return generateEmptyTest(url);
+  }
+  return `import { test, expect } from '@playwright/test';
+    
+  test('User interaction replay', async ({ page }) => {
+    // Navigate to the page
+    await page.goto('${url}');
+    
+    // Wait for page to load
+    await page.waitForLoadState('networkidle');
+    
+    // Set viewport size to match recorded session
+    await page.setViewportSize({ 
+      width: ${userInfo.windowSize[0]}, 
+      height: ${userInfo.windowSize[1]} 
+    });
+  
+  ${generateUserInteractions(
+    clicks,
+    inputChanges,
+    trackingData.focusChanges,
+    assertions,
+    formElementChanges
+  )}
+  
+    await page.waitForTimeout(432);
+  });`;
+}
+function generateEmptyTest(url) {
+  return `import { test, expect } from '@playwright/test';
+  
+  test('Empty test template', async ({ page }) => {
+    // Navigate to the page
+    await page.goto('${url}');
+    
+    // Wait for page to load
+    await page.waitForLoadState('networkidle');
+    
+    // No interactions were recorded
+    console.log('No user interactions to replay');
+  });`;
+}
+function generateUserInteractions(clicks, inputChanges, focusChanges, assertions = [], formElementChanges = []) {
+  var _a;
+  const allEvents = [];
+  const processedSelectors = /* @__PURE__ */ new Set();
+  const formElementTimestamps = {};
+  if (formElementChanges == null ? void 0 : formElementChanges.length) {
+    const formElementsBySelector = {};
+    formElementChanges.forEach((change) => {
+      const selector = change.elementSelector;
+      if (!formElementsBySelector[selector]) {
+        formElementsBySelector[selector] = [];
+      }
+      formElementsBySelector[selector].push(change);
+    });
+    Object.entries(formElementsBySelector).forEach(([selector, changes]) => {
+      changes.sort((a, b) => a.timestamp - b.timestamp);
+      if (changes[0].type === "checkbox" || changes[0].type === "radio") {
+        const latestChange = changes[changes.length - 1];
+        allEvents.push({
+          type: "form",
+          formType: latestChange.type,
+          selector: latestChange.elementSelector,
+          value: latestChange.value,
+          checked: latestChange.checked,
+          timestamp: latestChange.timestamp,
+          isUserAction: true
+        });
+        formElementTimestamps[selector] = latestChange.timestamp;
+      } else if (changes[0].type === "select") {
+        let lastValue = null;
+        changes.forEach((change) => {
+          if (change.value !== lastValue) {
+            allEvents.push({
+              type: "form",
+              formType: change.type,
+              selector: change.elementSelector,
+              value: change.value,
+              text: change.text,
+              timestamp: change.timestamp,
+              isUserAction: true
+            });
+            formElementTimestamps[selector] = change.timestamp;
+            lastValue = change.value;
+          }
+        });
+      }
+      processedSelectors.add(selector);
+    });
+  }
+  if ((_a = clicks == null ? void 0 : clicks.clickDetails) == null ? void 0 : _a.length) {
+    clicks.clickDetails.forEach((clickDetail) => {
+      const selector = convertToPlaywrightSelector(clickDetail);
+      if (!selector || selector.trim() === "") {
+        console.warn(
+          `Skipping click with invalid selector for element: ${clickDetail.selectors.tagName}`
+        );
+        return;
+      }
+      const shouldSkip = processedSelectors.has(clickDetail.selectors.primary) || processedSelectors.has(selector) || Object.entries(formElementTimestamps).some(
+        ([formSelector, formTimestamp]) => {
+          const isRelatedToForm = clickDetail.selectors.primary.includes(formSelector) || formSelector.includes(clickDetail.selectors.primary) || selector.includes(formSelector) || clickDetail.selectors.fallbacks.some(
+            (f) => f.includes(formSelector) || formSelector.includes(f)
+          );
+          return isRelatedToForm && Math.abs(clickDetail.timestamp - formTimestamp) < 500;
+        }
+      );
+      if (!shouldSkip) {
+        allEvents.push({
+          type: "click",
+          x: clickDetail.x,
+          y: clickDetail.y,
+          selector,
+          timestamp: clickDetail.timestamp,
+          isUserAction: true,
+          text: clickDetail.selectors.text,
+          clickDetail
+          // Store for better debugging
+        });
+      }
+    });
+  }
+  if (inputChanges == null ? void 0 : inputChanges.length) {
+    const completedInputs = inputChanges.filter(
+      (change) => change.action === "complete" || !change.action
+    );
+    completedInputs.forEach((change) => {
+      const isFormElement = change.elementSelector.includes('type="checkbox"') || change.elementSelector.includes('type="radio"');
+      if (!processedSelectors.has(change.elementSelector) && !isFormElement) {
+        allEvents.push({
+          type: "input",
+          selector: change.elementSelector,
+          value: change.value,
+          timestamp: change.timestamp,
+          isUserAction: true
+        });
+      }
+    });
+  }
+  if (assertions == null ? void 0 : assertions.length) {
+    assertions.forEach((assertion) => {
+      const text = assertion.value || "";
+      const isShortText = text.length < 4;
+      const hasValidText = text.trim().length > 0;
+      if (!isShortText && hasValidText) {
+        allEvents.push({
+          type: "assertion",
+          assertionType: assertion.type,
+          selector: assertion.selector,
+          value: assertion.value,
+          timestamp: assertion.timestamp,
+          isUserAction: false
+        });
+      }
+    });
+  }
+  allEvents.sort((a, b) => a.timestamp - b.timestamp);
+  const uniqueEvents = [];
+  const processedFormActions = /* @__PURE__ */ new Set();
+  allEvents.forEach((event) => {
+    if (event.type === "form") {
+      const eventKey = `${event.formType}-${event.selector}-${event.checked !== void 0 ? event.checked : event.value}`;
+      if (!processedFormActions.has(eventKey)) {
+        uniqueEvents.push(event);
+        processedFormActions.add(eventKey);
+      }
+    } else {
+      uniqueEvents.push(event);
+    }
   });
+  let code = "";
+  let lastUserActionTimestamp = null;
+  uniqueEvents.forEach((event, index) => {
+    if (index > 0) {
+      const prevEvent = uniqueEvents[index - 1];
+      if (event.isUserAction) {
+        let waitTime = 0;
+        if (lastUserActionTimestamp) {
+          waitTime = event.timestamp - lastUserActionTimestamp;
+        } else if (prevEvent.isUserAction) {
+          waitTime = event.timestamp - prevEvent.timestamp;
+        }
+        waitTime = Math.max(100, Math.min(5e3, waitTime));
+        if (waitTime > 100) {
+          code += `  await page.waitForTimeout(${waitTime});
 
-  // src/actionModel.ts
-  function resultsToActions(results) {
-    var _a, _b, _c;
-    const actions = [];
-    const navigations = (results.pageNavigation || []).slice().sort((a, b) => a.timestamp - b.timestamp);
-    const normalize = (u) => {
-      var _a2;
-      try {
-        const url = new URL(u, ((_a2 = results.userInfo) == null ? void 0 : _a2.url) || "http://localhost");
-        return url.origin + url.pathname.replace(/\/$/, "");
-      } catch (e) {
-        return u.replace(/[?#].*$/, "").replace(/\/$/, "");
-      }
-    };
-    const navTimestampsFromClicks = /* @__PURE__ */ new Set();
-    const clicks = ((_a = results.clicks) == null ? void 0 : _a.clickDetails) || [];
-    for (let i = 0; i < clicks.length; i++) {
-      const cd = clicks[i];
-      actions.push({
-        kind: "click",
-        timestamp: cd.timestamp,
-        locator: {
-          primary: cd.selectors.stabilizedPrimary || cd.selectors.primary,
-          fallbacks: cd.selectors.fallbacks || [],
-          role: cd.selectors.role,
-          text: cd.selectors.text,
-          tagName: cd.selectors.tagName,
-          stableSelector: cd.selectors.stabilizedPrimary || cd.selectors.primary,
-          candidates: cd.selectors.scores || void 0
-        }
-      });
-      const nav = navigations.find((n) => n.timestamp > cd.timestamp && n.timestamp - cd.timestamp < 1800);
-      if (nav) {
-        navTimestampsFromClicks.add(nav.timestamp);
-        actions.push({
-          kind: "waitForUrl",
-          timestamp: nav.timestamp - 1,
-          // ensure ordering between click and nav
-          expectedUrl: nav.url,
-          normalizedUrl: normalize(nav.url),
-          navRefTimestamp: nav.timestamp
-        });
-      }
-    }
-    for (const nav of navigations) {
-      if (!navTimestampsFromClicks.has(nav.timestamp)) {
-        actions.push({ kind: "nav", timestamp: nav.timestamp, url: nav.url, normalizedUrl: normalize(nav.url) });
-      }
-    }
-    if (results.inputChanges) {
-      for (const input of results.inputChanges) {
-        if (input.action === "complete" || !input.action) {
-          actions.push({
-            kind: "input",
-            timestamp: input.timestamp,
-            locator: { primary: input.elementSelector, fallbacks: [] },
-            value: input.value
-          });
+`;
         }
       }
     }
-    if (results.formElementChanges) {
-      for (const fe of results.formElementChanges) {
-        actions.push({
-          kind: "form",
-          timestamp: fe.timestamp,
-          locator: { primary: fe.elementSelector, fallbacks: [] },
-          formType: fe.type,
-          value: fe.value,
-          checked: fe.checked
-        });
-      }
-    }
-    if (results.assertions) {
-      for (const asrt of results.assertions) {
-        actions.push({
-          kind: "assertion",
-          timestamp: asrt.timestamp,
-          locator: { primary: asrt.selector, fallbacks: [] },
-          value: asrt.value
-        });
-      }
-    }
-    actions.sort((a, b) => a.timestamp - b.timestamp || weightOrder(a.kind) - weightOrder(b.kind));
-    refineLocators(actions);
-    for (let i = actions.length - 1; i > 0; i--) {
-      const current = actions[i];
-      const previous = actions[i - 1];
-      if (current.kind === "waitForUrl" && previous.kind === "waitForUrl" && current.normalizedUrl === previous.normalizedUrl) {
-        actions.splice(i, 1);
-      }
-    }
-    for (let i = actions.length - 1; i > 0; i--) {
-      const current = actions[i];
-      const previous = actions[i - 1];
-      if (current.kind === "input" && previous.kind === "input" && ((_b = current.locator) == null ? void 0 : _b.primary) === ((_c = previous.locator) == null ? void 0 : _c.primary) && current.value === previous.value) {
-        actions.splice(i, 1);
-      }
-    }
-    return actions;
-  }
-  function weightOrder(kind) {
-    switch (kind) {
+    switch (event.type) {
       case "click":
-        return 1;
-      case "waitForUrl":
-        return 2;
-      case "nav":
-        return 3;
-      default:
-        return 4;
+        code += generateClickCode(event);
+        lastUserActionTimestamp = event.timestamp;
+        break;
+      case "input":
+        code += generateInputCode(event);
+        lastUserActionTimestamp = event.timestamp;
+        break;
+      case "form":
+        code += generateFormCode(event);
+        lastUserActionTimestamp = event.timestamp;
+        break;
+      case "assertion":
+        code += generateAssertionCode(event);
+        break;
     }
-  }
-  function refineLocators(actions) {
-    if (typeof document === "undefined")
-      return;
-    const seen = /* @__PURE__ */ new Set();
-    for (const a of actions) {
-      if (!a.locator)
-        continue;
-      const { primary, fallbacks } = a.locator;
-      const validated = [];
-      if (isUnique(primary))
-        validated.push(primary);
-      for (const fb of fallbacks) {
-        if (validated.length >= 3)
-          break;
-        if (isUnique(fb))
-          validated.push(fb);
-      }
-      if (validated.length === 0)
-        continue;
-      a.locator.primary = validated[0];
-      a.locator.fallbacks = validated.slice(1);
-      const key = a.locator.primary + "::" + a.kind;
-      if (seen.has(key) && a.locator.fallbacks.length > 0) {
-        a.locator.primary = a.locator.fallbacks[0];
-        a.locator.fallbacks = a.locator.fallbacks.slice(1);
-      }
-      seen.add(a.locator.primary + "::" + a.kind);
-    }
-  }
-  function isUnique(sel) {
-    if (!sel || /^(html|body|div|span|p|button|input)$/i.test(sel))
-      return false;
-    try {
-      const nodes = document.querySelectorAll(sel);
-      return nodes.length === 1;
-    } catch (e) {
-      return false;
-    }
-  }
+  });
+  return code;
+}
+function generateClickCode(event) {
+  const selectorComment = event.clickDetail ? `${event.clickDetail.selectors.tagName}${event.clickDetail.selectors.text ? ` "${event.clickDetail.selectors.text}"` : ""}` : event.selector;
+  let code = `  // Click on ${selectorComment}
+`;
+  code += `  await page.click('${event.selector}');
 
-  // src/playwright-generator.ts
-  var RecordingManager = class {
-    constructor() {
-      this.trackingData = {
-        pageNavigation: [],
-        clicks: { clickCount: 0, clickDetails: [] },
-        inputChanges: [],
-        formElementChanges: [],
-        assertions: [],
-        keyboardActivities: [],
-        mouseMovement: [],
-        mouseScroll: [],
-        focusChanges: [],
-        visibilitychanges: [],
-        windowSizes: [],
-        touchEvents: [],
-        audioVideoInteractions: []
-      };
-      this.capturedActions = [];
-      this.actionIdCounter = 0;
+`;
+  return code;
+}
+function generateInputCode(event) {
+  const escapedValue = escapeTextForAssertion(event.value);
+  let code = `  // Fill input: ${event.selector}
+`;
+  code += `  await page.fill('${event.selector}', '${escapedValue}');
+
+`;
+  return code;
+}
+function generateFormCode(event) {
+  let code = "";
+  if (event.formType === "checkbox" || event.formType === "radio") {
+    if (event.checked) {
+      code += `  // Check ${event.formType}: ${event.selector}
+`;
+      code += `  await page.check('${event.selector}');
+
+`;
+    } else {
+      code += `  // Uncheck ${event.formType}: ${event.selector}
+`;
+      code += `  await page.uncheck('${event.selector}');
+
+`;
     }
-    /**
-     * Handle an event from the iframe and store it
-     */
-    handleEvent(eventType, eventData) {
-      switch (eventType) {
-        case "click":
-          this.trackingData.clicks.clickDetails.push(eventData);
-          this.trackingData.clicks.clickCount++;
-          break;
-        case "nav":
-        case "navigation":
-          this.trackingData.pageNavigation.push({
-            type: "navigation",
-            url: eventData.url,
-            timestamp: eventData.timestamp
-          });
-          break;
-        case "input":
-          this.trackingData.inputChanges.push({
-            elementSelector: eventData.selector || "",
-            value: eventData.value,
-            timestamp: eventData.timestamp,
-            action: "complete"
-          });
-          break;
-        case "form":
-          this.trackingData.formElementChanges.push({
-            elementSelector: eventData.selector || "",
-            type: eventData.formType || "input",
-            checked: eventData.checked,
-            value: eventData.value || "",
-            text: eventData.text,
-            timestamp: eventData.timestamp
-          });
-          break;
-        case "assertion":
-          this.trackingData.assertions.push({
-            id: eventData.id,
-            type: eventData.type || "hasText",
-            selector: eventData.selector,
-            value: eventData.value || "",
-            timestamp: eventData.timestamp
-          });
-          break;
-        default:
-          return null;
+  } else if (event.formType === "select") {
+    const escapedValue = escapeTextForAssertion(event.value);
+    code += `  // Select option: ${event.text || event.value} in ${event.selector}
+`;
+    code += `  await page.selectOption('${event.selector}', '${escapedValue}');
+
+`;
+  }
+  return code;
+}
+function generateAssertionCode(event) {
+  let code = "";
+  switch (event.assertionType) {
+    case "isVisible":
+      code += `  // Assert element is visible: ${event.selector}
+`;
+      code += `  await expect(page.locator('${event.selector}')).toBeVisible();
+
+`;
+      break;
+    case "hasText":
+      const genericSelectors = [
+        "div",
+        "p",
+        "span",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6"
+      ];
+      const isGenericSelector = genericSelectors.includes(event.selector);
+      if (isGenericSelector) {
+        const cleanedText = cleanTextForGetByText(event.value);
+        const isShortText = cleanedText.length < 10 || cleanedText.split(" ").length <= 2;
+        code += `  // Assert element contains text: ${event.selector}
+`;
+        if (isShortText) {
+          code += `  await expect(page.locator('${event.selector}').filter({ hasText: '${cleanedText}' })).toBeVisible();
+
+`;
+        } else {
+          code += `  await expect(page.getByText('${cleanedText}', { exact: false })).toBeVisible();
+
+`;
+        }
+      } else {
+        const escapedText = escapeTextForAssertion(event.value);
+        code += `  // Assert element contains text: ${event.selector}
+`;
+        code += `  await expect(page.locator('${event.selector}')).toContainText('${escapedText}');
+
+`;
       }
-      const action = this.createAction(eventType, eventData);
-      if (action) {
-        this.capturedActions.push(action);
-      }
-      return action;
-    }
-    createAction(eventType, eventData) {
-      const id = `${Date.now()}_${this.actionIdCounter++}`;
-      const baseAction = {
-        id,
-        timestamp: eventData.timestamp || Date.now()
-      };
-      switch (eventType) {
-        case "click":
-          return __spreadProps(__spreadValues({}, baseAction), {
-            kind: "click",
-            locator: eventData.selectors || eventData.locator,
-            elementInfo: eventData.elementInfo
-          });
-        case "nav":
-        case "navigation":
-          return __spreadProps(__spreadValues({}, baseAction), {
-            kind: "nav",
-            url: eventData.url
-          });
-        case "input":
-          return __spreadProps(__spreadValues({}, baseAction), {
-            kind: "input",
-            value: eventData.value,
-            locator: eventData.locator || { primary: eventData.selector }
-          });
-        case "form":
-          return __spreadProps(__spreadValues({}, baseAction), {
-            kind: "form",
-            formType: eventData.formType,
-            checked: eventData.checked,
-            value: eventData.value,
-            locator: eventData.locator || { primary: eventData.selector }
-          });
-        case "assertion":
-          return __spreadProps(__spreadValues({}, baseAction), {
-            kind: "assertion",
-            value: eventData.value,
-            locator: { primary: eventData.selector, fallbacks: [] }
-          });
-        default:
-          return __spreadProps(__spreadValues({}, baseAction), {
-            kind: eventType
-          });
-      }
-    }
-    /**
-     * Remove an action by ID
-     */
-    removeAction(actionId) {
-      const action = this.capturedActions.find((a) => a.id === actionId);
-      if (!action)
-        return false;
-      this.capturedActions = this.capturedActions.filter((a) => a.id !== actionId);
-      this.removeFromTrackingData(action);
-      return true;
-    }
-    removeFromTrackingData(action) {
-      const timestamp = action.timestamp;
-      switch (action.kind) {
-        case "click":
-          this.trackingData.clicks.clickDetails = this.trackingData.clicks.clickDetails.filter(
-            (c) => c.timestamp !== timestamp
-          );
-          this.trackingData.clicks.clickCount = this.trackingData.clicks.clickDetails.length;
-          break;
-        case "nav":
-          this.trackingData.pageNavigation = this.trackingData.pageNavigation.filter(
-            (n) => n.timestamp !== timestamp
-          );
-          break;
-        case "input":
-          this.trackingData.inputChanges = this.trackingData.inputChanges.filter(
-            (i) => i.timestamp !== timestamp
-          );
-          break;
-        case "form":
-          this.trackingData.formElementChanges = this.trackingData.formElementChanges.filter(
-            (f) => f.timestamp !== timestamp
-          );
-          break;
-        case "assertion":
-          this.trackingData.assertions = this.trackingData.assertions.filter(
-            (a) => a.timestamp !== timestamp
-          );
-          const clickBeforeAssertion = this.trackingData.clicks.clickDetails.filter((c) => c.timestamp < timestamp).sort((a, b) => b.timestamp - a.timestamp)[0];
-          if (clickBeforeAssertion && timestamp - clickBeforeAssertion.timestamp < 1e3) {
-            this.trackingData.clicks.clickDetails = this.trackingData.clicks.clickDetails.filter(
-              (c) => c.timestamp !== clickBeforeAssertion.timestamp
-            );
-            this.trackingData.clicks.clickCount = this.trackingData.clicks.clickDetails.length;
-          }
-          break;
-      }
-    }
-    /**
-     * Generate Playwright test from current data
-     */
-    generateTest(url, options) {
-      const actions = resultsToActions(this.trackingData);
-      return generatePlaywrightTestFromActions(actions, __spreadValues({
-        baseUrl: url
-      }, options));
-    }
-    /**
-     * Get current actions for UI display
-     */
-    getActions() {
-      return [...this.capturedActions];
-    }
-    /**
-     * Get tracking data (for compatibility)
-     */
-    getTrackingData() {
-      return this.trackingData;
-    }
-    /**
-     * Clear all recorded data
-     */
-    clear() {
-      this.trackingData = {
-        pageNavigation: [],
-        clicks: { clickCount: 0, clickDetails: [] },
-        inputChanges: [],
-        formElementChanges: [],
-        assertions: [],
-        keyboardActivities: [],
-        mouseMovement: [],
-        mouseScroll: [],
-        focusChanges: [],
-        visibilitychanges: [],
-        windowSizes: [],
-        touchEvents: [],
-        audioVideoInteractions: []
-      };
-      this.capturedActions = [];
-      this.actionIdCounter = 0;
-    }
-    /**
-     * Clear all actions (but keep recording)
-     */
-    clearAllActions() {
-      this.clear();
-    }
+      break;
+    case "isChecked":
+      code += `  // Assert checkbox/radio is checked: ${event.selector}
+`;
+      code += `  await expect(page.locator('${event.selector}')).toBeChecked();
+
+`;
+      break;
+    case "isNotChecked":
+      code += `  // Assert checkbox/radio is not checked: ${event.selector}
+`;
+      code += `  await expect(page.locator('${event.selector}')).not.toBeChecked();
+
+`;
+      break;
+  }
+  return code;
+}
+function escapeTextForAssertion(text) {
+  if (!text)
+    return "";
+  return text.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").trim();
+}
+function cleanTextForGetByText(text) {
+  if (!text)
+    return "";
+  return text.replace(/\s+/g, " ").replace(/\n+/g, " ").trim();
+}
+function isTextAmbiguous(text) {
+  if (!text)
+    return true;
+  if (text.length < 6)
+    return true;
+  if (text.split(/\s+/).length <= 2)
+    return true;
+  return false;
+}
+if (typeof window !== "undefined") {
+  window.PlaywrightGenerator = {
+    generatePlaywrightTest,
+    convertToPlaywrightSelector,
+    escapeTextForAssertion,
+    cleanTextForGetByText,
+    isTextAmbiguous
   };
-  function escapeTextForAssertion(text) {
-    if (!text)
-      return "";
-    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-  function generatePlaywrightTestFromActions(actions, options = {}) {
-    const { baseUrl = "" } = options;
-    const needsInitialGoto = baseUrl && (actions.length === 0 || actions[0].kind !== "nav");
-    const initialGoto = needsInitialGoto ? `  await page.goto('${baseUrl}');
-` : "";
-    const body = actions.map((action) => {
-      var _a, _b, _c, _d, _e;
-      switch (action.kind) {
-        case "nav":
-          return `  await page.goto('${action.url || baseUrl}');`;
-        case "waitForUrl":
-          if (action.normalizedUrl) {
-            return `  await page.waitForURL('${action.normalizedUrl}');`;
-          }
-          return "";
-        case "click": {
-          const selector = ((_a = action.locator) == null ? void 0 : _a.stableSelector) || ((_b = action.locator) == null ? void 0 : _b.primary);
-          if (!selector)
-            return "";
-          return `  await page.click('${selector}');`;
-        }
-        case "input": {
-          const selector = (_c = action.locator) == null ? void 0 : _c.primary;
-          if (!selector || action.value === void 0)
-            return "";
-          const value = action.value.replace(/'/g, "\\'");
-          return `  await page.fill('${selector}', '${value}');`;
-        }
-        case "form": {
-          const selector = (_d = action.locator) == null ? void 0 : _d.primary;
-          if (!selector)
-            return "";
-          if (action.formType === "checkbox" || action.formType === "radio") {
-            if (action.checked) {
-              return `  await page.check('${selector}');`;
-            } else {
-              return `  await page.uncheck('${selector}');`;
-            }
-          } else if (action.formType === "select" && action.value) {
-            return `  await page.selectOption('${selector}', '${action.value}');`;
-          }
-          return "";
-        }
-        case "assertion": {
-          const selector = (_e = action.locator) == null ? void 0 : _e.primary;
-          if (!selector || action.value === void 0)
-            return "";
-          const escapedValue = escapeTextForAssertion(action.value);
-          return `  await expect(page.locator('${selector}')).toContainText('${escapedValue}');`;
-        }
-        default:
-          return "";
-      }
-    }).filter((line) => line !== "").join("\n");
-    if (!initialGoto && !body)
-      return "";
-    return `import { test, expect } from '@playwright/test';
-
-test('Recorded test', async ({ page }) => {
-${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n")}
-});`;
-  }
-  function generatePlaywrightTest(url, trackingData) {
-    try {
-      const actions = resultsToActions(trackingData);
-      return generatePlaywrightTestFromActions(actions, { baseUrl: url });
-    } catch (error) {
-      console.error("Error generating Playwright test:", error);
-      return "";
-    }
-  }
-  if (typeof window !== "undefined") {
-    const existing = window.PlaywrightGenerator || {};
-    existing.RecordingManager = RecordingManager;
-    existing.generatePlaywrightTestFromActions = generatePlaywrightTestFromActions;
-    existing.generatePlaywrightTest = generatePlaywrightTest;
-    window.PlaywrightGenerator = existing;
-  }
-  return __toCommonJS(playwright_generator_exports);
-})();
+}
