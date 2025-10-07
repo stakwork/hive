@@ -24,13 +24,10 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const ignoreDirs = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
 
-    // Build endpoint path with ignore_dirs if provided
     let endpoint = "/tests/coverage";
     if (ignoreDirs) {
       endpoint += `?ignore_dirs=${encodeURIComponent(ignoreDirs)}`;
     }
-
-    // Development mode: connect directly to local stakgraph
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
     if (process.env.NODE_ENV === "development" && isLocalHost) {

@@ -12,6 +12,7 @@ import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
+import { formatNumber } from "@/lib/utils/format";
 
 interface SortableHeaderProps {
   label: string;
@@ -70,19 +71,16 @@ export function CoverageInsights() {
 
   const { ignoreDirs, setIgnoreDirs } = useCoverageNodes();
 
-  // Local state for the input value (for immediate UI feedback)
   const [inputValue, setInputValue] = useState(ignoreDirs);
 
-  // Debounce effect: update store after user stops typing
   useEffect(() => {
     const timer = setTimeout(() => {
       if (inputValue !== ignoreDirs) {
-        // Clean up the input: trim whitespace, remove trailing commas, filter empty values
         const cleaned = inputValue
-          .split(',')
-          .map(dir => dir.trim())
-          .filter(dir => dir.length > 0)
-          .join(',');
+          .split(",")
+          .map((dir) => dir.trim())
+          .filter((dir) => dir.length > 0)
+          .join(",");
         setIgnoreDirs(cleaned);
       }
     }, 500);
@@ -90,7 +88,6 @@ export function CoverageInsights() {
     return () => clearTimeout(timer);
   }, [inputValue, ignoreDirs, setIgnoreDirs]);
 
-  // Sync input with store when store changes externally
   useEffect(() => {
     setInputValue(ignoreDirs);
   }, [ignoreDirs]);
@@ -303,15 +300,15 @@ export function CoverageInsights() {
                       </TableCell>
                       <TableCell
                         className="text-right font-medium tabular-nums"
-                        title={`${r.coverage} test${r.coverage !== 1 ? "s" : ""}`}
+                        title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
                       >
-                        {r.coverage}
+                        {formatNumber(r.coverage)}
                       </TableCell>
                       <TableCell
                         className="text-right text-muted-foreground tabular-nums text-sm"
-                        title={r.lineCount != null ? `${r.lineCount.toLocaleString()} lines` : "N/A"}
+                        title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
                       >
-                        {r.lineCount != null ? r.lineCount.toLocaleString() : "-"}
+                        {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={r.covered ? "default" : "outline"}>{r.covered ? "Tested" : "Untested"}</Badge>

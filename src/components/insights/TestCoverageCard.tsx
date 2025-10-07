@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { MetricDisplay } from "@/components/ui/metric-display";
 import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -15,6 +16,7 @@ export function TestCoverageCard() {
   const [data, setData] = useState<TestCoverageData | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
+  const [metricType, setMetricType] = useState<"absolute" | "lines">("absolute");
 
   const fetchTestCoverage = useCallback(async () => {
     if (!workspaceId) {
@@ -54,17 +56,6 @@ export function TestCoverageCard() {
   useEffect(() => {
     fetchTestCoverage();
   }, [workspaceId, ignoreDirs, fetchTestCoverage]);
-  const getPercentageColor = (percent: number) => {
-    if (percent >= 20) return "text-green-600 border-green-200 bg-green-50";
-    if (percent >= 10) return "text-yellow-600 border-yellow-200 bg-yellow-50";
-    return "text-red-600 border-red-200 bg-red-50";
-  };
-
-  const getProgressColor = (percent: number) => {
-    if (percent >= 20) return "bg-green-500";
-    if (percent >= 10) return "bg-yellow-500";
-    return "bg-red-500";
-  };
 
   if (isLoading) {
     return (
@@ -141,10 +132,30 @@ export function TestCoverageCard() {
   return (
     <Card data-testid="coverage-card">
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <TestTube className="h-5 w-5 text-blue-500" />
-          <span>Test Coverage</span>
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center space-x-2">
+            <TestTube className="h-5 w-5 text-blue-500" />
+            <span>Test Coverage</span>
+          </CardTitle>
+          <div className="flex items-center gap-1 border rounded-md p-1">
+            <Button
+              variant={metricType === "absolute" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setMetricType("absolute")}
+              className="h-7 text-xs"
+            >
+              Test Count
+            </Button>
+            <Button
+              variant={metricType === "lines" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setMetricType("lines")}
+              className="h-7 text-xs"
+            >
+              Line Coverage
+            </Button>
+          </div>
+        </div>
         <CardDescription>Code coverage analysis from your test suite</CardDescription>
       </CardHeader>
       <CardContent>
@@ -152,87 +163,76 @@ export function TestCoverageCard() {
           {/* Unit Tests Coverage */}
           {data.unit_tests && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <FunctionSquare className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Unit Tests</span>
-                </div>
-                <Badge variant="outline" className={getPercentageColor(data.unit_tests.percent || 0)}>
-                  {(data.unit_tests.percent || 0).toFixed(1)}%
-                </Badge>
+              <div className="flex items-center space-x-2">
+                <FunctionSquare className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Unit Tests</span>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.unit_tests.percent || 0)}`}
-                  style={{
-                    width: `${Math.min(data.unit_tests.percent || 0, 100)}%`,
-                  }}
+              {metricType === "absolute" ? (
+                <MetricDisplay
+                  label="Test Coverage"
+                  percent={data.unit_tests.percent || 0}
+                  covered={data.unit_tests.covered || 0}
+                  total={data.unit_tests.total || 0}
                 />
-              </div>
-
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.unit_tests.covered || 0} covered</span>
-                <span>{data.unit_tests.total || 0} total</span>
-              </div>
+              ) : data.unit_tests.total_lines !== undefined ? (
+                <MetricDisplay
+                  label="Line Coverage"
+                  percent={data.unit_tests.line_percent || 0}
+                  covered={data.unit_tests.covered_lines || 0}
+                  total={data.unit_tests.total_lines || 0}
+                />
+              ) : (
+                <div className="text-xs text-muted-foreground py-2">
+                  Line coverage data not available
+                </div>
+              )}
             </div>
           )}
 
           {/* Integration Tests Coverage */}
           {data.integration_tests && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Integration Tests</span>
-                </div>
-                <Badge variant="outline" className={getPercentageColor(data.integration_tests.percent || 0)}>
-                  {(data.integration_tests.percent || 0).toFixed(1)}%
-                </Badge>
+              <div className="flex items-center space-x-2">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Integration Tests</span>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.integration_tests.percent || 0)}`}
-                  style={{
-                    width: `${Math.min(data.integration_tests.percent || 0, 100)}%`,
-                  }}
+              {metricType === "absolute" ? (
+                <MetricDisplay
+                  label="Test Coverage"
+                  percent={data.integration_tests.percent || 0}
+                  covered={data.integration_tests.covered || 0}
+                  total={data.integration_tests.total || 0}
                 />
-              </div>
-
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.integration_tests.covered || 0} covered</span>
-                <span>{data.integration_tests.total || 0} total</span>
-              </div>
+              ) : (
+                <div className="text-xs text-muted-foreground py-2">
+                  Line coverage not available for integration tests
+                </div>
+              )}
             </div>
           )}
 
           {/* End to End Tests */}
           {data.e2e_tests && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">End to End Tests</span>
-                </div>
-                <Badge variant="outline" className={getPercentageColor(data.e2e_tests.percent || 0)}>
-                  {(data.e2e_tests.percent || 0).toFixed(1)}%
-                </Badge>
+              <div className="flex items-center space-x-2">
+                <Target className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">End to End Tests</span>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.e2e_tests.percent || 0)}`}
-                  style={{
-                    width: `${Math.min(data.e2e_tests.percent || 0, 100)}%`,
-                  }}
+              {metricType === "absolute" ? (
+                <MetricDisplay
+                  label="Test Coverage"
+                  percent={data.e2e_tests.percent || 0}
+                  covered={data.e2e_tests.covered || 0}
+                  total={data.e2e_tests.total || 0}
                 />
-              </div>
-
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.e2e_tests.covered || 0} covered</span>
-                <span>{data.e2e_tests.total || 0} total</span>
-              </div>
+              ) : (
+                <div className="text-xs text-muted-foreground py-2">
+                  Line coverage not available for E2E tests
+                </div>
+              )}
             </div>
           )}
         </div>
