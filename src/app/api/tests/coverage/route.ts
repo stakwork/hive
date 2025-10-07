@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { TestCoverageData } from "@/types/test-coverage";
@@ -23,11 +24,27 @@ export async function GET(request: NextRequest) {
     const { searchParams, hostname } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const swarmId = searchParams.get("swarmId");
-    const ignoreDirs = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
+    const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
+
+    let finalIgnoreDirs = ignoreDirsParam;
+
+    if (workspaceId && !swarmId) {
+      const primaryRepo = await getPrimaryRepository(workspaceId);
+      if (primaryRepo) {
+        if (!ignoreDirsParam) {
+          finalIgnoreDirs = primaryRepo.ignoreDirs || "";
+        } else if (ignoreDirsParam !== primaryRepo.ignoreDirs) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { ignoreDirs: ignoreDirsParam },
+          });
+        }
+      }
+    }
 
     let endpoint = "/tests/coverage";
-    if (ignoreDirs) {
-      endpoint += `?ignore_dirs=${encodeURIComponent(ignoreDirs)}`;
+    if (finalIgnoreDirs) {
+      endpoint += `?ignore_dirs=${encodeURIComponent(finalIgnoreDirs)}`;
     }
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
@@ -52,6 +69,7 @@ export async function GET(request: NextRequest) {
         {
           success: true,
           data,
+          ignoreDirs: finalIgnoreDirs || "",
         },
         { status: 200 },
       );
@@ -117,7 +135,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data,
+        data: apiResult.data,
+        ignoreDirs: finalIgnoreDirs || "",
       },
       { status: 200 },
     );
