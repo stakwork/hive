@@ -20,9 +20,14 @@ export async function fetchStakgraphServices(
     apiKey: decryptedApiKey,
   });
 
+  // Handle API failures - return empty services array as fallback
+  if (!apiResult.ok || !apiResult.data) {
+    return { services: [] };
+  }
+
   const services = Array.isArray(apiResult.data)
     ? apiResult.data as ServiceConfig[]
-    : (apiResult.data as { services: ServiceConfig[] }).services;
+    : (apiResult.data as { services: ServiceConfig[] })?.services || [];
 
   // Extract environment variables from stakgraph services[].env if present
   let environmentVariables: Array<{ name: string; value: string }> | undefined;
