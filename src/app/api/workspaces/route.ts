@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
+import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   }
   const userId = (session.user as { id: string }).id;
   const body = await request.json();
-  const { name, description, slug } = body;
+  const { name, description, slug, repositoryUrl } = body;
   if (!name || !slug) {
     return NextResponse.json(
       { error: "Missing required fields" },
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       slug,
+      repositoryUrl,
       ownerId: userId,
     });
     return NextResponse.json({ workspace }, { status: 201 });

@@ -41,8 +41,8 @@ async function checkRepositoryAccess(accessToken: string, repoUrl: string): Prom
 
       // Check push permissions
       const canPush = repositoryData.permissions?.push === true ||
-                     repositoryData.permissions?.admin === true ||
-                     repositoryData.permissions?.maintain === true;
+        repositoryData.permissions?.admin === true ||
+        repositoryData.permissions?.maintain === true;
 
       console.log(`Repository permissions for ${owner}/${repo}:`, repositoryData.permissions);
       console.log(`Can push: ${canPush}`);
@@ -59,7 +59,7 @@ async function checkRepositoryAccess(accessToken: string, repoUrl: string): Prom
         }
       };
     } else if (response.status === 404) {
-      return { hasAccess: false, canPush: false, error: 'repository_not_found_or_no_access' };
+      return { hasAccess: false, canPush: false, error: 'repository_not_found_or_no_access_2' };
     } else if (response.status === 403) {
       return { hasAccess: false, canPush: false, error: 'access_forbidden' };
     } else {
