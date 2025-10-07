@@ -13,7 +13,7 @@ const encryptionService = EncryptionService.getInstance();
 interface CreateTestUserWithTokensOptions {
   accessToken?: string;
   githubOwner?: string;
-  githubInstallationId?: number;
+  githubInstallationId?: number | null;
 }
 
 /**
@@ -41,7 +41,7 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
       data: {
         id: generateUniqueId("test-org"),
         githubLogin: githubOwner,
-        githubInstallationId,
+        githubInstallationId: githubInstallationId ?? 999999999,
         name: `${githubOwner} Organization`,
       },
     });
