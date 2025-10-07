@@ -42,7 +42,7 @@ export function useCoverageNodes() {
         qp.set("sort", sort);
       }
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
-      if (ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
+      if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
@@ -58,16 +58,24 @@ export function useCoverageNodes() {
   useEffect(() => {
     if (!hasInitializedIgnoreDirs.current && query.data?.data?.ignoreDirs !== undefined) {
       const apiIgnoreDirs = query.data.data.ignoreDirs;
-      if (apiIgnoreDirs !== ignoreDirs) {
-        setIgnoreDirs(apiIgnoreDirs);
-      }
+      setIgnoreDirs(apiIgnoreDirs);
       hasInitializedIgnoreDirs.current = true;
     }
-  }, [query.data?.data?.ignoreDirs, ignoreDirs, setIgnoreDirs]);
+  }, [query.data?.data?.ignoreDirs, setIgnoreDirs]);
 
   const prefetch = async (targetPage: number) => {
     if (!workspaceId) return;
-    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, targetPage, coverage, ignoreDirs];
+    const prefetchKey = [
+      "coverage-nodes",
+      workspaceId,
+      nodeType,
+      sort,
+      sortDirection,
+      limit,
+      targetPage,
+      coverage,
+      ignoreDirs,
+    ];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
       queryFn: async () => {
@@ -85,7 +93,7 @@ export function useCoverageNodes() {
           qp.set("sort", sort);
         }
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
-        if (ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
+        if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {

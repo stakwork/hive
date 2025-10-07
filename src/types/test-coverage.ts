@@ -16,6 +16,7 @@ export interface TestCoverageData {
 export interface TestCoverageResponse {
   success: boolean;
   data?: TestCoverageData;
+  ignoreDirs?: string;
   message?: string;
   details?: unknown;
 }

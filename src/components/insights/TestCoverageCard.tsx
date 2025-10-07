@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricDisplay } from "@/components/ui/metric-display";
@@ -11,10 +11,11 @@ import { useCoverageStore } from "@/stores/useCoverageStore";
 
 export function TestCoverageCard() {
   const { id: workspaceId } = useWorkspace();
-  const { ignoreDirs } = useCoverageStore();
+  const { ignoreDirs, setIgnoreDirs } = useCoverageStore();
   const [data, setData] = useState<TestCoverageData | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
+  const hasInitializedIgnoreDirs = useRef(false);
 
   const fetchTestCoverage = useCallback(async () => {
     if (!workspaceId) {
@@ -28,7 +29,7 @@ export function TestCoverageCard() {
       setError(undefined);
 
       const params = new URLSearchParams({ workspaceId });
-      if (ignoreDirs) {
+      if (hasInitializedIgnoreDirs.current && ignoreDirs) {
         params.set("ignoreDirs", ignoreDirs);
       }
 
@@ -41,6 +42,11 @@ export function TestCoverageCard() {
 
       if (result.success && result.data) {
         setData(result.data);
+        
+        if (!hasInitializedIgnoreDirs.current && result.ignoreDirs !== undefined) {
+          setIgnoreDirs(result.ignoreDirs);
+          hasInitializedIgnoreDirs.current = true;
+        }
       } else {
         setError(result.message || "No coverage data available");
       }
@@ -49,7 +55,7 @@ export function TestCoverageCard() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId, ignoreDirs]);
+  }, [workspaceId, ignoreDirs, setIgnoreDirs]);
 
   useEffect(() => {
     fetchTestCoverage();
