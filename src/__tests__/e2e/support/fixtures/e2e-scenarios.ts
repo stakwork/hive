@@ -9,6 +9,7 @@ import {
   createTestWorkspaceScenario,
   createTestTask,
   createTestUser,
+  createTestJanitorScenario,
   type CreateTestUserOptions,
   type TestWorkspaceScenarioResult,
 } from "./database";
@@ -90,6 +91,23 @@ export async function createWorkspaceWithMembersScenario() {
       { role: "VIEWER", withGitHubAuth: true, githubUsername: "e2e-viewer" },
     ],
   });
+}
+
+/**
+ * Workspace with insights data for testing insights functionality
+ */
+export async function createWorkspaceWithInsightsScenario(recommendationCount: number = 3) {
+  const scenario = await createStandardWorkspaceScenario();
+  
+  // Create janitor scenario with recommendations
+  const janitorData = await createTestJanitorScenario(scenario.workspace.id, recommendationCount);
+  
+  return {
+    ...scenario,
+    janitorConfig: janitorData.config,
+    janitorRun: janitorData.run,
+    recommendations: janitorData.recommendations,
+  };
 }
 
 /**
