@@ -19,9 +19,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { searchParams } = new URL(request.url);
+    const { searchParams, hostname } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const swarmId = searchParams.get("swarmId");
+    const ignoreDirs = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
+
+    let endpoint = "/tests/coverage";
+    if (ignoreDirs) {
+      endpoint += `?ignore_dirs=${encodeURIComponent(ignoreDirs)}`;
+    }
+    const isLocalHost =
+      hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
+    if (process.env.NODE_ENV === "development" && isLocalHost) {
+      const url = `http://0.0.0.0:7799${endpoint}`;
+      const resp = await fetch(url);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return NextResponse.json(
+          { success: false, message: "Failed to fetch test coverage (dev)", details: data },
+          { status: resp.status },
+        );
+      }
+      return NextResponse.json(
+        {
+          success: true,
+          data,
+        },
+        { status: 200 },
+      );
+    }
 
     if (!workspaceId && !swarmId) {
       return NextResponse.json(
@@ -56,7 +82,7 @@ export async function GET(request: NextRequest) {
     // Proxy to stakgraph microservice
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
-      endpoint: "/tests/coverage",
+      endpoint,
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });

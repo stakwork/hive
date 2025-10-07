@@ -2,6 +2,9 @@ export interface TestCoverageMetric {
   total: number;
   covered: number;
   percent: number;
+  total_lines?: number;
+  covered_lines?: number;
+  line_percent?: number;
 }
 
 export interface TestCoverageData {

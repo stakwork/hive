@@ -7,10 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
+import { formatNumber } from "@/lib/utils/format";
 
 interface SortableHeaderProps {
   label: string;
@@ -66,6 +68,29 @@ export function CoverageInsights() {
     prefetchNext,
     prefetchPrev,
   } = useCoverageNodes();
+
+  const { ignoreDirs, setIgnoreDirs } = useCoverageNodes();
+
+  const [inputValue, setInputValue] = useState(ignoreDirs);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (inputValue !== ignoreDirs) {
+        const cleaned = inputValue
+          .split(",")
+          .map((dir) => dir.trim())
+          .filter((dir) => dir.length > 0)
+          .join(",");
+        setIgnoreDirs(cleaned);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [inputValue, ignoreDirs, setIgnoreDirs]);
+
+  useEffect(() => {
+    setInputValue(ignoreDirs);
+  }, [ignoreDirs]);
 
   const hasItems = items && items.length > 0;
 
@@ -137,6 +162,17 @@ export function CoverageInsights() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Ignore dirs:</span>
+              <Input
+                type="text"
+                placeholder="e.g. testing, examples"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                className="h-8 w-[200px] text-xs"
+              />
             </div>
           </div>
         </div>
@@ -264,15 +300,15 @@ export function CoverageInsights() {
                       </TableCell>
                       <TableCell
                         className="text-right font-medium tabular-nums"
-                        title={`${r.coverage} test${r.coverage !== 1 ? "s" : ""}`}
+                        title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
                       >
-                        {r.coverage}
+                        {formatNumber(r.coverage)}
                       </TableCell>
                       <TableCell
                         className="text-right text-muted-foreground tabular-nums text-sm"
-                        title={r.lineCount != null ? `${r.lineCount.toLocaleString()} lines` : "N/A"}
+                        title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
                       >
-                        {r.lineCount != null ? r.lineCount.toLocaleString() : "-"}
+                        {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={r.covered ? "default" : "outline"}>{r.covered ? "Tested" : "Untested"}</Badge>
