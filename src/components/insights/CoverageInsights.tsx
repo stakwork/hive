@@ -74,23 +74,27 @@ export function CoverageInsights() {
   const [inputValue, setInputValue] = useState(ignoreDirs);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (inputValue !== ignoreDirs) {
-        const cleaned = inputValue
-          .split(",")
-          .map((dir) => dir.trim())
-          .filter((dir) => dir.length > 0)
-          .join(",");
-        setIgnoreDirs(cleaned);
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [inputValue, ignoreDirs, setIgnoreDirs]);
-
-  useEffect(() => {
     setInputValue(ignoreDirs);
   }, [ignoreDirs]);
+
+  const handleApplyFilter = () => {
+    const cleaned = inputValue
+      .split(",")
+      .map((dir) => dir.trim())
+      .filter((dir) => dir.length > 0)
+      .join(",");
+
+    if (cleaned !== ignoreDirs) {
+      setIgnoreDirs(cleaned);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleApplyFilter();
+      e.currentTarget.blur();
+    }
+  };
 
   const hasItems = items && items.length > 0;
 
@@ -171,6 +175,8 @@ export function CoverageInsights() {
                 placeholder="e.g. testing, examples"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                onBlur={handleApplyFilter}
+                onKeyDown={handleKeyDown}
                 className="h-8 w-[200px] text-xs"
               />
             </div>
@@ -188,7 +194,11 @@ export function CoverageInsights() {
             </div>
           )}
         </div>
-        {loading && !filterLoading ? (
+        {error ? (
+          <div className="text-sm text-red-600">{error}</div>
+        ) : !hasItems && !loading && !filterLoading ? (
+          <div className="text-sm text-muted-foreground">No nodes found with the selected filters.</div>
+        ) : (
           <div className="space-y-3">
             <div className="rounded-md border overflow-hidden">
               <Table>
@@ -223,98 +233,57 @@ export function CoverageInsights() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Skeleton className="h-4 w-32" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-48" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-4 w-8 ml-auto" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-4 w-8 ml-auto" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-5 w-16 ml-auto" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="text-sm text-red-600">{error}</div>
-        ) : !hasItems ? (
-          <div className="text-sm text-muted-foreground">No nodes found with the selected filters.</div>
-        ) : (
-          <div className="space-y-3">
-            <div
-              className={`rounded-md border overflow-hidden transition-opacity ${filterLoading ? "opacity-50" : "opacity-100"}`}
-            >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHeader
-                      label="Name"
-                      sortKey="name"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[30%]"
-                    />
-                    <TableHead className="w-[40%]">File</TableHead>
-                    <SortableHeader
-                      label="Coverage"
-                      sortKey="test_count"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[12%] text-right"
-                    />
-                    <SortableHeader
-                      label="Lines"
-                      sortKey="line_count"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[10%] text-right"
-                    />
-                    <TableHead className="w-[8%] text-right">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r, i) => (
-                    <TableRow
-                      key={`${r.name}-${r.file}-${params.offset}-${i}`}
-                      className="hover:bg-muted/50 transition-colors"
-                    >
-                      <TableCell className="truncate max-w-[320px] font-mono text-sm" title={r.name}>
-                        {r.name}
-                      </TableCell>
-                      <TableCell className="truncate max-w-[400px] text-muted-foreground text-xs" title={r.file}>
-                        {r.file}
-                      </TableCell>
-                      <TableCell
-                        className="text-right font-medium tabular-nums"
-                        title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
-                      >
-                        {formatNumber(r.coverage)}
-                      </TableCell>
-                      <TableCell
-                        className="text-right text-muted-foreground tabular-nums text-sm"
-                        title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
-                      >
-                        {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant={r.covered ? "default" : "outline"}>{r.covered ? "Tested" : "Untested"}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {loading || filterLoading
+                    ? Array.from({ length: 6 }).map((_, i) => (
+                        <TableRow key={`skeleton-${i}`} className="animate-in fade-in duration-200">
+                          <TableCell className="w-[30%]">
+                            <Skeleton className="h-4 w-full max-w-[200px]" />
+                          </TableCell>
+                          <TableCell className="w-[40%]">
+                            <Skeleton className="h-4 w-full max-w-[300px]" />
+                          </TableCell>
+                          <TableCell className="text-right w-[12%]">
+                            <Skeleton className="h-4 w-12 ml-auto" />
+                          </TableCell>
+                          <TableCell className="text-right w-[10%]">
+                            <Skeleton className="h-4 w-12 ml-auto" />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Skeleton className="h-5 w-16 ml-auto" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    : rows.map((r, i) => (
+                        <TableRow
+                          key={`${r.name}-${r.file}-${params.offset}-${i}`}
+                          className="hover:bg-muted/50 transition-all duration-200"
+                          style={{ animationDelay: `${i * 25}ms` }}
+                        >
+                          <TableCell className="truncate max-w-[320px] font-mono text-sm" title={r.name}>
+                            {r.name}
+                          </TableCell>
+                          <TableCell className="truncate max-w-[400px] text-muted-foreground text-xs" title={r.file}>
+                            {r.file}
+                          </TableCell>
+                          <TableCell
+                            className="text-right font-medium tabular-nums"
+                            title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
+                          >
+                            {formatNumber(r.coverage)}
+                          </TableCell>
+                          <TableCell
+                            className="text-right text-muted-foreground tabular-nums text-sm"
+                            title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
+                          >
+                            {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={r.covered ? "default" : "outline"}>
+                              {r.covered ? "Tested" : "Untested"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                 </TableBody>
               </Table>
             </div>
