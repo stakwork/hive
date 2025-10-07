@@ -1,8 +1,10 @@
 "use strict";
-(() => {
+var PlaywrightGenerator = (() => {
   var __defProp = Object.defineProperty;
   var __defProps = Object.defineProperties;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getOwnPropSymbols = Object.getOwnPropertySymbols;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __propIsEnum = Object.prototype.propertyIsEnumerable;
@@ -19,10 +21,31 @@
     return a;
   };
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/playwright-generator.ts
+  var playwright_generator_exports = {};
+  __export(playwright_generator_exports, {
+    RecordingManager: () => RecordingManager,
+    generatePlaywrightTest: () => generatePlaywrightTest,
+    generatePlaywrightTestFromActions: () => generatePlaywrightTestFromActions
+  });
 
   // src/actionModel.ts
   function resultsToActions(results) {
-    var _a;
+    var _a, _b, _c;
     const actions = [];
     const navigations = (results.pageNavigation || []).slice().sort((a, b) => a.timestamp - b.timestamp);
     const normalize = (u) => {
@@ -34,9 +57,7 @@
         return u.replace(/[?#].*$/, "").replace(/\/$/, "");
       }
     };
-    for (const nav of navigations) {
-      actions.push({ kind: "nav", timestamp: nav.timestamp, url: nav.url, normalizedUrl: normalize(nav.url) });
-    }
+    const navTimestampsFromClicks = /* @__PURE__ */ new Set();
     const clicks = ((_a = results.clicks) == null ? void 0 : _a.clickDetails) || [];
     for (let i = 0; i < clicks.length; i++) {
       const cd = clicks[i];
@@ -55,6 +76,7 @@
       });
       const nav = navigations.find((n) => n.timestamp > cd.timestamp && n.timestamp - cd.timestamp < 1800);
       if (nav) {
+        navTimestampsFromClicks.add(nav.timestamp);
         actions.push({
           kind: "waitForUrl",
           timestamp: nav.timestamp - 1,
@@ -63,6 +85,11 @@
           normalizedUrl: normalize(nav.url),
           navRefTimestamp: nav.timestamp
         });
+      }
+    }
+    for (const nav of navigations) {
+      if (!navTimestampsFromClicks.has(nav.timestamp)) {
+        actions.push({ kind: "nav", timestamp: nav.timestamp, url: nav.url, normalizedUrl: normalize(nav.url) });
       }
     }
     if (results.inputChanges) {
@@ -105,6 +132,13 @@
       const current = actions[i];
       const previous = actions[i - 1];
       if (current.kind === "waitForUrl" && previous.kind === "waitForUrl" && current.normalizedUrl === previous.normalizedUrl) {
+        actions.splice(i, 1);
+      }
+    }
+    for (let i = actions.length - 1; i > 0; i--) {
+      const current = actions[i];
+      const previous = actions[i - 1];
+      if (current.kind === "input" && previous.kind === "input" && ((_b = current.locator) == null ? void 0 : _b.primary) === ((_c = previous.locator) == null ? void 0 : _c.primary) && current.value === previous.value) {
         actions.splice(i, 1);
       }
     }
@@ -387,6 +421,9 @@
   }
   function generatePlaywrightTestFromActions(actions, options = {}) {
     const { baseUrl = "" } = options;
+    const needsInitialGoto = baseUrl && (actions.length === 0 || actions[0].kind !== "nav");
+    const initialGoto = needsInitialGoto ? `  await page.goto('${baseUrl}');
+` : "";
     const body = actions.map((action) => {
       var _a, _b, _c, _d, _e;
       switch (action.kind) {
@@ -436,27 +473,29 @@
           return "";
       }
     }).filter((line) => line !== "").join("\n");
-    if (!body)
+    if (!initialGoto && !body)
       return "";
     return `import { test, expect } from '@playwright/test';
 
 test('Recorded test', async ({ page }) => {
-${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n")}
+${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n")}
 });`;
+  }
+  function generatePlaywrightTest(url, trackingData) {
+    try {
+      const actions = resultsToActions(trackingData);
+      return generatePlaywrightTestFromActions(actions, { baseUrl: url });
+    } catch (error) {
+      console.error("Error generating Playwright test:", error);
+      return "";
+    }
   }
   if (typeof window !== "undefined") {
     const existing = window.PlaywrightGenerator || {};
     existing.RecordingManager = RecordingManager;
     existing.generatePlaywrightTestFromActions = generatePlaywrightTestFromActions;
-    existing.generatePlaywrightTest = (url, trackingData) => {
-      try {
-        const actions = resultsToActions(trackingData);
-        return generatePlaywrightTestFromActions(actions, { baseUrl: url });
-      } catch (error) {
-        console.error("Error generating Playwright test:", error);
-        return "";
-      }
-    };
+    existing.generatePlaywrightTest = generatePlaywrightTest;
     window.PlaywrightGenerator = existing;
   }
+  return __toCommonJS(playwright_generator_exports);
 })();

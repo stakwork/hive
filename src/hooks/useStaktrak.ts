@@ -55,6 +55,8 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
   const [isSetup, setIsSetup] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isAssertionMode, setIsAssertionMode] = useState(false);
+  const [capturedActions, setCapturedActions] = useState<any[]>([]);
+  const [showActions, setShowActions] = useState(false);
 
   const [generatedPlaywrightTest, setGeneratedPlaywrightTest] = useState<string>("");
 
@@ -67,18 +69,17 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
     onTestGeneratedRef.current = onTestGenerated;
   }, [onTestGenerated]);
 
-  // Initialize RecordingManager once when PlaywrightGenerator is available
-  useEffect(() => {
-    if (window.PlaywrightGenerator?.RecordingManager && !recorderRef.current) {
+  const startRecording = () => {
+    // Lazy initialize RecordingManager on first recording
+    if (!recorderRef.current && window.PlaywrightGenerator?.RecordingManager) {
       recorderRef.current = new window.PlaywrightGenerator.RecordingManager();
     }
-  }, []);
 
-  const startRecording = () => {
     // Clear existing recording data when starting a new recording
     if (recorderRef.current) {
       recorderRef.current.clear();
     }
+    setCapturedActions([]);
     sendCommand(iframeRef, "staktrak-start");
     setIsRecording(true);
     setIsAssertionMode(false);
@@ -98,6 +99,26 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
   const disableAssertionMode = () => {
     setIsAssertionMode(false);
     sendCommand(iframeRef, "staktrak-disable-selection");
+  };
+
+  const removeAction = (action: any) => {
+    if (recorderRef.current && action.id) {
+      const success = recorderRef.current.removeAction(action.id);
+      if (success) {
+        setCapturedActions(recorderRef.current.getActions());
+      }
+    }
+  };
+
+  const clearAllActions = () => {
+    if (recorderRef.current) {
+      recorderRef.current.clearAllActions();
+      setCapturedActions([]);
+    }
+  };
+
+  const toggleActionsView = () => {
+    setShowActions(prev => !prev);
   };
 
   function cleanInitialUrl(url: string) {
@@ -123,10 +144,12 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
             break;
 
           case "staktrak-event":
-            // Handle event-based recording with RecordingManager (currently unused)
+            // Handle event-based recording with RecordingManager
             if (recorderRef.current && staktrakEvent.data.eventType && staktrakEvent.data.data) {
               try {
                 recorderRef.current.handleEvent(staktrakEvent.data.eventType, staktrakEvent.data.data);
+                // Update captured actions in real-time
+                setCapturedActions(recorderRef.current.getActions());
               } catch (error) {
                 console.error("Error handling staktrak event:", error);
               }
@@ -186,5 +209,10 @@ export const useStaktrak = (initialUrl?: string, onTestGenerated?: (test: string
     disableAssertionMode,
     generatedPlaywrightTest,
     setGeneratedPlaywrightTest,
+    capturedActions,
+    showActions,
+    removeAction,
+    clearAllActions,
+    toggleActionsView,
   };
 };

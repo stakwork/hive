@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause } from "lucide-react";
+import { Monitor, RefreshCw, ExternalLink, Circle, Square, Target, FlaskConical, Bug, Play, Pause, ChevronUp, ChevronDown } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import { usePlaywrightReplay } from "@/hooks/useStaktrakReplay";
@@ -10,6 +10,7 @@ import { TestManagerModal } from "./TestManagerModal";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
+import { ActionsList } from "@/components/ActionsList";
 
 export function BrowserArtifactPanel({
   artifacts,
@@ -42,6 +43,11 @@ export function BrowserArtifactPanel({
     disableAssertionMode,
     generatedPlaywrightTest,
     setGeneratedPlaywrightTest,
+    capturedActions,
+    showActions,
+    removeAction,
+    clearAllActions,
+    toggleActionsView,
   } = useStaktrak(activeContent?.url, () => {
     // Open modal when test is generated
     setIsTestModalOpen(true);
@@ -172,6 +178,25 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
+                    {isSetup && isRecording && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={toggleActionsView}
+                              className="h-8 w-8 p-0"
+                            >
+                              {showActions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {showActions ? "Hide" : "Show"} Actions ({capturedActions.length})
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     {generatedPlaywrightTest && (
                       <TooltipProvider>
                         <Tooltip>
@@ -281,6 +306,14 @@ export function BrowserArtifactPanel({
                     </TooltipProvider>
                   </div>
                 </div>
+              )}
+              {showActions && (
+                <ActionsList
+                  actions={capturedActions}
+                  onRemoveAction={removeAction}
+                  onClearAll={clearAllActions}
+                  isRecording={isRecording}
+                />
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
                 <iframe
