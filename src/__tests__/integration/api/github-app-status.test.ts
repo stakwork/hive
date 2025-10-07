@@ -7,6 +7,7 @@ import {
   expectUnauthorized,
   getMockedSession,
   createGetRequest,
+  generateUniqueId,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/__tests__/support/fixtures/github-repository-permissions";
 import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 
 // Mock next-auth for session management
 vi.mock("next-auth/next");
@@ -35,8 +37,11 @@ import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 describe("GitHub App Status API Integration Tests", () => {
+  let encryptionService: InstanceType<typeof EncryptionService>;
+  
   beforeEach(async () => {
     vi.clearAllMocks();
+    encryptionService = EncryptionService.getInstance();
   });
 
   describe("GET /api/github/app/status", () => {
@@ -479,21 +484,50 @@ describe("GitHub App Status API Integration Tests", () => {
       });
 
       test("should skip repository access check when installationId is missing", async () => {
-        const { testUser, sourceControlOrg } =
-          await createTestUserWithGitHubTokens({
-            githubOwner: "no-installation-owner",
-            githubInstallationId: null as any, // No installation ID
-          });
+        // Test the scenario where sourceControlOrg simply doesn't have installationId check
+        // This tests the path: hasTokens && sourceControlOrg?.githubInstallationId (false due to falsy installationId)
+        
+        const { testUser } = await createTestUserWithGitHubTokens({
+          githubOwner: "some-other-owner", 
+          githubInstallationId: 777777,
+        });
 
-        // Force null installationId
-        await db.sourceControlOrg.update({
-          where: { id: sourceControlOrg.id },
-          data: { githubInstallationId: null },
+        // Create a workspace and sourceControlOrg, but we'll test that installationId = 0 
+        // (which is falsy) should skip the repository access check
+        const uniqueGithubLogin = `no-install-${generateUniqueId()}`;
+        const sourceControlOrg = await db.sourceControlOrg.create({
+          data: {
+            id: generateUniqueId("no-install-org"),
+            githubLogin: uniqueGithubLogin,
+            githubInstallationId: 0, // 0 is falsy, should skip repo access check
+            name: "No Installation Owner Organization",
+          },
+        });
+
+        // Create source control token for user
+        const encryptedToken = encryptionService.encryptField(
+          "source_control_token",
+          "test-token"
+        );
+        
+        await db.sourceControlToken.create({
+          data: {
+            id: generateUniqueId("no-install-token"),
+            userId: testUser.id,
+            sourceControlOrgId: sourceControlOrg.id,
+            token: JSON.stringify(encryptedToken),
+          },
         });
 
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "no-installation-workspace",
+        });
+
+        // Link workspace to the sourceControlOrg
+        await db.workspace.update({
+          where: { id: workspace.id },
+          data: { sourceControlOrgId: sourceControlOrg.id },
         });
 
         getMockedSession().mockResolvedValue(
@@ -520,7 +554,7 @@ describe("GitHub App Status API Integration Tests", () => {
           "http://localhost:3000/api/github/app/status",
           {
             workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/no-installation-owner/test-repo",
+            repositoryUrl: `https://github.com/${uniqueGithubLogin}/test-repo`,
           }
         );
 
@@ -528,9 +562,9 @@ describe("GitHub App Status API Integration Tests", () => {
         const data = await expectSuccess(response);
 
         expect(data.hasTokens).toBe(true);
-        expect(data.hasRepoAccess).toBe(false); // No installation ID, cannot check access
+        expect(data.hasRepoAccess).toBe(false); // No valid installation ID, cannot check access
 
-        // Verify checkRepositoryAccess was NOT called
+        // Verify checkRepositoryAccess was NOT called (because installationId is 0/falsy)
         expect(checkRepositoryAccess).not.toHaveBeenCalled();
       });
     });

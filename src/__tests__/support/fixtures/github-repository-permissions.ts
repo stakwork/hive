@@ -13,7 +13,7 @@ const encryptionService = EncryptionService.getInstance();
 interface CreateTestUserWithTokensOptions {
   accessToken?: string;
   githubOwner?: string;
-  githubInstallationId?: number;
+  githubInstallationId?: number | null;
 }
 
 /**
@@ -35,6 +35,11 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
         name: "Test User",
       },
     });
+
+    // Handle null installationId case - skip sourceControlOrg creation
+    if (githubInstallationId === null) {
+      return { testUser, sourceControlOrg: null, sourceControlToken: null, accessToken };
+    }
 
     // Create source control org for GitHub organization
     const sourceControlOrg = await tx.sourceControlOrg.create({
