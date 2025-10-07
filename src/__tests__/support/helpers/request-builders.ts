@@ -11,7 +11,12 @@ export function createGetRequest(
     ? `${url}?${new URLSearchParams(searchParams).toString()}`
     : url;
 
-  return new NextRequest(fullUrl, {
+  // Ensure absolute URL for NextRequest
+  const absoluteUrl = fullUrl.startsWith('http') 
+    ? fullUrl 
+    : `http://localhost${fullUrl.startsWith('/') ? '' : '/'}${fullUrl}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "GET",
   });
 }
@@ -23,7 +28,11 @@ export function createPostRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+  
+  return new NextRequest(absoluteUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -39,7 +48,11 @@ export function createPutRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -55,7 +68,11 @@ export function createPatchRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -68,7 +85,11 @@ export function createPatchRequest(
  * Creates a DELETE request
  */
 export function createDeleteRequest(url: string): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "DELETE",
   });
 }
@@ -82,6 +103,10 @@ export function createRequestWithHeaders(
   headers: Record<string, string>,
   body?: object
 ): NextRequest {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+  
   const options: RequestInit = {
     method,
     headers,
@@ -91,5 +116,5 @@ export function createRequestWithHeaders(
     options.body = JSON.stringify(body);
   }
 
-  return new NextRequest(url, options);
+  return new NextRequest(absoluteUrl, options);
 }

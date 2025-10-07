@@ -18,7 +18,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = (session.user as { id: string }).id;
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     // Use user's OAuth token for branch operations (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);

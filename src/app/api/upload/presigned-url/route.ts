@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
+import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth/nextauth'
 import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
