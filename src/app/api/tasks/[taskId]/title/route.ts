@@ -8,7 +8,7 @@ export async function PUT(
 ) {
   try {
     // Check API token authentication
-    const apiToken = request.headers.get("x-api-token");
+    const apiToken = request.headers.get("x-api-token") || request.headers.get("authorization");
     if (!apiToken || apiToken !== process.env.API_TOKEN) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
