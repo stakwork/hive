@@ -4,9 +4,9 @@ import { HttpClient } from "@/lib/http-client";
 import {
   CreateSwarmRequest,
   CreateSwarmResponse,
-  ValidateUriResponse,
   StopSwarmRequest,
   StopSwarmResponse,
+  ValidateUriResponse,
 } from "@/types";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -108,7 +108,7 @@ export async function swarmApiRequest({
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey).toString()}`,
-      "x-api-token": encryptionService.decryptField("swarmApiKey", apiKey),
+      "x-api-token": `${encryptionService.decryptField("swarmApiKey", apiKey)}`,
       "Content-Type": "application/json",
     };
 
@@ -162,12 +162,12 @@ export async function swarmApiRequestAuth({
     // build query string if params provided
     const queryString = params
       ? "?" +
-        new URLSearchParams(
-          Object.entries(params).reduce(
-            (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-            {} as Record<string, string>,
-          ),
-        ).toString()
+      new URLSearchParams(
+        Object.entries(params).reduce(
+          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
+          {} as Record<string, string>,
+        ),
+      ).toString()
       : "";
 
     const url =
