@@ -11,9 +11,10 @@ interface LearnSidebarProps {
   workspaceSlug: string;
   onPromptClick?: (prompt: string) => void;
   currentQuestion?: string;
+  refetchTrigger?: number;
 }
 
-export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: LearnSidebarProps) {
+export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, refetchTrigger }: LearnSidebarProps) {
   const [learnings, setLearnings] = useState<Learnings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +24,12 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/learnings?workspace=${encodeURIComponent(workspaceSlug)}`);
+        let url = `/api/learnings?workspace=${encodeURIComponent(workspaceSlug)}`;
+        if (refetchTrigger && refetchTrigger > 0 && currentQuestion) {
+          url += `&question=${encodeURIComponent(currentQuestion)}`;
+        }
+
+        const response = await fetch(url);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch learnings: ${response.status}`);
@@ -40,7 +46,8 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion }: 
     };
 
     fetchLearnings();
-  }, [workspaceSlug]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceSlug, refetchTrigger]);
 
   const refetchLearnings = async () => {
     setIsLoading(true);
