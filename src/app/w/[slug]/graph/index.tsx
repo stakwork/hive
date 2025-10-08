@@ -158,6 +158,102 @@ const NodePopup = ({ node, position, onClose, connectedNodes, isDarkMode = false
   );
 };
 
+const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
+  const connectedIds = new Set<string>();
+  links.forEach(link => {
+    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+
+    if (sourceId === nodeId) {
+      connectedIds.add(targetId);
+    } else if (targetId === nodeId) {
+      connectedIds.add(sourceId);
+    }
+  });
+  return connectedIds;
+};
+
+// --- POPUP COMPONENT ---
+interface NodePopupProps {
+  node: D3Node;
+  position: { x: number; y: number };
+  onClose: () => void;
+  connectedNodes: D3Node[];
+}
+
+const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) => {
+  return (
+    <div
+      className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-4 max-w-sm"
+      style={{
+        left: `${position.x + 10}px`,
+        top: `${position.y - 10}px`,
+        maxHeight: '300px',
+        overflowY: 'auto'
+      }}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <h4 className="text-lg font-semibold text-gray-900">{node.name}</h4>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-4 h-4 rounded-full"
+            style={{ backgroundColor: getNodeColor(node.type) }}
+          />
+          <span className="text-sm font-medium text-gray-700">Type: {node.type}</span>
+        </div>
+
+        <div className="text-sm text-gray-600">
+          <strong>ID:</strong> {node.id}
+        </div>
+
+        {Object.entries(node).map(([key, value]) => {
+          if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) {
+            return null;
+          }
+          return (
+            <div key={key} className="text-sm text-gray-600">
+              <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+            </div>
+          );
+        })}
+
+        {connectedNodes.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <h5 className="text-sm font-medium text-gray-700 mb-2">
+              Connected Nodes ({connectedNodes.length})
+            </h5>
+            <div className="space-y-1">
+              {connectedNodes.slice(0, 5).map(connectedNode => (
+                <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: getNodeColor(connectedNode.type) }}
+                  />
+                  <span className="text-gray-600">{connectedNode.name}</span>
+                </div>
+              ))}
+              {connectedNodes.length > 5 && (
+                <div className="text-xs text-gray-500">
+                  ... and {connectedNodes.length - 5} more
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const GraphComponent = () => {
   const { id: workspaceId } = useWorkspace();
   const { theme, toggleTheme, mounted } = useTheme();
@@ -522,8 +618,8 @@ export const GraphComponent = () => {
           <button
             onClick={toggleTheme}
             className={`px-3 py-1 text-sm rounded transition-colors ${isDarkMode
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             title="Toggle theme"
           >
