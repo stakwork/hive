@@ -18,6 +18,7 @@ interface TestManagerModalProps {
   onClose: () => void;
   generatedCode?: string;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  initialTab?: string;
 }
 
 export function TestManagerModal({
@@ -25,6 +26,7 @@ export function TestManagerModal({
   onClose,
   generatedCode = "",
   onUserJourneySave,
+  initialTab = "",
 }: TestManagerModalProps) {
   const [copying, setCopying] = useState(false);
   const [filename, setFilename] = useState<string>("");
