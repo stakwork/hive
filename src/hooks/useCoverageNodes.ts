@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CoverageNodesResponse } from "@/types/stakgraph";
@@ -14,11 +14,12 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs } = useCoverageStore();
+  const hasInitializedIgnoreDirs = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -41,6 +42,7 @@ export function useCoverageNodes() {
         qp.set("sort", sort);
       }
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
+      if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
@@ -53,9 +55,27 @@ export function useCoverageNodes() {
   const hasNextPage = Boolean(query.data?.data?.hasNextPage);
   const hasPrevPage = offset > 0;
 
+  useEffect(() => {
+    if (!hasInitializedIgnoreDirs.current && query.data?.data?.ignoreDirs !== undefined) {
+      const apiIgnoreDirs = query.data.data.ignoreDirs;
+      setIgnoreDirs(apiIgnoreDirs);
+      hasInitializedIgnoreDirs.current = true;
+    }
+  }, [query.data?.data?.ignoreDirs, setIgnoreDirs]);
+
   const prefetch = async (targetPage: number) => {
     if (!workspaceId) return;
-    const prefetchKey = ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, targetPage, coverage];
+    const prefetchKey = [
+      "coverage-nodes",
+      workspaceId,
+      nodeType,
+      sort,
+      sortDirection,
+      limit,
+      targetPage,
+      coverage,
+      ignoreDirs,
+    ];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
       queryFn: async () => {
@@ -73,6 +93,7 @@ export function useCoverageNodes() {
           qp.set("sort", sort);
         }
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
+        if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {
@@ -104,6 +125,8 @@ export function useCoverageNodes() {
     setSortDirection,
     toggleSort,
     setCoverage,
+    ignoreDirs,
+    setIgnoreDirs,
     setRoot: () => {},
     setConcise: () => {},
     setStatus: () => {},

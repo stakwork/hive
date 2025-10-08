@@ -298,6 +298,8 @@ model Repository {
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
 
+  ignoreDirs String? @default("") @map("ignore_dirs")
+
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
