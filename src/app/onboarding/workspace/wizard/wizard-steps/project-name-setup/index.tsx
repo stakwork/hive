@@ -131,6 +131,7 @@ export function ProjectNameSetupStep() {
           name: projectName.trim().toLowerCase(),
           description: '',
           slug: projectName.trim().toLowerCase(),
+          repositoryUrl: repositoryUrlDraft,
         }),
       });
 
@@ -144,10 +145,11 @@ export function ProjectNameSetupStep() {
         await refreshWorkspaces();
 
         // 2. Check GitHub App status for this workspace/repository
-        const statusResponse = await fetch(`/api/github/app/status?workspaceSlug=${data.workspace.slug}&repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
+        const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
+        console.log("statusResponse", statusResponse);
         const statusData = await statusResponse.json();
 
-        if (statusData.hasTokens) {
+        if (statusData.hasPushAccess) {
           // GitHub App is already installed and has tokens, redirect to dashboard
           window.location.href = `/w/${data.workspace.slug}?github_setup_action=existing_installation`;
           return;

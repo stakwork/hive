@@ -1,3 +1,4 @@
+import { getServiceConfig } from "@/config/services";
 import {
   RESERVED_WORKSPACE_SLUGS,
   WORKSPACE_ERRORS,
@@ -19,6 +20,7 @@ import {
   updateMemberRole,
 } from "@/lib/helpers/workspace-member-queries";
 import { mapWorkspaceMember, mapWorkspaceMembers } from "@/lib/mappers/workspace-member";
+import { SwarmService } from "@/services/swarm";
 import {
   CreateWorkspaceRequest,
   UpdateWorkspaceRequest,
@@ -28,8 +30,6 @@ import {
   WorkspaceWithRole,
 } from "@/types/workspace";
 import { WorkspaceRole } from "@prisma/client";
-import { getServiceConfig } from "@/config/services";
-import { SwarmService } from "@/services/swarm";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -86,6 +86,7 @@ export async function createWorkspace(
         description: data.description,
         slug: data.slug,
         ownerId: data.ownerId,
+        repositoryDraft: data.repositoryUrl,
       },
     });
     return {
@@ -144,7 +145,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetup: true },
       },
       repositories: {
         select: {
@@ -172,6 +173,7 @@ export async function getWorkspaceById(
       hasKey: hasValidApiKey(workspace.stakworkApiKey),
       description: workspace.description,
       slug: workspace.slug,
+      repositoryDraft: workspace.repositoryDraft,
       ownerId: workspace.ownerId,
       createdAt: workspace.createdAt.toISOString(),
       updatedAt: workspace.updatedAt.toISOString(),
@@ -180,8 +182,10 @@ export async function getWorkspaceById(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+      swarmId: workspace.swarm?.id || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
+      containerFilesSetup: workspace.swarm?.containerFilesSetup || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -207,8 +211,10 @@ export async function getWorkspaceById(
     name: workspace.name,
     description: workspace.description,
     slug: workspace.slug,
+
     ownerId: workspace.ownerId,
     createdAt: workspace.createdAt.toISOString(),
+    repositoryDraft: workspace.repositoryDraft,
     updatedAt: workspace.updatedAt.toISOString(),
     userRole: membership.role as WorkspaceRole,
     owner: workspace.owner,
@@ -216,8 +222,10 @@ export async function getWorkspaceById(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    swarmId: workspace.swarm?.id || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
+    containerFilesSetup: workspace.swarm?.containerFilesSetup || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -243,7 +251,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetup: true },
       },
       repositories: {
         select: {
@@ -258,6 +266,11 @@ export async function getWorkspaceBySlug(
     },
   });
 
+
+  console.log('getWorkspaceBySlug');
+  console.log(workspace);
+  console.log('getWorkspaceBySlug');
+
   if (!workspace) {
     return null;
   }
@@ -270,6 +283,7 @@ export async function getWorkspaceBySlug(
       hasKey: hasValidApiKey(workspace.stakworkApiKey),
       description: workspace.description,
       slug: workspace.slug,
+      repositoryDraft: workspace.repositoryDraft,
       ownerId: workspace.ownerId,
       createdAt: workspace.createdAt.toISOString(),
       updatedAt: workspace.updatedAt.toISOString(),
@@ -278,8 +292,10 @@ export async function getWorkspaceBySlug(
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
+      swarmId: workspace.swarm?.id || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
+      containerFilesSetup: workspace.swarm?.containerFilesSetup || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -305,6 +321,7 @@ export async function getWorkspaceBySlug(
     name: workspace.name,
     description: workspace.description,
     slug: workspace.slug,
+    repositoryDraft: workspace.repositoryDraft,
     ownerId: workspace.ownerId,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
@@ -314,8 +331,10 @@ export async function getWorkspaceBySlug(
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
+    swarmId: workspace.swarm?.id || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
+    containerFilesSetup: workspace.swarm?.containerFilesSetup || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -559,7 +578,8 @@ export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
     data: {
       deleted: true,
       deletedAt: new Date(),
-      originalSlug: workspace.slug, // Store original slug for recovery
+      originalSlug: workspace.slug,
+      // Store original slug for recovery
       slug: deletedSlug // Modify slug to allow reuse of original
     },
   });

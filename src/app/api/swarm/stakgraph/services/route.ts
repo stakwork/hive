@@ -24,10 +24,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
-    const swarmId = searchParams.get("swarmId");
     const repo_url_param = searchParams.get("repo_url");
 
-    if (!workspaceId && !swarmId) {
+    if (!workspaceId) {
       return NextResponse.json(
         {
           success: false,
@@ -38,8 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, string> = {};
-    if (swarmId) where.swarmId = swarmId;
-    else if (workspaceId) where.workspaceId = workspaceId;
+    if (workspaceId) where.workspaceId = workspaceId;
 
     const swarm = await db.swarm.findFirst({ where });
 
@@ -91,6 +89,8 @@ export async function GET(request: NextRequest) {
     if (swarm.swarmUrl.includes("localhost")) {
       swarmUrl = `http://localhost:3355`;
     }
+
+    console.log('repo_url', repo_url);
 
     // Always try agent first if repo_url is provided
     if (repo_url) {
@@ -240,6 +240,8 @@ export async function GET(request: NextRequest) {
         environmentVariables = result.environmentVariables;
       }
     } else {
+
+      console.log('[stakgraph/services] No repo_url provided - calling stakgraph services endpoint');
       // No repo_url provided - call stakgraph services endpoint
       const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
         clone: "true",  // Always clone to ensure we get the latest code
@@ -256,7 +258,7 @@ export async function GET(request: NextRequest) {
       workspaceId: swarm.workspaceId,
       services: responseData.services,
       ...(environmentVariables ? { environmentVariables } : {}),
-      ...(containerFiles ? { containerFiles } : {}),
+      ...(containerFiles ? { containerFiles, containerFilesSetup: true } : {}),
     });
 
     return NextResponse.json(

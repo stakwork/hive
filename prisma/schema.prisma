@@ -199,6 +199,7 @@ model Workspace {
   // Infrastructure
   swarm        Swarm?
   repositories Repository[]
+  repositoryDraft String? @map("repository_draft") // Temporary storage for repository URL during setup
 
   // Tasks
   tasks    Task[]
@@ -266,6 +267,8 @@ model Swarm {
 
   // Generated container files
   containerFiles Json? @map("container_files")
+  // Flag to track if container files setup is complete
+  containerFilesSetup Boolean @default(false) @map("container_files_setup")
 
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")

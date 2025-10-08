@@ -158,9 +158,60 @@ export async function POST(request: NextRequest) {
     let flowType: string;
 
     if (installed) {
-      // App already installed - just need user authorization
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${config.GITHUB_APP_CLIENT_ID}&state=${state}`;
-      flowType = "user_authorization";
+      // App is installed, but we need to check if it has access to this specific repository
+      // First try to check repository access with existing tokens
+      let hasRepoAccess = false;
+
+      if (installationId) {
+        try {
+          const appTokens = await getUserAppTokens(session.user.id, githubOwner);
+          if (appTokens?.accessToken) {
+            const [, repoOwner, repoName] = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/) || [];
+            if (repoOwner && repoName) {
+              // Use installation-specific API to check repository access
+              const installationReposResponse = await fetch(`https://api.github.com/user/installations/${installationId}/repositories`, {
+                headers: {
+                  Accept: "application/vnd.github+json",
+                  Authorization: `Bearer ${appTokens.accessToken}`,
+                  "X-GitHub-Api-Version": "2022-11-28",
+                },
+              });
+
+              if (installationReposResponse.ok) {
+                const installationData = await installationReposResponse.json();
+                const targetRepoFullName = `${repoOwner}/${repoName}`.toLowerCase();
+
+                // Check if the target repository is accessible through this installation
+                const repositoryAccess = installationData.repositories?.find(
+                  (repository: { full_name: string; permissions?: any }) =>
+                    repository.full_name.toLowerCase() === targetRepoFullName
+                );
+
+                if (repositoryAccess) {
+                  hasRepoAccess = !!(
+                    repositoryAccess.permissions?.push ||
+                    repositoryAccess.permissions?.admin ||
+                    repositoryAccess.permissions?.maintain
+                  );
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error checking repository access:", error);
+        }
+      }
+
+      if (hasRepoAccess) {
+        // App has access to the repository - just need user authorization
+        authUrl = `https://github.com/login/oauth/authorize?client_id=${config.GITHUB_APP_CLIENT_ID}&state=${state}`;
+        flowType = "user_authorization";
+      } else {
+        // App installed but no repository access - redirect to general installation page
+        // This allows users to modify repository access and supports state parameter
+        authUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/new?state=${state}`;
+        flowType = "repository_configuration";
+      }
     } else {
       console.log(`👤 App not installed for ${githubOwner}`);
       // App not installed - need full installation flow

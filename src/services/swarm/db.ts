@@ -43,6 +43,7 @@ interface SaveOrUpdateSwarmParams {
   swarmSecretAlias?: string;
   ingestRefId?: string;
   containerFiles?: Record<string, string>;
+  containerFilesSetup?: boolean;
   defaultBranch?: string;
   poolState?: PoolState;
 }
@@ -73,6 +74,7 @@ export const select = {
   ingestRefId: true,
   environmentVariables: true,
   containerFiles: true,
+  containerFilesSetup: true,
   defaultBranch: true,
 };
 
@@ -114,6 +116,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     data.services = params.services;
   }
   if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
+  if (params.containerFilesSetup !== undefined) data.containerFilesSetup = params.containerFilesSetup;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
   data.updatedAt = new Date();
 
@@ -157,6 +160,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       swarmSecretAlias: params.swarmSecretAlias || "",
       defaultBranch: params.defaultBranch || "",
       containerFiles: params.containerFiles,
+      containerFilesSetup: params.containerFilesSetup || false,
       swarmId: params.swarmId,
       ingestRefId: params.ingestRefId,
       poolState: params.poolState || PoolState.NOT_STARTED,
