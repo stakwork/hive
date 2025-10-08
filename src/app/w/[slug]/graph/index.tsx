@@ -45,20 +45,20 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
   [key: string]: unknown;
 }
 
+// --- COLOR PALETTE ---
+const COLOR_PALETTE = [
+  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", 
+  "#06b6d4", "#6366f1", "#ec4899", "#f97316", "#84cc16",
+  "#64748b", "#0ea5e9", "#22c55e", "#a855f7", "#eab308"
+];
+
 // --- HELPER FUNCTIONS ---
-const getNodeColor = (type: string, isDark: boolean = false): string => {
-  const lightColorMap: Record<string, string> = {
-    Service: "#3b82f6", Gateway: "#10b981", Storage: "#f59e0b",
-    Cache: "#8b5cf6", Queue: "#ef4444", Engine: "#06b6d4",
-    Function: "#6366f1",
-  };
-  const darkColorMap: Record<string, string> = {
-    Service: "#60a5fa", Gateway: "#34d399", Storage: "#fbbf24",
-    Cache: "#a78bfa", Queue: "#f87171", Engine: "#22d3ee",
-    Function: "#818cf8",
-  };
-  const colorMap = isDark ? darkColorMap : lightColorMap;
-  return colorMap[type] || (isDark ? "#9ca3af" : "#6b7280");
+const getNodeColor = (type: string, nodeTypes: string[]): string => {
+  const index = nodeTypes.indexOf(type);
+  if (index !== -1) {
+    return COLOR_PALETTE[index % COLOR_PALETTE.length];
+  }
+  return "#6b7280"; // Default gray
 };
 
 const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
@@ -79,20 +79,18 @@ const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
 // --- POPUP COMPONENT ---
 interface NodePopupProps {
   node: D3Node;
-  position: { x: number; y: number };
   onClose: () => void;
   connectedNodes: D3Node[];
   isDarkMode?: boolean;
+  nodeTypes: string[];
 }
 
-const NodePopup = ({ node, position, onClose, connectedNodes, isDarkMode = false }: NodePopupProps) => {
+const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes }: NodePopupProps) => {
   return (
     <div
-      className={`absolute z-50 border rounded-lg shadow-lg p-4 max-w-sm ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
+      className={`absolute top-4 right-4 z-50 border rounded-lg shadow-lg p-4 w-80 ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
       style={{
-        left: `${position.x + 10}px`,
-        top: `${position.y - 10}px`,
-        maxHeight: '300px',
+        maxHeight: '400px',
         overflowY: 'auto'
       }}
     >
@@ -110,7 +108,7 @@ const NodePopup = ({ node, position, onClose, connectedNodes, isDarkMode = false
         <div className="flex items-center gap-2">
           <div
             className="w-4 h-4 rounded-full"
-            style={{ backgroundColor: getNodeColor(node.type, isDarkMode) }}
+            style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }}
           />
           <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type: {node.type}</span>
         </div>
@@ -140,7 +138,7 @@ const NodePopup = ({ node, position, onClose, connectedNodes, isDarkMode = false
                 <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
                   <div
                     className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: getNodeColor(connectedNode.type, isDarkMode) }}
+                    style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }}
                   />
                   <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{connectedNode.name}</span>
                 </div>
@@ -171,10 +169,12 @@ export const GraphComponent = () => {
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
-  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Determine if dark mode is active
   const isDarkMode = mounted && (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches));
+
+  // Calculate node types for color mapping
+  const nodeTypes = Array.from(new Set(nodes.map(node => node.type)));
 
   console.log('workspaceId', workspaceId)
 
@@ -282,11 +282,18 @@ export const GraphComponent = () => {
     // Add click handler to clear selection when clicking on empty space
     svg.on("click", () => {
       setSelectedNode(null);
-      setPopupPosition(null);
+    });
+
+    // Filter links to only include those where both source and target nodes exist
+    const nodeIds = new Set(nodes.map(node => node.id));
+    const validLinks = links.filter(link => {
+      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+      return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
 
     const simulation = d3.forceSimulation<D3Node>(nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(links).id(d => d.id).distance(100).strength(0.5))
+      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(0.5))
       .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("collision", d3.forceCollide().radius(40).strength(0.7));
@@ -305,7 +312,7 @@ export const GraphComponent = () => {
 
     // Add links to container
     const link = container.append("g").attr("class", "links")
-      .selectAll("line").data(links).enter().append("line")
+      .selectAll("line").data(validLinks).enter().append("line")
       .attr("stroke", isDarkMode ? "#6b7280" : "#999").attr("stroke-opacity", 0.6)
       .attr("stroke-width", 2).attr("marker-end", "url(#arrow)");
 
@@ -328,17 +335,10 @@ export const GraphComponent = () => {
       .on("click", (event, d) => {
         event.stopPropagation();
         setSelectedNode(d);
-        const rect = svgRef.current?.getBoundingClientRect();
-        if (rect) {
-          setPopupPosition({
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
-          });
-        }
       });
 
     const circles = nodeGroup.append("circle").attr("r", 20)
-      .attr("fill", d => getNodeColor(d.type, isDarkMode))
+      .attr("fill", d => getNodeColor(d.type, nodeTypes))
       .attr("stroke", isDarkMode ? "#374151" : "#fff").attr("stroke-width", 2)
       .style("filter", isDarkMode ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.3))" : "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))");
 
@@ -353,66 +353,6 @@ export const GraphComponent = () => {
       .attr("font-size", "10px").attr("fill", isDarkMode ? "#d1d5db" : "#666")
       .style("pointer-events", "none");
 
-    // Function to update node and link highlighting
-    const updateHighlighting = () => {
-      if (selectedNode) {
-        const connectedIds = getConnectedNodeIds(selectedNode.id, links);
-
-        // Update node highlighting
-        circles
-          .attr("stroke-width", d => d.id === selectedNode.id ? 4 : 2)
-          .attr("stroke", d => {
-            if (d.id === selectedNode.id) return "#ff6b35";
-            if (connectedIds.has(d.id)) return "#ffb347";
-            return isDarkMode ? "#374151" : "#fff";
-          })
-          .style("opacity", d => {
-            if (d.id === selectedNode.id || connectedIds.has(d.id)) return 1;
-            return 0.3;
-          });
-
-        // Update link highlighting
-        link
-          .attr("stroke", d => {
-            const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-            const targetId = typeof d.target === 'string' ? d.target : d.target.id;
-            if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
-              return "#ff6b35";
-            }
-            return isDarkMode ? "#6b7280" : "#999";
-          })
-          .attr("stroke-width", d => {
-            const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-            const targetId = typeof d.target === 'string' ? d.target : d.target.id;
-            if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
-              return 3;
-            }
-            return 2;
-          })
-          .style("opacity", d => {
-            const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-            const targetId = typeof d.target === 'string' ? d.target : d.target.id;
-            if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
-              return 1;
-            }
-            return 0.3;
-          });
-      } else {
-        // Reset highlighting
-        circles
-          .attr("stroke-width", 2)
-          .attr("stroke", isDarkMode ? "#374151" : "#fff")
-          .style("opacity", 1);
-
-        link
-          .attr("stroke", isDarkMode ? "#6b7280" : "#999")
-          .attr("stroke-width", 2)
-          .style("opacity", 0.6);
-      }
-    };
-
-    // Initial highlighting
-    updateHighlighting();
 
     simulation.on("tick", () => {
       link
@@ -430,7 +370,79 @@ export const GraphComponent = () => {
     return () => {
       simulation.stop();
     };
-  }, [nodes, links, nodesLoading, isClient, selectedNode, isDarkMode]);
+  }, [nodes, links, nodesLoading, isClient, isDarkMode, nodeTypes]);
+
+  // Separate useEffect for handling highlighting when selectedNode changes
+  useEffect(() => {
+    if (!svgRef.current || !nodes.length) return;
+
+    const svg = d3.select(svgRef.current);
+    const circles = svg.selectAll("circle");
+    const links = svg.selectAll("line");
+
+    if (selectedNode) {
+      const validLinks = links.data().filter((link: any) => {
+        const nodeIds = new Set(nodes.map(node => node.id));
+        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+        return nodeIds.has(sourceId) && nodeIds.has(targetId);
+      });
+
+      const connectedIds = getConnectedNodeIds(selectedNode.id, validLinks);
+
+      // Update node highlighting
+      circles
+        .attr("stroke-width", (d: any) => d.id === selectedNode.id ? 4 : 2)
+        .attr("stroke", (d: any) => {
+          if (d.id === selectedNode.id) return "#3b82f6";
+          if (connectedIds.has(d.id)) return "#10b981";
+          return isDarkMode ? "#374151" : "#fff";
+        })
+        .style("opacity", (d: any) => {
+          if (d.id === selectedNode.id) return 1;
+          if (connectedIds.has(d.id)) return 1;
+          return 0.5;
+        });
+
+      // Update link highlighting
+      links
+        .attr("stroke", (d: any) => {
+          const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+          const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+            return "#3b82f6";
+          }
+          return isDarkMode ? "#6b7280" : "#999";
+        })
+        .attr("stroke-width", (d: any) => {
+          const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+          const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+            return 3;
+          }
+          return 2;
+        })
+        .style("opacity", (d: any) => {
+          const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+          const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+            return 1;
+          }
+          return 0.3;
+        });
+    } else {
+      // Reset highlighting
+      circles
+        .attr("stroke-width", 2)
+        .attr("stroke", isDarkMode ? "#374151" : "#fff")
+        .style("opacity", 1);
+
+      links
+        .attr("stroke", isDarkMode ? "#6b7280" : "#999")
+        .attr("stroke-width", 2)
+        .style("opacity", 0.6);
+    }
+  }, [selectedNode, isDarkMode, nodes]);
 
   if (loading || !isClient) {
     return (
@@ -448,17 +460,6 @@ export const GraphComponent = () => {
     );
   }
 
-  if (schemas.length === 0) {
-    return (
-      <div className={`flex h-96 items-center justify-center border rounded-lg ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50'}`}>
-        <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>No schemas available</div>
-      </div>
-    );
-  }
-
-  const nodeTypes = Array.from(new Set(nodes.map(node => node.type)));
-
-
   // Get connected nodes for popup
   const connectedNodes = selectedNode
     ? Array.from(getConnectedNodeIds(selectedNode.id, links))
@@ -467,7 +468,7 @@ export const GraphComponent = () => {
     : [];
 
   return (
-    <div className={`h-auto w-full border rounded-lg p-4 relative ${isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white'}`}>
+    <div className={`h-auto w-full border rounded-lg p-4 relative bg-card`}>
       <div className="flex justify-between items-center mb-4">
         <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Graph Visualization</h3>
         <div className="flex items-center gap-2">
@@ -516,14 +517,14 @@ export const GraphComponent = () => {
           <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Types:</span>
           {nodeTypes.map(type => (
             <div key={type} className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(type, isDarkMode) }} />
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(type, nodeTypes) }} />
               <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{type}</span>
             </div>
           ))}
         </div>
       )}
 
-      <div className={`border rounded overflow-hidden ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50'}`}>
+      <div className={`border rounded overflow-hidden bg-card`}>
         {nodesLoading ? (
           <div className="flex h-96 items-center justify-center">
             <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading nodes...</div>
@@ -543,16 +544,15 @@ export const GraphComponent = () => {
         </div>
       )}
 
-      {selectedNode && popupPosition && (
+      {selectedNode && (
         <NodePopup
           node={selectedNode}
-          position={popupPosition}
           onClose={() => {
             setSelectedNode(null);
-            setPopupPosition(null);
           }}
           connectedNodes={connectedNodes}
           isDarkMode={isDarkMode}
+          nodeTypes={nodeTypes}
         />
       )}
     </div>
