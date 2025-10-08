@@ -20,6 +20,7 @@ interface LearnChatAreaProps {
   onModeChange: (mode: "learn" | "chat" | "mic") => void;
   onRefetchLearnings?: () => void;
   showMicMode?: boolean;
+  workspaceSlug?: string;
 }
 
 export function LearnChatArea({
@@ -31,6 +32,7 @@ export function LearnChatArea({
   onModeChange,
   onRefetchLearnings,
   showMicMode = false,
+  workspaceSlug,
 }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -148,6 +150,7 @@ export function LearnChatArea({
           onInputChange={onInputChange}
           onRefetchLearnings={onRefetchLearnings}
           mode={mode}
+          workspaceSlug={workspaceSlug}
         />
       </div>
     </div>

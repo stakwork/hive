@@ -136,6 +136,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           onModeChange={setMode}
           onRefetchLearnings={triggerRefetch}
           showMicMode={isLocalhost}
+          workspaceSlug={workspaceSlug}
         />
       </div>
       <div className="fixed top-1 right-1 h-full">

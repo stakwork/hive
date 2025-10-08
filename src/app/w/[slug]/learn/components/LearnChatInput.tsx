@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Send, Mic, MicOff } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { useTranscriptChunking } from "@/hooks/useTranscriptChunking";
 
 interface LearnChatInputProps {
   onSend: (message: string) => Promise<void>;
@@ -14,6 +15,7 @@ interface LearnChatInputProps {
   onInputChange?: (input: string) => void;
   onRefetchLearnings?: () => void;
   mode?: "learn" | "chat" | "mic";
+  workspaceSlug?: string;
 }
 
 export function LearnChatInput({
@@ -22,11 +24,19 @@ export function LearnChatInput({
   onInputChange,
   onRefetchLearnings,
   mode = "learn",
+  workspaceSlug,
 }: LearnChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
+
+  // Use the chunking hook for mic mode
+  useTranscriptChunking({
+    transcript: input,
+    enabled: mode === "mic" && isListening,
+    workspaceSlug,
+  });
 
   useEffect(() => {
     if (transcript) {
