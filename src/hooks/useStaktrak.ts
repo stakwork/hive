@@ -142,6 +142,11 @@ export const useStaktrak = (
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // Only accept messages from our iframe
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+
       if (event.data && event.data.type) {
         const staktrakEvent = event as StaktrakMessageEvent;
 
