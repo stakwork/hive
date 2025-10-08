@@ -228,6 +228,10 @@ export const GraphComponent = () => {
     const height = 500;
     svg.attr("viewBox", `0 0 ${width} ${height}`);
 
+    // SAVE current transform so we can restore it after re-rendering
+    // if svg.node() is null, default to identity
+    const previousTransform = d3.zoomTransform(svg.node() as Element);
+
     // clear previous
     svg.selectAll("*").remove();
 
@@ -238,21 +242,31 @@ export const GraphComponent = () => {
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 10])
       .on("zoom", (event) => {
-        container.attr("transform", event.transform);
+        container.attr("transform", (event as any).transform);
       });
 
+    // Apply zoom to svg and restore previous transform (so we don't reset zoom on every re-render)
     svg.call(zoom as any);
+    // Restore previous transform (use a tiny timeout to ensure the call can apply safely)
+    try {
+      // If previousTransform is identity, this is a no-op
+      (svg as any).call(zoom.transform, previousTransform);
+    } catch (e) {
+      // ignore if transform can't be reapplied
+    }
 
-    // clicking empty svg clears selection
-    svg.on("click", () => {
-      // release pinned node when clearing selection
-      if (selectedNodeRef.current) {
-        selectedNodeRef.current.fx = null;
-        selectedNodeRef.current.fy = null;
-        // nudge simulation
-        simulationRef.current?.alpha(0.1).restart();
+    // clicking the raw svg background clears selection only when clicking background (not nodes)
+    svg.on("click", (event: any) => {
+      // event.target must be the svg DOM node itself to count as background click
+      if (event.target === svg.node()) {
+        // release pinned node when clearing selection
+        if (selectedNodeRef.current) {
+          selectedNodeRef.current.fx = null;
+          selectedNodeRef.current.fy = null;
+          simulationRef.current?.alpha(0.1).restart();
+        }
+        setSelectedNode(null);
       }
-      setSelectedNode(null);
     });
 
     // valid links only
@@ -293,14 +307,12 @@ export const GraphComponent = () => {
       .attr("class", "node").style("cursor", "pointer")
       .call(d3.drag<SVGGElement, D3Node>()
         .on("start", (event, d) => {
-          // warm up simulation when drag starts
           if (!event.active) simulation.alphaTarget(0.2).restart();
-          // fix to current position
           d.fx = d.x ?? 0;
           d.fy = d.y ?? 0;
         })
         .on("drag", (event, d) => {
-          // transform pointer from screen coords into graph coords using current zoom transform
+          // Use svg zoom transform to map screen pointer to graph coordinates
           const transform = d3.zoomTransform(svg.node() as Element);
           const [px, py] = d3.pointer(event.sourceEvent as Event, svg.node() as Element);
           const [gx, gy] = transform.invert([px, py]);
@@ -309,22 +321,19 @@ export const GraphComponent = () => {
         })
         .on("end", (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
-          // If the node is not the currently selected node, release it so simulation can continue
           if (!selectedNodeRef.current || selectedNodeRef.current.id !== d.id) {
             d.fx = null;
             d.fy = null;
           } else {
-            // keep pinned if it is selected
             d.fx = d.x ?? d.fx;
             d.fy = d.y ?? d.fy;
           }
         }))
       .on("click", (event, d) => {
         event.stopPropagation();
-        // Pin the node in place
+        // pin node
         d.fx = d.x ?? d.fx;
         d.fy = d.y ?? d.fy;
-        // restart a bit so layout settles visually
         simulation.alphaTarget(0.1).restart();
         setSelectedNode(d);
       });
@@ -359,7 +368,6 @@ export const GraphComponent = () => {
     return () => {
       simulation.stop();
       svg.on(".zoom", null);
-      // cleanup listeners by removing everything the svg created
     };
   }, [nodes, links, nodesLoading, isDarkMode, nodeTypes]);
 
