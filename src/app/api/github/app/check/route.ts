@@ -40,13 +40,10 @@ export async function GET(request: Request) {
       }, { status: 403 });
     }
 
-    // Get workspace and its swarm to extract repository URL
+    // Get workspace
     const { db } = await import("@/lib/db");
     const workspace = await db.workspace.findUnique({
       where: { slug: workspaceSlug },
-      include: {
-        swarm: true,
-      },
     });
 
     if (!workspace) {
@@ -56,8 +53,14 @@ export async function GET(request: Request) {
       }, { status: 404 });
     }
 
-    // Use repositoryUrl parameter first, fall back to workspace swarm repository URL
-    const repoUrl = repositoryUrl || workspace.swarm?.repositoryUrl;
+    // Use repositoryUrl parameter first, fall back to primary repository
+    let repoUrl: string | null = repositoryUrl;
+    if (!repoUrl) {
+      const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+      const primaryRepo = await getPrimaryRepository(workspace.id);
+      repoUrl = primaryRepo?.repositoryUrl ?? null;
+    }
+
     if (!repoUrl) {
       return NextResponse.json({
         canFetchData: false,
@@ -69,7 +72,7 @@ export async function GET(request: Request) {
       userId: session.user.id,
       workspaceSlug,
       repositoryUrl: repoUrl,
-      source: repositoryUrl ? "parameter" : "workspace.swarm",
+      source: repositoryUrl ? "parameter" : "primary_repository",
     });
 
     // Extract owner and repo name from repository URL
