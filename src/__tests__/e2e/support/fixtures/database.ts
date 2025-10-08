@@ -38,3 +38,13 @@ export {
   type CreateTestTaskOptions,
   type CreateTestChatMessageOptions,
 } from "@/__tests__/support/fixtures/task";
+
+export {
+  createTestJanitorConfig,
+  createTestJanitorRun,
+  createTestJanitorRecommendation,
+  createTestJanitorScenario,
+  type CreateTestJanitorConfigOptions,
+  type CreateTestJanitorRunOptions,
+  type CreateTestJanitorRecommendationOptions,
+} from "@/__tests__/support/fixtures/janitor";
