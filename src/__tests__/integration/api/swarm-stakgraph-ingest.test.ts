@@ -134,7 +134,6 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
           status: "ACTIVE",
           swarmUrl: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          defaultBranch: "main",
         },
       });
 

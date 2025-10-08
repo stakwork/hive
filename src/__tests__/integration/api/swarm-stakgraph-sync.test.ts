@@ -73,9 +73,6 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
           status: "ACTIVE",
           swarmUrl: "https://sync-swarm.sphinx.chat/api",
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          repositoryName: "sync-repo",
-          repositoryDescription: "Test sync repository",
-          defaultBranch: "main",
           services: [],
         },
       });
@@ -83,6 +80,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       const repository = await tx.repository.create({
         data: {
           name: "sync-repo",
+          description: "Test sync repository",
           repositoryUrl: testRepositoryUrl,
           workspaceId: workspace.id,
           status: RepositoryStatus.SYNCED,

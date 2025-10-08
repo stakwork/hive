@@ -59,8 +59,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
           name: `test-swarm-${Date.now()}`,
           status: "ACTIVE",
           instanceType: "XL",
-          repositoryName: "test-repo",
-          defaultBranch: "main",
           swarmApiKey: "test-api-key",
           swarmUrl: "https://test-swarm.com/api",
           swarmSecretAlias: "test-secret",

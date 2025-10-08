@@ -102,8 +102,6 @@ async function logSwarms() {
       workspaceId: true,
       status: true,
       instanceType: true,
-      repositoryName: true,
-      defaultBranch: true,
       swarmUrl: true,
       swarmSecretAlias: true,
       ingestRefId: true,
@@ -116,6 +114,8 @@ async function logSwarms() {
           repositories: {
             select: {
               repositoryUrl: true,
+              name: true,
+              branch: true,
             },
             orderBy: {
               createdAt: "asc" as const,
@@ -132,24 +132,17 @@ async function logSwarms() {
     try {
       console.log(s);
       const swarmKey = s.swarmApiKey ?? null;
-      const decryptedKey = swarmKey
-        ? encryption.decryptField("swarmApiKey", swarmKey)
-        : null;
+      const decryptedKey = swarmKey ? encryption.decryptField("swarmApiKey", swarmKey) : null;
 
       const poolKey = s.poolApiKey ?? null;
-      const decryptedPoolKey = poolKey
-        ? encryption.decryptField("poolApiKey", poolKey)
-        : null;
+      const decryptedPoolKey = poolKey ? encryption.decryptField("poolApiKey", poolKey) : null;
 
-      let envVarsOut: Array<{ name: string; value: string }> | unknown =
-        s.environmentVariables;
+      let envVarsOut: Array<{ name: string; value: string }> | unknown = s.environmentVariables;
       if (typeof s.environmentVariables === "string") {
         try {
           const parsed = JSON.parse(s.environmentVariables);
           if (Array.isArray(parsed)) {
-            envVarsOut = decryptEnvVars(
-              parsed as Array<{ name: string; value: unknown }>,
-            );
+            envVarsOut = decryptEnvVars(parsed as Array<{ name: string; value: unknown }>);
           } else {
             envVarsOut = parsed;
           }
@@ -159,9 +152,7 @@ async function logSwarms() {
         }
       } else if (Array.isArray(s.environmentVariables)) {
         try {
-          envVarsOut = decryptEnvVars(
-            s.environmentVariables as Array<{ name: string; value: unknown }>,
-          );
+          envVarsOut = decryptEnvVars(s.environmentVariables as Array<{ name: string; value: unknown }>);
         } catch (err) {
           console.error("Error decrypting environmentVariables array", err);
           envVarsOut = s.environmentVariables;
@@ -171,10 +162,11 @@ async function logSwarms() {
       console.log(
         `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId} status=${s.status} instanceType=${s.instanceType}`,
       );
-      const repositoryUrl = s.workspace.repositories[0]?.repositoryUrl || "(none)";
-      console.log(
-        `  repo: ${s.repositoryName || "(none)"} url=${repositoryUrl} branch=${s.defaultBranch || "(none)"}`,
-      );
+      const primaryRepo = s.workspace.repositories[0];
+      const repositoryUrl = primaryRepo?.repositoryUrl || "";
+      const repositoryName = primaryRepo?.name || "";
+      const branch = primaryRepo?.branch || "";
+      console.log(`  repo: ${repositoryName} url=${repositoryUrl} branch=${branch}`);
       console.log(
         `  swarm: swarmUrl=${s.swarmUrl || "(none)"} secretAlias=${s.swarmSecretAlias || "(none)"} ingestRefId=${s.ingestRefId || "(none)"}`,
       );

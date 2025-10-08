@@ -28,9 +28,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, name, repositoryName, repositoryUrl, repositoryDescription, repositoryDefaultBranch } = body;
+    const { workspaceId, name, repositoryUrl } = body;
 
-    if (!workspaceId || !name || !repositoryName || !repositoryUrl) {
+    if (!workspaceId || !name || !repositoryUrl) {
       return NextResponse.json(
         {
           success: false,
@@ -86,9 +86,6 @@ export async function POST(request: NextRequest) {
       name: swarm_id, // Use swarm_id as name so subsequent API requests can succeed
       instanceType: instance_type,
       status: SwarmStatus.ACTIVE,
-      repositoryName: repositoryName || "",
-      repositoryDescription: repositoryDescription || "",
-      defaultBranch: repositoryDefaultBranch || "",
       swarmUrl: `https://${swarm_address}/api`,
       ec2Id: ec2_id,
       swarmApiKey: x_api_key,

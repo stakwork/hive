@@ -42,11 +42,7 @@ export async function POST(request: NextRequest) {
 
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const final_repo_url = primaryRepo?.repositoryUrl;
-    let branch = "";
-
-    if (final_repo_url && swarm.defaultBranch) {
-      branch = swarm.defaultBranch || "";
-    }
+    const branch = primaryRepo?.branch || "";
 
     if (!final_repo_url) {
       return NextResponse.json({ success: false, message: "No repository URL found" }, { status: 400 });

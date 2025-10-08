@@ -161,7 +161,6 @@ async function main() {
     where: { workspaceId: workspace.id },
     update: {
       name: swarmName,
-      defaultBranch,
       swarmApiKey,
       status: SwarmStatus.ACTIVE,
       ...(swarmUrl ? { swarmUrl } : {}),
@@ -169,7 +168,6 @@ async function main() {
     create: {
       name: swarmName,
       workspaceId: workspace.id,
-      defaultBranch,
       swarmApiKey,
       status: SwarmStatus.ACTIVE,
       ...(swarmUrl ? { swarmUrl } : {}),
@@ -189,7 +187,7 @@ async function main() {
       workspaceId: swarm.workspaceId,
       url: (swarm as unknown as { swarmUrl?: string }).swarmUrl || null,
       repo: repository.repositoryUrl,
-      branch: swarm.defaultBranch,
+      branch: repository.branch,
     },
   });
 }

@@ -443,9 +443,6 @@ describe("POST /api/swarm - Unit Tests", () => {
         name: "swarm-456", // Uses swarm_id as name
         instanceType: "m6i.xlarge",
         status: SwarmStatus.ACTIVE,
-        repositoryName: "test-repo",
-        repositoryDescription: "Test repository",
-        defaultBranch: "main",
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         ec2Id: "i-1234567890abcdef0",
         swarmApiKey: "api-key-123",

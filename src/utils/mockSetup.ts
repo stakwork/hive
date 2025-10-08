@@ -62,8 +62,6 @@ export async function ensureMockWorkspaceForUser(
         name: slugify(`${workspace.slug}-swarm`),
         status: SwarmStatus.ACTIVE,
         instanceType: "XL",
-        repositoryName: "stakgraph",
-        defaultBranch: "main",
         environmentVariables: [{ name: "NODE_ENV", value: "development" }],
         services: [
           { name: "stakgraph", port: 7799, scripts: { start: "start" } },

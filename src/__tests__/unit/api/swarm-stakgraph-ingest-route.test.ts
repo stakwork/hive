@@ -134,7 +134,6 @@ const TestDataFactory = {
       encryptedAt: "2024-01-01T00:00:00.000Z",
     }),
     repositoryUrl: "https://github.com/test/repo",
-    defaultBranch: "main",
     status: "ACTIVE",
     ...overrides,
   }),
@@ -578,14 +577,16 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       );
     });
 
-    test("should use default branch from swarm", async () => {
-      const swarm = TestDataFactory.createValidSwarm({ defaultBranch: "develop" });
+    test("should use branch from primary repository", async () => {
+      const swarm = TestDataFactory.createValidSwarm();
+      const repository = TestDataFactory.createValidRepository({ branch: "develop" });
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
-      mockDbRepositoryUpsert.mockResolvedValue(TestDataFactory.createValidRepository());
+      mockDbRepositoryUpsert.mockResolvedValue(repository);
       mockDbWorkspaceFindUnique.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockGetGithubUsernameAndPAT.mockResolvedValue(TestDataFactory.createGithubCredentials());
       mockTriggerIngestAsync.mockResolvedValue(TestDataFactory.createIngestResponse());
       mockSaveOrUpdateSwarm.mockResolvedValue(swarm);
+      mockGetPrimaryRepository.mockResolvedValue(repository);
 
       const request = TestHelpers.createPostRequest({
         workspaceId: "workspace-123",

@@ -438,8 +438,6 @@ describe("saveOrUpdateSwarm", () => {
         environmentVariables: [{ name: "ENV_VAR", value: "env_value" }],
         status: SwarmStatus.ACTIVE,
         swarmUrl: "https://test.sphinx.chat",
-        repositoryName: "test-repo",
-        repositoryDescription: "Test repository",
         swarmApiKey: "api-key",
         swarmPassword: "password",
         poolName: "test-pool",
@@ -450,7 +448,6 @@ describe("saveOrUpdateSwarm", () => {
         swarmSecretAlias: "secret-alias",
         ingestRefId: "ingest-ref-123",
         containerFiles: { Dockerfile: "FROM node:18" },
-        defaultBranch: "main",
       };
 
       await saveOrUpdateSwarm(params);
@@ -462,14 +459,11 @@ describe("saveOrUpdateSwarm", () => {
           instanceType: "m6i.xlarge",
           status: SwarmStatus.ACTIVE,
           swarmUrl: "https://test.sphinx.chat",
-          repositoryName: "test-repo",
-          repositoryDescription: "Test repository",
           poolName: "test-pool",
           poolCpu: "4",
           poolMemory: "8Gi",
           swarmSecretAlias: "secret-alias",
           containerFiles: { Dockerfile: "FROM node:18" },
-          defaultBranch: "main",
           swarmId: "custom-swarm-id",
           ingestRefId: "ingest-ref-123",
           // Verify encrypted fields are JSON strings

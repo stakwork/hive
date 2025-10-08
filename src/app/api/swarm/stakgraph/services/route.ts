@@ -203,8 +203,7 @@ export async function GET(request: NextRequest) {
         }));
 
         // Prepare container files
-        // Use swarm's repository name if available, otherwise use the repo name from URL
-        const repoName = swarm.repositoryName || repo;
+        const repoName = repo;
         containerFiles = {
           Dockerfile: Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString("base64"),
           "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString("base64"),

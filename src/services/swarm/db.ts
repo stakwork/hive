@@ -29,8 +29,6 @@ interface SaveOrUpdateSwarmParams {
   environmentVariables?: Record<string, string>[];
   status?: SwarmStatus;
   swarmUrl?: string;
-  repositoryName?: string;
-  repositoryDescription?: string;
   ec2Id?: string;
   swarmApiKey?: string;
   swarmPassword?: string;
@@ -42,7 +40,6 @@ interface SaveOrUpdateSwarmParams {
   swarmSecretAlias?: string;
   ingestRefId?: string;
   containerFiles?: Record<string, string>;
-  defaultBranch?: string;
   poolState?: PoolState;
 }
 
@@ -55,8 +52,6 @@ export const select = {
   updatedAt: true,
   workspaceId: true,
   instanceType: true,
-  repositoryName: true,
-  repositoryDescription: true,
   ec2Id: true,
   swarmApiKey: true,
   swarmPassword: true,
@@ -71,7 +66,6 @@ export const select = {
   ingestRefId: true,
   environmentVariables: true,
   containerFiles: true,
-  defaultBranch: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -92,8 +86,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     );
   if (params.status !== undefined) data.status = params.status;
   if (params.swarmUrl !== undefined) data.swarmUrl = params.swarmUrl;
-  if (params.repositoryName !== undefined) data.repositoryName = params.repositoryName;
-  if (params.repositoryDescription !== undefined) data.repositoryDescription = params.repositoryDescription;
   if (params.ec2Id !== undefined) data.ec2Id = params.ec2Id;
   if (params.swarmApiKey !== undefined)
     data.swarmApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", params.swarmApiKey));
@@ -103,7 +95,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.poolCpu !== undefined) data.poolCpu = params.poolCpu;
   if (params.poolMemory !== undefined) data.poolMemory = params.poolMemory;
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
-  if (params.defaultBranch !== undefined) data.defaultBranch = params.defaultBranch;
   if (params.swarmSecretAlias !== undefined) data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.poolState !== undefined) data.poolState = params.poolState;
 
@@ -135,8 +126,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
         : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,
-      repositoryName: params.repositoryName || "",
-      repositoryDescription: params.repositoryDescription || "",
       ec2Id: params.ec2Id || null,
       swarmApiKey:
         params.swarmApiKey !== undefined
@@ -151,7 +140,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolMemory: params.poolMemory || "4Gi",
       services: params.services ? params.services : [],
       swarmSecretAlias: params.swarmSecretAlias || "",
-      defaultBranch: params.defaultBranch || "",
       containerFiles: params.containerFiles,
       swarmId: params.swarmId,
       ingestRefId: params.ingestRefId,

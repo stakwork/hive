@@ -163,8 +163,6 @@ async function seedForUser(userId: string) {
       swarmUrl: "http://localhost",
       status: SwarmStatus.ACTIVE,
       instanceType: "XL",
-      repositoryName: repository.name,
-      defaultBranch: repository.branch,
       swarmApiKey,
       // poolApiKey,
       environmentVariables,
