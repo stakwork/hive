@@ -158,33 +158,19 @@ const NodePopup = ({ node, position, onClose, connectedNodes, isDarkMode = false
   );
 };
 
-const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
-  const connectedIds = new Set<string>();
-  links.forEach(link => {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-
-    if (sourceId === nodeId) {
-      connectedIds.add(targetId);
-    } else if (targetId === nodeId) {
-      connectedIds.add(sourceId);
-    }
-  });
-  return connectedIds;
-};
-
 // --- POPUP COMPONENT ---
 interface NodePopupProps {
   node: D3Node;
   position: { x: number; y: number };
   onClose: () => void;
   connectedNodes: D3Node[];
+  isDarkMode?: boolean;
 }
 
-const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) => {
+const NodePopup = ({ node, position, onClose, connectedNodes, isDarkMode = false }: NodePopupProps) => {
   return (
     <div
-      className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-4 max-w-sm"
+      className={`absolute z-50 border rounded-lg shadow-lg p-4 max-w-sm ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
       style={{
         left: `${position.x + 10}px`,
         top: `${position.y - 10}px`,
@@ -193,10 +179,10 @@ const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) 
       }}
     >
       <div className="flex justify-between items-start mb-3">
-        <h4 className="text-lg font-semibold text-gray-900">{node.name}</h4>
+        <h4 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{node.name}</h4>
         <button
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+          className={`text-xl leading-none ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
         >
           ×
         </button>
@@ -206,12 +192,12 @@ const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) 
         <div className="flex items-center gap-2">
           <div
             className="w-4 h-4 rounded-full"
-            style={{ backgroundColor: getNodeColor(node.type) }}
+            style={{ backgroundColor: getNodeColor(node.type, isDarkMode) }}
           />
-          <span className="text-sm font-medium text-gray-700">Type: {node.type}</span>
+          <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type: {node.type}</span>
         </div>
 
-        <div className="text-sm text-gray-600">
+        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
           <strong>ID:</strong> {node.id}
         </div>
 
@@ -220,7 +206,7 @@ const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) 
             return null;
           }
           return (
-            <div key={key} className="text-sm text-gray-600">
+            <div key={key} className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
             </div>
           );
@@ -228,7 +214,7 @@ const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) 
 
         {connectedNodes.length > 0 && (
           <div className="mt-3 pt-3 border-t">
-            <h5 className="text-sm font-medium text-gray-700 mb-2">
+            <h5 className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               Connected Nodes ({connectedNodes.length})
             </h5>
             <div className="space-y-1">
@@ -236,13 +222,13 @@ const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) 
                 <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
                   <div
                     className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: getNodeColor(connectedNode.type) }}
+                    style={{ backgroundColor: getNodeColor(connectedNode.type, isDarkMode) }}
                   />
-                  <span className="text-gray-600">{connectedNode.name}</span>
+                  <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{connectedNode.name}</span>
                 </div>
               ))}
               {connectedNodes.length > 5 && (
-                <div className="text-xs text-gray-500">
+                <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                   ... and {connectedNodes.length - 5} more
                 </div>
               )}
@@ -266,7 +252,6 @@ export const GraphComponent = () => {
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
 
@@ -555,53 +540,6 @@ export const GraphComponent = () => {
 
   const nodeTypes = Array.from(new Set(nodes.map(node => node.type)));
 
-  const resetSimulation = () => {
-    if (simulationRef.current) {
-      simulationRef.current.alpha(1).restart();
-    }
-  };
-
-  const resetZoom = () => {
-    if (svgRef.current) {
-      const svg = d3.select(svgRef.current);
-      const svgNode = svg.node() as SVGSVGElement & { zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> };
-      const zoom = svgNode?.zoom;
-      if (zoom) {
-        svg.transition().duration(750).call(
-          zoom.transform,
-          d3.zoomIdentity
-        );
-      }
-    }
-  };
-
-  const zoomIn = () => {
-    if (svgRef.current) {
-      const svg = d3.select(svgRef.current);
-      const svgNode = svg.node() as SVGSVGElement & { zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> };
-      const zoom = svgNode?.zoom;
-      if (zoom) {
-        svg.transition().duration(300).call(
-          zoom.scaleBy,
-          1.5
-        );
-      }
-    }
-  };
-
-  const zoomOut = () => {
-    if (svgRef.current) {
-      const svg = d3.select(svgRef.current);
-      const svgNode = svg.node() as SVGSVGElement & { zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> };
-      const zoom = svgNode?.zoom;
-      if (zoom) {
-        svg.transition().duration(300).call(
-          zoom.scaleBy,
-          1 / 1.5
-        );
-      }
-    }
-  };
 
   // Get connected nodes for popup
   const connectedNodes = selectedNode
@@ -613,7 +551,7 @@ export const GraphComponent = () => {
   return (
     <div className={`h-auto w-full border rounded-lg p-4 relative ${isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white'}`}>
       <div className="flex justify-between items-center mb-4">
-        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Graph</h3>
+        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Graph Visualization</h3>
         <div className="flex items-center gap-2">
           <button
             onClick={toggleTheme}
