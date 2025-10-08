@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const slug = searchParams.get("slug");
 
-    if (!slug) {
+    if (!slug || slug.trim() === "") {
       return NextResponse.json(
         { success: false, error: "Slug parameter is required" },
         { status: 400 }
