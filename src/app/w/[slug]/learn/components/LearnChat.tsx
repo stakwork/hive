@@ -12,7 +12,7 @@ interface LearnChatProps {
 }
 
 export function LearnChat({ workspaceSlug }: LearnChatProps) {
-  const [mode, setMode] = useState<"learn" | "chat">("learn");
+  const [mode, setMode] = useState<"learn" | "chat" | "mic">("learn");
   const [messages, setMessages] = useState<LearnMessage[]>([
     {
       id: "1",
@@ -31,6 +31,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     hiddenToolTextIds: { final_answer: "final-answer" },
   });
   const hasReceivedContentRef = useRef(false);
+  const isLocalhost = typeof window !== "undefined" && window.location.hostname === "localhost";
 
   const triggerRefetch = () => {
     setRefetchTrigger((prev) => prev + 1);
@@ -134,6 +135,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           mode={mode}
           onModeChange={setMode}
           onRefetchLearnings={triggerRefetch}
+          showMicMode={isLocalhost}
         />
       </div>
       <div className="fixed top-1 right-1 h-full">

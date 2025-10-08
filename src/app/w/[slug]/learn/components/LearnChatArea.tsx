@@ -16,9 +16,10 @@ interface LearnChatAreaProps {
   onSend: (message: string) => Promise<void>;
   isLoading?: boolean;
   onInputChange?: (input: string) => void;
-  mode: "learn" | "chat";
-  onModeChange: (mode: "learn" | "chat") => void;
+  mode: "learn" | "chat" | "mic";
+  onModeChange: (mode: "learn" | "chat" | "mic") => void;
   onRefetchLearnings?: () => void;
+  showMicMode?: boolean;
 }
 
 export function LearnChatArea({
@@ -29,6 +30,7 @@ export function LearnChatArea({
   mode,
   onModeChange,
   onRefetchLearnings,
+  showMicMode = false,
 }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -75,7 +77,7 @@ export function LearnChatArea({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ModeToggle mode={mode} onModeChange={onModeChange} />
+            <ModeToggle mode={mode} onModeChange={onModeChange} showMicMode={showMicMode} />
             {hasValidConversation && (
               <TooltipProvider>
                 <Tooltip>
@@ -145,6 +147,7 @@ export function LearnChatArea({
           disabled={isLoading}
           onInputChange={onInputChange}
           onRefetchLearnings={onRefetchLearnings}
+          mode={mode}
         />
       </div>
     </div>
