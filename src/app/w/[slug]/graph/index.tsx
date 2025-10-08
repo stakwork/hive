@@ -44,7 +44,7 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
   [key: string]: unknown;
 }
 
-// --- HELPER FUNCTION ---
+// --- HELPER FUNCTIONS ---
 const getNodeColor = (type: string): string => {
   const colorMap: Record<string, string> = {
     Service: "#3b82f6", Gateway: "#10b981", Storage: "#f59e0b",
@@ -52,6 +52,102 @@ const getNodeColor = (type: string): string => {
     Function: "#6366f1",
   };
   return colorMap[type] || "#6b7280";
+};
+
+const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
+  const connectedIds = new Set<string>();
+  links.forEach(link => {
+    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+
+    if (sourceId === nodeId) {
+      connectedIds.add(targetId);
+    } else if (targetId === nodeId) {
+      connectedIds.add(sourceId);
+    }
+  });
+  return connectedIds;
+};
+
+// --- POPUP COMPONENT ---
+interface NodePopupProps {
+  node: D3Node;
+  position: { x: number; y: number };
+  onClose: () => void;
+  connectedNodes: D3Node[];
+}
+
+const NodePopup = ({ node, position, onClose, connectedNodes }: NodePopupProps) => {
+  return (
+    <div
+      className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-4 max-w-sm"
+      style={{
+        left: `${position.x + 10}px`,
+        top: `${position.y - 10}px`,
+        maxHeight: '300px',
+        overflowY: 'auto'
+      }}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <h4 className="text-lg font-semibold text-gray-900">{node.name}</h4>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-4 h-4 rounded-full"
+            style={{ backgroundColor: getNodeColor(node.type) }}
+          />
+          <span className="text-sm font-medium text-gray-700">Type: {node.type}</span>
+        </div>
+
+        <div className="text-sm text-gray-600">
+          <strong>ID:</strong> {node.id}
+        </div>
+
+        {Object.entries(node).map(([key, value]) => {
+          if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) {
+            return null;
+          }
+          return (
+            <div key={key} className="text-sm text-gray-600">
+              <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+            </div>
+          );
+        })}
+
+        {connectedNodes.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <h5 className="text-sm font-medium text-gray-700 mb-2">
+              Connected Nodes ({connectedNodes.length})
+            </h5>
+            <div className="space-y-1">
+              {connectedNodes.slice(0, 5).map(connectedNode => (
+                <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: getNodeColor(connectedNode.type) }}
+                  />
+                  <span className="text-gray-600">{connectedNode.name}</span>
+                </div>
+              ))}
+              {connectedNodes.length > 5 && (
+                <div className="text-xs text-gray-500">
+                  ... and {connectedNodes.length - 5} more
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export const GraphComponent = () => {
@@ -66,6 +162,8 @@ export const GraphComponent = () => {
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
+  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
 
   console.log('workspaceId', workspaceId)
 
@@ -107,13 +205,14 @@ export const GraphComponent = () => {
   // Load nodes based on selected schema
   useEffect(() => {
     const fetchNodes = async () => {
-      if (!selectedSchema) return;
 
       setNodesLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/swarm/stakgraph/nodes?id=${workspaceId}&node_type=${selectedSchema}`);
+        const response = await fetch(`/api/swarm/stakgraph/nodes?id=${workspaceId}`);
         const data: ApiResponse = await response.json();
+
+        console.log(data)
 
         if (!data.success) {
           throw new Error("Failed to fetch nodes data");
@@ -122,9 +221,9 @@ export const GraphComponent = () => {
         if (data.data?.nodes && data.data.nodes.length > 0) {
           setNodes(data.data.nodes.map(node => ({
             ...node,
-            id: (node as any).ref_id,
-            type: (node as any).node_type as string,
-            name: (node as any)?.properties?.name as string
+            id: (node as any).ref_id || '',
+            type: (node as any).node_type as string || '',
+            name: (node as any)?.properties?.name as string || ''
           })) as D3Node[]);
           setLinks(data.data.edges as D3Link[] || []);
         } else {
@@ -142,7 +241,7 @@ export const GraphComponent = () => {
     };
 
     fetchNodes();
-  }, [workspaceId, selectedSchema]);
+  }, [workspaceId]);
 
   // Initialize D3 force simulation with zoom and pan
   useEffect(() => {
@@ -168,6 +267,12 @@ export const GraphComponent = () => {
 
     // Apply zoom behavior to svg
     svg.call(zoom);
+
+    // Add click handler to clear selection when clicking on empty space
+    svg.on("click", () => {
+      setSelectedNode(null);
+      setPopupPosition(null);
+    });
 
     const simulation = d3.forceSimulation<D3Node>(nodes)
       .force("link", d3.forceLink<D3Node, D3Link>(links).id(d => d.id).distance(100).strength(0.5))
@@ -208,9 +313,20 @@ export const GraphComponent = () => {
         .on("end", (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
           d.fx = null; d.fy = null;
-        }));
+        }))
+      .on("click", (event, d) => {
+        event.stopPropagation();
+        setSelectedNode(d);
+        const rect = svgRef.current?.getBoundingClientRect();
+        if (rect) {
+          setPopupPosition({
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top
+          });
+        }
+      });
 
-    nodeGroup.append("circle").attr("r", 20)
+    const circles = nodeGroup.append("circle").attr("r", 20)
       .attr("fill", d => getNodeColor(d.type))
       .attr("stroke", "#fff").attr("stroke-width", 2)
       .style("filter", "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))");
@@ -225,6 +341,67 @@ export const GraphComponent = () => {
       .attr("x", 0).attr("y", 35).attr("text-anchor", "middle")
       .attr("font-size", "10px").attr("fill", "#666")
       .style("pointer-events", "none");
+
+    // Function to update node and link highlighting
+    const updateHighlighting = () => {
+      if (selectedNode) {
+        const connectedIds = getConnectedNodeIds(selectedNode.id, links);
+
+        // Update node highlighting
+        circles
+          .attr("stroke-width", d => d.id === selectedNode.id ? 4 : 2)
+          .attr("stroke", d => {
+            if (d.id === selectedNode.id) return "#ff6b35";
+            if (connectedIds.has(d.id)) return "#ffb347";
+            return "#fff";
+          })
+          .style("opacity", d => {
+            if (d.id === selectedNode.id || connectedIds.has(d.id)) return 1;
+            return 0.3;
+          });
+
+        // Update link highlighting
+        link
+          .attr("stroke", d => {
+            const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+            const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+            if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+              return "#ff6b35";
+            }
+            return "#999";
+          })
+          .attr("stroke-width", d => {
+            const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+            const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+            if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+              return 3;
+            }
+            return 2;
+          })
+          .style("opacity", d => {
+            const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+            const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+            if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+              return 1;
+            }
+            return 0.3;
+          });
+      } else {
+        // Reset highlighting
+        circles
+          .attr("stroke-width", 2)
+          .attr("stroke", "#fff")
+          .style("opacity", 1);
+
+        link
+          .attr("stroke", "#999")
+          .attr("stroke-width", 2)
+          .style("opacity", 0.6);
+      }
+    };
+
+    // Initial highlighting
+    updateHighlighting();
 
     simulation.on("tick", () => {
       link
@@ -242,7 +419,7 @@ export const GraphComponent = () => {
     return () => {
       simulation.stop();
     };
-  }, [nodes, links, nodesLoading, isClient]);
+  }, [nodes, links, nodesLoading, isClient, selectedNode]);
 
   if (loading || !isClient) {
     return (
@@ -318,8 +495,15 @@ export const GraphComponent = () => {
     }
   };
 
+  // Get connected nodes for popup
+  const connectedNodes = selectedNode
+    ? Array.from(getConnectedNodeIds(selectedNode.id, links))
+      .map(id => nodes.find(node => node.id === id))
+      .filter(Boolean) as D3Node[]
+    : [];
+
   return (
-    <div className="h-auto w-full border rounded-lg bg-white p-4">
+    <div className="h-auto w-full border rounded-lg bg-white p-4 relative">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold">Stakgraph Visualization</h3>
         <div className="flex items-center gap-2">
@@ -401,8 +585,20 @@ export const GraphComponent = () => {
 
       {selectedSchema && nodes.length > 0 && (
         <div className="mt-4 text-sm text-gray-600">
-          <p><strong>Instructions:</strong> Drag nodes to reposition them. Use mouse wheel to zoom, drag canvas to pan, or use the zoom controls above.</p>
+          <p><strong>Instructions:</strong> Drag nodes to reposition them. Use mouse wheel to zoom, drag canvas to pan, or use the zoom controls above. Click on a node to see details.</p>
         </div>
+      )}
+
+      {selectedNode && popupPosition && (
+        <NodePopup
+          node={selectedNode}
+          position={popupPosition}
+          onClose={() => {
+            setSelectedNode(null);
+            setPopupPosition(null);
+          }}
+          connectedNodes={connectedNodes}
+        />
       )}
     </div>
   );
