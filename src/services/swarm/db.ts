@@ -57,7 +57,6 @@ export const select = {
   instanceType: true,
   repositoryName: true,
   repositoryDescription: true,
-  repositoryUrl: true, // TODO: Remove after schema migration
   ec2Id: true,
   swarmApiKey: true,
   swarmPassword: true,

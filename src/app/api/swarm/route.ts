@@ -87,7 +87,6 @@ export async function POST(request: NextRequest) {
       instanceType: instance_type,
       status: SwarmStatus.ACTIVE,
       repositoryName: repositoryName || "",
-      repositoryUrl: repositoryUrl || "",
       repositoryDescription: repositoryDescription || "",
       defaultBranch: repositoryDefaultBranch || "",
       swarmUrl: `https://${swarm_address}/api`,

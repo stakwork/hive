@@ -255,7 +255,6 @@ model Swarm {
   repositoryName        String? @map("repository_name")
   defaultBranch         String? @map("default_branch")
   repositoryDescription String? @map("repository_description")
-  repositoryUrl         String? @map("repository_url")
   swarmApiKey           String? @map("swarm_api_key")
   swarmSecretAlias      String? @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
   environmentVariables  Json    @default("[]") @map("environment_variables")

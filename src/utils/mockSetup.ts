@@ -63,7 +63,6 @@ export async function ensureMockWorkspaceForUser(
         status: SwarmStatus.ACTIVE,
         instanceType: "XL",
         repositoryName: "stakgraph",
-        repositoryUrl: "https://github.com/mock/stakgraph",
         defaultBranch: "main",
         environmentVariables: [{ name: "NODE_ENV", value: "development" }],
         services: [

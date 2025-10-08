@@ -8,7 +8,6 @@ import { WorkflowStatus } from "@prisma/client";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
-  expectSuccess,
   expectUnauthorized,
   generateUniqueId,
   createPostRequest,
@@ -56,7 +55,7 @@ vi.mock("@/lib/utils/swarm", () => ({
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
 
 describe("POST /api/chat/message Integration Tests", () => {
-  const encryptionService = EncryptionService.getInstance();
+  EncryptionService.getInstance();
 
   async function createTestUserWithWorkspaceAndTask() {
     return await db.$transaction(async (tx) => {
@@ -103,7 +102,6 @@ describe("POST /api/chat/message Integration Tests", () => {
           status: "ACTIVE",
           instanceType: "XL",
           repositoryName: "test-repo",
-          repositoryUrl: "https://github.com/test/repo",
           defaultBranch: "main",
           swarmApiKey: "test-api-key",
           swarmUrl: "https://test-swarm.com/api",
@@ -244,20 +242,20 @@ describe("POST /api/chat/message Integration Tests", () => {
         taskId: testTask.id,
         message: "Test message content",
         contextTags: [{ type: "file", value: "test.js" }],
-          artifacts: [
-            {
-              type: ArtifactType.CODE,
-              content: { language: "javascript", code: "console.log('test')" },
-            },
-          ],
-          attachments: [
-            {
-              path: "uploads/test/file.jpg",
-              filename: "file.jpg",
-              mimeType: "image/jpeg",
-              size: 1024,
-            },
-          ],
+        artifacts: [
+          {
+            type: ArtifactType.CODE,
+            content: { language: "javascript", code: "console.log('test')" },
+          },
+        ],
+        attachments: [
+          {
+            path: "uploads/test/file.jpg",
+            filename: "file.jpg",
+            mimeType: "image/jpeg",
+            size: 1024,
+          },
+        ],
       });
 
       const response = await POST(request);
