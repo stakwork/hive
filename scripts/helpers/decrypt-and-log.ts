@@ -103,7 +103,6 @@ async function logSwarms() {
       status: true,
       instanceType: true,
       repositoryName: true,
-      repositoryUrl: true,
       defaultBranch: true,
       swarmUrl: true,
       swarmSecretAlias: true,
@@ -112,6 +111,19 @@ async function logSwarms() {
       poolApiKey: true,
       environmentVariables: true,
       services: true,
+      workspace: {
+        select: {
+          repositories: {
+            select: {
+              repositoryUrl: true,
+            },
+            orderBy: {
+              createdAt: "asc" as const,
+            },
+            take: 1,
+          },
+        },
+      },
     },
   });
 
@@ -159,8 +171,9 @@ async function logSwarms() {
       console.log(
         `[SWARM] id=${s.id} name=${s.name} workspaceId=${s.workspaceId} status=${s.status} instanceType=${s.instanceType}`,
       );
+      const repositoryUrl = s.workspace.repositories[0]?.repositoryUrl || "(none)";
       console.log(
-        `  repo: ${s.repositoryName || "(none)"} url=${s.repositoryUrl || "(none)"} branch=${s.defaultBranch || "(none)"}`,
+        `  repo: ${s.repositoryName || "(none)"} url=${repositoryUrl} branch=${s.defaultBranch || "(none)"}`,
       );
       console.log(
         `  swarm: swarmUrl=${s.swarmUrl || "(none)"} secretAlias=${s.swarmSecretAlias || "(none)"} ingestRefId=${s.ingestRefId || "(none)"}`,
@@ -178,8 +191,8 @@ async function logSwarms() {
 
       if (Array.isArray(s.services)) {
         console.log(
-          `  services: ${s.services
-            .map((svc: any) => svc?.name || JSON.stringify(svc))
+          `  services: ${(s.services as Array<{ name?: string }>)
+            .map((svc) => svc?.name || JSON.stringify(svc))
             .join(", ")}`,
         );
       } else {

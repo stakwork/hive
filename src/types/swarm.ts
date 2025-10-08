@@ -54,7 +54,6 @@ export interface SwarmSelectResult {
   instanceType: string;
   repositoryName: string;
   repositoryDescription: string;
-  repositoryUrl: string;
   swarmSecretAlias: string;
   swarmApiKey: string | null;
   poolName: string;
