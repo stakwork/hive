@@ -36,6 +36,8 @@ interface D3Node extends d3.SimulationNodeDatum {
   id: string;
   name: string;
   type: string;
+  fx?: number | null;
+  fy?: number | null;
   [key: string]: unknown;
 }
 
@@ -47,36 +49,32 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
 
 // --- COLOR PALETTE ---
 const COLOR_PALETTE = [
-  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", 
+  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444",
   "#06b6d4", "#6366f1", "#ec4899", "#f97316", "#84cc16",
   "#64748b", "#0ea5e9", "#22c55e", "#a855f7", "#eab308"
 ];
 
-// --- HELPER FUNCTIONS ---
+// --- HELPERS ---
 const getNodeColor = (type: string, nodeTypes: string[]): string => {
   const index = nodeTypes.indexOf(type);
   if (index !== -1) {
     return COLOR_PALETTE[index % COLOR_PALETTE.length];
   }
-  return "#6b7280"; // Default gray
+  return "#6b7280";
 };
 
 const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
   const connectedIds = new Set<string>();
   links.forEach(link => {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-
-    if (sourceId === nodeId) {
-      connectedIds.add(targetId);
-    } else if (targetId === nodeId) {
-      connectedIds.add(sourceId);
-    }
+    const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
+    const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
+    if (sourceId === nodeId) connectedIds.add(targetId);
+    else if (targetId === nodeId) connectedIds.add(sourceId);
   });
   return connectedIds;
 };
 
-// --- POPUP COMPONENT ---
+// --- POPUP ---
 interface NodePopupProps {
   node: D3Node;
   onClose: () => void;
@@ -89,10 +87,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
   return (
     <div
       className={`absolute top-4 right-4 z-50 border rounded-lg shadow-lg p-4 w-80 ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
-      style={{
-        maxHeight: '400px',
-        overflowY: 'auto'
-      }}
+      style={{ maxHeight: '400px', overflowY: 'auto' }}
     >
       <div className="flex justify-between items-start mb-3">
         <h4 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{node.name}</h4>
@@ -106,10 +101,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
 
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <div
-            className="w-4 h-4 rounded-full"
-            style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }}
-          />
+          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }} />
           <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type: {node.type}</span>
         </div>
 
@@ -118,9 +110,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
         </div>
 
         {Object.entries(node).map(([key, value]) => {
-          if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) {
-            return null;
-          }
+          if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) return null;
           return (
             <div key={key} className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
@@ -136,10 +126,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
             <div className="space-y-1">
               {connectedNodes.slice(0, 5).map(connectedNode => (
                 <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }}
-                  />
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }} />
                   <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{connectedNode.name}</span>
                 </div>
               ))}
@@ -156,6 +143,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
   );
 };
 
+// --- MAIN COMPONENT ---
 export const GraphComponent = () => {
   const { id: workspaceId } = useWorkspace();
   const { theme, toggleTheme, mounted } = useTheme();
@@ -165,70 +153,48 @@ export const GraphComponent = () => {
   const [loading, setLoading] = useState(true);
   const [nodesLoading, setNodesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
-  const [isClient, setIsClient] = useState(false);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
+  const selectedNodeRef = useRef<D3Node | null>(null);
 
-  // Determine if dark mode is active
-  const isDarkMode = mounted && (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches));
-
-  // Calculate node types for color mapping
-  const nodeTypes = Array.from(new Set(nodes.map(node => node.type)));
-
-  console.log('workspaceId', workspaceId)
-
-  // Ensure component only renders on the client to avoid hydration errors
+  // keep selectedNodeRef in sync for use inside D3 handlers
   useEffect(() => {
-    setIsClient(true);
-  }, []);
+    selectedNodeRef.current = selectedNode;
+  }, [selectedNode]);
 
-  // Load schemas initially
+  const isDarkMode = mounted && (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches));
+  const nodeTypes = Array.from(new Set(nodes.map(n => n.type)));
+
+  // --- load schemas ---
   useEffect(() => {
     const fetchSchemas = async () => {
       setLoading(true);
       setError(null);
       try {
-        console.log(workspaceId)
         const response = await fetch(`/api/swarm/stakgraph/schema?id=${workspaceId}`);
         const data: SchemaResponse = await response.json();
-
-        if (!data.success) {
-          throw new Error("Failed to fetch schema data");
-        }
-
-        if (data.data && data.data.length > 0) {
-          setSchemas(data.data);
-        }
+        if (!data.success) throw new Error("Failed to fetch schema data");
+        if (data.data && data.data.length > 0) setSchemas(data.data);
       } catch (err) {
-        console.log(err)
+        console.error(err);
         setError("Failed to load schemas");
       } finally {
         setLoading(false);
       }
     };
-
-    if (workspaceId) {
-      fetchSchemas();
-    }
+    if (workspaceId) fetchSchemas();
   }, [workspaceId]);
 
-  // Load nodes based on selected schema
+  // --- load nodes ---
   useEffect(() => {
     const fetchNodes = async () => {
-
       setNodesLoading(true);
       setError(null);
       try {
         const response = await fetch(`/api/swarm/stakgraph/nodes?id=${workspaceId}`);
         const data: ApiResponse = await response.json();
-
-        console.log(data)
-
-        if (!data.success) {
-          throw new Error("Failed to fetch nodes data");
-        }
-
+        if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
           setNodes(data.data.nodes.map(node => ({
             ...node,
@@ -242,7 +208,7 @@ export const GraphComponent = () => {
           setLinks([]);
         }
       } catch (err) {
-        console.log(err)
+        console.error(err);
         setError("Failed to load nodes");
         setNodes([]);
         setLinks([]);
@@ -250,45 +216,50 @@ export const GraphComponent = () => {
         setNodesLoading(false);
       }
     };
-
     fetchNodes();
   }, [workspaceId]);
 
-  // Initialize D3 force simulation with zoom and pan
+  // --- initialize simulation, zoom, and render ---
   useEffect(() => {
-    // Wait until we're on the client, the svg ref is ready, and we have data
-    if (!isClient || !svgRef.current || nodes.length === 0 || nodesLoading) return;
+    if (!svgRef.current || nodes.length === 0 || nodesLoading) return;
 
     const svg = d3.select(svgRef.current);
     const width = 800;
     const height = 500;
     svg.attr("viewBox", `0 0 ${width} ${height}`);
 
-    svg.selectAll("*").remove(); // Clear previous render
+    // clear previous
+    svg.selectAll("*").remove();
 
-    // Create a container group for all graph elements (this will be transformed on zoom/pan)
+    // container group (this gets transformed by zoom)
     const container = svg.append("g").attr("class", "graph-container");
 
-    // Set up zoom behavior
+    // zoom behaviour
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 10])
       .on("zoom", (event) => {
         container.attr("transform", event.transform);
       });
 
-    // Apply zoom behavior to svg
-    svg.call(zoom);
+    svg.call(zoom as any);
 
-    // Add click handler to clear selection when clicking on empty space
+    // clicking empty svg clears selection
     svg.on("click", () => {
+      // release pinned node when clearing selection
+      if (selectedNodeRef.current) {
+        selectedNodeRef.current.fx = null;
+        selectedNodeRef.current.fy = null;
+        // nudge simulation
+        simulationRef.current?.alpha(0.1).restart();
+      }
       setSelectedNode(null);
     });
 
-    // Filter links to only include those where both source and target nodes exist
-    const nodeIds = new Set(nodes.map(node => node.id));
+    // valid links only
+    const nodeIds = new Set(nodes.map(n => n.id));
     const validLinks = links.filter(link => {
-      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+      const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
+      const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
       return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
 
@@ -300,7 +271,7 @@ export const GraphComponent = () => {
 
     simulationRef.current = simulation;
 
-    // Add arrow markers to container (or defs)
+    // markers
     svg.append("defs").selectAll("marker")
       .data(["arrow"]).enter().append("marker")
       .attr("id", "arrow")
@@ -310,34 +281,55 @@ export const GraphComponent = () => {
       .attr("orient", "auto")
       .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", isDarkMode ? "#6b7280" : "#999");
 
-    // Add links to container
+    // links
     const link = container.append("g").attr("class", "links")
       .selectAll("line").data(validLinks).enter().append("line")
       .attr("stroke", isDarkMode ? "#6b7280" : "#999").attr("stroke-opacity", 0.6)
       .attr("stroke-width", 2).attr("marker-end", "url(#arrow)");
 
-    // Add nodes to container
+    // nodes
     const nodeGroup = container.append("g").attr("class", "nodes")
       .selectAll("g").data(nodes).enter().append("g")
       .attr("class", "node").style("cursor", "pointer")
       .call(d3.drag<SVGGElement, D3Node>()
         .on("start", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-          d.fx = d.x; d.fy = d.y;
+          // warm up simulation when drag starts
+          if (!event.active) simulation.alphaTarget(0.2).restart();
+          // fix to current position
+          d.fx = d.x ?? 0;
+          d.fy = d.y ?? 0;
         })
         .on("drag", (event, d) => {
-          d.fx = event.x; d.fy = event.y;
+          // transform pointer from screen coords into graph coords using current zoom transform
+          const transform = d3.zoomTransform(svg.node() as Element);
+          const [px, py] = d3.pointer(event.sourceEvent as Event, svg.node() as Element);
+          const [gx, gy] = transform.invert([px, py]);
+          d.fx = gx;
+          d.fy = gy;
         })
         .on("end", (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
-          d.fx = null; d.fy = null;
+          // If the node is not the currently selected node, release it so simulation can continue
+          if (!selectedNodeRef.current || selectedNodeRef.current.id !== d.id) {
+            d.fx = null;
+            d.fy = null;
+          } else {
+            // keep pinned if it is selected
+            d.fx = d.x ?? d.fx;
+            d.fy = d.y ?? d.fy;
+          }
         }))
       .on("click", (event, d) => {
         event.stopPropagation();
+        // Pin the node in place
+        d.fx = d.x ?? d.fx;
+        d.fy = d.y ?? d.fy;
+        // restart a bit so layout settles visually
+        simulation.alphaTarget(0.1).restart();
         setSelectedNode(d);
       });
 
-    const circles = nodeGroup.append("circle").attr("r", 20)
+    nodeGroup.append("circle").attr("r", 20)
       .attr("fill", d => getNodeColor(d.type, nodeTypes))
       .attr("stroke", isDarkMode ? "#374151" : "#fff").attr("stroke-width", 2)
       .style("filter", isDarkMode ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.3))" : "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))");
@@ -353,7 +345,6 @@ export const GraphComponent = () => {
       .attr("font-size", "10px").attr("fill", isDarkMode ? "#d1d5db" : "#666")
       .style("pointer-events", "none");
 
-
     simulation.on("tick", () => {
       link
         .attr("x1", d => (d.source as D3Node).x!).attr("y1", d => (d.source as D3Node).y!)
@@ -361,18 +352,18 @@ export const GraphComponent = () => {
       nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
     });
 
-    // Store zoom behavior for reset function
+    // store zoom behaviour on svg node if needed elsewhere
     const svgNode = svg.node() as SVGSVGElement & { zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> };
-    if (svgNode) {
-      svgNode.zoom = zoom;
-    }
+    if (svgNode) svgNode.zoom = zoom;
 
     return () => {
       simulation.stop();
+      svg.on(".zoom", null);
+      // cleanup listeners by removing everything the svg created
     };
-  }, [nodes, links, nodesLoading, isClient, isDarkMode, nodeTypes]);
+  }, [nodes, links, nodesLoading, isDarkMode, nodeTypes]);
 
-  // Separate useEffect for handling highlighting when selectedNode changes
+  // highlighting when selecting a node
   useEffect(() => {
     if (!svgRef.current || !nodes.length) return;
 
@@ -381,17 +372,15 @@ export const GraphComponent = () => {
     const linkElements = svg.selectAll("line");
 
     if (selectedNode) {
-      // Filter the original links prop to get valid links
       const nodeIds = new Set(nodes.map(node => node.id));
       const validLinks = links.filter(link => {
-        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+        const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
+        const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
         return nodeIds.has(sourceId) && nodeIds.has(targetId);
       });
 
       const connectedIds = getConnectedNodeIds(selectedNode.id, validLinks);
 
-      // Update node highlighting
       circles
         .attr("stroke-width", (d: any) => d.id === selectedNode.id ? 4 : 2)
         .attr("stroke", (d: any) => {
@@ -405,34 +394,32 @@ export const GraphComponent = () => {
           return 0.5;
         });
 
-      // Update link highlighting
       linkElements
         .attr("stroke", (d: any) => {
-          const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-          const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+          const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
+          const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
           if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
             return "#3b82f6";
           }
           return isDarkMode ? "#6b7280" : "#999";
         })
         .attr("stroke-width", (d: any) => {
-          const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-          const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+          const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
+          const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
           if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
             return 3;
           }
           return 2;
         })
         .style("opacity", (d: any) => {
-          const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-          const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+          const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
+          const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
           if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
             return 1;
           }
           return 0.3;
         });
     } else {
-      // Reset highlighting
       circles
         .attr("stroke-width", 2)
         .attr("stroke", isDarkMode ? "#374151" : "#fff")
@@ -445,23 +432,7 @@ export const GraphComponent = () => {
     }
   }, [selectedNode, isDarkMode, nodes, links]);
 
-  if (loading || !isClient) {
-    return (
-      <div className={`flex h-96 items-center justify-center border rounded-lg ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50'}`}>
-        <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading schemas...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={`flex h-96 items-center justify-center border rounded-lg ${isDarkMode ? 'bg-red-900 border-red-800' : 'bg-red-50'}`}>
-        <div className={`text-lg ${isDarkMode ? 'text-red-300' : 'text-red-600'}`}>Error: {error}</div>
-      </div>
-    );
-  }
-
-  // Get connected nodes for popup
+  // connected nodes for popup
   const connectedNodes = selectedNode
     ? Array.from(getConnectedNodeIds(selectedNode.id, links))
       .map(id => nodes.find(node => node.id === id))
@@ -491,28 +462,6 @@ export const GraphComponent = () => {
         </div>
       </div>
 
-      {/* Schema Selection */}
-      {/* <div className="mb-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-medium text-gray-700">Select Schema:</label>
-          <select
-            value={selectedSchema || ""}
-            onChange={(e) => setSelectedSchema(e.target.value || null)}
-            className="px-3 py-1 border rounded-md text-sm bg-white max-w-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">-- Select a schema --</option>
-            {schemas.map((schema) => (
-              <option key={schema.node_type} value={schema.node_type}>
-                {schema.node_type} - {schema.description}
-              </option>
-            ))}
-          </select>
-          {nodesLoading && (
-            <div className="text-sm text-gray-500">Loading nodes...</div>
-          )}
-        </div>
-      </div> */}
-
       {nodeTypes.length > 1 && (
         <div className="mb-4 flex flex-wrap gap-4 text-sm">
           <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Types:</span>
@@ -535,7 +484,7 @@ export const GraphComponent = () => {
             <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>No nodes found for selected schema</div>
           </div>
         ) : (
-          <svg ref={svgRef} className="w-full h-auto" />
+          <svg ref={el => svgRef.current = el} className="w-full h-auto" />
         )}
       </div>
 
@@ -549,6 +498,12 @@ export const GraphComponent = () => {
         <NodePopup
           node={selectedNode}
           onClose={() => {
+            // release fx/fy on selected node
+            if (selectedNodeRef.current) {
+              selectedNodeRef.current.fx = null;
+              selectedNodeRef.current.fy = null;
+              simulationRef.current?.alpha(0.1).restart();
+            }
             setSelectedNode(null);
           }}
           connectedNodes={connectedNodes}
