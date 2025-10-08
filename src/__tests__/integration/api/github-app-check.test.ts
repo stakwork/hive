@@ -96,16 +96,8 @@ describe("GitHub App Check API Integration Tests", () => {
         const response = await GET(request);
         const data = await expectSuccess(response);
 
-        expect(data.canFetchData).toBe(true);
         expect(data.hasPushAccess).toBe(true);
-        expect(data.canReadCommits).toBe(true);
-        expect(data.repositoryInfo).toMatchObject({
-          name: "test-repo",
-          full_name: "test-owner/test-repo",
-          private: false,
-          default_branch: "main",
-        });
-        expect(data.message).toBe("GitHub App can successfully fetch repository data");
+        // API only returns hasPushAccess, not repositoryInfo or message
 
         // Verify GitHub API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
@@ -187,7 +179,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await expectSuccess(response);
 
         expect(data.hasPushAccess).toBe(true); // Admin grants push
-        expect(data.canReadCommits).toBe(true);
       });
 
       test("should calculate hasPushAccess=true with maintain permission", async () => {
@@ -295,9 +286,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const response = await GET(request);
         const data = await expectSuccess(response);
 
-        expect(data.canFetchData).toBe(true);
         expect(data.hasPushAccess).toBe(false); // Only pull, no push
-        expect(data.canReadCommits).toBe(true);
       });
 
       test("should support SSH repository URL format", async () => {
@@ -353,7 +342,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const response = await GET(request);
         const data = await expectSuccess(response);
 
-        expect(data.canFetchData).toBe(true);
+        expect(data.hasPushAccess).toBeDefined();
         expect(mockFetch).toHaveBeenCalledWith(
           "https://api.github.com/repos/nodejs/node",
           expect.any(Object)
@@ -408,7 +397,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const response = await GET(request);
         const data = await expectSuccess(response);
 
-        expect(data.canFetchData).toBe(true);
+        expect(data.hasPushAccess).toBeDefined();
       });
 
       test("should handle canReadCommits=false when commits fetch fails", async () => {
@@ -461,9 +450,9 @@ describe("GitHub App Check API Integration Tests", () => {
         const response = await GET(request);
         const data = await expectSuccess(response);
 
-        expect(data.canFetchData).toBe(true);
+        expect(data.hasPushAccess).toBeDefined();
         expect(data.hasPushAccess).toBe(true);
-        expect(data.canReadCommits).toBe(false); // Commits fetch failed
+        // API only returns hasPushAccess, not canReadCommits
       });
     });
 
@@ -533,12 +522,12 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(403);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Workspace not found or access denied");
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
-      test("should return 200 with canFetchData=false when no GitHub tokens found", async () => {
+      test("should return 200 with hasPushAccess=false when no GitHub tokens found", async () => {
         // Create user without tokens
         const testUser = await createTestUser({ name: "User Without Tokens" });
 
@@ -565,12 +554,12 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("No GitHub App tokens found for this repository owner");
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
-      test("should return 200 with canFetchData=false when tokens exist but accessToken is missing", async () => {
+      test("should return 200 with hasPushAccess=false when tokens exist but accessToken is missing", async () => {
         const testUser = await createTestUser();
 
         const workspace = await createTestWorkspace({
@@ -599,7 +588,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("No GitHub App tokens found for this repository owner");
       });
     });
@@ -623,7 +612,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(400);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Missing required parameter: workspaceSlug");
       });
 
@@ -646,7 +635,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(403);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Workspace not found or access denied");
       });
 
@@ -674,7 +663,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(400);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("No repository URL provided in parameter or workspace configuration");
       });
 
@@ -702,7 +691,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(400);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Invalid GitHub repository URL");
       });
 
@@ -765,7 +754,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200); // Endpoint returns 200 with error in body
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Repository not found or no access");
         expect(data.httpStatus).toBe(404);
       });
@@ -800,7 +789,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Access forbidden - insufficient permissions");
         expect(data.httpStatus).toBe(403);
       });
@@ -840,7 +829,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Authentication failed - invalid token");
         expect(data.httpStatus).toBe(401);
       });
@@ -875,7 +864,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Failed to fetch repository data");
         expect(data.httpStatus).toBe(500);
       });
@@ -911,7 +900,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(500);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Internal server error during repository check");
       });
 
@@ -945,7 +934,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(500);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Internal server error during repository check");
       });
     });
