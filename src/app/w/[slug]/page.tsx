@@ -2,12 +2,10 @@
 
 import { RepositoryCard, TestCoverageCard } from "@/components/dashboard";
 import { VMConfigSection } from "@/components/pool-status";
-import { EmptyState, TaskCard } from "@/components/tasks";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GraphComponent } from "./graph";
@@ -15,7 +13,6 @@ import { Gitsee } from "./graph/gitsee";
 
 export default function DashboardPage() {
   const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
-  const { tasks } = useWorkspaceTasks(workspaceId, slug, true);
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const processedCallback = useRef(false);
@@ -129,9 +126,6 @@ export default function DashboardPage() {
       }
     };
   }, [ingestRefId, workspaceId, codeIsSynced, ingestError]);
-
-  // Get the 3 most recent tasks
-  const recentTasks = tasks.slice(0, 3);
 
   // Helper function to extract repository info from URL
   const extractRepoInfoFromUrl = (url: string) => {
@@ -446,26 +440,6 @@ export default function DashboardPage() {
         <TestCoverageCard />
       </div>
 
-      {/* Recent Tasks Section */}
-      {workspace &&
-        workspace.isCodeGraphSetup &&
-        (recentTasks.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Tasks</CardTitle>
-              <CardDescription>Your most recently created tasks</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {recentTasks.map((task) => (
-                  <TaskCard key={task.id} task={task} workspaceSlug={slug} />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <EmptyState workspaceSlug={slug} />
-        ))}
       <div><GraphComponent /></div>
     </div>
   );
