@@ -166,6 +166,7 @@ export function JanitorSection({
                             variant="outline"
                             size="sm"
                             className="h-8 w-8 p-0"
+                            data-testid="janitor-manual-run-btn"
                             onClick={() => handleManualRun(janitor)}
                             disabled={isRunning || loading}
                           >
@@ -186,6 +187,7 @@ export function JanitorSection({
                     checked={isItemComingSoon ? false : isOn}
                     onCheckedChange={() => handleToggle(janitor)}
                     className="data-[state=checked]:bg-green-500"
+                    data-testid="janitor-toggle-switch"
                     disabled={isItemComingSoon || loading}
                   />
                 </div>

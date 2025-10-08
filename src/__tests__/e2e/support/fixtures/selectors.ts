@@ -113,8 +113,10 @@ export const selectors = {
     integrationTestJanitor: 'text=/Integration Tests|Integration Testing/i',
     comingSoonBadge: 'text=/Coming Soon|Disabled/i',
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
-    acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
-    dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
+    acceptButton: '[data-testid="recommendations-accept-btn"]',
+    dismissButton: '[data-testid="recommendations-dismiss-btn"]',
+    janitorToggleSwitch: '[data-testid="janitor-toggle-switch"]',
+    janitorManualRunButton: '[data-testid="janitor-manual-run-btn"]',
   },
 
   // Onboarding

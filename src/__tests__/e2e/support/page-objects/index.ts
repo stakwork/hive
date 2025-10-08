@@ -7,3 +7,4 @@ export { AuthPage } from './AuthPage';
 export { DashboardPage } from './DashboardPage';
 export { TasksPage } from './TasksPage';
 export { WorkspaceSettingsPage } from './WorkspaceSettingsPage';
+export { InsightsPage } from './InsightsPage';

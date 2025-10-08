@@ -157,6 +157,7 @@ export function RecommendationsSection() {
                       size="sm" 
                       variant="outline" 
                       className="h-7 text-xs"
+                      data-testid="recommendations-dismiss-btn"
                       onClick={() => handleDismiss(recommendation.id)}
                     >
                       Dismiss
@@ -164,6 +165,7 @@ export function RecommendationsSection() {
                     <Button 
                       size="sm" 
                       className="h-7 text-xs"
+                      data-testid="recommendations-accept-btn"
                       onClick={() => handleAccept(recommendation.id)}
                     >
                       Accept
