@@ -8,7 +8,6 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
     include: {
-      swarm: true,
       repositories: {
         orderBy: { createdAt: "asc" },
       },
@@ -19,13 +18,7 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
     return null;
   }
 
-  let primaryRepo = workspace.repositories.find(
-    (repo) => repo.repositoryUrl === workspace.swarm?.repositoryUrl,
-  );
-
-  if (!primaryRepo) {
-    primaryRepo = workspace.repositories[0];
-  }
+  const primaryRepo = workspace.repositories[0];
 
   return {
     id: primaryRepo.id,

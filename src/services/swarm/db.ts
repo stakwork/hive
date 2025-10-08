@@ -31,7 +31,6 @@ interface SaveOrUpdateSwarmParams {
   swarmUrl?: string;
   repositoryName?: string;
   repositoryDescription?: string;
-  repositoryUrl?: string;
   ec2Id?: string;
   swarmApiKey?: string;
   swarmPassword?: string;
@@ -58,7 +57,7 @@ export const select = {
   instanceType: true,
   repositoryName: true,
   repositoryDescription: true,
-  repositoryUrl: true,
+  repositoryUrl: true, // TODO: Remove after schema migration
   ec2Id: true,
   swarmApiKey: true,
   swarmPassword: true,
@@ -96,7 +95,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.swarmUrl !== undefined) data.swarmUrl = params.swarmUrl;
   if (params.repositoryName !== undefined) data.repositoryName = params.repositoryName;
   if (params.repositoryDescription !== undefined) data.repositoryDescription = params.repositoryDescription;
-  if (params.repositoryUrl !== undefined) data.repositoryUrl = params.repositoryUrl;
   if (params.ec2Id !== undefined) data.ec2Id = params.ec2Id;
   if (params.swarmApiKey !== undefined)
     data.swarmApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", params.swarmApiKey));
@@ -140,7 +138,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       swarmUrl: params.swarmUrl || null,
       repositoryName: params.repositoryName || "",
       repositoryDescription: params.repositoryDescription || "",
-      repositoryUrl: params.repositoryUrl || "",
       ec2Id: params.ec2Id || null,
       swarmApiKey:
         params.swarmApiKey !== undefined
