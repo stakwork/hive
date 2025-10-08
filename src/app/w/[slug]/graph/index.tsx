@@ -492,7 +492,7 @@ export const GraphComponent = () => {
             <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>No nodes found for selected schema</div>
           </div>
         ) : (
-          <svg ref={el => svgRef.current = el} className="w-full h-auto" />
+          <svg ref={el => { svgRef.current = el; }} className="w-full h-auto" />
         )}
       </div>
 
