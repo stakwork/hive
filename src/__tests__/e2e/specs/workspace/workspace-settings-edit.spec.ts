@@ -11,17 +11,11 @@ test.describe('Workspace Settings Edit', () => {
     await authPage.signInWithMock();
 
     // Create a standard workspace scenario for testing
-    const { workspaceSlug } = await createStandardWorkspaceScenario();
+    const { workspace } = await createStandardWorkspaceScenario();
 
     // Navigate to workspace settings
     const settingsPage = new WorkspaceSettingsPage(page);
-    await settingsPage.goto(workspaceSlug);
-
-    // Debug: Take screenshot and check page content
-    await page.screenshot({ path: 'debug-workspace-settings.png' });
-    const bodyContent = await page.locator('body').innerHTML();
-    console.log('Page content length:', bodyContent.length);
-    console.log('Current URL:', page.url());
+    await settingsPage.goto(workspace.slug);
 
     // Act - Update workspace settings
     const updatedName = 'Mock Workspace 123';
