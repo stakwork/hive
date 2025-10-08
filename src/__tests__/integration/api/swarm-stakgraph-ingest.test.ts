@@ -134,8 +134,17 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
           status: "ACTIVE",
           swarmUrl: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
-          repositoryUrl: "https://github.com/test-org/test-repo",
           defaultBranch: "main",
+        },
+      });
+
+      await tx.repository.create({
+        data: {
+          name: "test-repo",
+          repositoryUrl: "https://github.com/test-org/test-repo",
+          workspaceId: workspace.id,
+          status: RepositoryStatus.PENDING,
+          branch: "main",
         },
       });
 
@@ -178,6 +187,14 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
     });
 
     it("should update existing repository to PENDING status on re-ingestion", async () => {
+      // Delete the repository from beforeEach first
+      await db.repository.deleteMany({
+        where: {
+          repositoryUrl: "https://github.com/test-org/test-repo",
+          workspaceId,
+        },
+      });
+
       // Create initial repository with SYNCED status
       await db.repository.create({
         data: {
@@ -212,17 +229,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
     });
 
     it("should enforce composite unique constraint (repositoryUrl_workspaceId)", async () => {
-      // Create repository in workspace 1
-      await db.repository.create({
-        data: {
-          name: "test-repo",
-          repositoryUrl: "https://github.com/test-org/test-repo",
-          workspaceId,
-          status: RepositoryStatus.PENDING,
-          branch: "main",
-        },
-      });
-
+      // The beforeEach already created a repository, so this test should still work
       // Create another workspace
       const workspace2 = await db.workspace.create({
         data: {
@@ -252,9 +259,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       });
 
       expect(repositories).toHaveLength(2);
-      expect(repositories.map((r) => r.workspaceId).sort()).toEqual(
-        [workspaceId, workspace2.id].sort()
-      );
+      expect(repositories.map((r) => r.workspaceId).sort()).toEqual([workspaceId, workspace2.id].sort());
     });
   });
 
