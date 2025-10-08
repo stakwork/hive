@@ -378,11 +378,12 @@ export const GraphComponent = () => {
 
     const svg = d3.select(svgRef.current);
     const circles = svg.selectAll("circle");
-    const links = svg.selectAll("line");
+    const linkElements = svg.selectAll("line");
 
     if (selectedNode) {
-      const validLinks = links.data().filter((link: any) => {
-        const nodeIds = new Set(nodes.map(node => node.id));
+      // Filter the original links prop to get valid links
+      const nodeIds = new Set(nodes.map(node => node.id));
+      const validLinks = links.filter(link => {
         const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
         const targetId = typeof link.target === 'string' ? link.target : link.target.id;
         return nodeIds.has(sourceId) && nodeIds.has(targetId);
@@ -405,7 +406,7 @@ export const GraphComponent = () => {
         });
 
       // Update link highlighting
-      links
+      linkElements
         .attr("stroke", (d: any) => {
           const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
           const targetId = typeof d.target === 'string' ? d.target : d.target.id;
@@ -437,12 +438,12 @@ export const GraphComponent = () => {
         .attr("stroke", isDarkMode ? "#374151" : "#fff")
         .style("opacity", 1);
 
-      links
+      linkElements
         .attr("stroke", isDarkMode ? "#6b7280" : "#999")
         .attr("stroke-width", 2)
         .style("opacity", 0.6);
     }
-  }, [selectedNode, isDarkMode, nodes]);
+  }, [selectedNode, isDarkMode, nodes, links]);
 
   if (loading || !isClient) {
     return (
