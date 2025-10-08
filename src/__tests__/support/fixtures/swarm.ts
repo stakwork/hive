@@ -7,6 +7,8 @@ export interface CreateTestSwarmOptions {
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
   repositoryUrl?: string | null;
+  swarmUrl?: string | null;
+  swarmApiKey?: string | null;
 }
 
 export async function createTestSwarm(
@@ -21,6 +23,8 @@ export async function createTestSwarm(
       status: options.status || "ACTIVE",
       instanceType: options.instanceType || "XL",
       repositoryUrl: options.repositoryUrl ?? null,
+      swarmUrl: options.swarmUrl ?? null,
+      swarmApiKey: options.swarmApiKey ?? null,
     },
   });
 }
