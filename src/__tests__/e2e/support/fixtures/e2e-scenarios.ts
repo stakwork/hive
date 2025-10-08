@@ -16,14 +16,17 @@ import {
 /**
  * Standard workspace with owner and basic setup
  * Perfect for most E2E tests
+ *
+ * IMPORTANT: Uses default mock auth user (dev-user@mock.dev) to align with
+ * AuthPage.signInWithMock() which signs in as "dev-user" by default.
  */
 export async function createStandardWorkspaceScenario(): Promise<TestWorkspaceScenarioResult> {
   return createTestWorkspaceScenario({
     owner: {
-      name: "E2E Test Owner",
-      email: "e2e-owner@example.com",
+      name: "dev-user",
+      email: "dev-user@mock.dev",
       withGitHubAuth: true,
-      githubUsername: "e2e-test-owner",
+      githubUsername: "dev-user",
     },
     workspace: {
       name: "E2E Test Workspace",
@@ -72,13 +75,17 @@ export async function createWorkspaceWithTasksScenario() {
 
 /**
  * Workspace with multiple members for testing collaboration
+ *
+ * IMPORTANT: Owner uses default mock auth user (dev-user@mock.dev) to align with
+ * AuthPage.signInWithMock() which signs in as "dev-user" by default.
  */
 export async function createWorkspaceWithMembersScenario() {
   return createTestWorkspaceScenario({
     owner: {
-      name: "E2E Test Owner",
-      email: "e2e-owner@example.com",
+      name: "dev-user",
+      email: "dev-user@mock.dev",
       withGitHubAuth: true,
+      githubUsername: "dev-user",
     },
     workspace: {
       name: "E2E Team Workspace",

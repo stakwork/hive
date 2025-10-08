@@ -10,6 +10,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GraphComponent } from "./graph";
 import { Gitsee } from "./graph/gitsee";
 
 export default function DashboardPage() {
@@ -465,6 +466,7 @@ export default function DashboardPage() {
         ) : (
           <EmptyState workspaceSlug={slug} />
         ))}
+      <div><GraphComponent /></div>
     </div>
   );
 }
