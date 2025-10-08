@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { TaskStatus, TaskSourceType } from "@prisma/client";
 import type { Task, ChatMessage } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
@@ -8,8 +9,9 @@ export interface CreateTestTaskOptions {
   workspaceId: string;
   createdById: string;
   assigneeId?: string;
-  status?: "active" | "completed" | "archived";
-  sourceType?: "MANUAL" | "JANITOR";
+  repositoryId?: string;
+  status?: TaskStatus;
+  sourceType?: TaskSourceType;
 }
 
 export interface CreateTestChatMessageOptions {
@@ -29,9 +31,11 @@ export async function createTestTask(
       description: options.description || `Test task description ${uniqueId}`,
       workspaceId: options.workspaceId,
       createdById: options.createdById,
+      updatedById: options.createdById,
       assigneeId: options.assigneeId || null,
-      status: options.status || "active",
-      sourceType: options.sourceType || "MANUAL",
+      repositoryId: options.repositoryId || null,
+      status: options.status || TaskStatus.IN_PROGRESS,
+      sourceType: options.sourceType || TaskSourceType.USER,
     },
   });
 }
