@@ -9,11 +9,11 @@ import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUt
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
-
 
 export async function GET(request: NextRequest) {
   try {
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     // Get the workspace associated with this swarm
     const workspace = await db.workspace.findUnique({
       where: { id: swarm.workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
@@ -79,8 +79,8 @@ export async function GET(request: NextRequest) {
 
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
 
-    // Use repo_url from params or fall back to database
-    const repo_url = repo_url_param || swarm.repositoryUrl;
+    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+    const repo_url = repo_url_param || primaryRepo?.repositoryUrl;
 
     let responseData: { services: ServiceConfig[] };
     let environmentVariables: Array<{ name: string; value: string }> | undefined;
@@ -96,17 +96,17 @@ export async function GET(request: NextRequest) {
     if (repo_url) {
       // Agent mode - call services_agent endpoint
       try {
-        console.log('[stakgraph/services] Starting agent mode for repo:', repo_url);
+        console.log("[stakgraph/services] Starting agent mode for repo:", repo_url);
         const { owner, repo } = parseGithubOwnerRepo(repo_url);
-        console.log('[stakgraph/services] Parsed GitHub:', { owner, repo });
+        console.log("[stakgraph/services] Parsed GitHub:", { owner, repo });
 
         // Start the agent request with proper GitHub authentication
-        console.log('[stakgraph/services] Initiating agent request to:', swarmUrl);
-        console.log('[stakgraph/services] Agent request params:', {
+        console.log("[stakgraph/services] Initiating agent request to:", swarmUrl);
+        console.log("[stakgraph/services] Agent request params:", {
           owner,
           repo,
           hasUsername: !!githubProfile?.username,
-          hasPAT: !!githubProfile?.token
+          hasPAT: !!githubProfile?.token,
         });
         const agentInitResult = await swarmApiRequestAuth({
           swarmUrl: swarmUrl,
@@ -122,28 +122,24 @@ export async function GET(request: NextRequest) {
         });
 
         if (!agentInitResult.ok) {
-          console.error('[stakgraph/services] Agent init failed:', agentInitResult);
+          console.error("[stakgraph/services] Agent init failed:", agentInitResult);
           throw new Error("Failed to initiate agent");
         }
 
         const initData = agentInitResult.data as { request_id: string };
-        console.log('[stakgraph/services] Agent init response:', initData);
+        console.log("[stakgraph/services] Agent init response:", initData);
         if (!initData.request_id) {
-          console.error('[stakgraph/services] No request_id in response:', initData);
+          console.error("[stakgraph/services] No request_id in response:", initData);
           throw new Error("No request_id received from agent");
         }
 
         // Poll for completion
-        console.log('[stakgraph/services] Starting to poll agent with request_id:', initData.request_id);
-        const agentResult = await pollAgentProgress(
-          swarmUrl,
-          initData.request_id,
-          decryptedApiKey
-        );
-        console.log('[stakgraph/services] Agent polling completed, result ok:', agentResult.ok);
+        console.log("[stakgraph/services] Starting to poll agent with request_id:", initData.request_id);
+        const agentResult = await pollAgentProgress(swarmUrl, initData.request_id, decryptedApiKey);
+        console.log("[stakgraph/services] Agent polling completed, result ok:", agentResult.ok);
 
         if (!agentResult.ok) {
-          console.error('[stakgraph/services] Agent failed, full result:', JSON.stringify(agentResult, null, 2));
+          console.error("[stakgraph/services] Agent failed, full result:", JSON.stringify(agentResult, null, 2));
           throw new Error("Agent failed to complete");
         }
 
@@ -162,8 +158,9 @@ export async function GET(request: NextRequest) {
             let envText = envContent;
             try {
               // Check if it's base64
-              const decoded = Buffer.from(envContent, 'base64').toString('utf-8');
-              if (decoded.includes('=')) { // Simple check if it looks like env format
+              const decoded = Buffer.from(envContent, "base64").toString("utf-8");
+              if (decoded.includes("=")) {
+                // Simple check if it looks like env format
                 envText = decoded;
               }
             } catch {
@@ -178,7 +175,7 @@ export async function GET(request: NextRequest) {
 
         // Now fetch from stakgraph to get any additional env vars
         const stakgraphResult = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
-          clone: "true",  // Always clone to ensure we get the latest code
+          clone: "true", // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
           ...(githubProfile ? { pat: githubProfile.token } : {}),
@@ -202,35 +199,34 @@ export async function GET(request: NextRequest) {
         // Convert merged env vars to array format
         environmentVariables = Object.entries(mergedEnvVars).map(([name, value]) => ({
           name,
-          value
+          value,
         }));
 
         // Prepare container files
         // Use swarm's repository name if available, otherwise use the repo name from URL
         const repoName = swarm.repositoryName || repo;
         containerFiles = {
-          "Dockerfile": Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString('base64'),
-          "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString('base64'),
-          "docker-compose.yml": Buffer.from(agentFiles["docker-compose.yml"] || "").toString('base64'),
-          "devcontainer.json": Buffer.from(devcontainerJsonContent(repoName)).toString('base64')
+          Dockerfile: Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString("base64"),
+          "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString("base64"),
+          "docker-compose.yml": Buffer.from(agentFiles["docker-compose.yml"] || "").toString("base64"),
+          "devcontainer.json": Buffer.from(devcontainerJsonContent(repoName)).toString("base64"),
         };
 
         responseData = { services };
-
       } catch (error) {
-        console.error('[stakgraph/services] Agent mode failed, detailed error:', error);
-        console.error('[stakgraph/services] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+        console.error("[stakgraph/services] Agent mode failed, detailed error:", error);
+        console.error("[stakgraph/services] Error stack:", error instanceof Error ? error.stack : "No stack trace");
         console.error("Agent mode failed, falling back to stakgraph services endpoint:", error);
         // Fall back to stakgraph services endpoint
-        console.log('[stakgraph/services] Calling fallback stakgraph services with params:', {
+        console.log("[stakgraph/services] Calling fallback stakgraph services with params:", {
           swarmUrl,
           hasApiKey: !!decryptedApiKey,
           repo_url,
           hasUsername: !!githubProfile?.username,
-          hasPAT: !!githubProfile?.token
+          hasPAT: !!githubProfile?.token,
         });
         const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
-          clone: "true",  // Always clone to ensure we get the latest code
+          clone: "true", // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
           ...(githubProfile ? { pat: githubProfile.token } : {}),
@@ -242,7 +238,7 @@ export async function GET(request: NextRequest) {
     } else {
       // No repo_url provided - call stakgraph services endpoint
       const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
-        clone: "true",  // Always clone to ensure we get the latest code
+        clone: "true", // Always clone to ensure we get the latest code
         ...(githubProfile?.username ? { username: githubProfile.username } : {}),
         ...(githubProfile ? { pat: githubProfile.token } : {}),
       });
@@ -268,8 +264,8 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error('[stakgraph/services] Unhandled error:', error);
-    console.error('[stakgraph/services] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error("[stakgraph/services] Unhandled error:", error);
+    console.error("[stakgraph/services] Error stack:", error instanceof Error ? error.stack : "No stack trace");
     console.error("Unhandled error:", error);
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }

@@ -11,6 +11,7 @@ import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export const runtime = "nodejs";
 
@@ -39,11 +40,11 @@ export async function POST(request: NextRequest) {
 
     const repoWorkspaceId = workspaceId || swarm.workspaceId;
 
-    let final_repo_url;
+    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+    const final_repo_url = primaryRepo?.repositoryUrl;
     let branch = "";
 
-    if (swarm.repositoryUrl && swarm.defaultBranch) {
-      final_repo_url = swarm.repositoryUrl;
+    if (final_repo_url && swarm.defaultBranch) {
       branch = swarm.defaultBranch || "";
     }
 

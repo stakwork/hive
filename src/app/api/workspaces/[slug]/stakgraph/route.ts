@@ -15,6 +15,7 @@ import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 import { z } from "zod";
 
@@ -134,13 +135,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const environmentVariables = swarm?.environmentVariables;
 
+    const primaryRepo = await getPrimaryRepository(workspace.id);
+    const repositoryUrl = primaryRepo?.repositoryUrl || "";
+
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings retrieved successfully",
       data: {
         name: swarm.name || "",
         description: swarm.repositoryDescription || "",
-        repositoryUrl: swarm.repositoryUrl || "",
+        repositoryUrl: repositoryUrl,
         defaultBranch: swarm.defaultBranch || "",
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
@@ -183,10 +187,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
         webhookEnsured: await (async () => {
-          if (!swarm.repositoryUrl) return false;
+          if (!repositoryUrl) return false;
           const repo = await db.repository.findFirst({
             where: {
-              repositoryUrl: swarm.repositoryUrl,
+              repositoryUrl: repositoryUrl,
               workspaceId: swarm.workspaceId,
             },
             select: { githubWebhookId: true, githubWebhookSecret: true },
@@ -272,7 +276,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       name: settings.name,
       repositoryName: settings.name,
       repositoryDescription: settings.description,
-      repositoryUrl: settings.repositoryUrl,
       defaultBranch: settings.defaultBranch,
       swarmUrl: settings.swarmUrl,
       status: SwarmStatus.ACTIVE, // auto active
@@ -388,6 +391,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const typedSwarm = swarm as SwarmSelectResult & { poolApiKey?: string };
+
+    const primaryRepoForResponse = await getPrimaryRepository(workspace.id);
+    const responseRepositoryUrl = primaryRepoForResponse?.repositoryUrl || "";
+
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings saved successfully",
@@ -395,7 +402,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         id: typedSwarm.id,
         name: typedSwarm.repositoryName,
         description: typedSwarm.repositoryDescription,
-        repositoryUrl: typedSwarm.repositoryUrl,
+        repositoryUrl: responseRepositoryUrl,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
