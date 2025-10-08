@@ -203,7 +203,7 @@ describe("POST /api/github/app/install Integration Tests", () => {
 
   describe("State Generation and Storage", () => {
     test("should generate state and store in user session", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",

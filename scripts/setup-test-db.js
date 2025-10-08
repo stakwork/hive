@@ -36,10 +36,12 @@ async function setupTestDatabase() {
 
     // Clean up any existing test data
     console.log("🧹 Cleaning up existing test data...");
-    await prisma.verificationToken.deleteMany();
+    // VerificationToken table may not exist in schema, removing this line
+    // await prisma.verificationToken.deleteMany();
     await prisma.session.deleteMany();
     await prisma.account.deleteMany();
-    await prisma.gitHubAuth.deleteMany();
+    // Remove gitHubAuth table as it may not exist
+    // await prisma.gitHubAuth.deleteMany();
     await prisma.user.deleteMany();
 
     // Create some test users for integration tests

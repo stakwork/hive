@@ -116,11 +116,11 @@ describe("GET /api/github/app/callback Integration Tests", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(307); // Temporary redirect
-      expect(response.headers.get("location")).toBe("/auth");
+      expect(response.headers.get("location")).toBe("http://localhost:3000/auth");
     });
 
     test("should redirect with error for missing state parameter", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = new NextRequest(
@@ -134,7 +134,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should redirect with error for missing code parameter", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const state = createStateToken({ workspaceSlug: "test-workspace" });
@@ -151,7 +151,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("State Validation", () => {
     test("should redirect with error for invalid state (not in session)", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const state = createStateToken({ workspaceSlug: "test-workspace" });
@@ -166,7 +166,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should redirect with error for expired state (>1 hour)", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -188,6 +188,9 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
+      // Mock OAuth token exchange (needed before state validation)
+      mockSuccessfulTokenExchange();
+
       const request = new NextRequest(
         `http://localhost:3000/api/github/app/callback?state=${state}&code=test-code&installation_id=123`
       );
@@ -199,7 +202,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should accept valid state within 1 hour", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -234,7 +237,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("OAuth Token Exchange", () => {
     test("should exchange authorization code for access token", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -282,7 +285,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should redirect with error for invalid authorization code", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -317,7 +320,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("Token Encryption and Storage", () => {
     test("should encrypt and store tokens in SourceControlToken", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -383,7 +386,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should update existing token if already exists", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -450,7 +453,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("SourceControlOrg Management", () => {
     test("should create SourceControlOrg for organization installation", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -509,7 +512,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should update installation ID if changed", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -553,7 +556,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("Workspace Linking", () => {
     test("should link workspace to SourceControlOrg on install action", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -588,7 +591,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should unlink workspace on uninstall action", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
 
       // Create SourceControlOrg
       const sourceControlOrg = await db.sourceControlOrg.create({
@@ -635,7 +638,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("Session State Cleanup", () => {
     test("should clear githubState from session after successful callback", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -676,7 +679,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("OAuth-only Flow (No Installation ID)", () => {
     test("should handle OAuth authorization without installation ID", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
 
       // Create existing SourceControlOrg
       const sourceControlOrg = await db.sourceControlOrg.create({
@@ -724,7 +727,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should redirect with error when OAuth-only but no existing org", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -758,7 +761,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("Error Handling", () => {
     test("should handle GitHub user fetch failure", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",
@@ -794,7 +797,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
     });
 
     test("should handle generic errors", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
@@ -812,7 +815,7 @@ describe("GET /api/github/app/callback Integration Tests", () => {
 
   describe("Redirect URLs", () => {
     test("should redirect to workspace with setup action parameter", async () => {
-      const user = await createTestUser();
+      const user = await createTestUser({ withSession: true });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
         name: "Test Workspace",

@@ -8,6 +8,7 @@ export interface CreateTestUserOptions {
   role?: "USER" | "ADMIN";
   withGitHubAuth?: boolean;
   githubUsername?: string;
+  withSession?: boolean;
 }
 
 export async function createTestUser(
@@ -34,6 +35,17 @@ export async function createTestUser(
         bio: "Test bio",
         publicRepos: 10,
         followers: 5,
+      },
+    });
+  }
+
+  // Create a session for the user if requested
+  if (options.withSession) {
+    await db.session.create({
+      data: {
+        sessionToken: `test-session-${uniqueId}-${Date.now()}`,
+        userId: user.id,
+        expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
       },
     });
   }
