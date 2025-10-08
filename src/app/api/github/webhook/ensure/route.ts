@@ -66,13 +66,14 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { success: true, data: { webhookId: result.id } },
+      { success: true, webhookId: result.id },
       { status: 200 },
     );
   } catch (error) {
     console.error(error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to ensure webhook";
     return NextResponse.json(
-      { success: false, message: "Failed to ensure webhook" },
+      { success: false, message: errorMessage },
       { status: 500 },
     );
   }

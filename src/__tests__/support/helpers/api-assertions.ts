@@ -30,10 +30,13 @@ export async function expectError(
   expect(response.status).toBe(expectedStatus);
   const data = await response.json();
 
+  // Check for error in either 'error' or 'message' field
+  const errorText = data.error || data.message;
+
   if (typeof expectedError === "string") {
-    expect(data.error).toContain(expectedError);
+    expect(errorText).toContain(expectedError);
   } else {
-    expect(data.error).toMatch(expectedError);
+    expect(errorText).toMatch(expectedError);
   }
 }
 
