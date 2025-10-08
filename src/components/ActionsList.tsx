@@ -53,11 +53,6 @@ function getElementDescription(action: Action): string {
     }
   }
 
-  // Use selector as fallback (truncate if too long)
-  if (selector.length > 25) {
-    return selector.substring(0, 22) + "...";
-  }
-
   return selector;
 }
 
