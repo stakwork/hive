@@ -347,7 +347,7 @@ export const GraphComponent = () => {
       .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(0.5))
       .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(d => d.type === "cluster" ? 50 : 30).strength(0.7));
+      .force("collision", d3.forceCollide<D3Node>().radius(d => d.type === "cluster" ? 50 : 30).strength(0.7));
 
     simulationRef.current = simulation;
 
