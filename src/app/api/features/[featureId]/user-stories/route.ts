@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import type {
+  CreateUserStoryRequest,
+  UserStoryListResponse,
+  UserStoryResponse,
+} from "@/types/roadmap";
 
 export async function GET(
   request: NextRequest,
@@ -105,7 +110,7 @@ export async function GET(
       },
     });
 
-    return NextResponse.json(
+    return NextResponse.json<UserStoryListResponse>(
       {
         success: true,
         data: userStories,
@@ -140,7 +145,7 @@ export async function POST(
     }
 
     const { featureId } = await params;
-    const body = await request.json();
+    const body: CreateUserStoryRequest = await request.json();
     const { title } = body;
 
     // Validate required fields
@@ -260,7 +265,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json(
+    return NextResponse.json<UserStoryResponse>(
       {
         success: true,
         data: userStory,
