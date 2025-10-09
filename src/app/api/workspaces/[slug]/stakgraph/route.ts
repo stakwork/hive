@@ -26,8 +26,16 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 // Validation schema for stakgraph settings
 const stakgraphSettingsSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  repositoryUrl: z.string().url("Invalid repository URL"),
-  defaultBranch: z.string().optional(),
+  repositories: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        repositoryUrl: z.string().url("Invalid repository URL"),
+        branch: z.string().min(1, "Branch is required"),
+        name: z.string().min(1, "Repository name is required"),
+      }),
+    )
+    .min(1, "At least one repository is required"),
   swarmUrl: z.string().url("Invalid swarm URL"),
   swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
   swarmApiKey: z.string().optional(),
@@ -145,19 +153,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const environmentVariables = swarm?.environmentVariables;
 
-    const primaryRepo = await getPrimaryRepository(workspace.id);
-    const repositoryUrl = primaryRepo?.repositoryUrl || "";
-    const description = primaryRepo?.description || "";
-    const defaultBranch = primaryRepo?.branch || "";
+    const repositories = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        branch: true,
+        name: true,
+        githubWebhookId: true,
+        githubWebhookSecret: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings retrieved successfully",
       data: {
         name: swarm.name || "",
-        description: description,
-        repositoryUrl: repositoryUrl,
-        defaultBranch: defaultBranch,
+        description: "",
+        repositories: repositories.length > 0 ? repositories : [],
         swarmUrl: swarm.swarmUrl || "",
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
@@ -198,17 +213,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
-        webhookEnsured: await (async () => {
-          if (!repositoryUrl) return false;
-          const repo = await db.repository.findFirst({
-            where: {
-              repositoryUrl: repositoryUrl,
-              workspaceId: swarm.workspaceId,
-            },
-            select: { githubWebhookId: true, githubWebhookSecret: true },
-          });
-          return Boolean(repo?.githubWebhookId && repo?.githubWebhookSecret);
-        })(),
+        webhookEnsured:
+          repositories.length > 0 && repositories[0]
+            ? Boolean(repositories[0].githubWebhookId && repositories[0].githubWebhookSecret)
+            : false,
       },
     });
   } catch (error) {
@@ -283,6 +291,48 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const settings = validationResult.data;
 
+    const existingRepos = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+    });
+
+    const incomingRepos = settings.repositories;
+    const existingRepoIds = existingRepos.map((r) => r.id);
+    const incomingRepoIds = incomingRepos.filter((r) => r.id).map((r) => r.id!);
+
+    const reposToCreate = incomingRepos.filter((r) => !r.id);
+    if (reposToCreate.length > 0) {
+      await db.repository.createMany({
+        data: reposToCreate.map((repo) => ({
+          workspaceId: workspace.id,
+          repositoryUrl: repo.repositoryUrl,
+          branch: repo.branch,
+          name: repo.name,
+        })),
+      });
+    }
+
+    const reposToUpdate = incomingRepos.filter((r) => r.id);
+    for (const repo of reposToUpdate) {
+      await db.repository.update({
+        where: { id: repo.id },
+        data: {
+          repositoryUrl: repo.repositoryUrl,
+          branch: repo.branch,
+          name: repo.name,
+        },
+      });
+    }
+
+    const repoIdsToDelete = existingRepoIds.filter((id) => !incomingRepoIds.includes(id));
+    if (repoIdsToDelete.length > 0) {
+      await db.repository.deleteMany({
+        where: {
+          id: { in: repoIdsToDelete },
+          workspaceId: workspace.id,
+        },
+      });
+    }
+
     await saveOrUpdateSwarm({
       workspaceId: workspace.id,
       name: settings.name,
@@ -334,27 +384,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService(getServiceConfig("github"));
 
-      const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
-        userId,
-        workspaceId: workspace.id,
-        repositoryUrl: settings.repositoryUrl,
-        callbackUrl,
-        repositoryName: settings.name,
-      });
+      const primaryRepo = await getPrimaryRepository(workspace.id);
 
-      console.log(
-        "=====> GitHub defaultBranch:",
-        defaultBranch,
-        "User provided:",
-        settings.defaultBranch,
-        "in request body:",
-        body.defaultBranch,
-      );
-      const userProvidedBranch = body.defaultBranch && body.defaultBranch !== "main";
-      if (defaultBranch && !userProvidedBranch && defaultBranch !== settings.defaultBranch) {
-        console.log("=====> Updating repository branch to:", defaultBranch);
-        const primaryRepo = await getPrimaryRepository(workspace.id);
-        if (primaryRepo) {
+      if (primaryRepo) {
+        const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
+          userId,
+          workspaceId: workspace.id,
+          repositoryUrl: primaryRepo.repositoryUrl,
+          callbackUrl,
+          repositoryName: primaryRepo.name,
+        });
+
+        console.log("=====> GitHub defaultBranch:", defaultBranch, "Current branch:", primaryRepo.branch);
+        if (defaultBranch && defaultBranch !== primaryRepo.branch) {
+          console.log("=====> Updating primary repository branch to:", defaultBranch);
           await db.repository.update({
             where: { id: primaryRepo.id },
             data: { branch: defaultBranch },
@@ -403,19 +446,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const typedSwarm = swarm as SwarmSelectResult & { poolApiKey?: string };
 
-    const primaryRepoForResponse = await getPrimaryRepository(workspace.id);
-    const responseRepositoryUrl = primaryRepoForResponse?.repositoryUrl || "";
-    const responseName = primaryRepoForResponse?.name || "";
-    const responseDescription = primaryRepoForResponse?.description || "";
+    // Fetch updated repositories for response
+    const updatedRepositories = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        branch: true,
+        name: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
     return NextResponse.json({
       success: true,
       message: "Stakgraph settings saved successfully",
       data: {
         id: typedSwarm.id,
-        name: responseName,
-        description: responseDescription,
-        repositoryUrl: responseRepositoryUrl,
+        name: typedSwarm.name || settings.name,
+        description: settings.description || "",
+        repositories: updatedRepositories,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
