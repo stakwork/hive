@@ -5,66 +5,6 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 
-// --- LOCALSTORAGE UTILITIES ---
-interface GraphState {
-  transform?: { k: number; x: number; y: number };
-  pinnedNodes?: Record<string, { fx: number; fy: number }>;
-  selectedNodeId?: string | null;
-  nodePositions?: Record<string, { x: number; y: number }>;
-  cachedNodes?: D3Node[];
-  cachedLinks?: D3Link[];
-  lastFetched?: number;
-}
-
-const getStorageKey = (workspaceId: string) => `graph-state-${workspaceId}`;
-
-const saveGraphState = (workspaceId: string, state: Partial<GraphState>) => {
-  try {
-    const key = getStorageKey(workspaceId);
-    const existing = localStorage.getItem(key);
-    const currentState: GraphState = existing ? JSON.parse(existing) : {};
-    const newState = { ...currentState, ...state };
-    localStorage.setItem(key, JSON.stringify(newState));
-  } catch (error) {
-    console.warn('Failed to save graph state to localStorage:', error);
-  }
-};
-
-const loadGraphState = (workspaceId: string): GraphState => {
-  try {
-    const key = getStorageKey(workspaceId);
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : {};
-  } catch (error) {
-    console.warn('Failed to load graph state from localStorage:', error);
-    return {};
-  }
-};
-
-// Check if cached data is fresh (within 5 minutes)
-const isCachedDataFresh = (lastFetched?: number): boolean => {
-  if (!lastFetched) return false;
-  const fiveMinutes = 5 * 60 * 1000;
-  return (Date.now() - lastFetched) < fiveMinutes;
-};
-
-// Debounced function to save node positions during simulation
-const createDebouncedPositionSaver = (workspaceId: string) => {
-  let timeoutId: NodeJS.Timeout;
-  return (nodes: D3Node[]) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      const nodePositions: Record<string, { x: number; y: number }> = {};
-      nodes.forEach(node => {
-        if (node.x !== undefined && node.y !== undefined) {
-          nodePositions[node.id] = { x: node.x, y: node.y };
-        }
-      });
-      saveGraphState(workspaceId, { nodePositions });
-    }, 500); // Save positions 500ms after simulation stops moving
-  };
-};
-
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
   id: string;
@@ -107,6 +47,11 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
   [key: string]: unknown;
 }
 
+// --- SAVED STATE TYPES ---
+type SavedNodePos = { x?: number; y?: number; fx?: number | null; fy?: number | null };
+type SavedPositions = Record<string, SavedNodePos>;
+type SavedTransform = { x: number; y: number; k: number };
+
 // --- COLOR PALETTE ---
 const COLOR_PALETTE = [
   "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444",
@@ -116,18 +61,16 @@ const COLOR_PALETTE = [
 
 // --- HELPERS ---
 const getNodeColor = (type: string, nodeTypes: string[]): string => {
+  if (type === "cluster") return "#9333ea";
   const index = nodeTypes.indexOf(type);
-  if (index !== -1) {
-    return COLOR_PALETTE[index % COLOR_PALETTE.length];
-  }
-  return "#6b7280";
+  return index !== -1 ? COLOR_PALETTE[index % COLOR_PALETTE.length] : "#6b7280";
 };
 
 const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
   const connectedIds = new Set<string>();
   links.forEach(link => {
-    const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
-    const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
+    const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
+    const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
     if (sourceId === nodeId) connectedIds.add(targetId);
     else if (targetId === nodeId) connectedIds.add(sourceId);
   });
@@ -143,65 +86,63 @@ interface NodePopupProps {
   nodeTypes: string[];
 }
 
-const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes }: NodePopupProps) => {
-  return (
-    <div
-      className={`absolute top-4 right-4 z-50 border rounded-lg shadow-lg p-4 w-80 ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
-      style={{ maxHeight: '400px', overflowY: 'auto' }}
-    >
-      <div className="flex justify-between items-start mb-3">
-        <h4 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{node.name}</h4>
-        <button
-          onClick={onClose}
-          className={`text-xl leading-none ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }} />
-          <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type: {node.type}</span>
-        </div>
-
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          <strong>ID:</strong> {node.id}
-        </div>
-
-        {Object.entries(node).map(([key, value]) => {
-          if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) return null;
-          return (
-            <div key={key} className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-            </div>
-          );
-        })}
-
-        {connectedNodes.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <h5 className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Connected Nodes ({connectedNodes.length})
-            </h5>
-            <div className="space-y-1">
-              {connectedNodes.slice(0, 5).map(connectedNode => (
-                <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }} />
-                  <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{connectedNode.name}</span>
-                </div>
-              ))}
-              {connectedNodes.length > 5 && (
-                <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                  ... and {connectedNodes.length - 5} more
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes }: NodePopupProps) => (
+  <div
+    className={`absolute top-4 right-4 z-50 border rounded-lg shadow-lg p-4 w-80 ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
+    style={{ maxHeight: '400px', overflowY: 'auto' }}
+  >
+    <div className="flex justify-between items-start mb-3">
+      <h4 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{node.name}</h4>
+      <button
+        onClick={onClose}
+        className={`text-xl leading-none ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
+      >
+        ×
+      </button>
     </div>
-  );
-};
+
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }} />
+        <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type: {node.type}</span>
+      </div>
+
+      <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <strong>ID:</strong> {node.id}
+      </div>
+
+      {Object.entries(node).map(([key, value]) => {
+        if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) return null;
+        return (
+          <div key={key} className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+          </div>
+        );
+      })}
+
+      {connectedNodes.length > 0 && (
+        <div className="mt-3 pt-3 border-t">
+          <h5 className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            Connected Nodes ({connectedNodes.length})
+          </h5>
+          <div className="space-y-1">
+            {connectedNodes.slice(0, 5).map(connectedNode => (
+              <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }} />
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{connectedNode.name}</span>
+              </div>
+            ))}
+            {connectedNodes.length > 5 && (
+              <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                ... and {connectedNodes.length - 5} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+);
 
 // --- MAIN COMPONENT ---
 export const GraphComponent = () => {
@@ -217,27 +158,69 @@ export const GraphComponent = () => {
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const selectedNodeRef = useRef<D3Node | null>(null);
-  
-  // Restore selected node from localStorage when nodes change
-  useEffect(() => {
-    if (nodes.length > 0 && workspaceId) {
-      const savedState = loadGraphState(workspaceId);
-      if (savedState.selectedNodeId) {
-        const node = nodes.find(n => n.id === savedState.selectedNodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      }
-    }
-  }, [nodes, workspaceId]);
 
-  // keep selectedNodeRef in sync for use inside D3 handlers
-  useEffect(() => {
-    selectedNodeRef.current = selectedNode;
-  }, [selectedNode]);
+  // persistence refs
+  const lastSavedRef = useRef<number>(0); // for throttling
+  const TICK_SAVE_THROTTLE_MS = 1000;
+
+  useEffect(() => { selectedNodeRef.current = selectedNode; }, [selectedNode]);
 
   const isDarkMode = mounted && (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches));
   const nodeTypes = Array.from(new Set(nodes.map(n => n.type)));
+
+  const storageKey = `graph:${workspaceId || "global"}:positions`;
+  const transformKey = `graph:${workspaceId || "global"}:transform`;
+
+  // --- persistence helpers (normalize fx/fy -> number | null) ---
+  const loadPositionsFromStorage = (): SavedPositions | null => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return null;
+      return JSON.parse(raw) as SavedPositions;
+    } catch (e) {
+      console.warn("Failed to parse stored graph positions", e);
+      return null;
+    }
+  };
+
+  const savePositionsToStorage = (nodesToSave: D3Node[]) => {
+    try {
+      const payload: SavedPositions = {};
+      nodesToSave.forEach(n => {
+        const fx: number | null = typeof n.fx === "number" ? n.fx : null;
+        const fy: number | null = typeof n.fy === "number" ? n.fy : null;
+        // only include x/y if numbers
+        const entry: SavedNodePos = {};
+        if (typeof n.x === "number") entry.x = n.x;
+        if (typeof n.y === "number") entry.y = n.y;
+        entry.fx = fx;
+        entry.fy = fy;
+        payload[n.id] = entry;
+      });
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch (e) {
+      console.warn("Failed to save graph positions", e);
+    }
+  };
+
+  const loadTransformFromStorage = (): SavedTransform | null => {
+    try {
+      const raw = localStorage.getItem(transformKey);
+      if (!raw) return null;
+      return JSON.parse(raw) as SavedTransform;
+    } catch (e) {
+      console.warn("Failed to parse stored transform", e);
+      return null;
+    }
+  };
+
+  const saveTransformToStorage = (t: SavedTransform) => {
+    try {
+      localStorage.setItem(transformKey, JSON.stringify(t));
+    } catch (e) {
+      console.warn("Failed to save transform", e);
+    }
+  };
 
   // --- load schemas ---
   useEffect(() => {
@@ -259,41 +242,9 @@ export const GraphComponent = () => {
     if (workspaceId) fetchSchemas();
   }, [workspaceId]);
 
-  // --- load nodes ---
+  // --- load nodes (restore saved positions) ---
   useEffect(() => {
     const fetchNodes = async () => {
-      const savedState = loadGraphState(workspaceId);
-      
-      // Check if we have fresh cached data
-      if (savedState.cachedNodes && savedState.cachedLinks && isCachedDataFresh(savedState.lastFetched)) {
-        // Use cached data instead of fetching
-        const restoredNodes = savedState.cachedNodes.map(node => {
-          const baseNode = { ...node };
-          
-          // Restore pinned position if exists
-          const pinnedPos = savedState.pinnedNodes?.[baseNode.id];
-          if (pinnedPos) {
-            baseNode.fx = pinnedPos.fx;
-            baseNode.fy = pinnedPos.fy;
-          }
-          
-          // Restore saved position if exists
-          const savedPos = savedState.nodePositions?.[baseNode.id];
-          if (savedPos) {
-            baseNode.x = savedPos.x;
-            baseNode.y = savedPos.y;
-          }
-          
-          return baseNode;
-        });
-        
-        setNodes(restoredNodes);
-        setLinks(savedState.cachedLinks);
-        setNodesLoading(false);
-        return;
-      }
-      
-      // Fetch fresh data if no cache or cache is stale
       setNodesLoading(true);
       setError(null);
       try {
@@ -301,42 +252,31 @@ export const GraphComponent = () => {
         const data: ApiResponse = await response.json();
         if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
-          const processedNodes = data.data.nodes.map(node => {
-            const baseNode = {
-              ...node,
-              id: (node as any).ref_id || '',
-              type: (node as any).node_type as string || '',
-              name: (node as any)?.properties?.name as string || ''
-            } as D3Node;
-            
-            // Restore pinned position if exists
-            const pinnedPos = savedState.pinnedNodes?.[baseNode.id];
-            if (pinnedPos) {
-              baseNode.fx = pinnedPos.fx;
-              baseNode.fy = pinnedPos.fy;
-            }
-            
-            // Restore saved position if exists
-            const savedPos = savedState.nodePositions?.[baseNode.id];
-            if (savedPos) {
-              baseNode.x = savedPos.x;
-              baseNode.y = savedPos.y;
-            }
-            
-            return baseNode;
-          });
-          
-          const processedLinks = data.data.edges as D3Link[] || [];
-          
-          setNodes(processedNodes);
-          setLinks(processedLinks);
-          
-          // Cache the fresh data
-          saveGraphState(workspaceId, {
-            cachedNodes: processedNodes,
-            cachedLinks: processedLinks,
-            lastFetched: Date.now()
-          });
+          const incomingNodes = data.data.nodes.map(node => ({
+            ...node,
+            id: (node as any).ref_id || '',
+            type: (node as any).node_type as string || '',
+            name: (node as any)?.properties?.name as string || ''
+          })) as D3Node[];
+
+          const saved = loadPositionsFromStorage();
+          if (saved) {
+            incomingNodes.forEach(n => {
+              const s = saved[n.id];
+              if (s) {
+                if (typeof s.x === "number") n.x = s.x;
+                if (typeof s.y === "number") n.y = s.y;
+                // restore pinned state carefully
+                if (typeof s.fx === "number") n.fx = s.fx;
+                else if (s.fx === null) n.fx = null;
+                if (typeof s.fy === "number") n.fy = s.fy;
+                else if (s.fy === null) n.fy = null;
+              }
+            });
+          }
+
+          setNodes(incomingNodes);
+          setLinks(data.data.edges as D3Link[] || []);
         } else {
           setNodes([]);
           setLinks([]);
@@ -350,10 +290,8 @@ export const GraphComponent = () => {
         setNodesLoading(false);
       }
     };
-    
-    if (workspaceId) {
-      fetchNodes();
-    }
+    fetchNodes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   // --- initialize simulation, zoom, and render ---
@@ -365,65 +303,39 @@ export const GraphComponent = () => {
     const height = 500;
     svg.attr("viewBox", `0 0 ${width} ${height}`);
 
-    // LOAD saved transform from localStorage or current transform
-    const savedState = loadGraphState(workspaceId);
-    const currentTransform = d3.zoomTransform(svg.node() as Element);
-    const previousTransform = savedState.transform 
-      ? d3.zoomIdentity.translate(savedState.transform.x, savedState.transform.y).scale(savedState.transform.k)
-      : currentTransform;
+    const storedTransform = loadTransformFromStorage();
+    const previousTransform = storedTransform
+      ? d3.zoomIdentity.translate(storedTransform.x, storedTransform.y).scale(storedTransform.k)
+      : d3.zoomTransform(svg.node() as Element);
 
-    // clear previous
     svg.selectAll("*").remove();
-
-    // container group (this gets transformed by zoom)
     const container = svg.append("g").attr("class", "graph-container");
 
-    // zoom behavior with localStorage persistence
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 10])
       .on("zoom", (event) => {
-        const transform = (event as any).transform;
-        container.attr("transform", transform);
-        // Save transform to localStorage
-        saveGraphState(workspaceId, {
-          transform: { k: transform.k, x: transform.x, y: transform.y }
-        });
+        container.attr("transform", (event as any).transform);
+      })
+      .on("end", () => {
+        const t = d3.zoomTransform(svg.node() as Element);
+        saveTransformToStorage({ x: t.x, y: t.y, k: t.k });
       });
 
-    // Apply zoom to svg and restore previous transform (so we don't reset zoom on every re-render)
     svg.call(zoom as any);
-    // Restore previous transform (use a tiny timeout to ensure the call can apply safely)
-    try {
-      // If previousTransform is identity, this is a no-op
-      (svg as any).call(zoom.transform, previousTransform);
-    } catch (e) {
-      // ignore if transform can't be reapplied
-    }
+    try { (svg as any).call(zoom.transform, previousTransform); } catch (e) { /* ignore */ }
 
-    // clicking the raw svg background clears selection only when clicking background (not nodes)
     svg.on("click", (event: any) => {
-      // event.target must be the svg DOM node itself to count as background click
       if (event.target === svg.node()) {
-        // release pinned node when clearing selection
         if (selectedNodeRef.current) {
           selectedNodeRef.current.fx = null;
           selectedNodeRef.current.fy = null;
-          simulationRef.current?.alpha(0.1).restart();
-          
-          // Remove from pinned nodes in localStorage
-          const savedState = loadGraphState(workspaceId);
-          const pinnedNodes = { ...savedState.pinnedNodes };
-          delete pinnedNodes[selectedNodeRef.current.id];
-          saveGraphState(workspaceId, { pinnedNodes });
+          simulationRef.current?.alpha(0); // do not restart
+          savePositionsToStorage(nodes);
         }
         setSelectedNode(null);
-        
-        // Clear selected node from localStorage
-        saveGraphState(workspaceId, { selectedNodeId: null });
       }
     });
 
-    // valid links only
     const nodeIds = new Set(nodes.map(n => n.id));
     const validLinks = links.filter(link => {
       const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
@@ -431,33 +343,14 @@ export const GraphComponent = () => {
       return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
 
-    // Check if nodes have saved positions to determine simulation behavior
-    const hasSavedPositions = nodes.some(node => node.x !== undefined && node.y !== undefined);
-    
     const simulation = d3.forceSimulation<D3Node>(nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(hasSavedPositions ? 0.1 : 0.5))
-      .force("charge", d3.forceManyBody().strength(hasSavedPositions ? -50 : -300).distanceMax(300))
-      .force("center", d3.forceCenter(width / 2, height / 2).strength(hasSavedPositions ? 0.02 : 0.05))
-      .force("collision", d3.forceCollide().radius(40).strength(0.7))
-      .alpha(hasSavedPositions ? 0.1 : 1.0)
-      .alphaDecay(hasSavedPositions ? 0.1 : 0.0228);
-    
-    // Save positions when simulation ends
-    if (!hasSavedPositions) {
-      simulation.on("end", () => {
-        const nodePositions: Record<string, { x: number; y: number }> = {};
-        nodes.forEach(node => {
-          if (node.x !== undefined && node.y !== undefined) {
-            nodePositions[node.id] = { x: node.x, y: node.y };
-          }
-        });
-        saveGraphState(workspaceId, { nodePositions });
-      });
-    }
+      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(0.5))
+      .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collision", d3.forceCollide().radius(d => d.type === "cluster" ? 50 : 30).strength(0.7));
 
     simulationRef.current = simulation;
 
-    // markers
     svg.append("defs").selectAll("marker")
       .data(["arrow"]).enter().append("marker")
       .attr("id", "arrow")
@@ -467,24 +360,21 @@ export const GraphComponent = () => {
       .attr("orient", "auto")
       .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", isDarkMode ? "#6b7280" : "#999");
 
-    // links
     const link = container.append("g").attr("class", "links")
       .selectAll("line").data(validLinks).enter().append("line")
       .attr("stroke", isDarkMode ? "#6b7280" : "#999").attr("stroke-opacity", 0.6)
       .attr("stroke-width", 2).attr("marker-end", "url(#arrow)");
 
-    // nodes
     const nodeGroup = container.append("g").attr("class", "nodes")
       .selectAll("g").data(nodes).enter().append("g")
       .attr("class", "node").style("cursor", "pointer")
       .call(d3.drag<SVGGElement, D3Node>()
         .on("start", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.2).restart();
+          if (!event.active) simulationRef.current?.alphaTarget(0.2).restart();
           d.fx = d.x ?? 0;
           d.fy = d.y ?? 0;
         })
         .on("drag", (event, d) => {
-          // Use svg zoom transform to map screen pointer to graph coordinates
           const transform = d3.zoomTransform(svg.node() as Element);
           const [px, py] = d3.pointer(event.sourceEvent as Event, svg.node() as Element);
           const [gx, gy] = transform.invert([px, py]);
@@ -492,66 +382,49 @@ export const GraphComponent = () => {
           d.fy = gy;
         })
         .on("end", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0);
+          if (!event.active) simulationRef.current?.alphaTarget(0);
           if (!selectedNodeRef.current || selectedNodeRef.current.id !== d.id) {
             d.fx = null;
             d.fy = null;
-            // Remove from pinned nodes in localStorage
-            const savedState = loadGraphState(workspaceId);
-            const pinnedNodes = { ...savedState.pinnedNodes };
-            delete pinnedNodes[d.id];
-            saveGraphState(workspaceId, { pinnedNodes });
           } else {
             d.fx = d.x ?? d.fx;
             d.fy = d.y ?? d.fy;
-            // Save pinned position to localStorage
-            const savedState = loadGraphState(workspaceId);
-            const pinnedNodes = { ...savedState.pinnedNodes };
-            pinnedNodes[d.id] = { fx: d.fx, fy: d.fy };
-            saveGraphState(workspaceId, { pinnedNodes });
           }
-          
-          // Save all node positions after drag
-          const nodePositions: Record<string, { x: number; y: number }> = {};
-          nodes.forEach(node => {
-            if (node.x !== undefined && node.y !== undefined) {
-              nodePositions[node.id] = { x: node.x, y: node.y };
-            }
-          });
-          saveGraphState(workspaceId, { nodePositions });
+          savePositionsToStorage(nodes);
         }))
       .on("click", (event, d) => {
         event.stopPropagation();
-        // pin node
+        // pin node without restarting simulation
         d.fx = d.x ?? d.fx;
         d.fy = d.y ?? d.fy;
-        simulation.alphaTarget(0.1).restart();
-        
-        // Save pinned position to localStorage
-        const savedState = loadGraphState(workspaceId);
-        const pinnedNodes = { ...savedState.pinnedNodes };
-        pinnedNodes[d.id] = { fx: d.fx, fy: d.fy };
-        saveGraphState(workspaceId, { pinnedNodes });
-        
-        // Save all node positions when pinning
-        const nodePositions: Record<string, { x: number; y: number }> = {};
-        nodes.forEach(node => {
-          if (node.x !== undefined && node.y !== undefined) {
-            nodePositions[node.id] = { x: node.x, y: node.y };
-          }
-        });
-        saveGraphState(workspaceId, { nodePositions });
-        
+        simulationRef.current?.alpha(0);
         setSelectedNode(d);
-        
-        // Save selected node to localStorage
-        saveGraphState(workspaceId, { selectedNodeId: d.id });
+        savePositionsToStorage(nodes);
       });
 
-    nodeGroup.append("circle").attr("r", 20)
-      .attr("fill", d => getNodeColor(d.type, nodeTypes))
-      .attr("stroke", isDarkMode ? "#374151" : "#fff").attr("stroke-width", 2)
-      .style("filter", isDarkMode ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.3))" : "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))");
+    nodeGroup.each(function (d) {
+      const nodeElement = d3.select(this);
+      if (d.type === "cluster") {
+        nodeElement.append("rect")
+          .attr("width", 50)
+          .attr("height", 30)
+          .attr("x", -25)
+          .attr("y", -15)
+          .attr("rx", 8)
+          .attr("ry", 8)
+          .attr("fill", getNodeColor(d.type, nodeTypes))
+          .attr("stroke", isDarkMode ? "#374151" : "#fff")
+          .attr("stroke-width", 2)
+          .style("filter", isDarkMode ? "drop-shadow(2px 2px 6px rgba(0,0,0,0.4))" : "drop-shadow(2px 2px 6px rgba(0,0,0,0.2))");
+      } else {
+        nodeElement.append("circle")
+          .attr("r", 20)
+          .attr("fill", getNodeColor(d.type, nodeTypes))
+          .attr("stroke", isDarkMode ? "#374151" : "#fff")
+          .attr("stroke-width", 2)
+          .style("filter", isDarkMode ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.3))" : "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))");
+      }
+    });
 
     nodeGroup.append("text")
       .text(d => d.name.length > 10 ? `${d.name.slice(0, 10)}...` : d.name)
@@ -564,29 +437,40 @@ export const GraphComponent = () => {
       .attr("font-size", "10px").attr("fill", isDarkMode ? "#d1d5db" : "#666")
       .style("pointer-events", "none");
 
-    // Create debounced position saver for this simulation
-    const savePositions = createDebouncedPositionSaver(workspaceId);
-    
     simulation.on("tick", () => {
       link
         .attr("x1", d => (d.source as D3Node).x!).attr("y1", d => (d.source as D3Node).y!)
         .attr("x2", d => (d.target as D3Node).x!).attr("y2", d => (d.target as D3Node).y!);
       nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
-      
-      // Only save positions during active simulation (not when restored)
-      if (!hasSavedPositions && simulation.alpha() > 0.01) {
-        savePositions(nodes);
+
+      const now = Date.now();
+      if (now - lastSavedRef.current > TICK_SAVE_THROTTLE_MS) {
+        lastSavedRef.current = now;
+        savePositionsToStorage(nodes);
       }
     });
 
-    // store zoom behaviour on svg node if needed elsewhere
     const svgNode = svg.node() as SVGSVGElement & { zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> };
     if (svgNode) svgNode.zoom = zoom;
+
+    const handleBeforeUnload = () => {
+      savePositionsToStorage(nodes);
+      const t = d3.zoomTransform(svg.node() as Element);
+      saveTransformToStorage({ x: t.x, y: t.y, k: t.k });
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
       simulation.stop();
       svg.on(".zoom", null);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      try {
+        savePositionsToStorage(nodes);
+        const t = d3.zoomTransform(svg.node() as Element);
+        saveTransformToStorage({ x: t.x, y: t.y, k: t.k });
+      } catch (e) { /* ignore */ }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, links, nodesLoading, isDarkMode, nodeTypes]);
 
   // highlighting when selecting a node
@@ -595,6 +479,7 @@ export const GraphComponent = () => {
 
     const svg = d3.select(svgRef.current);
     const circles = svg.selectAll("circle");
+    const rectangles = svg.selectAll("rect");
     const linkElements = svg.selectAll("line");
 
     if (selectedNode) {
@@ -620,33 +505,45 @@ export const GraphComponent = () => {
           return 0.5;
         });
 
+      rectangles
+        .attr("stroke-width", (d: any) => d.id === selectedNode.id ? 4 : 2)
+        .attr("stroke", (d: any) => {
+          if (d.id === selectedNode.id) return "#3b82f6";
+          if (connectedIds.has(d.id)) return "#10b981";
+          return isDarkMode ? "#374151" : "#fff";
+        })
+        .style("opacity", (d: any) => {
+          if (d.id === selectedNode.id) return 1;
+          if (connectedIds.has(d.id)) return 1;
+          return 0.5;
+        });
+
       linkElements
         .attr("stroke", (d: any) => {
           const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
           const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
-          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
-            return "#3b82f6";
-          }
+          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) return "#3b82f6";
           return isDarkMode ? "#6b7280" : "#999";
         })
         .attr("stroke-width", (d: any) => {
           const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
           const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
-          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
-            return 3;
-          }
+          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) return 3;
           return 2;
         })
         .style("opacity", (d: any) => {
           const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
           const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
-          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
-            return 1;
-          }
+          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) return 1;
           return 0.3;
         });
     } else {
       circles
+        .attr("stroke-width", 2)
+        .attr("stroke", isDarkMode ? "#374151" : "#fff")
+        .style("opacity", 1);
+
+      rectangles
         .attr("stroke-width", 2)
         .attr("stroke", isDarkMode ? "#374151" : "#fff")
         .style("opacity", 1);
@@ -720,26 +617,18 @@ export const GraphComponent = () => {
         </div>
       )}
 
+
       {selectedNode && (
         <NodePopup
           node={selectedNode}
           onClose={() => {
-            // release fx/fy on selected node
             if (selectedNodeRef.current) {
               selectedNodeRef.current.fx = null;
               selectedNodeRef.current.fy = null;
-              simulationRef.current?.alpha(0.1).restart();
-              
-              // Remove from pinned nodes in localStorage
-              const savedState = loadGraphState(workspaceId);
-              const pinnedNodes = { ...savedState.pinnedNodes };
-              delete pinnedNodes[selectedNodeRef.current.id];
-              saveGraphState(workspaceId, { pinnedNodes });
+              simulationRef.current?.alpha(0); // cool sim
+              savePositionsToStorage(nodes);
             }
             setSelectedNode(null);
-            
-            // Clear selected node from localStorage
-            saveGraphState(workspaceId, { selectedNodeId: null });
           }}
           connectedNodes={connectedNodes}
           isDarkMode={isDarkMode}
