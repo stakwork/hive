@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { getDefaultWorkspaceForUser } from "@/services/workspace";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import axios from "axios";
@@ -230,6 +229,13 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async session({ session, user, token }) {
+      const userId = user?.id ?? (token?.id as string | undefined);
+      const userEmail = user?.email ?? (token?.email as string | undefined);
+
+      if (session.user && userId) {
+        (session.user as { id: string }).id = userId;
+      }
+
       if (session.user) {
         // For JWT sessions (mock provider), get data from token
         if (process.env.POD_URL && token) {
@@ -251,56 +257,70 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Get workspace slug that was created in signIn callback
-          const uid = (session.user as { id: string }).id;
-          try {
-            const workspace = await db.workspace.findFirst({
-              where: { ownerId: uid, deleted: false },
-              select: { slug: true },
-            });
+          const uid = (session.user as { id?: string }).id;
+          if (uid) {
+            try {
+              const workspace = await db.workspace.findFirst({
+                where: { ownerId: uid, deleted: false },
+                select: { slug: true },
+              });
 
-            if (workspace?.slug) {
-              (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = workspace.slug;
-            } else {
-              // This should never happen if signIn callback succeeded
-              logger.authError(
-                "Mock workspace not found in session callback - signIn may have failed",
-                "SESSION_MOCK_WORKSPACE_MISSING",
-                { userId: uid }
-              );
+              if (workspace?.slug) {
+                (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = workspace.slug;
+              } else {
+                // This should never happen if signIn callback succeeded
+                logger.authError(
+                  "Mock workspace not found in session callback - signIn may have failed",
+                  "SESSION_MOCK_WORKSPACE_MISSING",
+                  { userId: uid }
+                );
+              }
+            } catch (error) {
+              logger.authError("Failed to query mock workspace in session", "SESSION_MOCK", error);
             }
-          } catch (error) {
-            logger.authError("Failed to query mock workspace in session", "SESSION_MOCK", error);
+          } else {
+            logger.authWarn("Session missing user id while resolving workspace", "SESSION_WORKSPACE_NO_USER", {
+              hasToken: !!token,
+            });
           }
           return session;
         }
 
-        // For database sessions
-        if (user) {
-          (session.user as { id: string }).id = user.id;
+        const isMockUser = userEmail?.endsWith("@mock.dev");
+        if (isMockUser) {
+          // For mock users, add mock GitHub data if needed
+          (
+            session.user as {
+              github?: {
+                username?: string;
+                publicRepos?: number;
+                followers?: number;
+              };
+            }
+          ).github = {
+            username:
+              (user?.name ?? (token?.name as string | undefined))?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
+            publicRepos: 5,
+            followers: 10,
+          };
+          return session;
+        }
 
-          // Skip GitHub data fetching for mock users
-          if (user.email?.endsWith("@mock.dev")) {
-            // For mock users, add mock GitHub data if needed
-            (
-              session.user as {
-                github?: {
-                  username?: string;
-                  publicRepos?: number;
-                  followers?: number;
-                };
-              }
-            ).github = {
-              username: user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
-              publicRepos: 5,
-              followers: 10,
-            };
-            return session;
-          }
+        if (!userId) {
+          logger.authWarn(
+            "Session callback missing user identifier, skipping GitHub enrichment",
+            "SESSION_NO_USER_ID",
+            {
+              hasToken: !!token,
+              hasUser: !!user,
+            }
+          );
+          return session;
         }
 
         // Check if we already have GitHub data
         let githubAuth = await db.gitHubAuth.findUnique({
-          where: { userId: user.id },
+          where: { userId },
         });
 
         // If not, try to fetch from GitHub and upsert
@@ -308,7 +328,7 @@ export const authOptions: NextAuthOptions = {
           // Find the GitHub account for this user
           const account = await db.account.findFirst({
             where: {
-              userId: user.id,
+              userId,
               provider: "github",
             },
           });
@@ -323,7 +343,7 @@ export const authOptions: NextAuthOptions = {
               });
 
               githubAuth = await db.gitHubAuth.upsert({
-                where: { userId: user.id },
+                where: { userId },
                 update: {
                   githubUserId: githubProfile.id.toString(),
                   githubUsername: githubProfile.login,
@@ -344,7 +364,7 @@ export const authOptions: NextAuthOptions = {
                   scopes: account.scope ? account.scope.split(",") : [],
                 },
                 create: {
-                  userId: user.id,
+                  userId,
                   githubUserId: githubProfile.id.toString(),
                   githubUsername: githubProfile.login,
                   githubNodeId: githubProfile.node_id,
@@ -369,13 +389,13 @@ export const authOptions: NextAuthOptions = {
               // If GitHub API fails, just skip
               logger.authWarn("GitHub profile fetch failed, skipping profile sync", "SESSION_GITHUB_API", {
                 hasAccount: !!account,
-                userId: user.id,
+                userId,
               });
             }
           } else if (account && !account.access_token) {
             // Account exists but token is revoked - this is expected after disconnection
             logger.authInfo("GitHub account token revoked, re-authentication required", "SESSION_TOKEN_REVOKED", {
-              userId: user.id,
+              userId,
               provider: account.provider,
             });
           }
