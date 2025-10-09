@@ -357,7 +357,7 @@ export function BrowserArtifactPanel({
                 )}
                 {/* Action toast - only active for the current tab */}
                 {isActive && actionToast && (
-                  <div className="absolute top-4 right-4 z-50 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="absolute bottom-4 right-4 z-50 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="pointer-events-auto flex items-start gap-3 rounded-lg border border-border bg-background/95 backdrop-blur-sm p-4 shadow-lg">
                       <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
                       <div className="flex flex-col gap-1">
