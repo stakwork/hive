@@ -240,7 +240,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         taskSource: task.sourceType,
       });
 
-      if (stakworkData.success) {
+      if (stakworkData?.success) {
         const updateData: any = {
           workflowStatus: "IN_PROGRESS",
           workflowStartedAt: new Date(),
