@@ -5,7 +5,6 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
   repositoryUrl: string;
   ignoreDirs: string | null;
   name: string;
-  description: string | null;
   branch: string;
 } | null> {
   const workspace = await db.workspace.findUnique({
@@ -17,7 +16,6 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
           repositoryUrl: true,
           ignoreDirs: true,
           name: true,
-          description: true,
           branch: true,
         },
         orderBy: { createdAt: "asc" },
@@ -36,7 +34,6 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
     repositoryUrl: primaryRepo.repositoryUrl,
     ignoreDirs: primaryRepo.ignoreDirs,
     name: primaryRepo.name,
-    description: primaryRepo.description,
     branch: primaryRepo.branch,
   };
 }

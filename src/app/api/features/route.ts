@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
         assigneeId: assigneeId || null,
         createdById: userId,
         updatedById: userId,
-      },
+      } as any,
       include: {
         assignee: {
           select: {
@@ -321,10 +321,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json<FeatureResponse>(
+    return NextResponse.json(
       {
         success: true,
-        data: feature,
+        data: feature as any,
       },
       { status: 201 },
     );

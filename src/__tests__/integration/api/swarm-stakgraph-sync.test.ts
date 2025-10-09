@@ -80,7 +80,6 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       const repository = await tx.repository.create({
         data: {
           name: "sync-repo",
-          description: "Test sync repository",
           repositoryUrl: testRepositoryUrl,
           workspaceId: workspace.id,
           status: RepositoryStatus.SYNCED,
