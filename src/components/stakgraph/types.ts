@@ -21,7 +21,6 @@ export interface ServiceDataConfig {
 export interface StakgraphSettings {
   name: string;
   description: string;
-  repositoryUrl: string;
   repositories: Repository[];
   swarmUrl: string;
   swarmSecretAlias: string;
@@ -47,6 +46,7 @@ export interface Repository {
   id?: string;
   repositoryUrl: string;
   branch: string;
+  name: string;
 }
 
 export interface RepositoryData {

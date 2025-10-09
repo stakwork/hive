@@ -62,12 +62,23 @@ export default function StakgraphPage() {
         });
         return;
       }
+      
+      const primaryRepo = formData.repositories?.[0];
+      if (!primaryRepo?.repositoryUrl) {
+        toast({
+          title: "Error",
+          description: "No repository configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const res = await fetch("/api/github/webhook/ensure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: id,
-          repositoryUrl: formData.repositoryUrl,
+          repositoryUrl: primaryRepo.repositoryUrl,
         }),
       });
 
@@ -145,16 +156,13 @@ export default function StakgraphPage() {
           Back to Settings
         </Button>
       </div>
-      <PageHeader
-        title="Pool Status"
-        description="Configure your pool settings for development environment"
-      />
+      <PageHeader title="Pool Status" description="Configure your pool settings for development environment" />
 
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Pool Settings</CardTitle>
           <div className="flex gap-2">
-            {!formData.webhookEnsured && formData.repositoryUrl ? (
+            {!formData.webhookEnsured && formData.repositories?.[0]?.repositoryUrl ? (
               <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
                 <Webhook className="mr-2 h-4 w-4" />
                 Add Github Webhooks
@@ -189,7 +197,7 @@ export default function StakgraphPage() {
 
               <RepositoryForm
                 data={{
-                  repositories: formData.repositories || [{ repositoryUrl: formData.repositoryUrl || "", branch: "main" }]
+                  repositories: formData.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
                 }}
                 errors={errors}
                 loading={loading}
@@ -245,7 +253,6 @@ export default function StakgraphPage() {
           </form>
         </CardContent>
       </Card>
-
     </div>
   );
 }
