@@ -77,9 +77,16 @@ model User {
   // Task assignments
   assignedTasks Task[] @relation("TaskAssignee")
 
+  // Feature assignments
+  assignedFeatures Feature[] @relation("FeatureAssignee")
+
   // Audit trail
   createdTasks       Task[]      @relation("TaskCreator")
   updatedTasks       Task[]      @relation("TaskUpdater")
+  createdFeatures    Feature[]   @relation("FeatureCreator")
+  updatedFeatures    Feature[]   @relation("FeatureUpdater")
+  createdUserStories UserStory[] @relation("UserStoryCreator")
+  updatedUserStories UserStory[] @relation("UserStoryUpdater")
 
   // Janitor recommendations
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
@@ -178,6 +185,7 @@ model Workspace {
   id          String    @id @default(cuid())
   name        String
   description String?
+  mission     String?
   slug        String    @unique
   originalSlug String?  @map("original_slug") // Store original slug for recovery
   deleted     Boolean   @default(false)
@@ -208,6 +216,9 @@ model Workspace {
 
   // Janitor configuration
   janitorConfig JanitorConfig?
+
+  // Roadmap features
+  features Feature[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -654,4 +665,78 @@ enum TaskSourceType {
 enum SourceControlOrgType {
   ORG
   USER
+}
+
+// =============================================
+// ROADMAP FEATURES
+// =============================================
+
+model Feature {
+  id          String           @id @default(cuid())
+  title       String
+  workspaceId String           @map("workspace_id")
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Assignee/Lead
+  assigneeId  String?          @map("assignee_id")
+  assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  status      FeatureStatus    @default(BACKLOG)
+  priority    FeaturePriority  @default(NONE)
+
+  // Audit fields
+  createdById String           @map("created_by_id")
+  createdBy   User             @relation("FeatureCreator", fields: [createdById], references: [id])
+  updatedById String           @map("updated_by_id")
+  updatedBy   User             @relation("FeatureUpdater", fields: [updatedById], references: [id])
+
+  // Relationships
+  userStories UserStory[]
+
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([assigneeId])
+  @@index([status])
+  @@map("features")
+}
+
+enum FeatureStatus {
+  BACKLOG
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FeaturePriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model UserStory {
+  id          String   @id @default(cuid())
+  featureId   String   @map("feature_id")
+  feature     Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  title       String
+  order       Int      @default(0)
+  completed   Boolean  @default(false)
+
+  // Audit fields
+  createdById String   @map("created_by_id")
+  createdBy   User     @relation("UserStoryCreator", fields: [createdById], references: [id])
+  updatedById String   @map("updated_by_id")
+  updatedBy   User     @relation("UserStoryUpdater", fields: [updatedById], references: [id])
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([featureId])
+  @@index([order])
+  @@map("user_stories")
 }

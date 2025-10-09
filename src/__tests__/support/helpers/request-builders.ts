@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 /**
  * Creates a GET request with optional search parameters
@@ -117,4 +118,63 @@ export function createRequestWithHeaders(
   }
 
   return new NextRequest(absoluteUrl, options);
+}
+
+/**
+ * Adds middleware authentication headers to a request
+ * Used for testing routes that use middleware context instead of getServerSession
+ */
+export function addMiddlewareHeaders(
+  request: NextRequest,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const headers = new Headers(request.headers);
+  headers.set(MIDDLEWARE_HEADERS.USER_ID, user.id);
+  headers.set(MIDDLEWARE_HEADERS.USER_EMAIL, user.email || "");
+  headers.set(MIDDLEWARE_HEADERS.USER_NAME, user.name || "");
+  headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+  headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, crypto.randomUUID());
+
+  return new NextRequest(request.url, {
+    method: request.method,
+    headers,
+    body: request.body,
+    // @ts-ignore - duplex is needed for body streaming
+    duplex: request.body ? "half" : undefined,
+  });
+}
+
+/**
+ * Creates a POST request with middleware auth headers
+ */
+export function createAuthenticatedPostRequest(
+  url: string,
+  body: object,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const baseRequest = createPostRequest(url, body);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
+ * Creates a GET request with middleware auth headers
+ */
+export function createAuthenticatedGetRequest(
+  url: string,
+  user: { id: string; email: string; name: string },
+  searchParams?: Record<string, string>
+): NextRequest {
+  const baseRequest = createGetRequest(url, searchParams);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
+ * Creates a DELETE request with middleware auth headers
+ */
+export function createAuthenticatedDeleteRequest(
+  url: string,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const baseRequest = createDeleteRequest(url);
+  return addMiddlewareHeaders(baseRequest, user);
 }
