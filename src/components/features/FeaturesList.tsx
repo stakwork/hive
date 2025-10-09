@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { FileText, Plus, Check, X } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
 import { StatusPopover } from "./StatusPopover";
@@ -249,6 +249,64 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           </div>
         )}
 
+        {isCreating && (
+          <div className="mb-4 rounded-lg border bg-muted/30 p-4">
+            <div className="space-y-3">
+              <div>
+                <Input
+                  placeholder="Feature title..."
+                  value={newFeatureTitle}
+                  onChange={(e) => setNewFeatureTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !creating) {
+                      handleCreateFeature();
+                    } else if (e.key === "Escape") {
+                      handleCancelCreate();
+                    }
+                  }}
+                  autoFocus
+                  disabled={creating}
+                />
+              </div>
+              <div className="flex items-center gap-4">
+                <StatusPopover
+                  currentStatus={newFeatureStatus}
+                  onUpdate={async (status) => setNewFeatureStatus(status)}
+                  statusColors={statusColors}
+                />
+                <AssigneeCombobox
+                  workspaceSlug={workspaceSlug}
+                  currentAssignee={newFeatureAssigneeDisplay}
+                  onSelect={async (assigneeId, assigneeData) => {
+                    setNewFeatureAssigneeId(assigneeId);
+                    setNewFeatureAssigneeDisplay(assigneeData || null);
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleCreateFeature}
+                  disabled={creating || !newFeatureTitle.trim()}
+                >
+                  {creating ? (
+                    <>
+                      <Spinner className="h-4 w-4 mr-2" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="rounded-md border">
           <Table>
             <TableHeader className="bg-muted/50">
@@ -260,67 +318,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isCreating && (
-                <TableRow className="bg-muted/30">
-                  <TableCell>
-                    <Input
-                      placeholder="Feature title..."
-                      value={newFeatureTitle}
-                      onChange={(e) => setNewFeatureTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !creating) {
-                          handleCreateFeature();
-                        } else if (e.key === "Escape") {
-                          handleCancelCreate();
-                        }
-                      }}
-                      autoFocus
-                      disabled={creating}
-                      className="h-8"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <StatusPopover
-                      currentStatus={newFeatureStatus}
-                      onUpdate={async (status) => setNewFeatureStatus(status)}
-                      statusColors={statusColors}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <AssigneeCombobox
-                      workspaceSlug={workspaceSlug}
-                      currentAssignee={newFeatureAssigneeDisplay}
-                      onSelect={async (assigneeId, assigneeData) => {
-                        setNewFeatureAssigneeId(assigneeId);
-                        setNewFeatureAssigneeDisplay(assigneeData || null);
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleCreateFeature}
-                        disabled={creating || !newFeatureTitle.trim()}
-                        className="h-7 w-7 p-0"
-                      >
-                        {creating ? <Spinner className="h-4 w-4" /> : <Check className="h-4 w-4 text-green-600" />}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleCancelCreate}
-                        disabled={creating}
-                        className="h-7 w-7 p-0"
-                      >
-                        <X className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-
               {features.map((feature) => (
                 <TableRow key={feature.id}>
                   <TableCell className="font-medium">{feature.title}</TableCell>
