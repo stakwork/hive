@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FileText, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -18,6 +20,7 @@ interface FeaturesListProps {
 }
 
 export function FeaturesList({ workspaceId }: FeaturesListProps) {
+  const router = useRouter();
   const { slug: workspaceSlug } = useWorkspace();
   const [features, setFeatures] = useState<FeatureWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,10 +184,50 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   if (loading && features.length === 0) {
     return (
       <Card>
-        <CardContent className="py-12 flex justify-center">
-          <div className="flex items-center gap-2">
-            <Spinner className="h-5 w-5" />
-            <span className="text-muted-foreground">Loading features...</span>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 justify-between">
+            <span>Features</span>
+            <span className="font-normal text-sm text-muted-foreground">Loading...</span>
+          </CardTitle>
+          <CardDescription>Your product roadmap features and their current status</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4">
+            <Button variant="default" size="sm" disabled>
+              <Plus className="h-4 w-4 mr-2" />
+              New feature
+            </Button>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="w-[40%]">Title</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Assigned</TableHead>
+                  <TableHead className="text-right">Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className="h-5 w-full max-w-xs" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-6 w-20" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-6 w-32" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Skeleton className="h-4 w-24 ml-auto" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -319,16 +362,20 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             </TableHeader>
             <TableBody>
               {features.map((feature) => (
-                <TableRow key={feature.id}>
+                <TableRow
+                  key={feature.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                >
                   <TableCell className="font-medium">{feature.title}</TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <StatusPopover
                       currentStatus={feature.status}
                       onUpdate={(status) => handleUpdateStatus(feature.id, status)}
                       statusColors={statusColors}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <AssigneeCombobox
                       workspaceSlug={workspaceSlug}
                       currentAssignee={feature.assignee}

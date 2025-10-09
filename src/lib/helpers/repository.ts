@@ -12,6 +12,14 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
     where: { id: workspaceId },
     include: {
       repositories: {
+        select: {
+          id: true,
+          repositoryUrl: true,
+          ignoreDirs: true,
+          name: true,
+          description: true,
+          branch: true,
+        },
         orderBy: { createdAt: "asc" },
       },
     },
