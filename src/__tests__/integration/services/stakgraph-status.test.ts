@@ -16,7 +16,6 @@ describe("updateStakgraphStatus - Integration Tests", () => {
     // Create test workspace with swarm using fixture
     const scenario = await createTestWorkspaceScenario({
       withSwarm: true,
-      swarm: { repositoryUrl: testRepositoryUrl },
     });
 
     testWorkspaceId = scenario.workspace.id;
