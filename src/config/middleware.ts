@@ -29,6 +29,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/stakwork/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/janitors/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
+  { path: "/api/chat/response", strategy: "prefix", access: "webhook" },
 ] as const;
 
 function normalizePath(pathname: string): string {
