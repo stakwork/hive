@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
           select: {
             swarm: {
               select: {
-                defaultBranch: true,
+                id: true,
               },
             },
           },
@@ -80,9 +80,8 @@ export async function POST(request: NextRequest) {
     }
 
     const repoDefaultBranch: string | undefined = payload?.repository?.default_branch;
-    const swarmDefaultBranch = repository.workspace?.swarm?.defaultBranch;
     const allowedBranches = new Set<string>(
-      [repository.branch, swarmDefaultBranch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
+      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
     );
 
     if (event === "push") {

@@ -7,6 +7,7 @@ import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
 import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
@@ -55,8 +56,8 @@ export async function GET(request: NextRequest) {
       baseSwarmUrl = `http://localhost:3355`;
     }
 
-    // Get repository URL from swarm
-    const repoUrl = swarm.repositoryUrl;
+    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+    const repoUrl = primaryRepo?.repositoryUrl;
     if (!repoUrl) {
       return NextResponse.json({ error: "Repository URL not configured for this swarm" }, { status: 404 });
     }

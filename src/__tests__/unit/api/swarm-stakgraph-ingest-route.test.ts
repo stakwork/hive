@@ -82,6 +82,10 @@ vi.mock("@/lib/url", () => ({
   getStakgraphWebhookCallbackUrl: vi.fn(() => "https://app.example.com/api/swarm/stakgraph/webhook"),
 }));
 
+vi.mock("@/lib/helpers/repository", () => ({
+  getPrimaryRepository: vi.fn(),
+}));
+
 // Import mocked modules
 import { db } from "@/lib/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
@@ -90,6 +94,7 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { EncryptionService } from "@/lib/encryption";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 const mockGetServerSession = getServerSession as Mock;
 const mockDbSwarmFindFirst = db.swarm.findFirst as Mock;
@@ -98,6 +103,7 @@ const mockDbRepositoryUpsert = db.repository.upsert as Mock;
 const mockDbWorkspaceFindUnique = db.workspace.findUnique as Mock;
 const mockTriggerIngestAsync = triggerIngestAsync as Mock;
 const mockSwarmApiRequest = swarmApiRequest as Mock;
+const mockGetPrimaryRepository = getPrimaryRepository as Mock;
 const mockSaveOrUpdateSwarm = saveOrUpdateSwarm as Mock;
 const mockWebhookService = WebhookService as Mock;
 const mockGetGithubUsernameAndPAT = getGithubUsernameAndPAT as Mock;
@@ -128,7 +134,6 @@ const TestDataFactory = {
       encryptedAt: "2024-01-01T00:00:00.000Z",
     }),
     repositoryUrl: "https://github.com/test/repo",
-    defaultBranch: "main",
     status: "ACTIVE",
     ...overrides,
   }),
@@ -242,6 +247,7 @@ const MockSetup = {
     mockDbRepositoryUpsert.mockResolvedValue(repository);
     mockDbWorkspaceFindUnique.mockResolvedValue(workspace);
     mockGetGithubUsernameAndPAT.mockResolvedValue(githubCreds);
+    mockGetPrimaryRepository.mockResolvedValue(repository);
     mockTriggerIngestAsync.mockResolvedValue(ingestResponse);
     mockSaveOrUpdateSwarm.mockResolvedValue({ ...swarm, ingestRefId: "ingest-req-123" });
 
@@ -380,7 +386,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
         expect.any(String),
         expect.any(Object),
         expect.any(String),
-        true
+        true,
       );
     });
 
@@ -400,7 +406,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
         expect.any(String),
         expect.any(Object),
         expect.any(String),
-        true
+        true,
       );
     });
   });
@@ -448,8 +454,9 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
     });
 
     test("should return 400 when repository URL is missing", async () => {
-      const swarm = TestDataFactory.createValidSwarm({ repositoryUrl: null });
+      const swarm = TestDataFactory.createValidSwarm();
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
+      mockGetPrimaryRepository.mockResolvedValue(null);
 
       const request = TestHelpers.createPostRequest({
         workspaceId: "workspace-123",
@@ -462,13 +469,14 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
     test("should return 400 when repository workspace ID is missing", async () => {
       const swarm = TestDataFactory.createValidSwarm({ workspaceId: null });
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
+      mockGetPrimaryRepository.mockResolvedValue(null);
 
       const request = TestHelpers.createPostRequest({
         swarmId: "swarm-123",
       });
       const response = await POST(request);
 
-      await TestHelpers.expectValidationError(response, 400, "No repository workspace ID found");
+      await TestHelpers.expectValidationError(response, 400, "No repository URL found");
     });
   });
 
@@ -479,8 +487,10 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
     test("should return 404 when workspace is not found", async () => {
       const swarm = TestDataFactory.createValidSwarm();
+      const repository = TestDataFactory.createValidRepository();
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
-      mockDbRepositoryUpsert.mockResolvedValue(TestDataFactory.createValidRepository());
+      mockGetPrimaryRepository.mockResolvedValue(repository);
+      mockDbRepositoryUpsert.mockResolvedValue(repository);
       mockDbWorkspaceFindUnique.mockResolvedValue(null);
 
       const request = TestHelpers.createPostRequest({
@@ -538,11 +548,16 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
     });
 
     test("should extract repository name from URL", async () => {
-      const swarm = TestDataFactory.createValidSwarm({
-        repositoryUrl: "https://github.com/owner/my-awesome-repo",
+      const customRepoUrl = "https://github.com/owner/my-awesome-repo";
+      const swarm = TestDataFactory.createValidSwarm();
+      const repository = TestDataFactory.createValidRepository({
+        repositoryUrl: customRepoUrl,
+        name: "my-awesome-repo",
       });
+
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
-      mockDbRepositoryUpsert.mockResolvedValue(TestDataFactory.createValidRepository());
+      mockGetPrimaryRepository.mockResolvedValue(repository);
+      mockDbRepositoryUpsert.mockResolvedValue(repository);
       mockDbWorkspaceFindUnique.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockGetGithubUsernameAndPAT.mockResolvedValue(TestDataFactory.createGithubCredentials());
       mockTriggerIngestAsync.mockResolvedValue(TestDataFactory.createIngestResponse());
@@ -558,18 +573,20 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
           create: expect.objectContaining({
             name: "my-awesome-repo",
           }),
-        })
+        }),
       );
     });
 
-    test("should use default branch from swarm", async () => {
-      const swarm = TestDataFactory.createValidSwarm({ defaultBranch: "develop" });
+    test("should use branch from primary repository", async () => {
+      const swarm = TestDataFactory.createValidSwarm();
+      const repository = TestDataFactory.createValidRepository({ branch: "develop" });
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
-      mockDbRepositoryUpsert.mockResolvedValue(TestDataFactory.createValidRepository());
+      mockDbRepositoryUpsert.mockResolvedValue(repository);
       mockDbWorkspaceFindUnique.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockGetGithubUsernameAndPAT.mockResolvedValue(TestDataFactory.createGithubCredentials());
       mockTriggerIngestAsync.mockResolvedValue(TestDataFactory.createIngestResponse());
       mockSaveOrUpdateSwarm.mockResolvedValue(swarm);
+      mockGetPrimaryRepository.mockResolvedValue(repository);
 
       const request = TestHelpers.createPostRequest({
         workspaceId: "workspace-123",
@@ -581,7 +598,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
           create: expect.objectContaining({
             branch: "develop",
           }),
-        })
+        }),
       );
     });
   });
@@ -606,7 +623,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
         "https://github.com/test/repo",
         { username: "testuser", pat: "github_pat_test123" },
         "https://app.example.com/api/swarm/stakgraph/webhook",
-        true
+        true,
       );
     });
 
@@ -618,10 +635,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       });
       await POST(request);
 
-      expect(mockEncryptionInstance.decryptField).toHaveBeenCalledWith(
-        "swarmApiKey",
-        expect.any(String)
-      );
+      expect(mockEncryptionInstance.decryptField).toHaveBeenCalledWith("swarmApiKey", expect.any(String));
     });
 
     test("should store ingestRefId after successful API call", async () => {
@@ -682,10 +696,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       });
       await POST(request);
 
-      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(
-        "user-123",
-        "test-workspace"
-      );
+      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith("user-123", "test-workspace");
     });
 
     test("should use empty strings when GitHub credentials are null (non-blocking)", async () => {
@@ -709,7 +720,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
         expect.any(String),
         { username: "", pat: "" },
         expect.any(String),
-        false
+        false,
       );
     });
   });
@@ -720,7 +731,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
     });
 
     test("should call ensureRepoWebhook with correct parameters", async () => {
-      // Create a specific mock webhook instance 
+      // Create a specific mock webhook instance
       const mockWebhookInstance = {
         ensureRepoWebhook: vi.fn().mockResolvedValue({ id: 123, secret: "webhook-secret" }),
       };
