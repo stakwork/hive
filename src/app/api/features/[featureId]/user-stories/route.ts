@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { featureId: string } }
+  { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -21,7 +21,7 @@ export async function GET(
       );
     }
 
-    const { featureId } = params;
+    const { featureId } = await params;
 
     // Verify feature exists and get its workspace
     const feature = await db.feature.findUnique({
@@ -123,7 +123,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { featureId: string } }
+  { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -139,7 +139,7 @@ export async function POST(
       );
     }
 
-    const { featureId } = params;
+    const { featureId } = await params;
     const body = await request.json();
     const { title } = body;
 
