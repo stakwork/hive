@@ -281,7 +281,7 @@ async function createChatMessageAndTriggerStakwork(params: {
 /**
  * Call Stakwork API - extracted from callStakwork function in chat/message route
  */
-async function callStakworkAPI(params: {
+export async function callStakworkAPI(params: {
   taskId: string;
   message: string;
   contextTags?: any[];
@@ -365,21 +365,26 @@ async function callStakworkAPI(params: {
     },
   };
 
-  // Make Stakwork API call (replicating fetch call from chat/message route)
-  const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
-    method: "POST",
-    body: JSON.stringify(stakworkPayload),
-    headers: {
-      Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
+  try {
+    // Make Stakwork API call (replicating fetch call from chat/message route)
+    const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
+      method: "POST",
+      body: JSON.stringify(stakworkPayload),
+      headers: {
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-  if (!response.ok) {
-    console.error(`Failed to send message to Stakwork: ${response.statusText}`);
-    return { success: false, error: response.statusText };
+    if (!response.ok) {
+      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+      return { success: false, error: response.statusText };
+    }
+
+    const result = await response.json();
+    return result; // Return Stakwork response directly, don't double-wrap
+  } catch (error) {
+    console.error("Error calling Stakwork:", error);
+    return { success: false, error: String(error) };
   }
-
-  const result = await response.json();
-  return result; // Return Stakwork response directly, don't double-wrap
 }
