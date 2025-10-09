@@ -182,7 +182,7 @@ export default function FeatureDetailPage() {
     }
   }, [featureId]);
 
-  const updateFeature = async (updates: Partial<Feature>) => {
+  const updateFeature = async (updates: Partial<Feature> & { assigneeId?: string | null }) => {
     try {
       setSaving(true);
       const response = await fetch(`/api/features/${featureId}`, {
