@@ -30,10 +30,13 @@ export async function expectError(
   expect(response.status).toBe(expectedStatus);
   const data = await response.json();
 
+  // Support both error formats for backward compatibility
+  const errorMessage = data.error || data.message;
+  
   if (typeof expectedError === "string") {
-    expect(data.error).toContain(expectedError);
+    expect(errorMessage).toContain(expectedError);
   } else {
-    expect(data.error).toMatch(expectedError);
+    expect(errorMessage).toMatch(expectedError);
   }
 }
 
@@ -68,7 +71,9 @@ export async function expectUnauthorized(
 ): Promise<void> {
   expect(response.status).toBe(401);
   const data = await response.json();
-  expect(data.error).toBe("Unauthorized");
+  // Support both error formats for backward compatibility
+  const unauthorizedMessage = data.error || data.message;
+  expect(unauthorizedMessage).toBe("Unauthorized");
 }
 
 /**
