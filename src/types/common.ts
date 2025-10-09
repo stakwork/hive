@@ -22,6 +22,28 @@ export interface PaginationParams {
   order?: "asc" | "desc";
 }
 
+// Standard pagination metadata for API responses
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+// Standard success response for single resource
+export interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+// Standard success response for paginated resources
+export interface PaginatedApiResponse<T> {
+  success: true;
+  data: T[];
+  pagination: PaginationMeta;
+}
+
 // Common error types
 export interface ApiError {
   message: string;
