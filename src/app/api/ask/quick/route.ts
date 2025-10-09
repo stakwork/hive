@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getServerSession } from "next-auth/next";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -8,16 +7,15 @@ import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
 import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
+import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      console.log("❌ Unauthorized");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuthOrUnauthorized(context);
+    if (userOrResponse instanceof Response) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
@@ -33,7 +31,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
     if (!workspaceAccess.hasAccess) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
@@ -73,7 +71,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
