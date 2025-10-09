@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: CreateFeatureRequest = await request.json();
-    const { title, workspaceId, status, priority, assigneeId } = body;
+    const { title, workspaceId, status, priority, assigneeId, brief, requirements, architecture } = body;
 
     // Validate required fields
     if (!title || !workspaceId) {
@@ -279,6 +279,9 @@ export async function POST(request: NextRequest) {
     const feature = await db.feature.create({
       data: {
         title: title.trim(),
+        brief: brief?.trim() || null,
+        requirements: requirements?.trim() || null,
+        architecture: architecture?.trim() || null,
         workspaceId,
         status: featureStatus,
         priority: featurePriority,

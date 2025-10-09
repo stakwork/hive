@@ -7,7 +7,7 @@ import type {
 // Re-export Prisma enums for convenience
 export type { FeatureStatus, FeaturePriority };
 
-// Feature with relations (matches GET /api/features query)
+// Feature with relations (matches GET /api/features list query)
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
   select: {
     id: true;
@@ -35,6 +35,39 @@ export type FeatureWithDetails = Prisma.FeatureGetPayload<{
     _count: {
       select: {
         userStories: true;
+      };
+    };
+  };
+}>;
+
+// Feature detail with full information (matches GET /api/features/[id] query)
+export type FeatureDetail = Prisma.FeatureGetPayload<{
+  select: {
+    id: true;
+    title: true;
+    brief: true;
+    requirements: true;
+    architecture: true;
+    status: true;
+    priority: true;
+    createdAt: true;
+    updatedAt: true;
+    assignee: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+        image: true;
+      };
+    };
+    userStories: {
+      select: {
+        id: true;
+        title: true;
+        order: true;
+        completed: true;
+        createdAt: true;
+        updatedAt: true;
       };
     };
   };
@@ -134,6 +167,9 @@ export type UserStoryWithDetails = Prisma.UserStoryGetPayload<{
 // Request types
 export interface CreateFeatureRequest {
   title: string;
+  brief?: string;
+  requirements?: string;
+  architecture?: string;
   workspaceId: string;
   status?: FeatureStatus;
   priority?: FeaturePriority;
@@ -142,6 +178,9 @@ export interface CreateFeatureRequest {
 
 export interface UpdateFeatureRequest {
   title?: string;
+  brief?: string | null;
+  requirements?: string | null;
+  architecture?: string | null;
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string | null;
