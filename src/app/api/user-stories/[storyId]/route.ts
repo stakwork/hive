@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { storyId: string } }
+  { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -21,7 +21,7 @@ export async function PATCH(
       );
     }
 
-    const { storyId } = params;
+    const { storyId } = await params;
     const body = await request.json();
     const { title, order, completed } = body;
 
@@ -170,7 +170,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { storyId: string } }
+  { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -186,7 +186,7 @@ export async function DELETE(
       );
     }
 
-    const { storyId } = params;
+    const { storyId } = await params;
 
     // Verify user story exists and get its feature and workspace
     const existingStory = await db.userStory.findUnique({

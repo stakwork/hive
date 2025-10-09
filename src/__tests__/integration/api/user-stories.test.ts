@@ -74,7 +74,7 @@ describe("User Stories API - Integration Tests", () => {
         `http://localhost:3000/api/features/${feature.id}/user-stories`
       );
 
-      const response = await GET(request, { params: { featureId: feature.id } });
+      const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data).toHaveLength(3);
@@ -90,7 +90,7 @@ describe("User Stories API - Integration Tests", () => {
         "http://localhost:3000/api/features/test-id/user-stories"
       );
 
-      const response = await GET(request, { params: { featureId: "test-id" } });
+      const response = await GET(request, { params: Promise.resolve({ featureId: "test-id" }) });
 
       await expectUnauthorized(response);
     });
@@ -103,7 +103,7 @@ describe("User Stories API - Integration Tests", () => {
         "http://localhost:3000/api/features/non-existent-id/user-stories"
       );
 
-      const response = await GET(request, { params: { featureId: "non-existent-id" } });
+      const response = await GET(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
 
       await expectError(response, "Feature not found", 404);
     });
@@ -132,7 +132,7 @@ describe("User Stories API - Integration Tests", () => {
         `http://localhost:3000/api/features/${feature.id}/user-stories`
       );
 
-      const response = await GET(request, { params: { featureId: feature.id } });
+      const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       await expectError(response, "Access denied", 403);
     });
@@ -160,7 +160,7 @@ describe("User Stories API - Integration Tests", () => {
         `http://localhost:3000/api/features/${feature.id}/user-stories`
       );
 
-      const response = await GET(request, { params: { featureId: feature.id } });
+      const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data).toHaveLength(0);
@@ -202,7 +202,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "New Story" }
       );
 
-      const response = await POST(request, { params: { featureId: feature.id } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data).toMatchObject({
@@ -238,7 +238,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "First Story" }
       );
 
-      const response = await POST(request, { params: { featureId: feature.id } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.order).toBe(0);
@@ -281,7 +281,7 @@ describe("User Stories API - Integration Tests", () => {
         {}
       );
 
-      const response = await POST(request, { params: { featureId: feature.id } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       await expectError(response, "Missing required field: title", 400);
     });
@@ -310,7 +310,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "   " }
       );
 
-      const response = await POST(request, { params: { featureId: feature.id } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       await expectError(response, "Missing required field: title", 400);
     });
@@ -339,7 +339,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "  Trimmed Story  " }
       );
 
-      const response = await POST(request, { params: { featureId: feature.id } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Trimmed Story");
@@ -354,7 +354,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "New Story" }
       );
 
-      const response = await POST(request, { params: { featureId: "non-existent-id" } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
 
       await expectError(response, "Feature not found", 404);
     });
@@ -384,7 +384,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "New Story" }
       );
 
-      const response = await POST(request, { params: { featureId: feature.id } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       await expectError(response, "Access denied", 403);
     });
@@ -425,7 +425,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "Updated Title" }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data.title).toBe("Updated Title");
@@ -466,7 +466,7 @@ describe("User Stories API - Integration Tests", () => {
         { order: 5 }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data.order).toBe(5);
@@ -507,7 +507,7 @@ describe("User Stories API - Integration Tests", () => {
         { completed: true }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data.completed).toBe(true);
@@ -548,7 +548,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "New Title", order: 3, completed: true }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.data).toMatchObject({
@@ -566,7 +566,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "Updated" }
       );
 
-      const response = await PATCH(request, { params: { storyId: "test-id" } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: "test-id" }) });
 
       await expectUnauthorized(response);
     });
@@ -580,7 +580,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "Updated" }
       );
 
-      const response = await PATCH(request, { params: { storyId: "non-existent-id" } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: "non-existent-id" }) });
 
       await expectError(response, "User story not found", 404);
     });
@@ -619,7 +619,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "   " }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       await expectError(response, "Invalid title", 400);
     });
@@ -658,7 +658,7 @@ describe("User Stories API - Integration Tests", () => {
         { order: -1 }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       await expectError(response, "Invalid order", 400);
     });
@@ -697,7 +697,7 @@ describe("User Stories API - Integration Tests", () => {
         { completed: "true" }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       await expectError(response, "Invalid completed", 400);
     });
@@ -737,7 +737,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "Updated" }
       );
 
-      const response = await PATCH(request, { params: { storyId: story.id } });
+      const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
 
       await expectError(response, "Access denied", 403);
     });
@@ -777,7 +777,7 @@ describe("User Stories API - Integration Tests", () => {
         `http://localhost:3000/api/user-stories/${story.id}`
       );
 
-      const response = await DELETE(request, { params: { storyId: story.id } });
+      const response = await DELETE(request, { params: Promise.resolve({ storyId: story.id }) });
 
       const data = await expectSuccess(response, 200);
       expect(data.success).toBe(true);
@@ -795,7 +795,7 @@ describe("User Stories API - Integration Tests", () => {
         "http://localhost:3000/api/user-stories/test-id"
       );
 
-      const response = await DELETE(request, { params: { storyId: "test-id" } });
+      const response = await DELETE(request, { params: Promise.resolve({ storyId: "test-id" }) });
 
       await expectUnauthorized(response);
     });
@@ -808,7 +808,7 @@ describe("User Stories API - Integration Tests", () => {
         "http://localhost:3000/api/user-stories/non-existent-id"
       );
 
-      const response = await DELETE(request, { params: { storyId: "non-existent-id" } });
+      const response = await DELETE(request, { params: Promise.resolve({ storyId: "non-existent-id" }) });
 
       await expectError(response, "User story not found", 404);
     });
@@ -847,7 +847,7 @@ describe("User Stories API - Integration Tests", () => {
         `http://localhost:3000/api/user-stories/${story.id}`
       );
 
-      const response = await DELETE(request, { params: { storyId: story.id } });
+      const response = await DELETE(request, { params: Promise.resolve({ storyId: story.id }) });
 
       await expectError(response, "Access denied", 403);
     });
