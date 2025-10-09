@@ -5,6 +5,66 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 
+// --- LOCALSTORAGE UTILITIES ---
+interface GraphState {
+  transform?: { k: number; x: number; y: number };
+  pinnedNodes?: Record<string, { fx: number; fy: number }>;
+  selectedNodeId?: string | null;
+  nodePositions?: Record<string, { x: number; y: number }>;
+  cachedNodes?: D3Node[];
+  cachedLinks?: D3Link[];
+  lastFetched?: number;
+}
+
+const getStorageKey = (workspaceId: string) => `graph-state-${workspaceId}`;
+
+const saveGraphState = (workspaceId: string, state: Partial<GraphState>) => {
+  try {
+    const key = getStorageKey(workspaceId);
+    const existing = localStorage.getItem(key);
+    const currentState: GraphState = existing ? JSON.parse(existing) : {};
+    const newState = { ...currentState, ...state };
+    localStorage.setItem(key, JSON.stringify(newState));
+  } catch (error) {
+    console.warn('Failed to save graph state to localStorage:', error);
+  }
+};
+
+const loadGraphState = (workspaceId: string): GraphState => {
+  try {
+    const key = getStorageKey(workspaceId);
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : {};
+  } catch (error) {
+    console.warn('Failed to load graph state from localStorage:', error);
+    return {};
+  }
+};
+
+// Check if cached data is fresh (within 5 minutes)
+const isCachedDataFresh = (lastFetched?: number): boolean => {
+  if (!lastFetched) return false;
+  const fiveMinutes = 5 * 60 * 1000;
+  return (Date.now() - lastFetched) < fiveMinutes;
+};
+
+// Debounced function to save node positions during simulation
+const createDebouncedPositionSaver = (workspaceId: string) => {
+  let timeoutId: NodeJS.Timeout;
+  return (nodes: D3Node[]) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      const nodePositions: Record<string, { x: number; y: number }> = {};
+      nodes.forEach(node => {
+        if (node.x !== undefined && node.y !== undefined) {
+          nodePositions[node.id] = { x: node.x, y: node.y };
+        }
+      });
+      saveGraphState(workspaceId, { nodePositions });
+    }, 500); // Save positions 500ms after simulation stops moving
+  };
+};
+
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
   id: string;
@@ -157,6 +217,19 @@ export const GraphComponent = () => {
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const selectedNodeRef = useRef<D3Node | null>(null);
+  
+  // Restore selected node from localStorage when nodes change
+  useEffect(() => {
+    if (nodes.length > 0 && workspaceId) {
+      const savedState = loadGraphState(workspaceId);
+      if (savedState.selectedNodeId) {
+        const node = nodes.find(n => n.id === savedState.selectedNodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      }
+    }
+  }, [nodes, workspaceId]);
 
   // keep selectedNodeRef in sync for use inside D3 handlers
   useEffect(() => {
@@ -189,6 +262,38 @@ export const GraphComponent = () => {
   // --- load nodes ---
   useEffect(() => {
     const fetchNodes = async () => {
+      const savedState = loadGraphState(workspaceId);
+      
+      // Check if we have fresh cached data
+      if (savedState.cachedNodes && savedState.cachedLinks && isCachedDataFresh(savedState.lastFetched)) {
+        // Use cached data instead of fetching
+        const restoredNodes = savedState.cachedNodes.map(node => {
+          const baseNode = { ...node };
+          
+          // Restore pinned position if exists
+          const pinnedPos = savedState.pinnedNodes?.[baseNode.id];
+          if (pinnedPos) {
+            baseNode.fx = pinnedPos.fx;
+            baseNode.fy = pinnedPos.fy;
+          }
+          
+          // Restore saved position if exists
+          const savedPos = savedState.nodePositions?.[baseNode.id];
+          if (savedPos) {
+            baseNode.x = savedPos.x;
+            baseNode.y = savedPos.y;
+          }
+          
+          return baseNode;
+        });
+        
+        setNodes(restoredNodes);
+        setLinks(savedState.cachedLinks);
+        setNodesLoading(false);
+        return;
+      }
+      
+      // Fetch fresh data if no cache or cache is stale
       setNodesLoading(true);
       setError(null);
       try {
@@ -196,13 +301,42 @@ export const GraphComponent = () => {
         const data: ApiResponse = await response.json();
         if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
-          setNodes(data.data.nodes.map(node => ({
-            ...node,
-            id: (node as any).ref_id || '',
-            type: (node as any).node_type as string || '',
-            name: (node as any)?.properties?.name as string || ''
-          })) as D3Node[]);
-          setLinks(data.data.edges as D3Link[] || []);
+          const processedNodes = data.data.nodes.map(node => {
+            const baseNode = {
+              ...node,
+              id: (node as any).ref_id || '',
+              type: (node as any).node_type as string || '',
+              name: (node as any)?.properties?.name as string || ''
+            } as D3Node;
+            
+            // Restore pinned position if exists
+            const pinnedPos = savedState.pinnedNodes?.[baseNode.id];
+            if (pinnedPos) {
+              baseNode.fx = pinnedPos.fx;
+              baseNode.fy = pinnedPos.fy;
+            }
+            
+            // Restore saved position if exists
+            const savedPos = savedState.nodePositions?.[baseNode.id];
+            if (savedPos) {
+              baseNode.x = savedPos.x;
+              baseNode.y = savedPos.y;
+            }
+            
+            return baseNode;
+          });
+          
+          const processedLinks = data.data.edges as D3Link[] || [];
+          
+          setNodes(processedNodes);
+          setLinks(processedLinks);
+          
+          // Cache the fresh data
+          saveGraphState(workspaceId, {
+            cachedNodes: processedNodes,
+            cachedLinks: processedLinks,
+            lastFetched: Date.now()
+          });
         } else {
           setNodes([]);
           setLinks([]);
@@ -216,7 +350,10 @@ export const GraphComponent = () => {
         setNodesLoading(false);
       }
     };
-    fetchNodes();
+    
+    if (workspaceId) {
+      fetchNodes();
+    }
   }, [workspaceId]);
 
   // --- initialize simulation, zoom, and render ---
@@ -228,9 +365,12 @@ export const GraphComponent = () => {
     const height = 500;
     svg.attr("viewBox", `0 0 ${width} ${height}`);
 
-    // SAVE current transform so we can restore it after re-rendering
-    // if svg.node() is null, default to identity
-    const previousTransform = d3.zoomTransform(svg.node() as Element);
+    // LOAD saved transform from localStorage or current transform
+    const savedState = loadGraphState(workspaceId);
+    const currentTransform = d3.zoomTransform(svg.node() as Element);
+    const previousTransform = savedState.transform 
+      ? d3.zoomIdentity.translate(savedState.transform.x, savedState.transform.y).scale(savedState.transform.k)
+      : currentTransform;
 
     // clear previous
     svg.selectAll("*").remove();
@@ -238,11 +378,16 @@ export const GraphComponent = () => {
     // container group (this gets transformed by zoom)
     const container = svg.append("g").attr("class", "graph-container");
 
-    // zoom behaviour
+    // zoom behavior with localStorage persistence
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 10])
       .on("zoom", (event) => {
-        container.attr("transform", (event as any).transform);
+        const transform = (event as any).transform;
+        container.attr("transform", transform);
+        // Save transform to localStorage
+        saveGraphState(workspaceId, {
+          transform: { k: transform.k, x: transform.x, y: transform.y }
+        });
       });
 
     // Apply zoom to svg and restore previous transform (so we don't reset zoom on every re-render)
@@ -264,8 +409,17 @@ export const GraphComponent = () => {
           selectedNodeRef.current.fx = null;
           selectedNodeRef.current.fy = null;
           simulationRef.current?.alpha(0.1).restart();
+          
+          // Remove from pinned nodes in localStorage
+          const savedState = loadGraphState(workspaceId);
+          const pinnedNodes = { ...savedState.pinnedNodes };
+          delete pinnedNodes[selectedNodeRef.current.id];
+          saveGraphState(workspaceId, { pinnedNodes });
         }
         setSelectedNode(null);
+        
+        // Clear selected node from localStorage
+        saveGraphState(workspaceId, { selectedNodeId: null });
       }
     });
 
@@ -277,11 +431,29 @@ export const GraphComponent = () => {
       return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
 
+    // Check if nodes have saved positions to determine simulation behavior
+    const hasSavedPositions = nodes.some(node => node.x !== undefined && node.y !== undefined);
+    
     const simulation = d3.forceSimulation<D3Node>(nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(0.5))
-      .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(40).strength(0.7));
+      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(hasSavedPositions ? 0.1 : 0.5))
+      .force("charge", d3.forceManyBody().strength(hasSavedPositions ? -50 : -300).distanceMax(300))
+      .force("center", d3.forceCenter(width / 2, height / 2).strength(hasSavedPositions ? 0.02 : 0.05))
+      .force("collision", d3.forceCollide().radius(40).strength(0.7))
+      .alpha(hasSavedPositions ? 0.1 : 1.0)
+      .alphaDecay(hasSavedPositions ? 0.1 : 0.0228);
+    
+    // Save positions when simulation ends
+    if (!hasSavedPositions) {
+      simulation.on("end", () => {
+        const nodePositions: Record<string, { x: number; y: number }> = {};
+        nodes.forEach(node => {
+          if (node.x !== undefined && node.y !== undefined) {
+            nodePositions[node.id] = { x: node.x, y: node.y };
+          }
+        });
+        saveGraphState(workspaceId, { nodePositions });
+      });
+    }
 
     simulationRef.current = simulation;
 
@@ -324,10 +496,29 @@ export const GraphComponent = () => {
           if (!selectedNodeRef.current || selectedNodeRef.current.id !== d.id) {
             d.fx = null;
             d.fy = null;
+            // Remove from pinned nodes in localStorage
+            const savedState = loadGraphState(workspaceId);
+            const pinnedNodes = { ...savedState.pinnedNodes };
+            delete pinnedNodes[d.id];
+            saveGraphState(workspaceId, { pinnedNodes });
           } else {
             d.fx = d.x ?? d.fx;
             d.fy = d.y ?? d.fy;
+            // Save pinned position to localStorage
+            const savedState = loadGraphState(workspaceId);
+            const pinnedNodes = { ...savedState.pinnedNodes };
+            pinnedNodes[d.id] = { fx: d.fx, fy: d.fy };
+            saveGraphState(workspaceId, { pinnedNodes });
           }
+          
+          // Save all node positions after drag
+          const nodePositions: Record<string, { x: number; y: number }> = {};
+          nodes.forEach(node => {
+            if (node.x !== undefined && node.y !== undefined) {
+              nodePositions[node.id] = { x: node.x, y: node.y };
+            }
+          });
+          saveGraphState(workspaceId, { nodePositions });
         }))
       .on("click", (event, d) => {
         event.stopPropagation();
@@ -335,7 +526,26 @@ export const GraphComponent = () => {
         d.fx = d.x ?? d.fx;
         d.fy = d.y ?? d.fy;
         simulation.alphaTarget(0.1).restart();
+        
+        // Save pinned position to localStorage
+        const savedState = loadGraphState(workspaceId);
+        const pinnedNodes = { ...savedState.pinnedNodes };
+        pinnedNodes[d.id] = { fx: d.fx, fy: d.fy };
+        saveGraphState(workspaceId, { pinnedNodes });
+        
+        // Save all node positions when pinning
+        const nodePositions: Record<string, { x: number; y: number }> = {};
+        nodes.forEach(node => {
+          if (node.x !== undefined && node.y !== undefined) {
+            nodePositions[node.id] = { x: node.x, y: node.y };
+          }
+        });
+        saveGraphState(workspaceId, { nodePositions });
+        
         setSelectedNode(d);
+        
+        // Save selected node to localStorage
+        saveGraphState(workspaceId, { selectedNodeId: d.id });
       });
 
     nodeGroup.append("circle").attr("r", 20)
@@ -354,11 +564,19 @@ export const GraphComponent = () => {
       .attr("font-size", "10px").attr("fill", isDarkMode ? "#d1d5db" : "#666")
       .style("pointer-events", "none");
 
+    // Create debounced position saver for this simulation
+    const savePositions = createDebouncedPositionSaver(workspaceId);
+    
     simulation.on("tick", () => {
       link
         .attr("x1", d => (d.source as D3Node).x!).attr("y1", d => (d.source as D3Node).y!)
         .attr("x2", d => (d.target as D3Node).x!).attr("y2", d => (d.target as D3Node).y!);
       nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
+      
+      // Only save positions during active simulation (not when restored)
+      if (!hasSavedPositions && simulation.alpha() > 0.01) {
+        savePositions(nodes);
+      }
     });
 
     // store zoom behaviour on svg node if needed elsewhere
@@ -511,8 +729,17 @@ export const GraphComponent = () => {
               selectedNodeRef.current.fx = null;
               selectedNodeRef.current.fy = null;
               simulationRef.current?.alpha(0.1).restart();
+              
+              // Remove from pinned nodes in localStorage
+              const savedState = loadGraphState(workspaceId);
+              const pinnedNodes = { ...savedState.pinnedNodes };
+              delete pinnedNodes[selectedNodeRef.current.id];
+              saveGraphState(workspaceId, { pinnedNodes });
             }
             setSelectedNode(null);
+            
+            // Clear selected node from localStorage
+            saveGraphState(workspaceId, { selectedNodeId: null });
           }}
           connectedNodes={connectedNodes}
           isDarkMode={isDarkMode}
