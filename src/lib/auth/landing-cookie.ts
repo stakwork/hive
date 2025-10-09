@@ -87,7 +87,7 @@ export async function verifyCookie(signedValue: string): Promise<boolean> {
     const expectedSignature = expectedSignatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
     // Constant-time comparison
-    return constantTimeCompareStrings(signature, expectedSignature);
+    return constantTimeCompare(signature, expectedSignature);
   } catch (error) {
     console.error("Error verifying landing cookie:", error);
     return false;
@@ -95,33 +95,14 @@ export async function verifyCookie(signedValue: string): Promise<boolean> {
 }
 
 /**
- * Constant-time string comparison for hex strings
- * @param a - First string
- * @param b - Second string
- * @returns true if equal, false otherwise
- */
-function constantTimeCompareStrings(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-
-  return result === 0;
-}
-
-/**
  * Constant-time string comparison to prevent timing attacks
- * Uses Web Crypto API compatible approach
+ * Works with both equal and unequal length strings
  * @param a - First string to compare
  * @param b - Second string to compare
  * @returns true if strings are equal, false otherwise
  */
 export function constantTimeCompare(a: string, b: string): boolean {
-  // Pad to same length for constant-time comparison
+  // If lengths differ, still compare to prevent timing leaks
   const maxLength = Math.max(a.length, b.length);
   const paddedA = a.padEnd(maxLength, '\0');
   const paddedB = b.padEnd(maxLength, '\0');
