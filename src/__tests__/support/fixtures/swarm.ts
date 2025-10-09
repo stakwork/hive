@@ -6,7 +6,6 @@ export interface CreateTestSwarmOptions {
   workspaceId: string;
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
-  repositoryUrl?: string | null;
 }
 
 export async function createTestSwarm(
@@ -20,7 +19,6 @@ export async function createTestSwarm(
       workspaceId: options.workspaceId,
       status: options.status || "ACTIVE",
       instanceType: options.instanceType || "XL",
-      repositoryUrl: options.repositoryUrl ?? null,
     },
   });
 }

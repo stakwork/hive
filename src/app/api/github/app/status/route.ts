@@ -3,6 +3,7 @@ import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
@@ -33,11 +34,10 @@ export async function GET(request: Request) {
       // Check if user has tokens for this specific workspace's GitHub org
       const { db } = await import("@/lib/db");
 
-      // Get workspace and optionally its swarm (only if repositoryUrl param not provided)
+      // Get workspace
       const workspace = await db.workspace.findUnique({
         where: { slug: workspaceSlug },
         include: {
-          swarm: true, // Always include swarm to get installation ID
           sourceControlOrg: true,
         },
       });
@@ -54,38 +54,43 @@ export async function GET(request: Request) {
         });
         hasTokens = !!sourceControlToken;
 
+        // Get repository URL
+        let repoUrl: string | null = repositoryUrl;
+        if (!repoUrl) {
+          const primaryRepo = await getPrimaryRepository(workspace.id);
+          repoUrl = primaryRepo?.repositoryUrl ?? null;
+        }
+
         // Check repository access if we have tokens and a repository URL
-        if (
-          hasTokens &&
-          (repositoryUrl || workspace?.swarm?.repositoryUrl) &&
-          workspace?.sourceControlOrg?.githubInstallationId
-        ) {
-          const repoUrl = repositoryUrl || workspace?.swarm?.repositoryUrl;
+        if (hasTokens && repoUrl && workspace?.sourceControlOrg?.githubInstallationId) {
           console.log("[STATUS ROUTE] Checking repository access:", {
             userId: session.user.id,
             installationId: workspace.sourceControlOrg.githubInstallationId,
             repositoryUrl: repoUrl,
           });
-          if (repoUrl) {
-            hasRepoAccess = await checkRepositoryAccess(
-              session.user.id,
-              workspace.sourceControlOrg.githubInstallationId.toString(),
-              repoUrl,
-            );
-            console.log("[STATUS ROUTE] Repository access result:", hasRepoAccess);
-          }
+          hasRepoAccess = await checkRepositoryAccess(
+            session.user.id,
+            workspace.sourceControlOrg.githubInstallationId.toString(),
+            repoUrl,
+          );
+          console.log("[STATUS ROUTE] Repository access result:", hasRepoAccess);
         } else {
           console.log("[STATUS ROUTE] Skipping repository access check:", {
             hasTokens,
-            hasRepoUrl: !!(repositoryUrl || workspace?.swarm?.repositoryUrl),
+            hasRepoUrl: !!repoUrl,
             hasInstallationId: !!workspace?.sourceControlOrg?.githubInstallationId,
-            repositoryUrl: repositoryUrl || workspace?.swarm?.repositoryUrl,
+            repositoryUrl: repoUrl,
             installationId: workspace?.sourceControlOrg?.githubInstallationId,
           });
         }
-      } else if (repositoryUrl || workspace?.swarm?.repositoryUrl) {
+      } else {
         // Workspace not linked yet - extract GitHub org from repo URL and check
-        const repoUrl = repositoryUrl || workspace?.swarm?.repositoryUrl;
+        let repoUrl: string | null = repositoryUrl;
+        if (!repoUrl && workspace) {
+          const primaryRepo = await getPrimaryRepository(workspace.id);
+          repoUrl = primaryRepo?.repositoryUrl ?? null;
+        }
+
         if (!repoUrl) {
           console.warn("No repository URL found for workspace", workspaceSlug);
           return NextResponse.json({ hasTokens: false }, { status: 200 });
