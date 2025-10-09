@@ -18,7 +18,7 @@ const initialFormData: StakgraphSettings = {
   name: "",
   description: "",
   repositoryUrl: "",
-  defaultBranch: "main",
+  repositories: [{ repositoryUrl: "", branch: "main" }],
   swarmUrl: "",
   swarmSecretAlias: "",
   swarmApiKey: "",
@@ -54,10 +54,7 @@ type StakgraphStore = {
 
   // Actions
   loadSettings: (slug: string) => Promise<void>;
-  saveSettings: (
-    slug: string,
-    toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void,
-  ) => Promise<void>;
+  saveSettings: (slug: string, toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void) => Promise<void>;
   resetForm: () => void;
 
   // Form change handlers
@@ -67,9 +64,7 @@ type StakgraphStore = {
   handleEnvironmentChange: (data: Partial<EnvironmentData>) => void;
   handleServicesChange: (services: ServiceDataConfig[]) => void;
   handleFileChange: (fileName: string, content: string) => void;
-  handleEnvVarsChange: (
-    newEnvVars: Array<{ name: string; value: string; show?: boolean }>,
-  ) => void;
+  handleEnvVarsChange: (newEnvVars: Array<{ name: string; value: string; show?: boolean }>) => void;
 
   // Setters
   setErrors: (errors: Record<string, string>) => void;
@@ -132,7 +127,9 @@ export const useStakgraphStore = create<StakgraphStore>()(
               name: settings.name || "",
               description: settings.description || "",
               repositoryUrl: settings.repositoryUrl || "",
-              defaultBranch: settings.defaultBranch || "main",
+              repositories: settings.repositories || [
+                { repositoryUrl: settings.repositoryUrl || "", branch: settings.defaultBranch || "main" },
+              ],
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",
@@ -152,17 +149,12 @@ export const useStakgraphStore = create<StakgraphStore>()(
             set({ formData: newFormData });
 
             // Also update the environment variables state
-            if (
-              settings.environmentVariables &&
-              Array.isArray(settings.environmentVariables)
-            ) {
-              const newEnvVars = settings.environmentVariables.map(
-                (env: EnvironmentVariable) => ({
-                  name: env.name,
-                  value: env.value,
-                  show: false,
-                }),
-              );
+            if (settings.environmentVariables && Array.isArray(settings.environmentVariables)) {
+              const newEnvVars = settings.environmentVariables.map((env: EnvironmentVariable) => ({
+                name: env.name,
+                value: env.value,
+                show: false,
+              }));
               set({ envVars: newEnvVars });
             }
           }
@@ -187,10 +179,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
     },
 
     // Save settings
-    saveSettings: async (
-      slug: string,
-      toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void,
-    ) => {
+    saveSettings: async (slug: string, toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void) => {
       const state = get();
 
       if (!slug) {
@@ -254,9 +243,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
         const containerFiles = {
           ...state.formData.containerFiles,
-          "pm2.config.js":
-            getPM2AppsContent(repoName, state.formData.services)
-              ?.content || "",
+          "pm2.config.js": getPM2AppsContent(repoName, state.formData.services)?.content || "",
         };
 
         const base64EncodedFiles = Object.entries(containerFiles).reduce(
@@ -271,7 +258,6 @@ export const useStakgraphStore = create<StakgraphStore>()(
           name: state.formData.name.trim(),
           description: state.formData.description.trim(),
           repositoryUrl: state.formData.repositoryUrl.trim(),
-          defaultBranch: state.formData.defaultBranch.trim(),
           swarmUrl: state.formData.swarmUrl.trim(),
           swarmSecretAlias: state.formData.swarmSecretAlias.trim(),
           poolName: state.formData.poolName.trim(),
@@ -302,8 +288,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           set({ saved: true });
           toast({
             title: "Configuration saved",
-            description:
-              "Your Stakgraph settings have been saved successfully!",
+            description: "Your Stakgraph settings have been saved successfully!",
             variant: "default",
           });
 
@@ -324,26 +309,19 @@ export const useStakgraphStore = create<StakgraphStore>()(
           } else if (result.error === "INSUFFICIENT_PERMISSIONS") {
             set({
               errors: {
-                general:
-                  result.message ||
-                  "Admin access required to manage webhooks on this repository",
+                general: result.message || "Admin access required to manage webhooks on this repository",
               },
             });
           } else {
             set({
               errors: {
-                general:
-                  result.message ||
-                  "Failed to save configuration. Please try again.",
+                general: result.message || "Failed to save configuration. Please try again.",
               },
             });
           }
 
           toast({
-            title:
-              result.error === "INSUFFICIENT_PERMISSIONS"
-                ? "Permission Required"
-                : "Error",
+            title: result.error === "INSUFFICIENT_PERMISSIONS" ? "Permission Required" : "Error",
             description: result.message || "Failed to save configuration",
             variant: "destructive",
           });
@@ -388,18 +366,24 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
     handleRepositoryChange: (data: Partial<RepositoryData>) => {
       const state = get();
+
+      const updatedData: Partial<StakgraphSettings> = {};
+
+      if (data.repositories) {
+        updatedData.repositories = data.repositories;
+        if (data.repositories.length > 0) {
+          updatedData.repositoryUrl = data.repositories[0].repositoryUrl;
+        }
+      }
+
       set({
-        formData: { ...state.formData, ...data },
+        formData: { ...state.formData, ...updatedData },
         saved: false,
       });
 
-      // Clear errors for changed fields
       const newErrors = { ...state.errors };
-      if (data.repositoryUrl !== undefined && newErrors.repositoryUrl) {
-        delete newErrors.repositoryUrl;
-      }
-      if (data.defaultBranch !== undefined && newErrors.defaultBranch) {
-        delete newErrors.defaultBranch;
+      if (data.repositories !== undefined) {
+        if (newErrors.repositoryUrl) delete newErrors.repositoryUrl;
       }
       if (Object.keys(newErrors).length !== Object.keys(state.errors).length) {
         set({ errors: newErrors });
@@ -461,9 +445,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
       });
     },
 
-    handleEnvVarsChange: (
-      newEnvVars: Array<{ name: string; value: string; show?: boolean }>,
-    ) => {
+    handleEnvVarsChange: (newEnvVars: Array<{ name: string; value: string; show?: boolean }>) => {
       set({
         envVars: newEnvVars,
         saved: false,

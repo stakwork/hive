@@ -22,7 +22,7 @@ export interface StakgraphSettings {
   name: string;
   description: string;
   repositoryUrl: string;
-  defaultBranch: string;
+  repositories: Repository[];
   swarmUrl: string;
   swarmSecretAlias: string;
   swarmApiKey?: string;
@@ -43,9 +43,14 @@ export interface ProjectInfoData {
   description: string;
 }
 
-export interface RepositoryData {
+export interface Repository {
+  id?: string;
   repositoryUrl: string;
-  defaultBranch: string;
+  branch: string;
+}
+
+export interface RepositoryData {
+  repositories: Repository[];
 }
 
 export interface SwarmData {

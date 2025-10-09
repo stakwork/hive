@@ -71,6 +71,7 @@ export function BrowserArtifactPanel({
     removeAction,
     clearAllActions,
     toggleActionsView,
+    isRecorderReady,
   } = useStaktrak(
     activeContent?.url,
     () => {
@@ -182,7 +183,7 @@ export function BrowserArtifactPanel({
                     <span className="text-sm font-medium truncate">{tabUrl}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    {isSetup && isRecording && (
+                    {isSetup && isRecorderReady && isRecording && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -196,7 +197,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {isSetup && isRecording && (
+                    {isSetup && isRecorderReady && isRecording && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -243,7 +244,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {isSetup && (
+                    {isSetup && isRecorderReady && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
