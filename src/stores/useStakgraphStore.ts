@@ -17,8 +17,7 @@ import { devtools } from "zustand/middleware";
 const initialFormData: StakgraphSettings = {
   name: "",
   description: "",
-  repositoryUrl: "",
-  repositories: [{ repositoryUrl: "", branch: "main" }],
+  repositories: [{ repositoryUrl: "", branch: "main", name: "" }],
   swarmUrl: "",
   swarmSecretAlias: "",
   swarmApiKey: "",
@@ -126,10 +125,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
             const newFormData: StakgraphSettings = {
               name: settings.name || "",
               description: settings.description || "",
-              repositoryUrl: settings.repositoryUrl || "",
-              repositories: settings.repositories || [
-                { repositoryUrl: settings.repositoryUrl || "", branch: settings.defaultBranch || "main" },
-              ],
+              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",
@@ -194,16 +190,24 @@ export const useStakgraphStore = create<StakgraphStore>()(
       // Reset previous states
       set({ errors: {}, saved: false });
 
-      // Validation
       const newErrors: Record<string, string> = {};
-
       if (!state.formData.name.trim()) {
         newErrors.name = "Name is required";
       }
-      if (!state.formData.repositoryUrl.trim()) {
-        newErrors.repositoryUrl = "Repository URL is required";
-      } else if (!isValidUrl(state.formData.repositoryUrl.trim())) {
-        newErrors.repositoryUrl = "Please enter a valid URL";
+
+      if (!state.formData.repositories || state.formData.repositories.length === 0) {
+        newErrors.repositories = "At least one repository is required";
+      } else {
+        state.formData.repositories.forEach((repo, index) => {
+          if (!repo.repositoryUrl.trim()) {
+            newErrors[`repositories.${index}.url`] = "Repository URL is required";
+          } else if (!isValidUrl(repo.repositoryUrl.trim())) {
+            newErrors[`repositories.${index}.url`] = "Please enter a valid URL";
+          }
+          if (!repo.branch.trim()) {
+            newErrors[`repositories.${index}.branch`] = "Branch is required";
+          }
+        });
       }
 
       if (!state.formData.swarmUrl.trim()) {
@@ -230,13 +234,15 @@ export const useStakgraphStore = create<StakgraphStore>()(
       try {
         // Extract repository name from URL for dev container paths
         // The cwd path should always be based on the actual repo name, not the project name
+        const primaryRepo = state.formData.repositories[0];
         const repoName = (() => {
+          if (!primaryRepo?.repositoryUrl) return state.formData.name;
           try {
-            const { repo } = parseGithubOwnerRepo(state.formData.repositoryUrl);
+            const { repo } = parseGithubOwnerRepo(primaryRepo.repositoryUrl);
             return repo;
           } catch {
             // Fallback to extracting from URL pattern if parseGithubOwnerRepo fails
-            const match = state.formData.repositoryUrl.match(/\/([^/]+?)(?:\.git)?$/);
+            const match = primaryRepo.repositoryUrl.match(/\/([^/]+?)(?:\.git)?$/);
             return match?.[1]?.replace(/\.git$/i, "") || state.formData.name;
           }
         })();
@@ -257,7 +263,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
         const payload: Partial<StakgraphSettings> = {
           name: state.formData.name.trim(),
           description: state.formData.description.trim(),
-          repositoryUrl: state.formData.repositoryUrl.trim(),
+          repositories: state.formData.repositories,
           swarmUrl: state.formData.swarmUrl.trim(),
           swarmSecretAlias: state.formData.swarmSecretAlias.trim(),
           poolName: state.formData.poolName.trim(),
@@ -371,9 +377,6 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
       if (data.repositories) {
         updatedData.repositories = data.repositories;
-        if (data.repositories.length > 0) {
-          updatedData.repositoryUrl = data.repositories[0].repositoryUrl;
-        }
       }
 
       set({
