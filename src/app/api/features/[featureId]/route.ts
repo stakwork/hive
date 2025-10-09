@@ -144,7 +144,7 @@ export async function PATCH(
 
     const { featureId } = await params;
     const body = await request.json();
-    const { title, status, priority, assigneeId } = body;
+    const { title, status, priority, assigneeId, brief, requirements, architecture } = body;
 
     // Fetch the feature with workspace info
     const feature = await db.feature.findUnique({
@@ -222,18 +222,25 @@ export async function PATCH(
     }
 
     // Build update data object
-    const updateData: {
-      title?: string;
-      status?: FeatureStatus;
-      priority?: FeaturePriority;
-      assigneeId?: string | null;
-      updatedById: string;
-    } = {
-      updatedById: userId,
+    const updateData: any = {
+      updatedBy: {
+        connect: {
+          id: userId,
+        },
+      },
     };
 
     if (title !== undefined) {
       updateData.title = title.trim();
+    }
+    if (brief !== undefined) {
+      updateData.brief = brief?.trim() || null;
+    }
+    if (requirements !== undefined) {
+      updateData.requirements = requirements?.trim() || null;
+    }
+    if (architecture !== undefined) {
+      updateData.architecture = architecture?.trim() || null;
     }
     if (status !== undefined) {
       updateData.status = status as FeatureStatus;
@@ -242,7 +249,11 @@ export async function PATCH(
       updateData.priority = priority as FeaturePriority;
     }
     if (assigneeId !== undefined) {
-      updateData.assigneeId = assigneeId;
+      if (assigneeId === null) {
+        updateData.assignee = { disconnect: true };
+      } else {
+        updateData.assignee = { connect: { id: assigneeId } };
+      }
     }
 
     // Update the feature
