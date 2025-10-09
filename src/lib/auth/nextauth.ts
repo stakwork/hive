@@ -400,18 +400,23 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async jwt({ token, user, account }) {
-      // For JWT sessions (mock provider), store user info in token
-      if (account?.provider === "mock" && user) {
+      // Initial sign-in: populate token with user data
+      if (user) {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
         token.picture = user.image;
-        token.github = {
-          username: user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
-          publicRepos: 5,
-          followers: 10,
-        };
+
+        // For mock provider, add mock GitHub data
+        if (account?.provider === "mock") {
+          token.github = {
+            username: user.name?.toLowerCase().replace(/\s+/g, "-") || "mock-user",
+            publicRepos: 5,
+            followers: 10,
+          };
+        }
       }
+      // Subsequent requests: token already has the data, just return it
       return token;
     },
   },
