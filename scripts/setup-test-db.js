@@ -36,7 +36,6 @@ async function setupTestDatabase() {
 
     // Clean up any existing test data
     console.log("🧹 Cleaning up existing test data...");
-    await prisma.verificationToken.deleteMany();
     await prisma.session.deleteMany();
     await prisma.account.deleteMany();
     await prisma.gitHubAuth.deleteMany();
