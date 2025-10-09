@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Trash2, Eye, Edit3, Check, GripVertical } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2, Check, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -20,7 +20,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -143,10 +142,6 @@ export default function FeatureDetailPage() {
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
   const storyInputRef = useRef<HTMLInputElement>(null);
-
-  // Markdown preview state
-  const [requirementsPreview, setRequirementsPreview] = useState(false);
-  const [architecturePreview, setArchitecturePreview] = useState(false);
 
   const statusColors: Record<string, string> = {
     BACKLOG: "bg-gray-100 text-gray-700 border-gray-200",
@@ -558,16 +553,17 @@ export default function FeatureDetailPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          <Separator />
-
           {/* Brief */}
           <div className="space-y-2">
             <Label htmlFor="brief" className="text-sm font-medium">
               Brief
             </Label>
+            <p className="text-sm text-muted-foreground">
+              High-level overview of what this feature is and why it matters.
+            </p>
             <Textarea
               id="brief"
-              placeholder="Describe why you want to add this feature in a few sentences..."
+              placeholder="Type your brief here..."
               value={feature.brief || ""}
               onChange={(e) => setFeature({ ...feature, brief: e.target.value })}
               onBlur={(e) => handleFieldBlur("brief", e.target.value || null)}
@@ -575,8 +571,6 @@ export default function FeatureDetailPage() {
               className="resize-none"
             />
           </div>
-
-          <Separator />
 
           {/* User Stories */}
           <div className="space-y-4">
@@ -638,96 +632,42 @@ export default function FeatureDetailPage() {
             </div>
           </div>
 
-          <Separator />
-
           {/* Requirements */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="requirements" className="text-sm font-medium">
-                  Requirements
-                </Label>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant={!requirementsPreview ? "secondary" : "ghost"}
-                  onClick={() => setRequirementsPreview(false)}
-                  className="h-8 px-2"
-                >
-                  <Edit3 className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant={requirementsPreview ? "secondary" : "ghost"}
-                  onClick={() => setRequirementsPreview(true)}
-                  className="h-8 px-2"
-                  disabled={!feature.requirements?.trim()}
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            {!requirementsPreview ? (
-              <Textarea
-                id="requirements"
-                placeholder="List the functional and technical requirements..."
-                value={feature.requirements || ""}
-                onChange={(e) => setFeature({ ...feature, requirements: e.target.value })}
-                onBlur={(e) => handleFieldBlur("requirements", e.target.value || null)}
-                rows={8}
-                className="resize-y font-mono text-sm min-h-[200px]"
-              />
-            ) : (
-              <div className="rounded-md border p-4 min-h-[200px]">
-                <MarkdownRenderer>{feature.requirements || ""}</MarkdownRenderer>
-              </div>
-            )}
+            <Label htmlFor="requirements" className="text-sm font-medium">
+              Requirements
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Functional and technical specifications for implementation.
+            </p>
+            <Textarea
+              id="requirements"
+              placeholder="Type your requirements here..."
+              value={feature.requirements || ""}
+              onChange={(e) => setFeature({ ...feature, requirements: e.target.value })}
+              onBlur={(e) => handleFieldBlur("requirements", e.target.value || null)}
+              rows={8}
+              className="resize-y font-mono text-sm min-h-[200px]"
+            />
           </div>
 
           {/* Architecture */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="architecture" className="text-sm font-medium">
-                  Architecture
-                </Label>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant={!architecturePreview ? "secondary" : "ghost"}
-                  onClick={() => setArchitecturePreview(false)}
-                  className="h-8 px-2"
-                >
-                  <Edit3 className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant={architecturePreview ? "secondary" : "ghost"}
-                  onClick={() => setArchitecturePreview(true)}
-                  className="h-8 px-2"
-                  disabled={!feature.architecture?.trim()}
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            {!architecturePreview ? (
-              <Textarea
-                id="architecture"
-                placeholder="Describe the technical architecture and design approach..."
-                value={feature.architecture || ""}
-                onChange={(e) => setFeature({ ...feature, architecture: e.target.value })}
-                onBlur={(e) => handleFieldBlur("architecture", e.target.value || null)}
-                rows={8}
-                className="resize-y font-mono text-sm min-h-[200px]"
-              />
-            ) : (
-              <div className="rounded-md border p-4 min-h-[200px]">
-                <MarkdownRenderer>{feature.architecture || ""}</MarkdownRenderer>
-              </div>
-            )}
+            <Label htmlFor="architecture" className="text-sm font-medium">
+              Architecture
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Technical design decisions and implementation approach.
+            </p>
+            <Textarea
+              id="architecture"
+              placeholder="Type your architecture here..."
+              value={feature.architecture || ""}
+              onChange={(e) => setFeature({ ...feature, architecture: e.target.value })}
+              onBlur={(e) => handleFieldBlur("architecture", e.target.value || null)}
+              rows={8}
+              className="resize-y font-mono text-sm min-h-[200px]"
+            />
           </div>
         </CardContent>
       </Card>
