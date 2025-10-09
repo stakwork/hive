@@ -3,6 +3,11 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import type {
+  CreateFeatureRequest,
+  FeatureListResponse,
+  FeatureResponse,
+} from "@/types/roadmap";
 
 export async function GET(request: NextRequest) {
   try {
@@ -130,7 +135,7 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
     const hasMore = page < totalPages;
 
-    return NextResponse.json(
+    return NextResponse.json<FeatureListResponse>(
       {
         success: true,
         data: features,
@@ -168,7 +173,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const body: CreateFeatureRequest = await request.json();
     const { title, workspaceId, status, priority, assigneeId } = body;
 
     // Validate required fields
@@ -313,7 +318,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(
+    return NextResponse.json<FeatureResponse>(
       {
         success: true,
         data: feature,
