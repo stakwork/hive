@@ -70,6 +70,7 @@
     "bitcoinjs-message": "^2.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "crypto-js": "^4.2.0",
     "d3": "^7.9.0",
     "ecpair": "^3.0.0",
