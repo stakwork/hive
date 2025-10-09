@@ -33,6 +33,15 @@ export async function createTestUser(
     },
   });
 
+  // Create a session for the user to support githubState field
+  await db.session.create({
+    data: {
+      sessionToken: `test-session-${uniqueId}`,
+      userId: user.id,
+      expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+    },
+  });
+
   if (options.withGitHubAuth) {
     await db.gitHubAuth.create({
       data: {

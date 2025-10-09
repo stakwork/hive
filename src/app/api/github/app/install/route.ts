@@ -88,9 +88,7 @@ export async function POST(request: NextRequest) {
       where: { githubLogin: githubOwner },
     });
 
-    console.log('existingSourceControlOrg--existingSourceControlOrg')
-    console.log(existingSourceControlOrg)
-    console.log('existingSourceControlOrg--existingSourceControlOrg')
+
 
     if (existingSourceControlOrg?.githubInstallationId) {
       // App is already installed by some user
