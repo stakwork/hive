@@ -8,8 +8,8 @@ export interface CreateTestTaskOptions {
   workspaceId: string;
   createdById: string;
   assigneeId?: string;
-  status?: "active" | "completed" | "archived";
-  sourceType?: "MANUAL" | "JANITOR";
+  status?: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
+  sourceType?: "USER" | "JANITOR" | "SYSTEM";
 }
 
 export interface CreateTestChatMessageOptions {
@@ -29,9 +29,10 @@ export async function createTestTask(
       description: options.description || `Test task description ${uniqueId}`,
       workspaceId: options.workspaceId,
       createdById: options.createdById,
+      updatedById: options.createdById, // Required field
       assigneeId: options.assigneeId || null,
-      status: options.status || "active",
-      sourceType: options.sourceType || "MANUAL",
+      status: options.status || "TODO",
+      sourceType: options.sourceType || "USER",
     },
   });
 }
