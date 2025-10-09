@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
-import type { FeatureStatus } from "@/types/roadmap";
+import { FeatureStatus } from "@prisma/client";
 
 interface StatusPopoverProps {
   currentStatus: FeatureStatus;
@@ -12,7 +12,7 @@ interface StatusPopoverProps {
   statusColors: Record<string, string>;
 }
 
-const STATUS_OPTIONS: FeatureStatus[] = ["BACKLOG", "PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+const STATUS_OPTIONS = Object.values(FeatureStatus);
 
 const STATUS_ICONS: Record<FeatureStatus, React.ReactNode> = {
   BACKLOG: <Inbox className="h-3 w-3 text-gray-500" />,
@@ -51,7 +51,7 @@ export function StatusPopover({ currentStatus, onUpdate, statusColors }: StatusP
           </Badge>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-2" onClick={(e) => e.stopPropagation()}>
+      <PopoverContent className="w-[200px] p-2" align="start" onClick={(e) => e.stopPropagation()}>
         <div className="space-y-1">
           {STATUS_OPTIONS.map((s) => (
             <div

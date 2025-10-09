@@ -112,7 +112,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" onClick={(e) => e.stopPropagation()}>
+      <PopoverContent className="w-[300px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
         <Command>
           <CommandInput placeholder="Search members..." />
           <CommandList>
