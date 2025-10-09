@@ -165,46 +165,53 @@ export async function middleware(request: NextRequest) {
             status: 401,
             requestId,
             authStatus: "unauthorized",
-          }
+          },
         );
       }
+      return redirectTo("/", request, {
+        requestId,
+        authStatus: "unauthenticated",
+      });
+    }
 
-      return redirectTo(
-        "/",
-        request,
-        {
-          requestId,
-          authStatus: "unauthenticated",
+    // Valid session - attach user information to headers using type-safe extraction
+    const userId = extractTokenProperty(token, "id");
+    const userEmail = extractTokenProperty(token, "email");
+    const userName = extractTokenProperty(token, "name");
+
+    requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+    requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, userId);
+    requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, userEmail);
+    requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, userName);
+
+    if (pathname.startsWith("/api/w/") || pathname.startsWith("/api/workspaces/")) {
+      const match = pathname.match(/\/api\/(?:w|workspaces)\/([^\/]+)/);
+      const slug = match ? match[1] : null;
+      if (slug) {
+        const { validateWorkspaceAccess } = await import("@/services/workspace");
+        const access = await validateWorkspaceAccess(slug, userId);
+        if (!access.hasAccess) {
+          return respondWithJson(
+            { error: "Workspace not found or access denied" },
+            {
+              status: 403,
+              requestId,
+              authStatus: "forbidden",
+            },
+          );
         }
-      );
-    } else {
-      // Valid session - attach user information to headers using type-safe extraction
-      requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
-
-      // If using database sessions, the token might have additional data
-      // This will be expanded in later phases
+        requestHeaders.set("x-middleware-workspace-id", access.workspace?.id || "");
+        requestHeaders.set("x-middleware-workspace-role", access.userRole || "");
+      }
     }
 
     // Pass the modified request to the route handler
     return continueRequest(requestHeaders, "authenticated");
   } catch (error) {
     console.error(`[Middleware] Error processing request ${requestId}:`, error);
-    
-    // On error, allow the request to proceed but mark it
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_ID);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_EMAIL);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_NAME);
     return continueRequest(requestHeaders, "error");
   }
-}
-
-// Configure which routes the middleware should run on
-export const config = {
-  matcher: [
-    // Apply to all routes except Next.js internals
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
 };

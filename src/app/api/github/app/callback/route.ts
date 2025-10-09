@@ -1,8 +1,6 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
@@ -141,27 +139,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is authenticated
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userId = request.headers.get("x-middleware-user-id");
+    if (!userId) {
       // Redirect to login if not authenticated
       return NextResponse.redirect(new URL("/auth", request.url));
     }
-
     // Get the user's session to validate the GitHub state
     const userSession = await db.session.findFirst({
       where: {
-        userId: session.user.id as string,
+        userId: userId,
         githubState: state,
       },
     });
-
     if (!userSession) {
-      console.error("Invalid or expired GitHub state for user:", session.user.id);
+      console.error("Invalid or expired GitHub state for user:", userId);
       return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     }
-
     const { userAccessToken, userRefreshToken } = await getAccessToken(code, state);
-
     if (!userAccessToken) {
       return NextResponse.redirect(new URL("/?error=invalid_code", request.url));
     }
@@ -206,108 +200,69 @@ export async function GET(request: NextRequest) {
     let installationIdNumber: number | undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let installationAccount: any = null;
-
     if (installationId) {
-      // We have an installation - get the user's installations to find this one
       const installationsResponse = await fetch("https://api.github.com/user/installations", {
         headers: {
           Authorization: `Bearer ${userAccessToken}`,
           Accept: "application/vnd.github.v3+json",
         },
       });
-
       if (installationsResponse.ok) {
         const installationsData = await installationsResponse.json();
-
-        console.log("installationsData", installationsData);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const installation = installationsData.installations?.find((inst: any) => inst.id === parseInt(installationId));
-
         if (installation) {
           githubOwner = installation.account.login;
           ownerType = installation.account.type === "User" ? "user" : "org";
           installationIdNumber = parseInt(installationId);
-          // Store installation account details for later use
           installationAccount = installation.account;
-          console.log(`✅ Found installation: ${githubOwner} (${ownerType}), installation ID: ${installationIdNumber}`);
         } else {
-          console.error(`❌ Installation ${installationId} not found in user's installations`);
-          // Fallback to the authenticated user
           githubOwner = githubUser.login;
           ownerType = "user";
         }
       } else {
-        console.error(
-          `❌ Failed to fetch user installations:`,
-          installationsResponse.status,
-          installationsResponse.statusText,
-        );
-        // Fallback to the authenticated user
         githubOwner = githubUser.login;
         ownerType = "user";
       }
     } else {
       // No installation ID - this is just OAuth for existing installation
-      // Look up the workspace to see which SourceControlOrg it's linked to
       const workspace = await db.workspace.findUnique({
         where: { slug: workspaceSlug },
         include: { sourceControlOrg: true },
       });
-
       if (workspace?.sourceControlOrg) {
-        // Use the existing SourceControlOrg that the workspace is linked to
         githubOwner = workspace.sourceControlOrg.githubLogin;
         ownerType = workspace.sourceControlOrg.type === "USER" ? "user" : "org";
-        console.log(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`);
       } else {
-        // Workspace not linked yet - extract GitHub org from repository URL
-        const workspace = await db.workspace.findUnique({
+        const workspaceObj = await db.workspace.findUnique({
           where: { slug: workspaceSlug },
         });
-
-        if (workspace) {
-          const primaryRepo = await getPrimaryRepository(workspace.id);
+        if (workspaceObj) {
+          const primaryRepo = await getPrimaryRepository(workspaceObj.id);
           const repoUrl = primaryRepo?.repositoryUrl;
-
           if (repoUrl) {
             const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
-
             if (githubMatch) {
               const repoGithubOwner = githubMatch[1];
-              console.log(`Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
-
               const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
                 where: { githubLogin: repoGithubOwner },
               });
-
               if (existingSourceControlOrg) {
                 githubOwner = repoGithubOwner;
                 ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
-                console.log(
-                  ` Found existing SourceControlOrg for ${repoGithubOwner}, reusing for workspace ${workspaceSlug}`,
-                );
               } else {
-                // No existing SourceControlOrg for this GitHub owner - this shouldn't happen in OAuth flow
-                console.log(` No SourceControlOrg found for ${repoGithubOwner}, falling back to authenticated user`);
                 githubOwner = githubUser.login;
                 ownerType = "user";
               }
             } else {
-              // Invalid repository URL - fallback to authenticated user
-              console.log(`Could not extract GitHub owner from repo URL: ${repoUrl}`);
               githubOwner = githubUser.login;
               ownerType = "user";
             }
           } else {
-            // No repository URL - fallback to authenticated user
-            console.log(
-              ` Workspace ${workspaceSlug} has no repository URL, using authenticated user: ${githubUser.login}`,
-            );
             githubOwner = githubUser.login;
             ownerType = "user";
           }
         } else {
-          console.log(` Workspace ${workspaceSlug} not found, using authenticated user: ${githubUser.login}`);
           githubOwner = githubUser.login;
           ownerType = "user";
         }
@@ -374,12 +329,11 @@ export async function GET(request: NextRequest) {
     const existingToken = await db.sourceControlToken.findUnique({
       where: {
         userId_sourceControlOrgId: {
-          userId: session.user.id as string,
+          userId: userId,
           sourceControlOrgId: sourceControlOrg.id,
         },
       },
     });
-
     if (existingToken) {
       // Update existing token
       await db.sourceControlToken.update({
@@ -390,24 +344,24 @@ export async function GET(request: NextRequest) {
           expiresAt: appExpiresAt,
         },
       });
-      console.log(`🔄 Updated SourceControlToken for user ${session.user.id} on ${githubOwner}`);
+      console.log(`🔄 Updated SourceControlToken for user ${userId} on ${githubOwner}`);
     } else {
       // Create new token
       await db.sourceControlToken.create({
         data: {
-          userId: session.user.id as string,
+          userId: userId,
           sourceControlOrgId: sourceControlOrg.id,
           token: encryptedAccessToken,
           refreshToken: encryptedRefreshToken,
           expiresAt: appExpiresAt,
         },
       });
-      console.log(`✅ Created SourceControlToken for user ${session.user.id} on ${githubOwner}`);
+      console.log(`✅ Created SourceControlToken for user ${userId} on ${githubOwner}`);
     }
 
     // Clear the GitHub state from the session after successful validation
     await db.session.updateMany({
-      where: { userId: session.user.id as string },
+      where: { userId: userId },
       data: { githubState: null },
     });
 

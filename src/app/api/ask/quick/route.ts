@@ -2,28 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { validateWorkspaceAccess } from "@/services/workspace";
 import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
 import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuthOrUnauthorized(context);
-    if (userOrResponse instanceof Response) return userOrResponse;
-
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
     const workspaceSlug = searchParams.get("workspace");
-
-    // console.log("📝 Question:", question);
-    // console.log("🏢 Workspace:", workspaceSlug);
 
     if (!question) {
       return NextResponse.json({ error: "Missing required parameter: question" }, { status: 400 });
@@ -32,13 +23,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
-    if (!workspaceAccess.hasAccess) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
-    }
+    const workspaceIdRaw = request.headers.get("x-middleware-workspace-id");
+    const workspaceId = workspaceIdRaw || undefined;
+    const userIdRaw = request.headers.get("x-middleware-user-id");
+    const userId = userIdRaw || undefined;
 
     const swarm = await db.swarm.findFirst({
-      where: { workspaceId: workspaceAccess.workspace?.id },
+      where: { workspaceId },
     });
     if (!swarm) {
       return NextResponse.json({ error: "Swarm not found for this workspace" }, { status: 404 });
@@ -64,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     // Get GitHub PAT for the workspace
     const workspace = await db.workspace.findUnique({
-      where: { id: workspaceAccess.workspace?.id },
+      where: { id: workspaceId },
       select: { slug: true },
     });
 
@@ -72,7 +63,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
+    if (!userId || !workspaceSlug) {
+      return NextResponse.json({ error: "Missing user or workspace context" }, { status: 400 });
+    }
+    const githubProfile = await getGithubUsernameAndPAT(userId, workspaceSlug);
     const pat = githubProfile?.token;
 
     if (!pat) {
