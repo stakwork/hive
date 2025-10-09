@@ -2,15 +2,16 @@
 
 import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
-import { BookOpen, MessageCircle } from "lucide-react";
+import { BookOpen, MessageCircle, Mic } from "lucide-react";
 
 interface ModeToggleProps {
-  mode: "learn" | "chat";
-  onModeChange: (mode: "learn" | "chat") => void;
+  mode: "learn" | "chat" | "mic";
+  onModeChange: (mode: "learn" | "chat" | "mic") => void;
   className?: string;
+  showMicMode?: boolean;
 }
 
-export function ModeToggle({ mode, onModeChange, className }: ModeToggleProps) {
+export function ModeToggle({ mode, onModeChange, className, showMicMode = false }: ModeToggleProps) {
   return (
     <div
       className={cn(
@@ -40,6 +41,19 @@ export function ModeToggle({ mode, onModeChange, className }: ModeToggleProps) {
         <MessageCircle className={cn("mr-1 w-4 h-4", mode === "chat" ? "text-foreground" : "text-muted-foreground")} />
         Chat
       </Toggle>
+      {showMicMode && (
+        <Toggle
+          pressed={mode === "mic"}
+          onPressedChange={() => onModeChange("mic")}
+          variant={mode === "mic" ? "outline" : "default"}
+          size="lg"
+          aria-label="Mic mode"
+          className={cn(mode === "mic" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground")}
+        >
+          <Mic className={cn("mr-1 w-4 h-4", mode === "mic" ? "text-foreground" : "text-muted-foreground")} />
+          Mic
+        </Toggle>
+      )}
     </div>
   );
 }

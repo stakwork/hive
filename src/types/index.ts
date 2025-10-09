@@ -28,3 +28,6 @@ export * from "./stakgraph";
 
 // Github types
 export * from "./github";
+
+// Roadmap types
+export * from "./roadmap";
