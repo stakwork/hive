@@ -382,7 +382,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       });
 
       // Should handle gracefully and return proper error
-      expect(response?.status).toBeOneOf([404, 500]);
+      expect([404, 500]).toContain(response?.status);
       const data = await response?.json();
       expect(data).toHaveProperty("error");
       expect(typeof data.error).toBe("string");
