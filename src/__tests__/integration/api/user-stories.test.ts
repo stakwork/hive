@@ -252,7 +252,7 @@ describe("User Stories API - Integration Tests", () => {
         { title: "New Story" }
       );
 
-      const response = await POST(request, { params: { featureId: "test-id" } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: "test-id" }) });
 
       await expectUnauthorized(response);
     });
