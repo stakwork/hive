@@ -671,6 +671,9 @@ enum SourceControlOrgType {
 model Feature {
   id          String           @id @default(cuid())
   title       String
+  brief       String?
+  requirements String?
+  architecture String?
   workspaceId String           @map("workspace_id")
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

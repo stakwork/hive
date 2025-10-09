@@ -37,41 +37,13 @@ import {
 import { StatusPopover } from "@/components/features/StatusPopover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import type { FeatureStatus, FeaturePriority } from "@/types/roadmap";
-
-interface UserStory {
-  id: string;
-  title: string;
-  order: number;
-  completed: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Feature {
-  id: string;
-  title: string;
-  brief: string | null;
-  requirements: string | null;
-  architecture: string | null;
-  status: FeatureStatus;
-  priority: FeaturePriority;
-  assignee: {
-    id: string;
-    name: string | null;
-    email: string | null;
-    image: string | null;
-  } | null;
-  userStories: UserStory[];
-  createdAt: string;
-  updatedAt: string;
-}
+import type { FeatureDetail } from "@/types/roadmap";
 
 function SortableUserStory({
   story,
   onDelete,
 }: {
-  story: UserStory;
+  story: FeatureDetail["userStories"][number];
   onDelete: (id: string) => void;
 }) {
   const {
@@ -129,14 +101,14 @@ export default function FeatureDetailPage() {
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
   const featureId = params.featureId as string;
 
-  const [feature, setFeature] = useState<Feature | null>(null);
+  const [feature, setFeature] = useState<FeatureDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Track original feature values for comparison
-  const originalFeatureRef = useRef<Feature | null>(null);
+  const originalFeatureRef = useRef<FeatureDetail | null>(null);
 
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
@@ -182,7 +154,7 @@ export default function FeatureDetailPage() {
     }
   }, [featureId]);
 
-  const updateFeature = async (updates: Partial<Feature> & { assigneeId?: string | null }) => {
+  const updateFeature = async (updates: Partial<FeatureDetail> & { assigneeId?: string | null }) => {
     try {
       setSaving(true);
       const response = await fetch(`/api/features/${featureId}`, {
@@ -214,13 +186,13 @@ export default function FeatureDetailPage() {
 
   const handleFieldBlur = (field: string, value: string | null) => {
     // Compare against original value, not current state
-    const originalValue = originalFeatureRef.current?.[field as keyof Feature];
+    const originalValue = originalFeatureRef.current?.[field as keyof FeatureDetail];
     if (feature && originalValue !== value) {
       updateFeature({ [field]: value });
     }
   };
 
-  const handleUpdateStatus = async (status: FeatureStatus) => {
+  const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await updateFeature({ status });
   };
 
@@ -283,7 +255,7 @@ export default function FeatureDetailPage() {
     }
   };
 
-  const reorderUserStories = async (stories: UserStory[]) => {
+  const reorderUserStories = async (stories: FeatureDetail["userStories"]) => {
     try {
       const reorderData = stories.map((story, index) => ({
         id: story.id,
