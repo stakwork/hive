@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-async function checkRepositoryPermissions(accessToken: string, repoUrl: string): Promise<{
+export async function checkRepositoryPermissions(accessToken: string, repoUrl: string): Promise<{
   hasAccess: boolean;
   canPush: boolean;
   canAdmin: boolean;
@@ -20,7 +20,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
 }> {
   try {
     // Extract owner/repo from URL
-    const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.?#]+)(?:\.git)?(?:[?#].*)?/);
     if (!githubMatch) {
       return {
         hasAccess: false,
