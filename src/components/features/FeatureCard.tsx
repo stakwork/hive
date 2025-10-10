@@ -1,0 +1,67 @@
+"use client";
+
+import { Users, Calendar, User } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { formatRelativeTime } from "@/lib/utils";
+import type { FeatureWithDetails } from "@/types/roadmap";
+import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
+
+interface FeatureCardProps {
+  feature: FeatureWithDetails;
+  workspaceSlug: string;
+  hideStatus?: boolean;
+}
+
+export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: FeatureCardProps) {
+  const router = useRouter();
+
+  const handleClick = () => {
+    router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`);
+  };
+
+  return (
+    <div
+      data-testid="feature-card"
+      data-feature-id={feature.id}
+      className="p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors"
+      onClick={handleClick}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <h4 className="text-sm font-medium line-clamp-1">{feature.title}</h4>
+        </div>
+        {!hideStatus && (
+          <Badge className={FEATURE_STATUS_COLORS[feature.status]}>
+            {FEATURE_STATUS_LABELS[feature.status]}
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Avatar className="size-5">
+            <AvatarImage src={feature.createdBy.image || undefined} />
+            <AvatarFallback className="text-xs">
+              <User className="w-3 h-3" />
+            </AvatarFallback>
+          </Avatar>
+          <span>
+            {feature.createdBy.name || feature.createdBy.email}
+          </span>
+        </div>
+        {feature.assignee && (
+          <div className="flex items-center gap-1">
+            <Users className="w-3 h-3" />
+            <span>{feature.assignee.name || feature.assignee.email}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1">
+          <Calendar className="w-3 h-3" />
+          <span>{formatRelativeTime(feature.createdAt)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
