@@ -13,10 +13,21 @@ export interface ApiError {
   details?: unknown;
 }
 
+export function isApiError(error: unknown): error is ApiError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "kind" in error &&
+    "statusCode" in error
+  );
+}
+
 export function validationError(message: string, details?: unknown): ApiError {
   return { kind: "validation", message, statusCode: 400, details };
 }
-
+export function unauthorizedError(message: string, details?: unknown): ApiError {
+  return { kind: "forbidden", message, statusCode: 401, details };
+}
 export function forbiddenError(message: string, details?: unknown): ApiError {
   return { kind: "forbidden", message, statusCode: 403, details };
 }

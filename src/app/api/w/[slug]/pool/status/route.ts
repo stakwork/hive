@@ -1,52 +1,87 @@
-import { NextResponse } from "next/server";
-import { notFoundError, validationError, serverError } from "@/types/errors";
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
 
-import type { NextRequestWithContext } from "@/types/middleware";
-import type { ApiError } from "@/types/errors";
-
-export async function GET(request: NextRequestWithContext, context: { params: { slug: string } }) {
-  const { params } = context;
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+) {
   try {
-    // Use middleware context for user info
-    const userId = request.middlewareContext?.user?.id;
-    const { slug } = params;
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string })?.id;
 
     if (!userId) {
-      throw serverError("User context missing in middleware");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { slug } = await params;
+
     if (!slug) {
-      throw validationError("Workspace slug is required");
+      return NextResponse.json(
+        { error: "Workspace slug is required" },
+        { status: 400 }
+      );
     }
 
     const workspace = await getWorkspaceBySlug(slug, userId);
+
     if (!workspace) {
-      throw notFoundError("Workspace not found or access denied");
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 }
+      );
     }
 
     const { db } = await import("@/lib/db");
     const swarm = await db.swarm.findFirst({
-      where: { workspaceId: workspace.id },
-      select: { id: true, poolApiKey: true },
+      where: {
+        workspaceId: workspace.id,
+      },
+      select: {
+        id: true,
+        poolApiKey: true,
+      },
     });
+
     if (!swarm?.id || !swarm?.poolApiKey) {
-      throw notFoundError("Pool not configured for this workspace");
+      return NextResponse.json(
+        { success: false, message: "Pool not configured for this workspace" },
+        { status: 404 }
+      );
     }
 
     const config = getServiceConfig("poolManager");
     const poolManagerService = new PoolManagerService(config);
-    const poolStatus = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
-    return NextResponse.json({ success: true, data: poolStatus });
-  } catch (error) {
-    if (error && typeof error === "object" && "kind" in error && "statusCode" in error) {
-      const err = error as ApiError;
+
+    try {
+      const poolStatus = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
+
+      return NextResponse.json({
+        success: true,
+        data: poolStatus,
+      });
+    } catch (error) {
+      console.warn("Pool status fetch failed (pool may still be active):", error);
+      const message = error instanceof Error ? error.message : "Unable to fetch pool data right now";
       return NextResponse.json(
-        { error: err.message, kind: err.kind, details: err.details },
-        { status: err.statusCode },
+        {
+          success: false,
+          message,
+        },
+        { status: 503 }
       );
     }
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+  } catch (error) {
+    console.error("Error in pool status endpoint:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
   }
 }
