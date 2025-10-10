@@ -156,7 +156,7 @@ function getActionBorderColor(kind: string): string {
 
 export function ActionsList({ actions, onRemoveAction, onClearAll, isRecording }: ActionsListProps) {
   return (
-    <div className="mx-4 my-3 rounded-lg border bg-card shadow-sm">
+    <div className="rounded-lg border bg-card shadow-lg backdrop-blur-sm">
       <div className="flex items-center justify-between p-3 border-b">
         <h3 className="text-sm font-semibold">Test Actions ({actions.length})</h3>
         <Button variant="destructive" size="sm" onClick={onClearAll} disabled={!isRecording || actions.length === 0}>

@@ -218,6 +218,7 @@ export default function UserJourneys() {
             artifacts={browserArtifacts}
             ide={false}
             onUserJourneySave={saveUserJourneyTest}
+            viewContext="user-journeys"
           />
         </div>
       ) : (

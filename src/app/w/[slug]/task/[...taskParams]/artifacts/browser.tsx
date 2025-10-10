@@ -31,11 +31,13 @@ export function BrowserArtifactPanel({
   ide,
   onDebugMessage,
   onUserJourneySave,
+  viewContext = "default",
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  viewContext?: "task" | "user-journeys" | "default";
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -332,12 +334,23 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               {showActions && (
-                <ActionsList
-                  actions={capturedActions}
-                  onRemoveAction={removeAction}
-                  onClearAll={clearAllActions}
-                  isRecording={isRecording}
-                />
+                <div
+                  className={`fixed top-20 z-40 w-72 sm:w-80 transition-all duration-300 ease-in-out ${
+                    viewContext === "task"
+                      ? "left-2 sm:left-4"
+                      : viewContext === "user-journeys"
+                      ? "left-2 sm:left-4 md:left-64"
+                      : "left-2 sm:left-4"
+                  }`}
+                  data-view-context={viewContext}
+                >
+                  <ActionsList
+                    actions={capturedActions}
+                    onRemoveAction={removeAction}
+                    onClearAll={clearAllActions}
+                    isRecording={isRecording}
+                  />
+                </div>
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
                 <iframe

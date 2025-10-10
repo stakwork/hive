@@ -102,7 +102,7 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               forceMount
               hidden={activeTab !== "BROWSER"}
             >
-              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} />
+              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} viewContext="task" />
             </TabsContent>
           )}
           {ideArtifacts.length > 0 && (
