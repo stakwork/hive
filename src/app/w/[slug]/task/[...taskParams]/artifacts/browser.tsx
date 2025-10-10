@@ -30,13 +30,11 @@ export function BrowserArtifactPanel({
   ide,
   onDebugMessage,
   onUserJourneySave,
-  viewContext = "default",
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
-  viewContext?: "task" | "user-journeys" | "default";
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -342,10 +340,7 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               {showActions && (
-                <div
-                  className="fixed top-0 left-0 bottom-0 z-40 w-80 transition-all duration-300 ease-in-out"
-                  data-view-context={viewContext}
-                >
+                <div className="fixed top-0 left-0 bottom-0 z-40 w-80 transition-all duration-300 ease-in-out">
                   <ActionsList
                     actions={capturedActions}
                     onRemoveAction={removeAction}
