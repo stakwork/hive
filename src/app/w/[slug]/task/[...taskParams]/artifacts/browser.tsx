@@ -13,8 +13,7 @@ import {
   Bug,
   Play,
   Pause,
-  ChevronUp,
-  ChevronDown,
+  List,
   CheckCircle2,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
@@ -189,8 +188,17 @@ export function BrowserArtifactPanel({
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" onClick={toggleActionsView} className="h-8 w-8 p-0">
-                              {showActions ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={toggleActionsView}
+                              className={`h-8 w-8 p-0 ${
+                                showActions
+                                  ? "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              <List className="w-4 h-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
