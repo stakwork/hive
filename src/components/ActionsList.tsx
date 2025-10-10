@@ -174,9 +174,10 @@ export function ActionsList({ actions, onRemoveAction, onClearAll, isRecording }
                 key={action.id}
                 className={`flex items-center justify-between rounded border-l-4 ${getActionBorderColor(
                   action.kind,
-                )} bg-muted/50 p-2 transition-colors hover:bg-muted`}
+                )} bg-muted/50 p-1.5 transition-colors hover:bg-muted`}
+                title={`${action.kind}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
               >
-                <div className="flex-1 text-sm overflow-hidden text-ellipsis whitespace-nowrap">
+                <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                   {getActionDisplay(action)}
                 </div>
                 <Button
