@@ -3,7 +3,8 @@ import type {
   CreatePhaseRequest,
   UpdatePhaseRequest,
   PhaseWithDetails,
-} from "@/types/phase";
+  PhaseListItem,
+} from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess } from "./utils";
 
 /**
@@ -13,7 +14,7 @@ export async function createPhase(
   featureId: string,
   userId: string,
   data: CreatePhaseRequest
-): Promise<PhaseWithDetails> {
+): Promise<PhaseListItem> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
     throw new Error("Feature not found or access denied");
@@ -42,6 +43,7 @@ export async function createPhase(
       id: true,
       name: true,
       description: true,
+      status: true,
       order: true,
       featureId: true,
       createdAt: true,
@@ -62,7 +64,7 @@ export async function updatePhase(
   phaseId: string,
   userId: string,
   data: UpdatePhaseRequest
-): Promise<PhaseWithDetails> {
+): Promise<PhaseListItem> {
   const phase = await validatePhaseAccess(phaseId, userId);
   if (!phase) {
     throw new Error("Phase not found or access denied");
@@ -95,6 +97,7 @@ export async function updatePhase(
       id: true,
       name: true,
       description: true,
+      status: true,
       order: true,
       featureId: true,
       createdAt: true,
@@ -132,7 +135,7 @@ export async function reorderPhases(
   featureId: string,
   userId: string,
   phases: { id: string; order: number }[]
-): Promise<PhaseWithDetails[]> {
+): Promise<PhaseListItem[]> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
     throw new Error("Feature not found or access denied");
@@ -160,6 +163,7 @@ export async function reorderPhases(
       id: true,
       name: true,
       description: true,
+      status: true,
       order: true,
       featureId: true,
       createdAt: true,

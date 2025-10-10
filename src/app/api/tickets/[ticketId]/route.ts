@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { updateTicket, deleteTicket } from "@/services/roadmap";
-import type { UpdateTicketRequest, TicketResponse } from "@/types/ticket";
+import type { UpdateTicketRequest, TicketResponse } from "@/types/roadmap";
 
 export async function PATCH(
   request: NextRequest,
@@ -37,7 +37,8 @@ export async function PATCH(
   } catch (error) {
     console.error("Error updating ticket:", error);
     const message = error instanceof Error ? error.message : "Failed to update ticket";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 :
                    message.includes("cannot be empty") || message.includes("Invalid") || message.includes("must be") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
@@ -76,7 +77,8 @@ export async function DELETE(
   } catch (error) {
     console.error("Error deleting ticket:", error);
     const message = error instanceof Error ? error.message : "Failed to delete ticket";
-    const status = message.includes("not found") || message.includes("denied") ? 403 : 500;
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

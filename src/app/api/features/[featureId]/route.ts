@@ -197,8 +197,9 @@ export async function PATCH(
   } catch (error) {
     console.error("Error updating feature:", error);
     const message = error instanceof Error ? error.message : "Failed to update feature";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("Invalid") ? 400 : 500;
+    const status = message.includes("Feature not found") ? 404 :
+                   message.includes("denied") ? 403 :
+                   message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

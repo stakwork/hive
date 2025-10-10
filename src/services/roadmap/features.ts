@@ -14,7 +14,7 @@ export async function listFeatures(
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
   if (!workspaceAccess.hasAccess) {
-    throw new Error("Workspace not found or access denied");
+    throw new Error("Access denied");
   }
 
   const skip = (page - 1) * limit;
@@ -95,7 +95,7 @@ export async function createFeature(
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
   if (!workspaceAccess.hasAccess) {
-    throw new Error("Workspace not found or access denied");
+    throw new Error("Access denied");
   }
 
   if (!data.title || !data.title.trim()) {
@@ -199,10 +199,8 @@ export async function updateFeature(
     architecture?: string | null;
   }
 ) {
-  const feature = await validateFeatureAccess(featureId, userId);
-  if (!feature) {
-    throw new Error("Feature not found or access denied");
-  }
+  // Validates access and throws specific "Feature not found" or "Access denied" errors
+  await validateFeatureAccess(featureId, userId);
 
   if (data.status && !Object.values(FeatureStatus).includes(data.status)) {
     throw new Error(

@@ -260,8 +260,113 @@ export interface ReorderUserStoriesRequest {
   userStoryIds: string[];
 }
 
+// Phase types
+export type PhaseListItem = Prisma.PhaseGetPayload<{
+  select: {
+    id: true;
+    name: true;
+    description: true;
+    status: true;
+    order: true;
+    featureId: true;
+    createdAt: true;
+    updatedAt: true;
+    _count: {
+      select: {
+        tickets: true;
+      };
+    };
+  };
+}>;
+
+export type PhaseWithDetails = Prisma.PhaseGetPayload<{
+  include: {
+    feature: {
+      select: {
+        id: true;
+        title: true;
+        workspaceId: true;
+      };
+    };
+  };
+}>;
+
+export interface CreatePhaseRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdatePhaseRequest {
+  name?: string;
+  description?: string;
+  order?: number;
+}
+
+export interface ReorderPhasesRequest {
+  phases: { id: string; order: number }[];
+}
+
+// Ticket types
+export type TicketListItem = Prisma.TicketGetPayload<{
+  select: {
+    id: true;
+    title: true;
+    description: true;
+    status: true;
+    priority: true;
+    order: true;
+    featureId: true;
+    phaseId: true;
+    createdAt: true;
+    updatedAt: true;
+    assignee: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+        image: true;
+      };
+    };
+    phase: {
+      select: {
+        id: true;
+        name: true;
+      };
+    };
+  };
+}>;
+
+export type TicketWithDetails = TicketListItem;
+
+export interface CreateTicketRequest {
+  title: string;
+  description?: string;
+  phaseId?: string | null;
+  assigneeId?: string | null;
+  status?: import("@prisma/client").TicketStatus;
+  priority?: import("@prisma/client").Priority;
+}
+
+export interface UpdateTicketRequest {
+  title?: string;
+  description?: string;
+  status?: import("@prisma/client").TicketStatus;
+  priority?: import("@prisma/client").Priority;
+  order?: number;
+  phaseId?: string | null;
+  assigneeId?: string | null;
+}
+
+export interface ReorderTicketsRequest {
+  tickets: { id: string; order: number; phaseId?: string | null }[];
+}
+
 // Response type aliases using generic types
 export type FeatureListResponse = PaginatedApiResponse<FeatureWithDetails>;
 export type FeatureResponse = ApiSuccessResponse<FeatureWithWorkspace>;
 export type UserStoryListResponse = ApiSuccessResponse<UserStoryListItem[]>;
 export type UserStoryResponse = ApiSuccessResponse<UserStoryWithDetails>;
+export type PhaseListResponse = ApiSuccessResponse<PhaseListItem[]>;
+export type PhaseResponse = ApiSuccessResponse<PhaseListItem>;
+export type TicketListResponse = ApiSuccessResponse<TicketListItem[]>;
+export type TicketResponse = ApiSuccessResponse<TicketWithDetails>;

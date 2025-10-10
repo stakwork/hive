@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { reorderTickets } from "@/services/roadmap";
-import type { ReorderTicketsRequest, TicketListResponse } from "@/types/ticket";
+import type { ReorderTicketsRequest, TicketListResponse } from "@/types/roadmap";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error reordering tickets:", error);
     const message = error instanceof Error ? error.message : "Failed to reorder tickets";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 :
                    message.includes("array") || message.includes("empty") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });

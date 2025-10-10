@@ -36,8 +36,9 @@ export async function PATCH(
   } catch (error) {
     console.error("Error updating user story:", error);
     const message = error instanceof Error ? error.message : "Failed to update user story";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("Invalid") ? 400 : 500;
+    const status = message.includes("User story not found") ? 404 :
+                   message.includes("denied") ? 403 :
+                   message.includes("Invalid") || message.includes("required") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
@@ -75,7 +76,8 @@ export async function DELETE(
   } catch (error) {
     console.error("Error deleting user story:", error);
     const message = error instanceof Error ? error.message : "Failed to delete user story";
-    const status = message.includes("not found") || message.includes("denied") ? 403 : 500;
+    const status = message.includes("User story not found") ? 404 :
+                   message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
