@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
@@ -9,13 +9,15 @@ import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import type { NextRequestWithContext } from "@/types/middleware";
+import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
-export async function GET(request: NextRequestWithContext) {
+export async function GET(request: NextRequest) {
   try {
-    const user = request.middlewareContext?.user;
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuthOrUnauthorized(context);
+    if (userOrResponse instanceof Response) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
@@ -28,7 +30,7 @@ export async function GET(request: NextRequestWithContext) {
       throw validationError("Missing required parameter: workspace");
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, user!.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
     if (!workspaceAccess.hasAccess) {
       throw forbiddenError("Workspace not found or access denied");
     }
@@ -67,7 +69,7 @@ export async function GET(request: NextRequestWithContext) {
       throw notFoundError("Workspace not found");
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(user!.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
