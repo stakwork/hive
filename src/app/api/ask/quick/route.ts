@@ -9,15 +9,15 @@ import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuthOrUnauthorized(context);
-    if (userOrResponse instanceof Response) return userOrResponse;
+  const context = getMiddlewareContext(request);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
