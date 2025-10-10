@@ -99,8 +99,15 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
-    // Landing page protection check - MUST run before public route check
-    // to prevent bypass of password gate on public routes
+    // Webhook routes - allow these to bypass all auth checks (they use their own auth like x-api-token)
+    if (routeAccess === "webhook") {
+      return continueRequest(
+        requestHeaders,
+        routeAccess
+      );
+    }
+
+    // Landing page protection check - applies to both public and protected routes
     if (isLandingPageEnabled()) {
       // Get session token to check if user is authenticated
       const token = await getToken({
@@ -136,8 +143,8 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Public/webhook routes - now safe to return early after landing check
-    if (routeAccess === "public" || routeAccess === "webhook") {
+    // Public routes - after landing page check
+    if (routeAccess === "public") {
       return continueRequest(
         requestHeaders,
         routeAccess
