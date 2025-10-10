@@ -152,7 +152,7 @@ export function KanbanView<T, S extends string>({
   const activeItem = activeId ? items.find((i) => getItemId(i) === activeId) : null;
 
   const content = (
-    <div className="w-full p-4">
+    <div className="w-full">
       {/* Mobile view - stacked columns */}
       <div className="md:hidden space-y-4">
         {columns.map((column) => {
