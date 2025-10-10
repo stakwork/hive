@@ -646,5 +646,333 @@ describe("createChatMessageAndTriggerStakwork", () => {
         })
       );
     });
+
+    test("should handle malformed STAKWORK_WORKFLOW_ID configuration", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      // Temporarily set malformed config
+      const originalWorkflowId = mockConfig.STAKWORK_WORKFLOW_ID;
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "not-a-number";
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      // Should still attempt to call Stakwork
+      expect(mockFetch).toHaveBeenCalled();
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      // With malformed config "not-a-number", split(",") gives ["not-a-number"]
+      // For default mode, uses stakworkWorkflowIds[1] || stakworkWorkflowIds[0]
+      // Since [1] is undefined, it uses [0] which is "not-a-number"
+      // parseInt("not-a-number") returns NaN
+      // JSON.stringify converts NaN to null
+      expect(payload.workflow_id).toBeNull();
+
+      // Restore config
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = originalWorkflowId;
+    });
+
+    test("should handle workspace without swarm configuration", async () => {
+      const mockTask = createMockTask({
+        workspace: {
+          id: "test-workspace-id",
+          slug: "test-workspace",
+          swarm: null,
+        },
+      });
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      expect(vars.swarmUrl).toBe("");
+      expect(vars.repo2graph_url).toBe("");
+      expect(vars.poolName).toBeNull();
+      expect(vars.swarmSecretAlias).toBeNull();
+    });
+
+    test("should handle Stakwork API returning invalid JSON", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error("Invalid JSON");
+        },
+      } as Response);
+
+      // The function should still return a result with stakworkData: null
+      // It does not throw because it catches the error and sets workflowStatus to "FAILED"
+      const result = await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(result.chatMessage).toBeDefined();
+      expect(result.stakworkData).toBeNull();
+
+      // Task should be updated to FAILED status
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "FAILED",
+        },
+      });
+    });
+
+    test("should handle contextTags with complex nested objects", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const complexContextTags = [
+        { type: "file", value: "test.js", metadata: { lines: 100, size: 1024 } },
+        { type: "feature", value: "auth", nested: { level1: { level2: "deep" } } },
+      ];
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        contextTags: complexContextTags,
+      });
+
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contextTags: JSON.stringify(complexContextTags),
+          }),
+        })
+      );
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      expect(payload.workflow_params.set_var.attributes.vars.contextTags).toEqual(complexContextTags);
+    });
+
+    test("should handle multiple attachment file paths", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const attachments = [
+        "/uploads/doc1.pdf",
+        "/uploads/doc2.png",
+        "/uploads/code/example.ts",
+      ];
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        attachments,
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      expect(payload.workflow_params.set_var.attributes.vars.attachments).toEqual(attachments);
+    });
+
+    test("should handle Stakwork response with success=false", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: false,
+          error: "Workflow validation failed",
+        }),
+      } as Response);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      // Should update task to FAILED when Stakwork returns success=false
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "FAILED",
+        },
+      });
+    });
+
+    test("should handle concurrent message sends to same task", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      // Simulate concurrent calls
+      const promise1 = sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Message 1",
+        userId: "test-user-id",
+      });
+
+      const promise2 = sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Message 2",
+        userId: "test-user-id",
+      });
+
+      await Promise.all([promise1, promise2]);
+
+      // Both messages should be created
+      expect(mockDb.chatMessage.create).toHaveBeenCalledTimes(2);
+      // Both should trigger Stakwork
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    test("should handle empty string message", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: "",
+          }),
+        })
+      );
+    });
+
+    test("should handle whitespace-only message", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "   \n\t  ",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: "   \n\t  ",
+          }),
+        })
+      );
+    });
+  });
+
+  describe("Configuration Validation", () => {
+    test("should not call Stakwork when STAKWORK_API_KEY is missing", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const originalApiKey = mockConfig.STAKWORK_API_KEY;
+      vi.mocked(mockConfig).STAKWORK_API_KEY = "";
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockDb.chatMessage.create).toHaveBeenCalled();
+
+      vi.mocked(mockConfig).STAKWORK_API_KEY = originalApiKey;
+    });
+
+    test("should not call Stakwork when STAKWORK_BASE_URL is missing", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const originalBaseUrl = mockConfig.STAKWORK_BASE_URL;
+      vi.mocked(mockConfig).STAKWORK_BASE_URL = "";
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      vi.mocked(mockConfig).STAKWORK_BASE_URL = originalBaseUrl;
+    });
+
+    test("should not call Stakwork when STAKWORK_WORKFLOW_ID is missing", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const originalWorkflowId = mockConfig.STAKWORK_WORKFLOW_ID;
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "";
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = originalWorkflowId;
+    });
+  });
+
+  describe("Database Transaction Errors", () => {
+    test("should handle task update failure after successful Stakwork call", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      
+      // Make the task update throw after successful Stakwork call
+      mockDb.task.update
+        .mockResolvedValueOnce({} as any) // First update call should succeed (not used)
+        .mockRejectedValueOnce(new Error("Database connection lost")); // Task update fails
+
+      // The function handles errors internally and doesn't re-throw update failures
+      const result = await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      // Message should be created and Stakwork should be called
+      expect(result.chatMessage).toBeDefined();
+      expect(mockDb.chatMessage.create).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalled();
+      
+      // Task update should have been attempted
+      expect(mockDb.task.update).toHaveBeenCalled();
+    });
+
+    test("should not call Stakwork if message creation fails", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockDb.chatMessage.create.mockRejectedValue(new Error("Message creation failed"));
+
+      await expect(
+        sendMessageToStakwork({
+          taskId: "test-task-id",
+          message: "Test message",
+          userId: "test-user-id",
+        })
+      ).rejects.toThrow("Message creation failed");
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 });
