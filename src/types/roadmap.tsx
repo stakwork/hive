@@ -1,4 +1,4 @@
-import type { Prisma, FeatureStatus, FeaturePriority } from "@prisma/client";
+import type { Prisma, FeatureStatus, FeaturePriority, TicketStatus } from "@prisma/client";
 import type {
   ApiSuccessResponse,
   PaginatedApiResponse,
@@ -8,7 +8,7 @@ import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
-export type { FeatureStatus, FeaturePriority };
+export type { FeatureStatus, FeaturePriority, TicketStatus };
 
 // Feature status labels
 export const FEATURE_STATUS_LABELS: Record<FeatureStatus, string> = {
@@ -66,6 +66,22 @@ export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
     bgColor: "bg-red-50/30 dark:bg-red-950/10",
   },
 ];
+
+// Ticket status labels
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  TODO: "To Do",
+  IN_PROGRESS: "In Progress",
+  DONE: "Done",
+  BLOCKED: "Blocked",
+};
+
+// Ticket status colors for badges
+export const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {
+  TODO: "bg-gray-100 text-gray-700",
+  IN_PROGRESS: "bg-amber-50 text-amber-700",
+  DONE: "bg-green-50 text-green-700",
+  BLOCKED: "bg-red-50 text-red-700",
+};
 
 // Feature with relations (matches GET /api/features list query)
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
@@ -128,6 +144,91 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
         completed: true;
         createdAt: true;
         updatedAt: true;
+      };
+    };
+    phases: {
+      select: {
+        id: true;
+        name: true;
+        description: true;
+        status: true;
+        order: true;
+        featureId: true;
+        createdAt: true;
+        updatedAt: true;
+        _count: {
+          select: {
+            tickets: true;
+          };
+        };
+        tickets: {
+          select: {
+            id: true;
+            title: true;
+            description: true;
+            status: true;
+            priority: true;
+            order: true;
+            featureId: true;
+            phaseId: true;
+            createdAt: true;
+            updatedAt: true;
+            assignee: {
+              select: {
+                id: true;
+                name: true;
+                email: true;
+                image: true;
+              };
+            };
+            phase: {
+              select: {
+                id: true;
+                name: true;
+              };
+            };
+          };
+          orderBy: {
+            order: "asc";
+          };
+        };
+      };
+      orderBy: {
+        order: "asc";
+      };
+    };
+    tickets: {
+      where: {
+        phaseId: null;
+      };
+      select: {
+        id: true;
+        title: true;
+        description: true;
+        status: true;
+        priority: true;
+        order: true;
+        featureId: true;
+        phaseId: true;
+        createdAt: true;
+        updatedAt: true;
+        assignee: {
+          select: {
+            id: true;
+            name: true;
+            email: true;
+            image: true;
+          };
+        };
+        phase: {
+          select: {
+            id: true;
+            name: true;
+          };
+        };
+      };
+      orderBy: {
+        order: "asc";
       };
     };
   };

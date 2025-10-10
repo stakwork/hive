@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/item";
 import { StatusPopover } from "@/components/features/StatusPopover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { PhasesAndTicketsSection } from "@/components/features/PhasesAndTicketsSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { FeatureDetail } from "@/types/roadmap";
 
@@ -738,6 +739,36 @@ export default function FeatureDetailPage() {
               onBlur={(e) => handleFieldBlur("architecture", e.target.value || null)}
               rows={8}
               className="resize-y font-mono text-sm min-h-[200px]"
+            />
+          </div>
+
+          <Separator />
+
+          {/* Phases & Tickets */}
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium">Phases & Tickets</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Organize implementation work into phases with specific tickets.
+              </p>
+            </div>
+
+            <PhasesAndTicketsSection
+              featureId={feature.id}
+              workspaceSlug={workspaceSlug}
+              phases={feature.phases || []}
+              unassignedTickets={feature.tickets || []}
+              onUpdate={() => {
+                fetch(`/api/features/${featureId}`)
+                  .then((res) => res.json())
+                  .then((result) => {
+                    if (result.success) {
+                      setFeature(result.data);
+                      originalFeatureRef.current = result.data;
+                    }
+                  })
+                  .catch(console.error);
+              }}
             />
           </div>
         </CardContent>
