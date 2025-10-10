@@ -1,75 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@/lib/chat";
-
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const userId = request.headers.get("x-middleware-user-id");
+    const workspaceId = request.headers.get("x-middleware-workspace-id");
+
+    if (!userId || !workspaceId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const workspaceId = searchParams.get("workspaceId");
-
-    if (!workspaceId) {
-      return NextResponse.json(
-        { error: "workspaceId query parameter is required" },
-        { status: 400 },
-      );
-    }
-
-    // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        deleted: false,
-      },
-      select: {
-        id: true,
-        ownerId: true,
-        members: {
-          where: {
-            userId: userId,
-          },
-          select: {
-            role: true,
-          },
-        },
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
-    }
-
-    // Check if user is workspace owner or member
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
-
     // Get task statistics
-    const [
-      totalCount,
-      inProgressCount,
-      waitingForInputCount,
-    ] = await Promise.all([
+    const [totalCount, inProgressCount, waitingForInputCount] = await Promise.all([
       // Total tasks
       db.task.count({
         where: {
@@ -119,9 +61,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error fetching task statistics:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch task statistics" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch task statistics" }, { status: 500 });
   }
 }

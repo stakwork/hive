@@ -1,7 +1,4 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { validateWorkspaceAccess } from "@/services/workspace";
-import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -12,90 +9,53 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Unauthorized"
-      }, { status: 401 });
+    const userId = request.headers.get("x-middleware-user-id");
+    const workspaceId = request.headers.get("x-middleware-workspace-id");
+    if (!userId || !workspaceId) {
+      return NextResponse.json(
+        {
+          canFetchData: false,
+          error: "Unauthorized",
+        },
+        { status: 401 },
+      );
     }
-
     const { searchParams } = new URL(request.url);
-    const workspaceSlug = searchParams.get("workspaceSlug");
     const repositoryUrl = searchParams.get("repositoryUrl");
-
-    if (!workspaceSlug) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Missing required parameter: workspaceSlug"
-      }, { status: 400 });
-    }
-
-    // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
-    if (!workspaceAccess.hasAccess) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Workspace not found or access denied"
-      }, { status: 403 });
-    }
-
-    // Get workspace
-    const { db } = await import("@/lib/db");
-    const workspace = await db.workspace.findUnique({
-      where: { slug: workspaceSlug },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Workspace not found"
-      }, { status: 404 });
-    }
-
-    // Use repositoryUrl parameter first, fall back to primary repository
-    let repoUrl: string | null = repositoryUrl;
+    const repoUrl: string | null = repositoryUrl;
     if (!repoUrl) {
-      const { getPrimaryRepository } = await import("@/lib/helpers/repository");
-      const primaryRepo = await getPrimaryRepository(workspace.id);
-      repoUrl = primaryRepo?.repositoryUrl ?? null;
+      return NextResponse.json(
+        {
+          canFetchData: false,
+          error: "Missing required parameter: repositoryUrl",
+        },
+        { status: 400 },
+      );
     }
-
-    if (!repoUrl) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "No repository URL provided in parameter or workspace configuration"
-      }, { status: 400 });
-    }
-
-    console.log("[REPO CHECK] Starting repository data fetch check:", {
-      userId: session.user.id,
-      workspaceSlug,
-      repositoryUrl: repoUrl,
-      source: repositoryUrl ? "parameter" : "primary_repository",
-    });
-
-    // Extract owner and repo name from repository URL
-    const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    const githubMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
     if (!githubMatch) {
-      console.error("[REPO CHECK] Invalid GitHub repository URL:", repoUrl);
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Invalid GitHub repository URL"
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          canFetchData: false,
+          error: "Invalid GitHub repository URL",
+        },
+        { status: 400 },
+      );
     }
-
     const [, owner, repo] = githubMatch;
     console.log("[REPO CHECK] Parsed repository:", { owner, repo });
 
     // Get access token for the specific GitHub owner
-    const tokens = await getUserAppTokens(session.user.id, owner);
+    const tokens = await getUserAppTokens(userId, owner);
     if (!tokens?.accessToken) {
-      console.error("[REPO CHECK] No access token available for user:", session.user.id, "and owner:", owner);
-      return NextResponse.json({
-        canFetchData: false,
-        error: "No GitHub App tokens found for this repository owner"
-      }, { status: 200 });
+      console.error("[REPO CHECK] No access token available for user:", userId, "and owner:", owner);
+      return NextResponse.json(
+        {
+          canFetchData: false,
+          error: "No GitHub App tokens found for this repository owner",
+        },
+        { status: 200 },
+      );
     }
 
     console.log("[REPO CHECK] Successfully retrieved access token");
@@ -128,11 +88,14 @@ export async function GET(request: Request) {
         errorMessage = "Authentication failed - invalid token";
       }
 
-      return NextResponse.json({
-        canFetchData: false,
-        error: errorMessage,
-        httpStatus: response.status
-      }, { status: 200 });
+      return NextResponse.json(
+        {
+          canFetchData: false,
+          error: errorMessage,
+          httpStatus: response.status,
+        },
+        { status: 200 },
+      );
     }
 
     const repoData = await response.json();
@@ -181,25 +144,30 @@ export async function GET(request: Request) {
 
     console.log("[REPO CHECK] Final result: Repository data can be fetched successfully");
 
-    return NextResponse.json({
-      canFetchData: true,
-      hasPushAccess,
-      repositoryInfo: {
-        name: repoData.name,
-        full_name: repoData.full_name,
-        private: repoData.private,
-        default_branch: repoData.default_branch,
-        permissions: repoData.permissions,
+    return NextResponse.json(
+      {
+        canFetchData: true,
+        hasPushAccess,
+        repositoryInfo: {
+          name: repoData.name,
+          full_name: repoData.full_name,
+          private: repoData.private,
+          default_branch: repoData.default_branch,
+          permissions: repoData.permissions,
+        },
+        canReadCommits,
+        message: "GitHub App can successfully fetch repository data",
       },
-      canReadCommits,
-      message: "GitHub App can successfully fetch repository data"
-    }, { status: 200 });
-
+      { status: 200 },
+    );
   } catch (error) {
     console.error("[REPO CHECK] Error during repository data fetch check:", error);
-    return NextResponse.json({
-      canFetchData: false,
-      error: "Internal server error during repository check"
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        canFetchData: false,
+        error: "Internal server error during repository check",
+      },
+      { status: 500 },
+    );
   }
 }
