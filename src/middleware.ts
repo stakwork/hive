@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import {
-  MIDDLEWARE_HEADERS,
-  resolveRouteAccess,
-} from "@/config/middleware";
-import {
-  verifyCookie,
-  isLandingPageEnabled,
-  LANDING_COOKIE_NAME,
-} from "@/lib/auth/landing-cookie";
-
+import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
+import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
+import type { ApiError } from "@/types/errors";
 // Environment validation - fail fast if required secrets are missing
 if (!process.env.NEXTAUTH_SECRET) {
-  throw new Error('NEXTAUTH_SECRET is required for middleware authentication');
+  throw new Error("NEXTAUTH_SECRET is required for middleware authentication");
 }
 
 // Generate a unique request ID for tracing using crypto API when available
@@ -57,25 +50,17 @@ function continueRequest(headers: Headers, authStatus: string) {
 
 function respondWithJson(
   body: Record<string, unknown>,
-  {
-    status,
-    requestId,
-    authStatus,
-  }: { status: number; requestId: string; authStatus: string }
+  { status, requestId, authStatus }: { status: number; requestId: string; authStatus: string },
 ) {
   const response = NextResponse.json(body, { status });
   response.headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
   response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, authStatus);
   return response;
 }
-
 function redirectTo(
   destination: string,
   request: NextRequest,
-  {
-    requestId,
-    authStatus,
-  }: { requestId: string; authStatus: string }
+  { requestId, authStatus }: { requestId: string; authStatus: string },
 ) {
   const url = new URL(destination, request.url);
   const response = NextResponse.redirect(url);
@@ -84,116 +69,65 @@ function redirectTo(
   return response;
 }
 
+function respondWithApiError(error: ApiError, requestId: string, authStatus: string) {
+  return respondWithJson(
+    { error: error.message, kind: error.kind, details: error.details },
+    { status: error.statusCode, requestId, authStatus },
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const requestId = generateRequestId();
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith("/api");
   const routeAccess = resolveRouteAccess(pathname);
 
-  // Clone the request headers
   const requestHeaders = new Headers(request.headers);
-
   sanitizeMiddlewareHeaders(requestHeaders);
-
-  // Add request ID to all requests
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
-    // Webhook routes - allow these to bypass all auth checks (they use their own auth like x-api-token)
     if (routeAccess === "webhook") {
-      return continueRequest(
-        requestHeaders,
-        routeAccess
-      );
+      return continueRequest(requestHeaders, routeAccess);
     }
 
-    // Landing page protection check - applies to both public and protected routes
     if (isLandingPageEnabled()) {
-      // Get session token to check if user is authenticated
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET,
-      });
-
-      // Check for landing verification cookie
+      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
       const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
-      const hasValidCookie = landingCookie && await verifyCookie(landingCookie.value);
-
-      // No cookie AND no session - must verify at landing page first
+      const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
       if (!hasValidCookie && !token) {
-        // Allow root path to render landing page
         if (pathname === "/") {
           return continueRequest(requestHeaders, "landing_required");
         }
-
-        // Allow landing verification API to work
         if (pathname === "/api/auth/verify-landing") {
           return continueRequest(requestHeaders, "landing_required");
         }
-
-        // Redirect everything else to landing page
-        return redirectTo(
-          "/",
-          request,
-          {
-            requestId,
-            authStatus: "landing_required",
-          }
-        );
+        return redirectTo("/", request, { requestId, authStatus: "landing_required" });
       }
     }
 
-    // Public routes - after landing page check
     if (routeAccess === "public") {
-      return continueRequest(
-        requestHeaders,
-        routeAccess
-      );
+      return continueRequest(requestHeaders, routeAccess);
     }
 
-    // Get the session token (or reuse if already fetched above)
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
-
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     if (!token) {
       if (isApiRoute) {
-        return respondWithJson(
-          { error: "Unauthorized" },
-          {
-            status: 401,
-            requestId,
-            authStatus: "unauthorized",
-          }
-        );
+        return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
       }
-
-      return redirectTo(
-        "/",
-        request,
-        {
-          requestId,
-          authStatus: "unauthenticated",
-        }
-      );
+      return redirectTo("/", request, { requestId, authStatus: "unauthenticated" });
     } else {
-      // Valid session - attach user information to headers using type-safe extraction
       requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
-
-      // If using database sessions, the token might have additional data
-      // This will be expanded in later phases
     }
 
-    // Pass the modified request to the route handler
     return continueRequest(requestHeaders, "authenticated");
   } catch (error) {
-    console.error(`[Middleware] Error processing request ${requestId}:`, error);
-    
-    // On error, allow the request to proceed but mark it
+    if (isApiRoute && typeof error === "object" && error && "kind" in error && "statusCode" in error) {
+      return respondWithApiError(error as ApiError, requestId, "error");
+    }
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_ID);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_EMAIL);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_NAME);
