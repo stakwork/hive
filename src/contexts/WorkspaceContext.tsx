@@ -14,6 +14,10 @@ import {
   useEffect,
   useState,
 } from "react";
+import {
+  LAST_WORKSPACE_COOKIE,
+  LAST_WORKSPACE_COOKIE_MAX_AGE,
+} from "@/lib/constants";
 
 // Context shape as specified in the requirements
 interface WorkspaceContextType {
@@ -52,6 +56,18 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
 interface WorkspaceProviderProps {
   children: ReactNode;
   initialSlug?: string; // Allow setting initial workspace from URL or props
+}
+
+function persistLastWorkspaceSlug(slug: string) {
+  if (typeof document === "undefined" || !slug) {
+    return;
+  }
+
+  const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+
+  document.cookie = `${LAST_WORKSPACE_COOKIE}=${encodeURIComponent(
+    slug,
+  )}; Path=/; Max-Age=${LAST_WORKSPACE_COOKIE_MAX_AGE}; SameSite=Lax${secureFlag}`;
 }
 
 export function WorkspaceProvider({
@@ -155,6 +171,9 @@ export function WorkspaceProvider({
   // Switch to a different workspace - SIMPLIFIED to only handle navigation
   const switchWorkspace = useCallback(
     (targetWorkspace: WorkspaceWithRole) => {
+      // Persist last accessed workspace in cookie for future sessions
+      persistLastWorkspaceSlug(targetWorkspace.slug);
+
       // Update URL to reflect the new workspace
       const currentPath = pathname.replace(/^\/w\/[^\/]+/, "") || "";
       const newPath = `/w/${targetWorkspace.slug}${currentPath}`;
@@ -218,6 +237,9 @@ export function WorkspaceProvider({
 
           setWorkspace(data.workspace);
           setCurrentLoadedSlug(currentSlug); // Track the loaded slug
+
+          // Persist last accessed workspace in cookie for future sessions
+          persistLastWorkspaceSlug(currentSlug);
 
           // Fetch task notifications for this workspace
           await fetchTaskNotifications(currentSlug);

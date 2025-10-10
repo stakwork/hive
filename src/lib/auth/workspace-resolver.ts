@@ -4,6 +4,8 @@ import {
 } from "@/services/workspace";
 import { Session } from "next-auth";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { LAST_WORKSPACE_COOKIE } from "@/lib/constants";
 
 export interface WorkspaceResolutionResult {
   shouldRedirect: boolean;
@@ -42,7 +44,27 @@ export async function resolveUserWorkspaceRedirect(
       };
     }
 
-    if (userWorkspaces.length === 1) {
+    const cookieStore = cookies();
+    const lastWorkspaceCookie = cookieStore.get(LAST_WORKSPACE_COOKIE)?.value;
+    const workspaceCount = userWorkspaces.length;
+
+    if (lastWorkspaceCookie) {
+      const decodedSlug = decodeURIComponent(lastWorkspaceCookie);
+      const hasAccess = userWorkspaces.some(
+        (workspace) => workspace.slug === decodedSlug,
+      );
+
+      if (hasAccess) {
+        return {
+          shouldRedirect: true,
+          redirectUrl: `/w/${decodedSlug}`,
+          workspaceCount,
+          defaultWorkspaceSlug: decodedSlug,
+        };
+      }
+    }
+
+    if (workspaceCount === 1) {
       // User has exactly one workspace - redirect to it
       const workspace = userWorkspaces[0];
       return {
@@ -60,7 +82,7 @@ export async function resolveUserWorkspaceRedirect(
       return {
         shouldRedirect: true,
         redirectUrl: `/w/${defaultWorkspace.slug}`,
-        workspaceCount: userWorkspaces.length,
+        workspaceCount,
         defaultWorkspaceSlug: defaultWorkspace.slug,
       };
     }
@@ -70,7 +92,7 @@ export async function resolveUserWorkspaceRedirect(
     return {
       shouldRedirect: true,
       redirectUrl: `/w/${fallbackWorkspace.slug}`,
-      workspaceCount: userWorkspaces.length,
+      workspaceCount,
       defaultWorkspaceSlug: fallbackWorkspace.slug,
     };
   } catch (error) {
