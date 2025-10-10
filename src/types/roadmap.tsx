@@ -3,6 +3,7 @@ import type {
   ApiSuccessResponse,
   PaginatedApiResponse,
 } from "./common";
+import React from "react";
 import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
