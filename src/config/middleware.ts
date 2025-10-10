@@ -9,7 +9,7 @@ export const MIDDLEWARE_HEADERS = {
   AUTH_STATUS: "x-middleware-auth-status",
 } as const;
 
-export type RouteAccess = "public" | "webhook" | "protected";
+export type RouteAccess = "public" | "webhook" | "system" | "protected";
 export type RouteMatchStrategy = "exact" | "prefix" | "pattern";
 
 export interface RoutePolicy {
@@ -23,7 +23,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/auth", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
   { path: "/api/auth", strategy: "prefix", access: "public" },
-  { path: "/api/cron", strategy: "prefix", access: "public" },
+  { path: "/api/cron", strategy: "prefix", access: "system" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
   { path: "/api/github/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/stakwork/webhook", strategy: "prefix", access: "webhook" },

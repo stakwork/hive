@@ -87,10 +87,12 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
-    if (routeAccess === "webhook") {
+    // System and webhook routes bypass all authentication checks
+    if (routeAccess === "webhook" || routeAccess === "system") {
       return continueRequest(requestHeaders, routeAccess);
     }
 
+    // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
       const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
       const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
@@ -106,6 +108,7 @@ export async function middleware(request: NextRequest) {
       }
     }
 
+    // Public routes (auth pages, onboarding) - accessible after landing page check
     if (routeAccess === "public") {
       return continueRequest(requestHeaders, routeAccess);
     }
