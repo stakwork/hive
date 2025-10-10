@@ -8,7 +8,10 @@ export interface CreateTestTaskOptions {
   workspaceId: string;
   createdById: string;
   assigneeId?: string;
+  repositoryId?: string;
   status?: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
+  priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  workflowStatus?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
   sourceType?: "USER" | "JANITOR" | "SYSTEM";
 }
 
@@ -31,7 +34,10 @@ export async function createTestTask(
       createdById: options.createdById,
       updatedById: options.createdById, // Required field
       assigneeId: options.assigneeId || null,
+      repositoryId: options.repositoryId || null,
       status: options.status || "TODO",
+      priority: options.priority || "MEDIUM",
+      workflowStatus: options.workflowStatus || "PENDING",
       sourceType: options.sourceType || "USER",
     },
   });

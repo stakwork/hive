@@ -182,11 +182,15 @@ export async function GET(request: NextRequest) {
       }
 
       // Return task with hasActionArtifact flag, removing chatMessages array to keep response clean
-      const { chatMessages, ...taskWithoutMessages } = task;
-      return {
-        ...taskWithoutMessages,
-        hasActionArtifact,
-      };
+      if (includeLatestMessage) {
+        const { chatMessages, ...taskWithoutMessages } = task;
+        return {
+          ...taskWithoutMessages,
+          hasActionArtifact,
+        };
+      }
+      
+      return task;
     });
 
     return NextResponse.json(
