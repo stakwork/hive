@@ -137,3 +137,11 @@ export async function middleware(request: NextRequest) {
     return continueRequest(requestHeaders, "error");
   }
 }
+
+// Configure which routes the middleware should run on
+export const config = {
+  matcher: [
+    // Apply to all routes except Next.js internals
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
+};
