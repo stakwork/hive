@@ -44,8 +44,8 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center space-y-8">
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center space-y-6">
           <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
             <img src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
           </div>
@@ -54,7 +54,7 @@ export default function LandingPage() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Welcome to Hive</h1>
           </div>
 
-          <form onSubmit={handleSubmit} className="w-full space-y-4">
+          <form onSubmit={handleSubmit} className="w-full space-y-3">
             <div className="space-y-2">
               <Input
                 type="password"
@@ -64,7 +64,6 @@ export default function LandingPage() {
                 disabled={isLoading}
                 autoFocus
                 required
-                className="h-12 text-base"
               />
             </div>
 
@@ -74,7 +73,7 @@ export default function LandingPage() {
               </Alert>
             )}
 
-            <Button type="submit" disabled={isLoading || !password} className="w-full h-12 text-base">
+            <Button type="submit" disabled={isLoading || !password} className="w-full">
               {isLoading ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
