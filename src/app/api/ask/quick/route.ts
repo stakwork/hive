@@ -15,7 +15,11 @@ type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequestWithContext) {
   try {
-    const user = request.middlewareContext?.user;
+    const user = request.middlewareContext.user;
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
@@ -28,7 +32,7 @@ export async function GET(request: NextRequestWithContext) {
       throw validationError("Missing required parameter: workspace");
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, user!.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, user.id);
     if (!workspaceAccess.hasAccess) {
       throw forbiddenError("Workspace not found or access denied");
     }
@@ -67,7 +71,7 @@ export async function GET(request: NextRequestWithContext) {
       throw notFoundError("Workspace not found");
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(user!.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(user.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
