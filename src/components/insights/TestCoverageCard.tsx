@@ -11,7 +11,7 @@ import { useCoverageStore } from "@/stores/useCoverageStore";
 
 export function TestCoverageCard() {
   const { id: workspaceId } = useWorkspace();
-  const { ignoreDirs, setIgnoreDirs } = useCoverageStore();
+  const { ignoreDirs, setIgnoreDirs, repo } = useCoverageStore();
   const [data, setData] = useState<TestCoverageData | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
@@ -31,6 +31,9 @@ export function TestCoverageCard() {
       const params = new URLSearchParams({ workspaceId });
       if (hasInitializedIgnoreDirs.current && ignoreDirs) {
         params.set("ignoreDirs", ignoreDirs);
+      }
+      if (repo) {
+        params.set("repo", repo);
       }
 
       const response = await fetch(`/api/tests/coverage?${params.toString()}`);
@@ -55,11 +58,11 @@ export function TestCoverageCard() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId, ignoreDirs, setIgnoreDirs]);
+  }, [workspaceId, ignoreDirs, repo, setIgnoreDirs]);
 
   useEffect(() => {
     fetchTestCoverage();
-  }, [workspaceId, ignoreDirs, fetchTestCoverage]);
+  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage]);
 
   if (isLoading) {
     return (
