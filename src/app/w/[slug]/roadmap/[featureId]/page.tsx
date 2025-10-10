@@ -106,9 +106,12 @@ export default function FeatureDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeField, setActiveField] = useState<string | null>(null); // Track which field is being edited
+  const [unsavedWarning, setUnsavedWarning] = useState(false);
 
   // Track original feature values for comparison
   const originalFeatureRef = useRef<FeatureDetail | null>(null);
+  const unsavedTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
@@ -157,6 +160,12 @@ export default function FeatureDetailPage() {
   const updateFeature = async (updates: Partial<FeatureDetail> & { assigneeId?: string | null }) => {
     try {
       setSaving(true);
+      // Clear unsaved timer when saving starts
+      if (unsavedTimerRef.current) {
+        clearTimeout(unsavedTimerRef.current);
+      }
+      setUnsavedWarning(false);
+
       const response = await fetch(`/api/features/${featureId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -175,7 +184,10 @@ export default function FeatureDetailPage() {
 
         // Show "Saved" indicator
         setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+        setTimeout(() => {
+          setSaved(false);
+          setActiveField(null);
+        }, 2000);
       }
     } catch (error) {
       console.error("Failed to update feature:", error);
@@ -192,12 +204,75 @@ export default function FeatureDetailPage() {
     }
   };
 
+  const handleFieldChange = (field: string) => {
+    // Set active field for textarea edits
+    if (field === 'brief' || field === 'requirements' || field === 'architecture') {
+      setActiveField(field);
+    } else {
+      setActiveField('general'); // For title, status, assignee
+    }
+
+    // Clear any existing timer
+    if (unsavedTimerRef.current) {
+      clearTimeout(unsavedTimerRef.current);
+    }
+
+    // Clear saved state
+    setSaved(false);
+    setUnsavedWarning(false);
+
+    // Set timer to show warning after 2.5 seconds
+    unsavedTimerRef.current = setTimeout(() => {
+      setUnsavedWarning(true);
+    }, 2500);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (unsavedTimerRef.current) {
+        clearTimeout(unsavedTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
+    setActiveField('general');
     await updateFeature({ status });
   };
 
   const handleUpdateAssignee = async (assigneeId: string | null) => {
+    setActiveField('general');
     await updateFeature({ assigneeId });
+  };
+
+  // Save indicator component
+  const SaveIndicator = ({ field }: { field: string }) => {
+    const isActive = activeField === field;
+    if (!isActive) return null;
+
+    return (
+      <span className="ml-2 inline-flex items-center gap-1.5 text-xs">
+        {saving && (
+          <>
+            <Loader2 className="h-3 w-3 text-blue-600 animate-spin" />
+            <span className="text-muted-foreground">Saving...</span>
+          </>
+        )}
+        {!saving && saved && (
+          <>
+            <Check className="h-3 w-3 text-green-600" />
+            <span className="text-green-600">Saved</span>
+          </>
+        )}
+        {!saving && !saved && unsavedWarning && (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-yellow-600" />
+            <span className="text-yellow-600">Unsaved</span>
+          </>
+        )}
+      </span>
+    );
   };
 
   const handleAddUserStory = async () => {
@@ -464,18 +539,6 @@ export default function FeatureDetailPage() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Roadmap
         </Button>
-        {saving && (
-          <span className="text-sm text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Saving...
-          </span>
-        )}
-        {!saving && saved && (
-          <span className="text-sm text-green-600 flex items-center gap-2">
-            <Check className="h-3 w-3" />
-            Saved
-          </span>
-        )}
       </div>
 
       {/* Feature Details Card */}
@@ -483,14 +546,42 @@ export default function FeatureDetailPage() {
         <CardHeader>
           <div className="space-y-4">
             {/* Title - inline editable */}
-            <Input
-              id="title"
-              value={feature.title}
-              onChange={(e) => setFeature({ ...feature, title: e.target.value })}
-              onBlur={(e) => handleFieldBlur("title", e.target.value)}
-              className="!text-5xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none"
-              placeholder="Enter feature title..."
-            />
+            <div className="flex items-center gap-3">
+              <Input
+                id="title"
+                value={feature.title}
+                onChange={(e) => {
+                  setFeature({ ...feature, title: e.target.value });
+                  handleFieldChange('title');
+                }}
+                onBlur={(e) => handleFieldBlur("title", e.target.value)}
+                className="!text-5xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none flex-1"
+                placeholder="Enter feature title..."
+              />
+              {/* Save indicator for general edits (title, status, assignee) */}
+              {activeField === 'general' && (
+                <div className="flex items-center gap-2 text-sm flex-shrink-0">
+                  {saving && (
+                    <>
+                      <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                      <span className="text-muted-foreground">Saving...</span>
+                    </>
+                  )}
+                  {!saving && saved && (
+                    <>
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="text-green-600">Saved</span>
+                    </>
+                  )}
+                  {!saving && !saved && unsavedWarning && (
+                    <>
+                      <span className="h-2 w-2 rounded-full bg-yellow-600" />
+                      <span className="text-yellow-600">Unsaved</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Status & Assignee */}
             <div className="flex flex-wrap items-center gap-4">
@@ -517,9 +608,12 @@ export default function FeatureDetailPage() {
         <CardContent className="space-y-6">
           {/* Brief */}
           <div className="space-y-2">
-            <Label htmlFor="brief" className="text-sm font-medium">
-              Brief
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="brief" className="text-sm font-medium">
+                Brief
+              </Label>
+              <SaveIndicator field="brief" />
+            </div>
             <p className="text-sm text-muted-foreground">
               High-level overview of what this feature is and why it matters.
             </p>
@@ -527,7 +621,10 @@ export default function FeatureDetailPage() {
               id="brief"
               placeholder="Type your brief here..."
               value={feature.brief || ""}
-              onChange={(e) => setFeature({ ...feature, brief: e.target.value })}
+              onChange={(e) => {
+                setFeature({ ...feature, brief: e.target.value });
+                handleFieldChange('brief');
+              }}
               onBlur={(e) => handleFieldBlur("brief", e.target.value || null)}
               rows={4}
               className="resize-none"
@@ -596,9 +693,12 @@ export default function FeatureDetailPage() {
 
           {/* Requirements */}
           <div className="space-y-2">
-            <Label htmlFor="requirements" className="text-sm font-medium">
-              Requirements
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="requirements" className="text-sm font-medium">
+                Requirements
+              </Label>
+              <SaveIndicator field="requirements" />
+            </div>
             <p className="text-sm text-muted-foreground">
               Functional and technical specifications for implementation.
             </p>
@@ -606,7 +706,10 @@ export default function FeatureDetailPage() {
               id="requirements"
               placeholder="Type your requirements here..."
               value={feature.requirements || ""}
-              onChange={(e) => setFeature({ ...feature, requirements: e.target.value })}
+              onChange={(e) => {
+                setFeature({ ...feature, requirements: e.target.value });
+                handleFieldChange('requirements');
+              }}
               onBlur={(e) => handleFieldBlur("requirements", e.target.value || null)}
               rows={8}
               className="resize-y font-mono text-sm min-h-[200px]"
@@ -615,9 +718,12 @@ export default function FeatureDetailPage() {
 
           {/* Architecture */}
           <div className="space-y-2">
-            <Label htmlFor="architecture" className="text-sm font-medium">
-              Architecture
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="architecture" className="text-sm font-medium">
+                Architecture
+              </Label>
+              <SaveIndicator field="architecture" />
+            </div>
             <p className="text-sm text-muted-foreground">
               Technical design decisions and implementation approach.
             </p>
@@ -625,7 +731,10 @@ export default function FeatureDetailPage() {
               id="architecture"
               placeholder="Type your architecture here..."
               value={feature.architecture || ""}
-              onChange={(e) => setFeature({ ...feature, architecture: e.target.value })}
+              onChange={(e) => {
+                setFeature({ ...feature, architecture: e.target.value });
+                handleFieldChange('architecture');
+              }}
               onBlur={(e) => handleFieldBlur("architecture", e.target.value || null)}
               rows={8}
               className="resize-y font-mono text-sm min-h-[200px]"
