@@ -225,7 +225,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             <span>Features</span>
             <span className="font-normal text-sm text-muted-foreground">Loading...</span>
           </CardTitle>
-          <CardDescription>Your product roadmap features and their current status</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4">
@@ -351,7 +350,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             </ToggleGroup>
           </div>
         </CardTitle>
-        <CardDescription>Your product roadmap features and their current status</CardDescription>
       </CardHeader>
       <CardContent>
         {!isCreating && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Calendar, User } from "lucide-react";
+import { Calendar, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -40,20 +40,14 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
       </div>
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Avatar className="size-5">
-            <AvatarImage src={feature.createdBy.image || undefined} />
-            <AvatarFallback className="text-xs">
-              <User className="w-3 h-3" />
-            </AvatarFallback>
-          </Avatar>
-          <span>
-            {feature.createdBy.name || feature.createdBy.email}
-          </span>
-        </div>
         {feature.assignee && (
-          <div className="flex items-center gap-1">
-            <Users className="w-3 h-3" />
+          <div className="flex items-center gap-2">
+            <Avatar className="size-5">
+              <AvatarImage src={feature.assignee.image || undefined} />
+              <AvatarFallback className="text-xs">
+                <User className="w-3 h-3" />
+              </AvatarFallback>
+            </Avatar>
             <span>{feature.assignee.name || feature.assignee.email}</span>
           </div>
         )}
