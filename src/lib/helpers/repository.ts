@@ -17,7 +17,6 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
           repositoryUrl: true,
           ignoreDirs: true,
           name: true,
-          description: true,
           branch: true,
         },
         orderBy: { createdAt: "asc" },
@@ -25,7 +24,7 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
     },
   });
 
-  if (!workspace || workspace.repositories.length === 0) {
+  if (!workspace?.repositories || workspace.repositories.length === 0) {
     return null;
   }
 
@@ -36,7 +35,6 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
     repositoryUrl: primaryRepo.repositoryUrl,
     ignoreDirs: primaryRepo.ignoreDirs,
     name: primaryRepo.name,
-    description: primaryRepo.description,
     branch: primaryRepo.branch,
   };
 }

@@ -537,7 +537,7 @@ export default function FeatureDetailPage() {
               id="brief"
               placeholder="Type your brief here..."
               value={feature.brief || ""}
-              onChange={(e) => setFeature({ ...feature, brief: e.target.value })}
+              onChange={(e) => setFeature({ ...feature!, brief: e.target.value })}
               onBlur={(e) => handleFieldBlur("brief", e.target.value || null)}
               rows={4}
               className="resize-none"
@@ -616,7 +616,7 @@ export default function FeatureDetailPage() {
               id="requirements"
               placeholder="Type your requirements here..."
               value={feature.requirements || ""}
-              onChange={(e) => setFeature({ ...feature, requirements: e.target.value })}
+              onChange={(e) => setFeature({ ...feature!, requirements: e.target.value })}
               onBlur={(e) => handleFieldBlur("requirements", e.target.value || null)}
               rows={8}
               className="resize-y font-mono text-sm min-h-[200px]"
@@ -635,7 +635,7 @@ export default function FeatureDetailPage() {
               id="architecture"
               placeholder="Type your architecture here..."
               value={feature.architecture || ""}
-              onChange={(e) => setFeature({ ...feature, architecture: e.target.value })}
+              onChange={(e) => setFeature({ ...feature!, architecture: e.target.value })}
               onBlur={(e) => handleFieldBlur("architecture", e.target.value || null)}
               rows={8}
               className="resize-y font-mono text-sm min-h-[200px]"

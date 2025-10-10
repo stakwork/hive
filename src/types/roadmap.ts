@@ -75,7 +75,20 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
 
 // Feature with workspace (matches POST /api/features response)
 export type FeatureWithWorkspace = Prisma.FeatureGetPayload<{
-  include: {
+  select: {
+    id: true;
+    title: true;
+    brief: true;
+    requirements: true;
+    architecture: true;
+    status: true;
+    priority: true;
+    createdAt: true;
+    updatedAt: true;
+    workspaceId: true;
+    assigneeId: true;
+    createdById: true;
+    updatedById: true;
     assignee: {
       select: {
         id: true;
