@@ -335,13 +335,7 @@ export function BrowserArtifactPanel({
               )}
               {showActions && (
                 <div
-                  className={`fixed top-20 z-40 w-72 sm:w-80 transition-all duration-300 ease-in-out ${
-                    viewContext === "task"
-                      ? "left-2 sm:left-4"
-                      : viewContext === "user-journeys"
-                      ? "left-2 sm:left-4 md:left-64"
-                      : "left-2 sm:left-4"
-                  }`}
+                  className="fixed top-0 left-0 bottom-0 z-40 w-72 transition-all duration-300 ease-in-out"
                   data-view-context={viewContext}
                 >
                   <ActionsList
