@@ -104,6 +104,10 @@ export const WORKSPACE_SLUG_PATTERNS = {
   MAX_LENGTH: 50,
 } as const;
 
+// Workspace navigation cookies
+export const LAST_WORKSPACE_COOKIE = "lastWorkspaceSlug";
+export const LAST_WORKSPACE_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+
 import { WorkspaceRole } from "@prisma/client";
 
 // Workspace access levels for permission checking
