@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Missing required fields: workspaceId, name, repositoryUrl",
+          message: "Missing required fields: workspaceId, name, repositoryName, repositoryUrl",
         },
         { status: 400 },
       );
