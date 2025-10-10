@@ -4,7 +4,7 @@ import type {
   CreateTicketRequest,
   UpdateTicketRequest,
   TicketWithDetails,
-} from "@/types/ticket";
+} from "@/types/roadmap";
 import { validateFeatureAccess, validateTicketAccess } from "./utils";
 
 /**

@@ -160,7 +160,8 @@ export async function POST(
   } catch (error) {
     console.error("Error creating user story:", error);
     const message = error instanceof Error ? error.message : "Failed to create user story";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 :
                    message.includes("required") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { reorderPhases } from "@/services/roadmap";
-import type { ReorderPhasesRequest, PhaseListResponse } from "@/types/phase";
+import type { ReorderPhasesRequest, PhaseListResponse } from "@/types/roadmap";
 
 export async function POST(
   request: NextRequest,
@@ -37,7 +37,8 @@ export async function POST(
   } catch (error) {
     console.error("Error reordering phases:", error);
     const message = error instanceof Error ? error.message : "Failed to reorder phases";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 :
                    message.includes("array") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { createTicket } from "@/services/roadmap";
-import type { CreateTicketRequest, TicketResponse } from "@/types/ticket";
+import type { CreateTicketRequest, TicketResponse } from "@/types/roadmap";
 
 export async function POST(
   request: NextRequest,
@@ -37,7 +37,8 @@ export async function POST(
   } catch (error) {
     console.error("Error creating ticket:", error);
     const message = error instanceof Error ? error.message : "Failed to create ticket";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 :
                    message.includes("required") || message.includes("Invalid") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });

@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 
 /**
  * Validates that a user has access to a feature through workspace membership
- * Returns feature with workspace access info or null if no access
+ * Throws specific errors for not found vs access denied scenarios
  */
 export async function validateFeatureAccess(featureId: string, userId: string) {
   const feature = await db.feature.findUnique({
@@ -24,19 +24,15 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
     },
   });
 
-  if (!feature) {
-    return null;
-  }
-
-  if (feature.workspace.deleted) {
-    return null;
+  if (!feature || feature.workspace.deleted) {
+    throw new Error("Feature not found");
   }
 
   const isOwner = feature.workspace.ownerId === userId;
   const isMember = feature.workspace.members.length > 0;
 
   if (!isOwner && !isMember) {
-    return null;
+    throw new Error("Access denied");
   }
 
   return feature;
@@ -44,6 +40,7 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
 
 /**
  * Validates that a user has access to a phase through its feature's workspace
+ * Throws specific errors for not found vs access denied scenarios
  */
 export async function validatePhaseAccess(phaseId: string, userId: string) {
   const phase = await db.phase.findUnique({
@@ -70,19 +67,15 @@ export async function validatePhaseAccess(phaseId: string, userId: string) {
     },
   });
 
-  if (!phase) {
-    return null;
-  }
-
-  if (phase.feature.workspace.deleted) {
-    return null;
+  if (!phase || phase.feature.workspace.deleted) {
+    throw new Error("Phase not found");
   }
 
   const isOwner = phase.feature.workspace.ownerId === userId;
   const isMember = phase.feature.workspace.members.length > 0;
 
   if (!isOwner && !isMember) {
-    return null;
+    throw new Error("Access denied");
   }
 
   return phase;
@@ -90,6 +83,7 @@ export async function validatePhaseAccess(phaseId: string, userId: string) {
 
 /**
  * Validates that a user has access to a ticket through its feature's workspace
+ * Throws specific errors for not found vs access denied scenarios
  */
 export async function validateTicketAccess(ticketId: string, userId: string) {
   const ticket = await db.ticket.findUnique({
@@ -116,19 +110,15 @@ export async function validateTicketAccess(ticketId: string, userId: string) {
     },
   });
 
-  if (!ticket) {
-    return null;
-  }
-
-  if (ticket.feature.workspace.deleted) {
-    return null;
+  if (!ticket || ticket.feature.workspace.deleted) {
+    throw new Error("Ticket not found");
   }
 
   const isOwner = ticket.feature.workspace.ownerId === userId;
   const isMember = ticket.feature.workspace.members.length > 0;
 
   if (!isOwner && !isMember) {
-    return null;
+    throw new Error("Access denied");
   }
 
   return ticket;
@@ -136,6 +126,7 @@ export async function validateTicketAccess(ticketId: string, userId: string) {
 
 /**
  * Validates that a user has access to a user story through its feature's workspace
+ * Throws specific errors for not found vs access denied scenarios
  */
 export async function validateUserStoryAccess(storyId: string, userId: string) {
   const story = await db.userStory.findUnique({
@@ -162,19 +153,15 @@ export async function validateUserStoryAccess(storyId: string, userId: string) {
     },
   });
 
-  if (!story) {
-    return null;
-  }
-
-  if (story.feature.workspace.deleted) {
-    return null;
+  if (!story || story.feature.workspace.deleted) {
+    throw new Error("User story not found");
   }
 
   const isOwner = story.feature.workspace.ownerId === userId;
   const isMember = story.feature.workspace.members.length > 0;
 
   if (!isOwner && !isMember) {
-    return null;
+    throw new Error("Access denied");
   }
 
   return story;

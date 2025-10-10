@@ -58,7 +58,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching features:", error);
     const message = error instanceof Error ? error.message : "Failed to fetch features";
-    const status = message.includes("not found") || message.includes("denied") ? 403 : 500;
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
@@ -100,8 +101,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creating feature:", error);
     const message = error instanceof Error ? error.message : "Failed to create feature";
-    const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("required") || message.includes("Invalid") ? 400 : 500;
+    const status = message.includes("denied") ? 403 :
+                   message.includes("not found") || message.includes("required") || message.includes("Invalid") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

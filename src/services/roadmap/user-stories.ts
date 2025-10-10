@@ -9,13 +9,10 @@ export async function createUserStory(
   userId: string,
   data: { title: string }
 ) {
-  const feature = await validateFeatureAccess(featureId, userId);
-  if (!feature) {
-    throw new Error("Feature not found or access denied");
-  }
+  await validateFeatureAccess(featureId, userId);
 
   if (!data.title || typeof data.title !== "string" || !data.title.trim()) {
-    throw new Error("Title is required");
+    throw new Error("Missing required field: title");
   }
 
   const user = await db.user.findUnique({
@@ -85,10 +82,7 @@ export async function updateUserStory(
     completed?: boolean;
   }
 ) {
-  const story = await validateUserStoryAccess(storyId, userId);
-  if (!story) {
-    throw new Error("User story not found or access denied");
-  }
+  await validateUserStoryAccess(storyId, userId);
 
   const updateData: any = {
     updatedById: userId,
@@ -155,10 +149,7 @@ export async function deleteUserStory(
   storyId: string,
   userId: string
 ): Promise<void> {
-  const story = await validateUserStoryAccess(storyId, userId);
-  if (!story) {
-    throw new Error("User story not found or access denied");
-  }
+  await validateUserStoryAccess(storyId, userId);
 
   await db.userStory.delete({
     where: { id: storyId },
@@ -173,10 +164,7 @@ export async function reorderUserStories(
   userId: string,
   stories: { id: string; order: number }[]
 ): Promise<any[]> {
-  const feature = await validateFeatureAccess(featureId, userId);
-  if (!feature) {
-    throw new Error("Feature not found or access denied");
-  }
+  await validateFeatureAccess(featureId, userId);
 
   if (!Array.isArray(stories)) {
     throw new Error("Stories must be an array");
