@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -48,7 +47,7 @@ export default function LandingPage() {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center space-y-8">
           <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Image src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
+            <img src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
           </div>
 
           <div className="text-center space-y-2">
