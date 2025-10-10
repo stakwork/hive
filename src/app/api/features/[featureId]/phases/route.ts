@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { reorderUserStories } from "@/services/roadmap";
+import { createPhase } from "@/services/roadmap";
+import type { CreatePhaseRequest, PhaseResponse } from "@/types/phase";
 
 export async function POST(
   request: NextRequest,
@@ -22,22 +23,22 @@ export async function POST(
     }
 
     const { featureId } = await params;
-    const body = await request.json();
+    const body: CreatePhaseRequest = await request.json();
 
-    const updatedStories = await reorderUserStories(featureId, userId, body.stories);
+    const phase = await createPhase(featureId, userId, body);
 
-    return NextResponse.json(
+    return NextResponse.json<PhaseResponse>(
       {
         success: true,
-        data: updatedStories,
+        data: phase,
       },
-      { status: 200 }
+      { status: 201 }
     );
   } catch (error) {
-    console.error("Error reordering user stories:", error);
-    const message = error instanceof Error ? error.message : "Failed to reorder user stories";
+    console.error("Error creating phase:", error);
+    const message = error instanceof Error ? error.message : "Failed to create phase";
     const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("Invalid") || message.includes("required") ? 400 : 500;
+                   message.includes("required") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
