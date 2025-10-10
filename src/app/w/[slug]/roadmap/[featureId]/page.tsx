@@ -357,12 +357,7 @@ export default function FeatureDetailPage() {
           <CardHeader>
             <div className="space-y-4">
               {/* Title */}
-              <div className="space-y-2">
-                <Label htmlFor="title" className="text-sm font-medium">
-                  Feature Title
-                </Label>
-                <Skeleton className="h-14 w-full" />
-              </div>
+              <Skeleton className="h-16 w-3/4" />
 
               {/* Status & Assignee */}
               <div className="flex flex-wrap items-center gap-4">
@@ -487,20 +482,15 @@ export default function FeatureDetailPage() {
       <Card>
         <CardHeader>
           <div className="space-y-4">
-            {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title" className="text-sm font-medium">
-                Feature Title
-              </Label>
-              <Input
-                id="title"
-                value={feature.title}
-                onChange={(e) => setFeature({ ...feature, title: e.target.value })}
-                onBlur={(e) => handleFieldBlur("title", e.target.value)}
-                className="text-2xl font-semibold h-auto py-3 px-4"
-                placeholder="Enter feature title..."
-              />
-            </div>
+            {/* Title - inline editable */}
+            <Input
+              id="title"
+              value={feature.title}
+              onChange={(e) => setFeature({ ...feature, title: e.target.value })}
+              onBlur={(e) => handleFieldBlur("title", e.target.value)}
+              className="!text-5xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none"
+              placeholder="Enter feature title..."
+            />
 
             {/* Status & Assignee */}
             <div className="flex flex-wrap items-center gap-4">
