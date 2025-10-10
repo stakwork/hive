@@ -86,3 +86,24 @@ export function requireAuthOrUnauthorized(
 export function isAuthenticated(context: MiddlewareContext): context is MiddlewareContext & { user: MiddlewareUser } {
   return context.authStatus === "authenticated" && !!context.user;
 }
+
+/**
+ * Converts a route pattern with wildcards (*) to a regular expression
+ * Used for matching dynamic route segments in middleware policies
+ *
+ * @param pattern - Route pattern with * as wildcards (e.g., "/api/tasks/*\/title")
+ * @returns RegExp that matches the pattern (e.g., /^\/api\/tasks\/[^/]+\/title$/)
+ *
+ * @example
+ * const regex = patternToRegex("/api/tasks/*\/title");
+ * regex.test("/api/tasks/123/title"); // true
+ * regex.test("/api/tasks/abc-def/title"); // true
+ * regex.test("/api/tasks/123/status"); // false
+ */
+export function patternToRegex(pattern: string): RegExp {
+  // Escape special regex characters except *
+  const regexPattern = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '[^/]+');
+  return new RegExp(`^${regexPattern}$`);
+}
