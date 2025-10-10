@@ -3,9 +3,68 @@ import type {
   ApiSuccessResponse,
   PaginatedApiResponse,
 } from "./common";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
+import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
 export type { FeatureStatus, FeaturePriority };
+
+// Feature status labels
+export const FEATURE_STATUS_LABELS: Record<FeatureStatus, string> = {
+  BACKLOG: "Backlog",
+  PLANNED: "Planned",
+  IN_PROGRESS: "In Progress",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+};
+
+// Feature status colors for badges
+export const FEATURE_STATUS_COLORS: Record<FeatureStatus, string> = {
+  BACKLOG: "bg-gray-100 text-gray-700 border-gray-200",
+  PLANNED: "bg-purple-50 text-purple-700 border-purple-200",
+  IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
+  COMPLETED: "bg-green-50 text-green-700 border-green-200",
+  CANCELLED: "bg-red-50 text-red-700 border-red-200",
+};
+
+// Kanban columns configuration for feature board
+export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
+  {
+    status: "BACKLOG",
+    title: "Backlog",
+    icon: <Inbox className="h-4 w-4" />,
+    color: "text-gray-600 dark:text-gray-400",
+    bgColor: "bg-gray-50/30 dark:bg-gray-950/10",
+  },
+  {
+    status: "PLANNED",
+    title: "Planned",
+    icon: <Calendar className="h-4 w-4" />,
+    color: "text-purple-600 dark:text-purple-400",
+    bgColor: "bg-purple-50/30 dark:bg-purple-950/10",
+  },
+  {
+    status: "IN_PROGRESS",
+    title: "In Progress",
+    icon: <Loader2 className="h-4 w-4 animate-spin" />,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-50/30 dark:bg-blue-950/10",
+  },
+  {
+    status: "COMPLETED",
+    title: "Completed",
+    icon: <CheckCircle className="h-4 w-4" />,
+    color: "text-green-600 dark:text-green-400",
+    bgColor: "bg-green-50/30 dark:bg-green-950/10",
+  },
+  {
+    status: "CANCELLED",
+    title: "Cancelled",
+    icon: <XCircle className="h-4 w-4" />,
+    color: "text-red-600 dark:text-red-400",
+    bgColor: "bg-red-50/30 dark:bg-red-950/10",
+  },
+];
 
 // Feature with relations (matches GET /api/features list query)
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
