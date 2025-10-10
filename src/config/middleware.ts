@@ -1,4 +1,5 @@
 // Middleware configuration constants and route policy helpers
+import { patternToRegex } from "@/lib/middleware/utils";
 
 export const MIDDLEWARE_HEADERS = {
   USER_ID: "x-middleware-user-id",
@@ -9,7 +10,7 @@ export const MIDDLEWARE_HEADERS = {
 } as const;
 
 export type RouteAccess = "public" | "webhook" | "protected";
-export type RouteMatchStrategy = "exact" | "prefix";
+export type RouteMatchStrategy = "exact" | "prefix" | "pattern";
 
 export interface RoutePolicy {
   path: string;
@@ -29,6 +30,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/janitors/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/chat/response", strategy: "prefix", access: "webhook" },
+  { path: "/api/tasks/*/title", strategy: "pattern", access: "webhook" },
 ] as const;
 
 function normalizePath(pathname: string): string {
@@ -43,6 +45,11 @@ function normalizePath(pathname: string): string {
 function matchesPolicy(pathname: string, policy: RoutePolicy): boolean {
   if (policy.strategy === "exact") {
     return pathname === policy.path;
+  }
+
+  if (policy.strategy === "pattern") {
+    const regex = patternToRegex(policy.path);
+    return regex.test(pathname);
   }
 
   return pathname === policy.path || pathname.startsWith(`${policy.path}/`);
