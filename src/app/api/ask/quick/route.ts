@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -8,43 +9,38 @@ import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getMiddlewareContext, requireAuthOrUnauthorized } from "@/lib/middleware/utils";
+import type { NextRequestWithContext } from "@/types/middleware";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequestWithContext) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuthOrUnauthorized(context);
-    if (userOrResponse instanceof Response) return userOrResponse;
+    const user = request.middlewareContext?.user;
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
     const workspaceSlug = searchParams.get("workspace");
 
-    // console.log("📝 Question:", question);
-    // console.log("🏢 Workspace:", workspaceSlug);
-
     if (!question) {
-      return NextResponse.json({ error: "Missing required parameter: question" }, { status: 400 });
+      throw validationError("Missing required parameter: question");
     }
     if (!workspaceSlug) {
-      return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
+      throw validationError("Missing required parameter: workspace");
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, user!.id);
     if (!workspaceAccess.hasAccess) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
+      throw forbiddenError("Workspace not found or access denied");
     }
 
     const swarm = await db.swarm.findFirst({
       where: { workspaceId: workspaceAccess.workspace?.id },
     });
     if (!swarm) {
-      return NextResponse.json({ error: "Swarm not found for this workspace" }, { status: 404 });
+      throw notFoundError("Swarm not found for this workspace");
     }
     if (!swarm.swarmUrl) {
-      return NextResponse.json({ error: "Swarm URL not configured" }, { status: 404 });
+      throw notFoundError("Swarm URL not configured");
     }
 
     const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -59,24 +55,23 @@ export async function GET(request: NextRequest) {
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repoUrl = primaryRepo?.repositoryUrl;
     if (!repoUrl) {
-      return NextResponse.json({ error: "Repository URL not configured for this swarm" }, { status: 404 });
+      throw notFoundError("Repository URL not configured for this swarm");
     }
 
-    // Get GitHub PAT for the workspace
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceAccess.workspace?.id },
       select: { slug: true },
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      throw notFoundError("Workspace not found");
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(user!.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
-      return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
+      throw notFoundError("GitHub PAT not found for this user");
     }
 
     const provider: Provider = "anthropic";
@@ -104,48 +99,17 @@ export async function GET(request: NextRequest) {
         stopWhen: hasToolCall("final_answer"),
         onStepFinish: (sf) => logStep(sf.content),
       });
-
       return result.toUIMessageStreamResponse();
-
-      // const { steps, text } = await generateText({
-      //   model,
-      //   tools,
-      //   messages,
-      //   stopWhen: hasToolCall("final_answer"),
-      //   onStepFinish: (sf) => logStep(sf.content),
-      // });
-
-      // let final = "";
-      // steps.reverse();
-      // for (const step of steps) {
-      //   const final_answer = step.content.find((c) => {
-      //     return c.type === "tool-result" && c.toolName === "final_answer";
-      //   });
-      //   if (final_answer) {
-      //     final = (final_answer as unknown as { output: string }).output;
-      //   }
-      // }
-
-      // // If no final_answer tool result found, check if it's in the text output
-      // if (!final && text) {
-      //   const functionCallMatch = text.match(/<parameter name="answer">([\s\S]*?)<\/parameter>/);
-      //   if (functionCallMatch) {
-      //     final = functionCallMatch[1].trim();
-      //   } else {
-      //     // Fallback to using the raw text if no tool call found
-      //     final = text;
-      //   }
-      // }
-
-      // console.log("🤖 Result:", final);
-
-      // return NextResponse.json({ result: final }, { status: 200 });
-    } catch (streamError) {
-      console.error("❌ Error in streamText:", streamError);
-      return NextResponse.json({ error: "Failed to create stream" }, { status: 500 });
+    } catch {
+      throw serverError("Failed to create stream");
     }
   } catch (error) {
-    console.error("Quick Ask API error:", error);
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: error.message, kind: error.kind, details: error.details },
+        { status: error.statusCode },
+      );
+    }
     return NextResponse.json({ error: "Failed to process quick ask" }, { status: 500 });
   }
 }
