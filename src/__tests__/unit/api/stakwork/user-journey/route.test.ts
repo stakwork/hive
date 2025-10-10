@@ -520,4 +520,217 @@ describe("POST /api/stakwork/user-journey", () => {
       expect(result.status).toBe(201);
     });
   });
+
+  describe("Edge Cases and Error Resilience", () => {
+    it("should handle malformed JSON response from Stakwork API", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      // Mock Stakwork API returning malformed JSON
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.reject(new Error("Unexpected token in JSON")),
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+      expect(json.workflow).toBeNull();
+    });
+
+    it("should handle unexpected HTTP status codes from Stakwork API", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      // Mock 429 Rate Limit response
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+      expect(json.workflow).toBeNull();
+    });
+
+    it("should handle missing STAKWORK_BASE_URL environment variable", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      // Remove STAKWORK_BASE_URL from environment
+      delete process.env.STAKWORK_BASE_URL;
+      
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      // Should still proceed but with undefined base URL (graceful degradation)
+      expect(result.status).toBe(201);
+      
+      // Restore environment variable
+      vi.stubEnv('STAKWORK_BASE_URL', 'https://stakwork-api.example.com');
+    });
+
+    it("should handle workflow ID parsing with non-numeric value", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      // Set workflow ID to non-numeric value
+      vi.stubEnv('STAKWORK_USER_JOURNEY_WORKFLOW_ID', 'invalid-id');
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: {} }),
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      // Should handle parseInt(NaN) gracefully
+      expect(result.status).toBe(201);
+      
+      // Restore environment variable
+      vi.stubEnv('STAKWORK_USER_JOURNEY_WORKFLOW_ID', '123');
+    });
+
+    it("should handle very long message content", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: {} }),
+      } as Response);
+
+      // Create message with 50,000 characters
+      const veryLongMessage = "a".repeat(50000);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({ message: veryLongMessage }),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+    });
+
+    it("should handle special characters and unicode in message", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: {} }),
+      } as Response);
+
+      const specialMessage = "Test 🚀 with émojis, spëcîål çhars, and 中文字符";
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({ message: specialMessage }),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+    });
+
+    it("should handle Stakwork API returning success false with error details", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ 
+          success: false, 
+          error: "Workflow execution failed: Invalid parameters" 
+        }),
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+      expect(json.workflow).toBeNull();
+    });
+
+    it("should handle partial swarm configuration with missing fields", async () => {
+      mockGetWorkspaceById.mockResolvedValue(createMockWorkspace());
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
+      
+      // Swarm with missing optional fields
+      const partialSwarm = createMockSwarm({
+        swarmUrl: null,
+        swarmSecretAlias: null,
+        poolName: null,
+      });
+      
+      mockDbSwarmFindUnique.mockResolvedValue(partialSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("");
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: {} }),
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+    });
+  });
 });
