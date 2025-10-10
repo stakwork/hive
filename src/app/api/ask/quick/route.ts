@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { validationError, notFoundError, unauthorizedError, serverError, forbiddenError, isApiError } from "@/types/errors";
+import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -16,9 +16,6 @@ type Provider = "anthropic" | "google" | "openai" | "claude_code";
 export async function GET(request: NextRequestWithContext) {
   try {
     const user = request.middlewareContext?.user;
-    if (!user?.id) {
-      throw unauthorizedError("Unauthorized");
-    }
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
@@ -31,7 +28,7 @@ export async function GET(request: NextRequestWithContext) {
       throw validationError("Missing required parameter: workspace");
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, user.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, user!.id);
     if (!workspaceAccess.hasAccess) {
       throw forbiddenError("Workspace not found or access denied");
     }
@@ -70,7 +67,7 @@ export async function GET(request: NextRequestWithContext) {
       throw notFoundError("Workspace not found");
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(user.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(user!.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
