@@ -293,7 +293,16 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               </EmptyMedia>
               <EmptyTitle>No Features Yet</EmptyTitle>
               <EmptyDescription>Create your first feature to get started with your product roadmap.</EmptyDescription>
-              <Button variant="default" size="sm" onClick={() => setIsCreating(true)} className="mt-4">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => {
+                  setIsCreating(true);
+                  setViewType("list");
+                  localStorage.setItem("features-view-preference", "list");
+                }}
+                className="mt-4"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 New feature
               </Button>
@@ -313,7 +322,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         <CardTitle className="flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            {viewType === "list" ? "Recent Features" : "Features"}
+            Features
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="font-normal text-muted-foreground">
@@ -344,8 +353,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         </CardTitle>
         <CardDescription>Your product roadmap features and their current status</CardDescription>
       </CardHeader>
-      <CardContent className={viewType === "kanban" ? "p-0" : ""}>
-        {!isCreating && viewType === "list" && (
+      <CardContent>
+        {!isCreating && (
           <div className="mb-4">
             <Button variant="default" size="sm" onClick={() => setIsCreating(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -354,59 +363,61 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           </div>
         )}
 
-        {isCreating && viewType === "list" && (
-          <div className="mb-4 rounded-lg border bg-muted/30 p-4">
-            <div className="space-y-3">
-              <div>
-                <Input
-                  placeholder="Feature title..."
-                  value={newFeatureTitle}
-                  onChange={(e) => setNewFeatureTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !creating) {
-                      handleCreateFeature();
-                    } else if (e.key === "Escape") {
-                      handleCancelCreate();
-                    }
-                  }}
-                  autoFocus
-                  disabled={creating}
-                />
-              </div>
-              <div className="flex items-center gap-4">
-                <StatusPopover
-                  currentStatus={newFeatureStatus}
-                  onUpdate={async (status) => setNewFeatureStatus(status)}
-                  statusColors={FEATURE_STATUS_COLORS}
-                />
-                <AssigneeCombobox
-                  workspaceSlug={workspaceSlug}
-                  currentAssignee={newFeatureAssigneeDisplay}
-                  onSelect={async (assigneeId, assigneeData) => {
-                    setNewFeatureAssigneeId(assigneeId);
-                    setNewFeatureAssigneeDisplay(assigneeData || null);
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleCreateFeature}
-                  disabled={creating || !newFeatureTitle.trim()}
-                >
-                  {creating ? (
-                    <>
-                      <Spinner className="h-4 w-4 mr-2" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create"
-                  )}
-                </Button>
+        {isCreating && (
+          <div className="mb-4">
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="space-y-3">
+                <div>
+                  <Input
+                    placeholder="Feature title..."
+                    value={newFeatureTitle}
+                    onChange={(e) => setNewFeatureTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !creating) {
+                        handleCreateFeature();
+                      } else if (e.key === "Escape") {
+                        handleCancelCreate();
+                      }
+                    }}
+                    autoFocus
+                    disabled={creating}
+                  />
+                </div>
+                <div className="flex items-center gap-4">
+                  <StatusPopover
+                    currentStatus={newFeatureStatus}
+                    onUpdate={async (status) => setNewFeatureStatus(status)}
+                    statusColors={FEATURE_STATUS_COLORS}
+                  />
+                  <AssigneeCombobox
+                    workspaceSlug={workspaceSlug}
+                    currentAssignee={newFeatureAssigneeDisplay}
+                    onSelect={async (assigneeId, assigneeData) => {
+                      setNewFeatureAssigneeId(assigneeId);
+                      setNewFeatureAssigneeDisplay(assigneeData || null);
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleCreateFeature}
+                    disabled={creating || !newFeatureTitle.trim()}
+                  >
+                    {creating ? (
+                      <>
+                        <Spinner className="h-4 w-4 mr-2" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create"
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
