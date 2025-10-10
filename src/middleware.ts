@@ -5,6 +5,11 @@ import {
   MIDDLEWARE_HEADERS,
   resolveRouteAccess,
 } from "@/config/middleware";
+import {
+  verifyCookie,
+  isLandingPageEnabled,
+  LANDING_COOKIE_NAME,
+} from "@/lib/auth/landing-cookie";
 
 // Environment validation - fail fast if required secrets are missing
 if (!process.env.NEXTAUTH_SECRET) {
@@ -89,20 +94,65 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
 
   sanitizeMiddlewareHeaders(requestHeaders);
-  
+
   // Add request ID to all requests
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
-  if (routeAccess === "public" || routeAccess === "webhook") {
-    return continueRequest(
-      requestHeaders,
-      routeAccess
-    );
-  }
-
   try {
-    // Get the session token
-    const token = await getToken({ 
+    // Webhook routes - allow these to bypass all auth checks (they use their own auth like x-api-token)
+    if (routeAccess === "webhook") {
+      return continueRequest(
+        requestHeaders,
+        routeAccess
+      );
+    }
+
+    // Landing page protection check - applies to both public and protected routes
+    if (isLandingPageEnabled()) {
+      // Get session token to check if user is authenticated
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET,
+      });
+
+      // Check for landing verification cookie
+      const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
+      const hasValidCookie = landingCookie && await verifyCookie(landingCookie.value);
+
+      // No cookie AND no session - must verify at landing page first
+      if (!hasValidCookie && !token) {
+        // Allow root path to render landing page
+        if (pathname === "/") {
+          return continueRequest(requestHeaders, "landing_required");
+        }
+
+        // Allow landing verification API to work
+        if (pathname === "/api/auth/verify-landing") {
+          return continueRequest(requestHeaders, "landing_required");
+        }
+
+        // Redirect everything else to landing page
+        return redirectTo(
+          "/",
+          request,
+          {
+            requestId,
+            authStatus: "landing_required",
+          }
+        );
+      }
+    }
+
+    // Public routes - after landing page check
+    if (routeAccess === "public") {
+      return continueRequest(
+        requestHeaders,
+        routeAccess
+      );
+    }
+
+    // Get the session token (or reuse if already fetched above)
+    const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
     });

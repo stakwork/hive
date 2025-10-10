@@ -1,0 +1,747 @@
+"use client";
+
+import { useEffect, useState, useRef, useMemo } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { ArrowLeft, Loader2, Trash2, Check, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Item,
+  ItemGroup,
+  ItemContent,
+  ItemTitle,
+  ItemActions,
+} from "@/components/ui/item";
+import { StatusPopover } from "@/components/features/StatusPopover";
+import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import type { FeatureDetail } from "@/types/roadmap";
+
+function SortableUserStory({
+  story,
+  onDelete,
+}: {
+  story: FeatureDetail["userStories"][number];
+  onDelete: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: story.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={isDragging ? "opacity-50 z-50" : ""}
+    >
+      <Item variant="outline" size="sm">
+        <Button
+          {...attributes}
+          {...listeners}
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground size-8 hover:bg-transparent cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" />
+          <span className="sr-only">Drag to reorder</span>
+        </Button>
+        <ItemContent>
+          <ItemTitle>{story.title}</ItemTitle>
+        </ItemContent>
+        <ItemActions>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onDelete(story.id)}
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </ItemActions>
+      </Item>
+    </div>
+  );
+}
+
+export default function FeatureDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+  const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
+  const featureId = params.featureId as string;
+
+  const [feature, setFeature] = useState<FeatureDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeField, setActiveField] = useState<string | null>(null); // Track which field is being edited
+  const [unsavedWarning, setUnsavedWarning] = useState(false);
+
+  // Track original feature values for comparison
+  const originalFeatureRef = useRef<FeatureDetail | null>(null);
+  const unsavedTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // User story creation state
+  const [newStoryTitle, setNewStoryTitle] = useState("");
+  const [creatingStory, setCreatingStory] = useState(false);
+  const storyInputRef = useRef<HTMLInputElement>(null);
+
+  const statusColors: Record<string, string> = {
+    BACKLOG: "bg-gray-100 text-gray-700 border-gray-200",
+    PLANNED: "bg-purple-50 text-purple-700 border-purple-200",
+    IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
+    COMPLETED: "bg-green-50 text-green-700 border-green-200",
+    CANCELLED: "bg-red-50 text-red-700 border-red-200",
+  };
+
+  // Fetch feature data
+  useEffect(() => {
+    const fetchFeature = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/features/${featureId}`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch feature");
+        }
+
+        const result = await response.json();
+        if (result.success) {
+          setFeature(result.data);
+          // Store original values for comparison
+          originalFeatureRef.current = result.data;
+        } else {
+          throw new Error("Failed to fetch feature");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (featureId) {
+      fetchFeature();
+    }
+  }, [featureId]);
+
+  const updateFeature = async (updates: Partial<FeatureDetail> & { assigneeId?: string | null }) => {
+    try {
+      setSaving(true);
+      // Clear unsaved timer when saving starts
+      if (unsavedTimerRef.current) {
+        clearTimeout(unsavedTimerRef.current);
+      }
+      setUnsavedWarning(false);
+
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update feature");
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setFeature(result.data);
+        // Update original values after successful save
+        originalFeatureRef.current = result.data;
+
+        // Show "Saved" indicator
+        setSaved(true);
+        setTimeout(() => {
+          setSaved(false);
+          setActiveField(null);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error("Failed to update feature:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleFieldBlur = (field: string, value: string | null) => {
+    // Compare against original value, not current state
+    const originalValue = originalFeatureRef.current?.[field as keyof FeatureDetail];
+    if (feature && originalValue !== value) {
+      updateFeature({ [field]: value });
+    }
+  };
+
+  const handleFieldChange = (field: string) => {
+    // Set active field for textarea edits
+    if (field === 'brief' || field === 'requirements' || field === 'architecture') {
+      setActiveField(field);
+    } else {
+      setActiveField('general'); // For title, status, assignee
+    }
+
+    // Clear any existing timer
+    if (unsavedTimerRef.current) {
+      clearTimeout(unsavedTimerRef.current);
+    }
+
+    // Clear saved state
+    setSaved(false);
+    setUnsavedWarning(false);
+
+    // Set timer to show warning after 2.5 seconds
+    unsavedTimerRef.current = setTimeout(() => {
+      setUnsavedWarning(true);
+    }, 2500);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (unsavedTimerRef.current) {
+        clearTimeout(unsavedTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
+    setActiveField('general');
+    await updateFeature({ status });
+  };
+
+  const handleUpdateAssignee = async (assigneeId: string | null) => {
+    setActiveField('general');
+    await updateFeature({ assigneeId });
+  };
+
+  // Save indicator component
+  const SaveIndicator = ({ field }: { field: string }) => {
+    const isActive = activeField === field;
+    if (!isActive) return null;
+
+    return (
+      <span className="ml-2 inline-flex items-center gap-1.5 text-xs">
+        {saving && (
+          <>
+            <Loader2 className="h-3 w-3 text-blue-600 animate-spin" />
+            <span className="text-muted-foreground">Saving...</span>
+          </>
+        )}
+        {!saving && saved && (
+          <>
+            <Check className="h-3 w-3 text-green-600" />
+            <span className="text-green-600">Saved</span>
+          </>
+        )}
+        {!saving && !saved && unsavedWarning && (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-yellow-600" />
+            <span className="text-yellow-600">Unsaved</span>
+          </>
+        )}
+      </span>
+    );
+  };
+
+  const handleAddUserStory = async () => {
+    if (!newStoryTitle.trim()) return;
+
+    try {
+      setCreatingStory(true);
+      const response = await fetch(`/api/features/${featureId}/user-stories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newStoryTitle.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create user story");
+      }
+
+      const result = await response.json();
+      if (result.success && feature) {
+        setFeature({
+          ...feature,
+          userStories: [...feature.userStories, result.data],
+        });
+        setNewStoryTitle("");
+      }
+    } catch (error) {
+      console.error("Failed to create user story:", error);
+    } finally {
+      setCreatingStory(false);
+      // Auto-focus the input for continuous entry after state updates
+      requestAnimationFrame(() => {
+        storyInputRef.current?.focus();
+      });
+    }
+  };
+
+  const handleDeleteUserStory = async (storyId: string) => {
+    try {
+      const response = await fetch(`/api/user-stories/${storyId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete user story");
+      }
+
+      if (feature) {
+        setFeature({
+          ...feature,
+          userStories: feature.userStories.filter((story) => story.id !== storyId),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to delete user story:", error);
+    }
+  };
+
+  const reorderUserStories = async (stories: FeatureDetail["userStories"]) => {
+    try {
+      const reorderData = stories.map((story, index) => ({
+        id: story.id,
+        order: index,
+      }));
+
+      const response = await fetch(
+        `/api/features/${featureId}/user-stories/reorder`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stories: reorderData }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to reorder user stories");
+      }
+
+      // Don't update state on success - we already did optimistic update
+      // This prevents the glitch/flicker
+    } catch (error) {
+      console.error("Failed to reorder user stories:", error);
+      // On error, refetch to restore correct order
+      const response = await fetch(`/api/features/${featureId}`);
+      const result = await response.json();
+      if (result.success) {
+        setFeature(result.data);
+      }
+    }
+  };
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Memoize story IDs for sortable context
+  const storyIds = useMemo(
+    () => feature?.userStories.map((story) => story.id) ?? [],
+    [feature?.userStories]
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!feature || !over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = feature.userStories.findIndex((s) => s.id === active.id);
+    const newIndex = feature.userStories.findIndex((s) => s.id === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const reorderedStories = arrayMove(
+        feature.userStories,
+        oldIndex,
+        newIndex
+      ).map((story, index) => ({
+        ...story,
+        order: index, // Update the order property to match new position
+      }));
+
+      // Optimistic update
+      setFeature({
+        ...feature,
+        userStories: reorderedStories,
+      });
+
+      // Call API to save new order
+      reorderUserStories(reorderedStories);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        {/* Header with back button */}
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Roadmap
+          </Button>
+          <span className="text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Loading...
+          </span>
+        </div>
+
+        {/* Feature Details Card */}
+        <Card>
+          <CardHeader>
+            <div className="space-y-4">
+              {/* Title */}
+              <Skeleton className="h-16 w-3/4" />
+
+              {/* Status & Assignee */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground">Status:</Label>
+                  <Skeleton className="h-7 w-24" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground">Assigned:</Label>
+                  <Skeleton className="h-7 w-32" />
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <Separator />
+
+            {/* Brief */}
+            <div className="space-y-2">
+              <Label htmlFor="brief" className="text-sm font-medium">
+                Brief
+              </Label>
+              <Skeleton className="h-24 w-full rounded-md" />
+            </div>
+
+            <Separator />
+
+            {/* User Stories */}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">User Stories</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Define the user stories and acceptance criteria for this feature.
+                </p>
+              </div>
+              <Skeleton className="h-14 w-full rounded-lg" />
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
+
+            <Separator />
+
+            {/* Requirements */}
+            <div className="space-y-2">
+              <Label htmlFor="requirements" className="text-sm font-medium">
+                Requirements
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Detailed product and technical requirements for implementation.
+              </p>
+              <Skeleton className="h-32 w-full rounded-md" />
+            </div>
+
+            {/* Architecture */}
+            <div className="space-y-2">
+              <Label htmlFor="architecture" className="text-sm font-medium">
+                Architecture
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Technical architecture, design decisions, and implementation notes.
+              </p>
+              <Skeleton className="h-32 w-full rounded-md" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !feature) {
+    return (
+      <div className="space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Roadmap
+        </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-600">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">{error || "Feature not found"}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with back button */}
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Roadmap
+        </Button>
+      </div>
+
+      {/* Feature Details Card */}
+      <Card>
+        <CardHeader>
+          <div className="space-y-4">
+            {/* Title - inline editable */}
+            <div className="flex items-center gap-3">
+              <Input
+                id="title"
+                value={feature.title}
+                onChange={(e) => {
+                  setFeature({ ...feature, title: e.target.value });
+                  handleFieldChange('title');
+                }}
+                onBlur={(e) => handleFieldBlur("title", e.target.value)}
+                className="!text-5xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none flex-1"
+                placeholder="Enter feature title..."
+              />
+              {/* Save indicator for general edits (title, status, assignee) */}
+              {activeField === 'general' && (
+                <div className="flex items-center gap-2 text-sm flex-shrink-0">
+                  {saving && (
+                    <>
+                      <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                      <span className="text-muted-foreground">Saving...</span>
+                    </>
+                  )}
+                  {!saving && saved && (
+                    <>
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="text-green-600">Saved</span>
+                    </>
+                  )}
+                  {!saving && !saved && unsavedWarning && (
+                    <>
+                      <span className="h-2 w-2 rounded-full bg-yellow-600" />
+                      <span className="text-yellow-600">Unsaved</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Status & Assignee */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground">Status:</Label>
+                <StatusPopover
+                  currentStatus={feature.status}
+                  onUpdate={handleUpdateStatus}
+                  statusColors={statusColors}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground">Assigned:</Label>
+                <AssigneeCombobox
+                  workspaceSlug={workspaceSlug}
+                  currentAssignee={feature.assignee}
+                  onSelect={handleUpdateAssignee}
+                />
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Brief */}
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <Label htmlFor="brief" className="text-sm font-medium">
+                Brief
+              </Label>
+              <SaveIndicator field="brief" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              High-level overview of what this feature is and why it matters.
+            </p>
+            <Textarea
+              id="brief"
+              placeholder="Type your brief here..."
+              value={feature.brief || ""}
+              onChange={(e) => {
+                setFeature({ ...feature, brief: e.target.value });
+                handleFieldChange('brief');
+              }}
+              onBlur={(e) => handleFieldBlur("brief", e.target.value || null)}
+              rows={4}
+              className="resize-none"
+            />
+          </div>
+
+          {/* User Stories */}
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium">User Stories</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Define the user stories and acceptance criteria for this feature.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-muted/30">
+              <div className="flex gap-2 p-4">
+                <Input
+                  ref={storyInputRef}
+                  placeholder="As a user, I want to..."
+                  value={newStoryTitle}
+                  onChange={(e) => setNewStoryTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !creatingStory) {
+                      handleAddUserStory();
+                    }
+                  }}
+                  disabled={creatingStory}
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleAddUserStory}
+                  disabled={creatingStory || !newStoryTitle.trim()}
+                >
+                  {creatingStory ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+
+              {feature.userStories.length > 0 && (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={storyIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="px-4 pb-4 flex flex-col gap-2">
+                      {feature.userStories
+                        .sort((a, b) => a.order - b.order)
+                        .map((story) => (
+                          <SortableUserStory
+                            key={story.id}
+                            story={story}
+                            onDelete={handleDeleteUserStory}
+                          />
+                        ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </div>
+          </div>
+
+          {/* Requirements */}
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <Label htmlFor="requirements" className="text-sm font-medium">
+                Requirements
+              </Label>
+              <SaveIndicator field="requirements" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Functional and technical specifications for implementation.
+            </p>
+            <Textarea
+              id="requirements"
+              placeholder="Type your requirements here..."
+              value={feature.requirements || ""}
+              onChange={(e) => {
+                setFeature({ ...feature, requirements: e.target.value });
+                handleFieldChange('requirements');
+              }}
+              onBlur={(e) => handleFieldBlur("requirements", e.target.value || null)}
+              rows={8}
+              className="resize-y font-mono text-sm min-h-[200px]"
+            />
+          </div>
+
+          {/* Architecture */}
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <Label htmlFor="architecture" className="text-sm font-medium">
+                Architecture
+              </Label>
+              <SaveIndicator field="architecture" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Technical design decisions and implementation approach.
+            </p>
+            <Textarea
+              id="architecture"
+              placeholder="Type your architecture here..."
+              value={feature.architecture || ""}
+              onChange={(e) => {
+                setFeature({ ...feature, architecture: e.target.value });
+                handleFieldChange('architecture');
+              }}
+              onBlur={(e) => handleFieldBlur("architecture", e.target.value || null)}
+              rows={8}
+              className="resize-y font-mono text-sm min-h-[200px]"
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
