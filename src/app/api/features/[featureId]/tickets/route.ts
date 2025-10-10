@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { reorderUserStories } from "@/services/roadmap";
+import { createTicket } from "@/services/roadmap";
+import type { CreateTicketRequest, TicketResponse } from "@/types/ticket";
 
 export async function POST(
   request: NextRequest,
@@ -22,22 +23,22 @@ export async function POST(
     }
 
     const { featureId } = await params;
-    const body = await request.json();
+    const body: CreateTicketRequest = await request.json();
 
-    const updatedStories = await reorderUserStories(featureId, userId, body.stories);
+    const ticket = await createTicket(featureId, userId, body);
 
-    return NextResponse.json(
+    return NextResponse.json<TicketResponse>(
       {
         success: true,
-        data: updatedStories,
+        data: ticket,
       },
-      { status: 200 }
+      { status: 201 }
     );
   } catch (error) {
-    console.error("Error reordering user stories:", error);
-    const message = error instanceof Error ? error.message : "Failed to reorder user stories";
+    console.error("Error creating ticket:", error);
+    const message = error instanceof Error ? error.message : "Failed to create ticket";
     const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("Invalid") || message.includes("required") ? 400 : 500;
+                   message.includes("required") || message.includes("Invalid") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

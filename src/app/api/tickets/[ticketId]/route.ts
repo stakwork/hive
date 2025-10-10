@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { updateUserStory, deleteUserStory } from "@/services/roadmap";
+import { updateTicket, deleteTicket } from "@/services/roadmap";
+import type { UpdateTicketRequest, TicketResponse } from "@/types/ticket";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ storyId: string }> }
+  { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -21,23 +22,23 @@ export async function PATCH(
       );
     }
 
-    const { storyId } = await params;
-    const body = await request.json();
+    const { ticketId } = await params;
+    const body: UpdateTicketRequest = await request.json();
 
-    const updatedStory = await updateUserStory(storyId, userId, body);
+    const ticket = await updateTicket(ticketId, userId, body);
 
-    return NextResponse.json(
+    return NextResponse.json<TicketResponse>(
       {
         success: true,
-        data: updatedStory,
+        data: ticket,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating user story:", error);
-    const message = error instanceof Error ? error.message : "Failed to update user story";
+    console.error("Error updating ticket:", error);
+    const message = error instanceof Error ? error.message : "Failed to update ticket";
     const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("Invalid") ? 400 : 500;
+                   message.includes("cannot be empty") || message.includes("Invalid") || message.includes("must be") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
@@ -45,7 +46,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ storyId: string }> }
+  { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -61,20 +62,20 @@ export async function DELETE(
       );
     }
 
-    const { storyId } = await params;
+    const { ticketId } = await params;
 
-    await deleteUserStory(storyId, userId);
+    await deleteTicket(ticketId, userId);
 
     return NextResponse.json(
       {
         success: true,
-        message: "User story deleted successfully",
+        message: "Ticket deleted successfully",
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting user story:", error);
-    const message = error instanceof Error ? error.message : "Failed to delete user story";
+    console.error("Error deleting ticket:", error);
+    const message = error instanceof Error ? error.message : "Failed to delete ticket";
     const status = message.includes("not found") || message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });

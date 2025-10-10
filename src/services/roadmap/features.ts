@@ -1,0 +1,311 @@
+import { db } from "@/lib/db";
+import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { validateWorkspaceAccessById } from "@/services/workspace";
+import { validateFeatureAccess } from "./utils";
+
+/**
+ * Lists features for a workspace with pagination
+ */
+export async function listFeatures(
+  workspaceId: string,
+  userId: string,
+  page: number = 1,
+  limit: number = 10
+) {
+  const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
+  if (!workspaceAccess.hasAccess) {
+    throw new Error("Workspace not found or access denied");
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [features, totalCount] = await Promise.all([
+    db.feature.findMany({
+      where: { workspaceId },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        assignee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+          },
+        },
+        _count: {
+          select: {
+            userStories: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip,
+      take: limit,
+    }),
+    db.feature.count({
+      where: { workspaceId },
+    }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / limit);
+  const hasMore = page < totalPages;
+
+  return {
+    features,
+    pagination: {
+      page,
+      limit,
+      totalCount,
+      totalPages,
+      hasMore,
+    },
+  };
+}
+
+/**
+ * Creates a new feature
+ */
+export async function createFeature(
+  userId: string,
+  data: {
+    title: string;
+    workspaceId: string;
+    status?: FeatureStatus;
+    priority?: FeaturePriority;
+    assigneeId?: string | null;
+    brief?: string;
+    requirements?: string;
+    architecture?: string;
+  }
+) {
+  const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
+  if (!workspaceAccess.hasAccess) {
+    throw new Error("Workspace not found or access denied");
+  }
+
+  if (!data.title || !data.title.trim()) {
+    throw new Error("Title is required");
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (data.status && !Object.values(FeatureStatus).includes(data.status)) {
+    throw new Error(
+      `Invalid status. Must be one of: ${Object.values(FeatureStatus).join(", ")}`
+    );
+  }
+
+  if (data.priority && !Object.values(FeaturePriority).includes(data.priority)) {
+    throw new Error(
+      `Invalid priority. Must be one of: ${Object.values(FeaturePriority).join(", ")}`
+    );
+  }
+
+  if (data.assigneeId) {
+    const assignee = await db.user.findFirst({
+      where: {
+        id: data.assigneeId,
+        deleted: false,
+      },
+    });
+
+    if (!assignee) {
+      throw new Error("Assignee not found");
+    }
+  }
+
+  const feature = await db.feature.create({
+    data: {
+      title: data.title.trim(),
+      brief: data.brief?.trim() || null,
+      requirements: data.requirements?.trim() || null,
+      architecture: data.architecture?.trim() || null,
+      workspaceId: data.workspaceId,
+      status: data.status || FeatureStatus.BACKLOG,
+      priority: data.priority || FeaturePriority.NONE,
+      assigneeId: data.assigneeId || null,
+      createdById: userId,
+      updatedById: userId,
+    },
+    include: {
+      assignee: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      workspace: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      _count: {
+        select: {
+          userStories: true,
+        },
+      },
+    },
+  });
+
+  return feature;
+}
+
+/**
+ * Updates a feature
+ */
+export async function updateFeature(
+  featureId: string,
+  userId: string,
+  data: {
+    title?: string;
+    status?: FeatureStatus;
+    priority?: FeaturePriority;
+    assigneeId?: string | null;
+    brief?: string | null;
+    requirements?: string | null;
+    architecture?: string | null;
+  }
+) {
+  const feature = await validateFeatureAccess(featureId, userId);
+  if (!feature) {
+    throw new Error("Feature not found or access denied");
+  }
+
+  if (data.status && !Object.values(FeatureStatus).includes(data.status)) {
+    throw new Error(
+      `Invalid status. Must be one of: ${Object.values(FeatureStatus).join(", ")}`
+    );
+  }
+
+  if (data.priority && !Object.values(FeaturePriority).includes(data.priority)) {
+    throw new Error(
+      `Invalid priority. Must be one of: ${Object.values(FeaturePriority).join(", ")}`
+    );
+  }
+
+  if (data.assigneeId !== undefined && data.assigneeId !== null) {
+    const assignee = await db.user.findFirst({
+      where: {
+        id: data.assigneeId,
+      },
+    });
+
+    if (!assignee) {
+      throw new Error("Assignee not found");
+    }
+  }
+
+  const updateData: any = {
+    updatedBy: {
+      connect: {
+        id: userId,
+      },
+    },
+  };
+
+  if (data.title !== undefined) {
+    updateData.title = data.title.trim();
+  }
+  if (data.brief !== undefined) {
+    updateData.brief = data.brief?.trim() || null;
+  }
+  if (data.requirements !== undefined) {
+    updateData.requirements = data.requirements?.trim() || null;
+  }
+  if (data.architecture !== undefined) {
+    updateData.architecture = data.architecture?.trim() || null;
+  }
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+  if (data.priority !== undefined) {
+    updateData.priority = data.priority;
+  }
+  if (data.assigneeId !== undefined) {
+    if (data.assigneeId === null) {
+      updateData.assignee = { disconnect: true };
+    } else {
+      updateData.assignee = { connect: { id: data.assigneeId } };
+    }
+  }
+
+  const updatedFeature = await db.feature.update({
+    where: {
+      id: featureId,
+    },
+    data: updateData,
+    include: {
+      workspace: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      assignee: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      updatedBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      userStories: {
+        orderBy: {
+          order: "asc",
+        },
+      },
+    },
+  });
+
+  return updatedFeature;
+}

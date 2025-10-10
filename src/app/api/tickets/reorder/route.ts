@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { reorderUserStories } from "@/services/roadmap";
+import { reorderTickets } from "@/services/roadmap";
+import type { ReorderTicketsRequest, TicketListResponse } from "@/types/ticket";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -21,23 +19,22 @@ export async function POST(
       );
     }
 
-    const { featureId } = await params;
-    const body = await request.json();
+    const body: ReorderTicketsRequest = await request.json();
 
-    const updatedStories = await reorderUserStories(featureId, userId, body.stories);
+    const tickets = await reorderTickets(userId, body.tickets);
 
-    return NextResponse.json(
+    return NextResponse.json<TicketListResponse>(
       {
         success: true,
-        data: updatedStories,
+        data: tickets,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error reordering user stories:", error);
-    const message = error instanceof Error ? error.message : "Failed to reorder user stories";
+    console.error("Error reordering tickets:", error);
+    const message = error instanceof Error ? error.message : "Failed to reorder tickets";
     const status = message.includes("not found") || message.includes("denied") ? 403 :
-                   message.includes("Invalid") || message.includes("required") ? 400 : 500;
+                   message.includes("array") || message.includes("empty") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
