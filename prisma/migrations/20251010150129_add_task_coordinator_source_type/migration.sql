@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TaskSourceType" ADD VALUE 'TASK_COORDINATOR';

@@ -675,6 +675,7 @@ enum RecommendationStatus {
 enum TaskSourceType {
   USER
   JANITOR
+  TASK_COORDINATOR
   SYSTEM
 }
 
