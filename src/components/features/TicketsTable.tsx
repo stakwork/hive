@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GripVertical } from "lucide-react";
+import { GripVertical, MoreVertical, Trash2 } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -14,6 +16,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
@@ -37,6 +55,7 @@ function SortableTableRow({
   onStatusUpdate,
   onPriorityUpdate,
   onAssigneeUpdate,
+  onDelete,
 }: {
   ticket: TicketListItem;
   workspaceSlug: string;
@@ -44,7 +63,9 @@ function SortableTableRow({
   onStatusUpdate: (status: TicketStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
+  onDelete: () => void;
 }) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const {
     attributes,
     listeners,
@@ -100,6 +121,56 @@ function SortableTableRow({
           onSelect={onAssigneeUpdate}
         />
       </TableCell>
+      <TableCell className="w-[50px]">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="h-4 w-4" />
+              <span className="sr-only">More actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteDialog(true);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete &quot;{ticket.title}&quot;? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  onDelete();
+                  setShowDeleteDialog(false);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </TableCell>
     </TableRow>
   );
 }
@@ -125,6 +196,25 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
     }
   };
 
+  const handleDeleteTicket = async (ticketId: string) => {
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete ticket");
+      }
+
+      // Remove from local state
+      if (onTicketsReordered) {
+        onTicketsReordered(tickets.filter((t) => t.id !== ticketId));
+      }
+    } catch (error) {
+      console.error("Failed to delete ticket:", error);
+    }
+  };
+
   if (tickets.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -144,10 +234,11 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead className="w-[50%]">Title</TableHead>
+              <TableHead className="w-[45%]">Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Assignee</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -163,6 +254,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
                     onStatusUpdate={async (status) => handleUpdateTicket(ticket.id, { status })}
                     onPriorityUpdate={async (priority) => handleUpdateTicket(ticket.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTicket(ticket.id, { assigneeId })}
+                    onDelete={() => handleDeleteTicket(ticket.id)}
                   />
                 ))}
             </SortableContext>
