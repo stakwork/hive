@@ -141,7 +141,7 @@ export async function middleware(request: NextRequest) {
 // Configure which routes the middleware should run on
 export const config = {
   matcher: [
-    // Apply to all routes except Next.js internals
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    // Apply to all routes except Next.js internals and public static files
+    "/((?!_next/static|_next/image|favicon.ico|js/).*)",
   ],
 };
