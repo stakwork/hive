@@ -4,8 +4,74 @@ import type {
   UpdatePhaseRequest,
   PhaseWithDetails,
   PhaseListItem,
+  PhaseWithTickets,
 } from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess } from "./utils";
+
+/**
+ * Gets a phase with its tickets and feature context
+ */
+export async function getPhase(
+  phaseId: string,
+  userId: string
+): Promise<PhaseWithTickets> {
+  const phase = await validatePhaseAccess(phaseId, userId);
+  if (!phase) {
+    throw new Error("Phase not found or access denied");
+  }
+
+  const phaseWithTickets = await db.phase.findUnique({
+    where: { id: phaseId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      status: true,
+      order: true,
+      featureId: true,
+      createdAt: true,
+      updatedAt: true,
+      feature: {
+        select: {
+          id: true,
+          title: true,
+          workspaceId: true,
+        },
+      },
+      tickets: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          order: true,
+          featureId: true,
+          phaseId: true,
+          createdAt: true,
+          updatedAt: true,
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
+          },
+        },
+        orderBy: {
+          order: "asc",
+        },
+      },
+    },
+  });
+
+  if (!phaseWithTickets) {
+    throw new Error("Phase not found");
+  }
+
+  return phaseWithTickets;
+}
 
 /**
  * Creates a new phase for a feature

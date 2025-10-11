@@ -1,14 +1,14 @@
-import type { Prisma, FeatureStatus, FeaturePriority } from "@prisma/client";
+import type { Prisma, FeatureStatus, FeaturePriority, TicketStatus, Priority } from "@prisma/client";
 import type {
   ApiSuccessResponse,
   PaginatedApiResponse,
 } from "./common";
 import React from "react";
-import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle, Circle, Slash } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
-export type { FeatureStatus, FeaturePriority };
+export type { FeatureStatus, FeaturePriority, TicketStatus, Priority };
 
 // Feature status labels
 export const FEATURE_STATUS_LABELS: Record<FeatureStatus, string> = {
@@ -66,6 +66,30 @@ export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
     bgColor: "bg-red-50/30 dark:bg-red-950/10",
   },
 ];
+
+// Ticket status labels
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  TODO: "To Do",
+  IN_PROGRESS: "In Progress",
+  DONE: "Done",
+  BLOCKED: "Blocked",
+};
+
+// Ticket status colors for badges
+export const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {
+  TODO: "bg-gray-100 text-gray-700 border-gray-200",
+  IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
+  DONE: "bg-green-50 text-green-700 border-green-200",
+  BLOCKED: "bg-red-50 text-red-700 border-red-200",
+};
+
+// Priority labels
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  CRITICAL: "Critical",
+};
 
 // Feature with relations (matches GET /api/features list query)
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
@@ -308,6 +332,49 @@ export type PhaseWithDetails = Prisma.PhaseGetPayload<{
   };
 }>;
 
+// Phase with tickets for detail page
+export type PhaseWithTickets = Prisma.PhaseGetPayload<{
+  select: {
+    id: true;
+    name: true;
+    description: true;
+    status: true;
+    order: true;
+    featureId: true;
+    createdAt: true;
+    updatedAt: true;
+    feature: {
+      select: {
+        id: true;
+        title: true;
+        workspaceId: true;
+      };
+    };
+    tickets: {
+      select: {
+        id: true;
+        title: true;
+        description: true;
+        status: true;
+        priority: true;
+        order: true;
+        featureId: true;
+        phaseId: true;
+        createdAt: true;
+        updatedAt: true;
+        assignee: {
+          select: {
+            id: true;
+            name: true;
+            email: true;
+            image: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
 export interface CreatePhaseRequest {
   name: string;
   description?: string;
@@ -355,6 +422,60 @@ export type TicketListItem = Prisma.TicketGetPayload<{
 }>;
 
 export type TicketWithDetails = TicketListItem;
+
+// Ticket detail with full context for detail page
+export type TicketDetail = Prisma.TicketGetPayload<{
+  select: {
+    id: true;
+    title: true;
+    description: true;
+    status: true;
+    priority: true;
+    order: true;
+    featureId: true;
+    phaseId: true;
+    createdAt: true;
+    updatedAt: true;
+    assignee: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+        image: true;
+      };
+    };
+    phase: {
+      select: {
+        id: true;
+        name: true;
+        status: true;
+      };
+    };
+    feature: {
+      select: {
+        id: true;
+        title: true;
+        workspaceId: true;
+      };
+    };
+    createdBy: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+        image: true;
+      };
+    };
+    updatedBy: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+        image: true;
+      };
+    };
+  };
+}>;
 
 export interface CreateTicketRequest {
   title: string;
