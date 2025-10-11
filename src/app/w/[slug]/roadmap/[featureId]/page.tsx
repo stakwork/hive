@@ -72,17 +72,19 @@ export default function FeatureDetailPage() {
     [featureId, setFeature]
   );
 
-  const { saving, saved, savedField, handleFieldBlur, updateOriginalData } = useAutoSave({
+  const { saving, saved, savedField, handleFieldBlur, updateOriginalData, triggerSaved } = useAutoSave({
     data: feature,
     onSave: handleSave,
   });
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await handleSave({ status });
+    triggerSaved("title");
   };
 
   const handleUpdateAssignee = async (assigneeId: string | null) => {
     await handleSave({ assigneeId } as Partial<FeatureDetail>);
+    triggerSaved("title");
   };
 
   const handleAddUserStory = async () => {
@@ -329,8 +331,8 @@ export default function FeatureDetailPage() {
                 placeholder="Enter feature title..."
                 size="xlarge"
               />
-              {/* Save indicator */}
-              {saved && !saving && (
+              {/* Save indicator - only show for title/status/assignee changes */}
+              {savedField === "title" && saved && !saving && (
                 <div className="flex items-center gap-2 text-sm flex-shrink-0">
                   <Check className="h-4 w-4 text-green-600" />
                   <span className="text-green-600">Saved</span>
