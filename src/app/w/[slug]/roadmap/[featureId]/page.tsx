@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusPopover } from "@/components/features/StatusPopover";
+import { StatusPopover } from "@/components/ui/status-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
+import { PhaseSection } from "@/components/features/PhaseSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { FeatureDetail } from "@/types/roadmap";
 
@@ -36,14 +37,6 @@ export default function FeatureDetailPage() {
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
-
-  const statusColors: Record<string, string> = {
-    BACKLOG: "bg-gray-100 text-gray-700 border-gray-200",
-    PLANNED: "bg-purple-50 text-purple-700 border-purple-200",
-    IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
-    COMPLETED: "bg-green-50 text-green-700 border-green-200",
-    CANCELLED: "bg-red-50 text-red-700 border-red-200",
-  };
 
   // Fetch feature data
   useEffect(() => {
@@ -230,6 +223,14 @@ export default function FeatureDetailPage() {
     }
   };
 
+  const handleUpdatePhases = (updatedPhases: FeatureDetail["phases"]) => {
+    if (!feature) return;
+    setFeature({
+      ...feature,
+      phases: updatedPhases,
+    });
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -394,9 +395,9 @@ export default function FeatureDetailPage() {
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground">Status:</Label>
                 <StatusPopover
+                  statusType="feature"
                   currentStatus={feature.status}
                   onUpdate={handleUpdateStatus}
-                  statusColors={statusColors}
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -474,6 +475,12 @@ export default function FeatureDetailPage() {
             }}
             onBlur={(value) => handleFieldBlur("architecture", value)}
             onFocus={() => setActiveField('architecture')}
+          />
+
+          <PhaseSection
+            featureId={featureId}
+            phases={feature.phases || []}
+            onUpdate={handleUpdatePhases}
           />
         </CardContent>
       </Card>

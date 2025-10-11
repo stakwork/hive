@@ -174,11 +174,13 @@ export const GraphComponent = () => {
       try {
         const response = await fetch(`/api/swarm/stakgraph/schema?id=${workspaceId}`);
         const data: SchemaResponse = await response.json();
-        if (!data.success) throw new Error("Failed to fetch schema data");
-        if (data.data && data.data.length > 0) setSchemas(data.data);
+        // Schemas are optional - don't error if not available
+        if (data.success && data.data && data.data.length > 0) {
+          setSchemas(data.data);
+        }
       } catch (err) {
-        console.error(err);
-        setError("Failed to load schemas");
+        console.error("Schema fetch failed (optional):", err);
+        // Don't set error state since schemas are optional
       } finally {
         setLoading(false);
       }

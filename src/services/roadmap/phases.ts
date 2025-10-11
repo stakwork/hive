@@ -83,6 +83,10 @@ export async function updatePhase(
     updateData.description = data.description?.trim() || null;
   }
 
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+
   if (data.order !== undefined) {
     if (typeof data.order !== "number") {
       throw new Error("Order must be a number");

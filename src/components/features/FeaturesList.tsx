@@ -12,8 +12,8 @@ import { FileText, Plus, List, LayoutGrid } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
-import { FEATURE_STATUS_COLORS, FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
-import { StatusPopover } from "./StatusPopover";
+import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
+import { StatusPopover } from "@/components/ui/status-popover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -383,9 +383,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                 </div>
                 <div className="flex items-center gap-4">
                   <StatusPopover
+                    statusType="feature"
                     currentStatus={newFeatureStatus}
                     onUpdate={async (status) => setNewFeatureStatus(status)}
-                    statusColors={FEATURE_STATUS_COLORS}
                   />
                   <AssigneeCombobox
                     workspaceSlug={workspaceSlug}
@@ -442,9 +442,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                   <TableCell className="font-medium">{feature.title}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <StatusPopover
+                      statusType="feature"
                       currentStatus={feature.status}
                       onUpdate={(status) => handleUpdateStatus(feature.id, status)}
-                      statusColors={FEATURE_STATUS_COLORS}
                     />
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
