@@ -1,14 +1,30 @@
 "use client";
 
-import { useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Loader2, Check, MoreVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -22,6 +38,9 @@ export default function TicketDetailPage() {
   const params = useParams();
   const { slug: workspaceSlug } = useWorkspace();
   const ticketId = params.ticketId as string;
+
+  // Delete confirmation state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const fetchTicket = useCallback(
     async (id: string) => {
@@ -96,6 +115,23 @@ export default function TicketDetailPage() {
   const handleUpdateAssignee = async (assigneeId: string | null) => {
     await handleSave({ assigneeId } as Partial<TicketDetail>);
     triggerSaved("title");
+  };
+
+  const handleDeleteTicket = async () => {
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete ticket");
+      }
+
+      setShowDeleteDialog(false);
+      handleBackClick();
+    } catch (error) {
+      console.error("Failed to delete ticket:", error);
+    }
   };
 
   if (loading) {
@@ -200,7 +236,7 @@ export default function TicketDetailPage() {
               )}
             </div>
 
-            {/* Status, Priority, Assignee */}
+            {/* Status, Priority, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover
                 statusType="ticket"
@@ -218,7 +254,51 @@ export default function TicketDetailPage() {
                 currentAssignee={ticket.assignee}
                 onSelect={handleUpdateAssignee}
               />
+
+              {/* Actions Menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                    <span className="sr-only">More actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete &quot;{ticket.title}&quot;? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteTicket}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </CardHeader>
 

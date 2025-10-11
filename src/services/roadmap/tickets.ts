@@ -313,7 +313,7 @@ export async function updateTicket(
 }
 
 /**
- * Deletes a ticket
+ * Soft deletes a ticket
  */
 export async function deleteTicket(
   ticketId: string,
@@ -324,8 +324,12 @@ export async function deleteTicket(
     throw new Error("Ticket not found or access denied");
   }
 
-  await db.ticket.delete({
+  await db.ticket.update({
     where: { id: ticketId },
+    data: {
+      deleted: true,
+      deletedAt: new Date(),
+    },
   });
 }
 
@@ -368,7 +372,7 @@ export async function reorderTickets(
   );
 
   const updatedTickets = await db.ticket.findMany({
-    where: { featureId: firstTicket.featureId },
+    where: { featureId: firstTicket.featureId, deleted: false },
     select: {
       id: true,
       title: true,

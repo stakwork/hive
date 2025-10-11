@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, MoreVertical, Trash2 } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
@@ -15,8 +16,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { PhaseListItem } from "@/types/roadmap";
 import type { PhaseStatus } from "@prisma/client";
 
@@ -30,6 +36,7 @@ interface PhaseItemProps {
 
 export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete }: PhaseItemProps) {
   const router = useRouter();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const {
     attributes,
@@ -61,6 +68,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
   const handleDelete = async () => {
     try {
       await onDelete(phase.id);
+      setShowDeleteDialog(false);
     } catch (error) {
       console.error("Failed to delete phase:", error);
     }
@@ -103,38 +111,51 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
             onUpdate={handleStatusUpdate}
           />
 
-          {/* Delete Button */}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
+          {/* Actions Menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
-                size="sm"
                 variant="ghost"
-                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground shrink-0"
+              >
+                <MoreVertical className="h-4 w-4" />
+                <span className="sr-only">More actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => setShowDeleteDialog(true)}
               >
                 <Trash2 className="h-4 w-4" />
-                <span className="sr-only">Delete phase</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Phase</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{phase.name}&quot;? Any tickets in this phase will be moved to &quot;Unassigned&quot;.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Phase</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{phase.name}&quot;? Any tickets in this phase will be moved to &quot;Unassigned&quot;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

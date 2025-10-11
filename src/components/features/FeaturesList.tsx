@@ -8,7 +8,23 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { FileText, Plus, List, LayoutGrid } from "lucide-react";
+import { FileText, Plus, List, LayoutGrid, MoreVertical, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
@@ -21,6 +37,102 @@ import { KanbanView } from "@/components/ui/kanban-view";
 
 interface FeaturesListProps {
   workspaceId: string;
+}
+
+function FeatureRow({
+  feature,
+  workspaceSlug,
+  onStatusUpdate,
+  onAssigneeUpdate,
+  onDelete,
+  onClick,
+}: {
+  feature: FeatureWithDetails;
+  workspaceSlug: string;
+  onStatusUpdate: (featureId: string, status: FeatureStatus) => Promise<void>;
+  onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
+  onDelete: (featureId: string) => Promise<void>;
+  onClick: () => void;
+}) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  return (
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/50 transition-colors"
+        onClick={onClick}
+      >
+        <TableCell className="font-medium">{feature.title}</TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <StatusPopover
+            statusType="feature"
+            currentStatus={feature.status}
+            onUpdate={(status) => onStatusUpdate(feature.id, status)}
+          />
+        </TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <AssigneeCombobox
+            workspaceSlug={workspaceSlug}
+            currentAssignee={feature.assignee}
+            onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
+          />
+        </TableCell>
+        <TableCell className="text-right text-muted-foreground text-sm">
+          {new Date(feature.createdAt).toLocaleDateString()}
+        </TableCell>
+        <TableCell className="w-[50px]">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="h-4 w-4" />
+                <span className="sr-only">More actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteDialog(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Feature</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{feature.title}&quot;? This will also delete all associated phases and tickets.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onDelete(feature.id);
+                setShowDeleteDialog(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
 }
 
 export function FeaturesList({ workspaceId }: FeaturesListProps) {
@@ -215,6 +327,24 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setNewFeatureAssigneeId(null);
     setNewFeatureAssigneeDisplay(null);
     setIsCreating(false);
+  };
+
+  const handleDeleteFeature = async (featureId: string) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete feature");
+      }
+
+      // Remove from local state
+      setFeatures((prev) => prev.filter((f) => f.id !== featureId));
+      setTotalCount((prev) => prev - 1);
+    } catch (error) {
+      console.error("Failed to delete feature:", error);
+    }
   };
 
   if (loading && features.length === 0) {
@@ -426,38 +556,24 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="w-[40%]">Title</TableHead>
+                <TableHead className="w-[35%]">Title</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Assigned</TableHead>
                 <TableHead className="text-right">Created</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {features.map((feature) => (
-                <TableRow
+                <FeatureRow
                   key={feature.id}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  feature={feature}
+                  workspaceSlug={workspaceSlug}
+                  onStatusUpdate={handleUpdateStatus}
+                  onAssigneeUpdate={handleUpdateAssignee}
+                  onDelete={handleDeleteFeature}
                   onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                >
-                  <TableCell className="font-medium">{feature.title}</TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <StatusPopover
-                      statusType="feature"
-                      currentStatus={feature.status}
-                      onUpdate={(status) => handleUpdateStatus(feature.id, status)}
-                    />
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <AssigneeCombobox
-                      workspaceSlug={workspaceSlug}
-                      currentAssignee={feature.assignee}
-                      onSelect={(assigneeId) => handleUpdateAssignee(feature.id, assigneeId)}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground text-sm">
-                    {new Date(feature.createdAt).toLocaleDateString()}
-                  </TableCell>
-                </TableRow>
+                />
               ))}
             </TableBody>
           </Table>
