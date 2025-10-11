@@ -45,11 +45,22 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
     [data, onSave]
   );
 
+  // Trigger saved state manually for non-field saves (like status/assignee)
+  const triggerSaved = useCallback((field: string) => {
+    setSavedField(field);
+    setSaved(true);
+    setTimeout(() => {
+      setSaved(false);
+      setSavedField(null);
+    }, 2000);
+  }, []);
+
   return {
     saving,
     saved,
     savedField,
     handleFieldBlur,
     updateOriginalData,
+    triggerSaved,
   };
 }

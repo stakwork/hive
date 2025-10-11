@@ -68,7 +68,7 @@ export default function TicketDetailPage() {
     [ticketId, ticket, setTicket]
   );
 
-  const { saving, saved, savedField, handleFieldBlur, updateOriginalData } = useAutoSave({
+  const { saving, saved, savedField, handleFieldBlur, updateOriginalData, triggerSaved } = useAutoSave({
     data: ticket,
     onSave: handleSave,
   });
@@ -85,14 +85,17 @@ export default function TicketDetailPage() {
 
   const handleUpdateStatus = async (status: TicketStatus) => {
     await handleSave({ status });
+    triggerSaved("title");
   };
 
   const handleUpdatePriority = async (priority: Priority) => {
     await handleSave({ priority });
+    triggerSaved("title");
   };
 
   const handleUpdateAssignee = async (assigneeId: string | null) => {
     await handleSave({ assigneeId } as Partial<TicketDetail>);
+    triggerSaved("title");
   };
 
   if (loading) {
@@ -188,7 +191,8 @@ export default function TicketDetailPage() {
                 placeholder="Enter ticket title..."
                 size="large"
               />
-              {saved && !saving && (
+              {/* Save indicator - only show for title/status/priority/assignee changes */}
+              {savedField === "title" && saved && !saving && (
                 <div className="flex items-center gap-2 text-sm flex-shrink-0">
                   <Check className="h-4 w-4 text-green-600" />
                   <span className="text-green-600">Saved</span>
