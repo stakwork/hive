@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
@@ -37,6 +38,7 @@ function SortableTableRow({
   onStatusUpdate,
   onPriorityUpdate,
   onAssigneeUpdate,
+  onDelete,
 }: {
   ticket: TicketListItem;
   workspaceSlug: string;
@@ -44,6 +46,7 @@ function SortableTableRow({
   onStatusUpdate: (status: TicketStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
+  onDelete: () => void;
 }) {
   const {
     attributes,
@@ -100,6 +103,22 @@ function SortableTableRow({
           onSelect={onAssigneeUpdate}
         />
       </TableCell>
+      <TableCell className="w-[50px]">
+        <ActionMenu
+          actions={[
+            {
+              label: "Delete",
+              icon: Trash2,
+              variant: "destructive",
+              confirmation: {
+                title: "Delete Ticket",
+                description: `Are you sure you want to delete "${ticket.title}"? This action cannot be undone.`,
+                onConfirm: onDelete,
+              },
+            },
+          ]}
+        />
+      </TableCell>
     </TableRow>
   );
 }
@@ -125,6 +144,25 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
     }
   };
 
+  const handleDeleteTicket = async (ticketId: string) => {
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete ticket");
+      }
+
+      // Remove from local state
+      if (onTicketsReordered) {
+        onTicketsReordered(tickets.filter((t) => t.id !== ticketId));
+      }
+    } catch (error) {
+      console.error("Failed to delete ticket:", error);
+    }
+  };
+
   if (tickets.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -144,10 +182,11 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead className="w-[50%]">Title</TableHead>
+              <TableHead className="w-[45%]">Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Assignee</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -163,6 +202,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
                     onStatusUpdate={async (status) => handleUpdateTicket(ticket.id, { status })}
                     onPriorityUpdate={async (priority) => handleUpdateTicket(ticket.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTicket(ticket.id, { assigneeId })}
+                    onDelete={() => handleDeleteTicket(ticket.id)}
                   />
                 ))}
             </SortableContext>

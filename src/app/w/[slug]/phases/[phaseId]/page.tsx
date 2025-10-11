@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { TicketsTable } from "@/components/features/TicketsTable";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -157,6 +158,22 @@ export default function PhaseDetailPage() {
     }
   };
 
+  const handleDeletePhase = async () => {
+    try {
+      const response = await fetch(`/api/phases/${phaseId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete phase");
+      }
+
+      handleBackClick();
+    } catch (error) {
+      console.error("Failed to delete phase:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -239,12 +256,28 @@ export default function PhaseDetailPage() {
               />
             </div>
 
-            {/* Status */}
-            <div>
+            {/* Status & Actions */}
+            <div className="flex items-center gap-4">
               <StatusPopover
                 statusType="phase"
                 currentStatus={phase.status}
                 onUpdate={handleUpdateStatus}
+              />
+
+              {/* Actions Menu */}
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Phase",
+                      description: `Are you sure you want to delete "${phase.name}"? Any tickets in this phase will be moved to "Unassigned".`,
+                      onConfirm: handleDeletePhase,
+                    },
+                  },
+                ]}
               />
             </div>
           </div>

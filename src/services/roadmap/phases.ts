@@ -39,6 +39,9 @@ export async function getPhase(
         },
       },
       tickets: {
+        where: {
+          deleted: false,
+        },
         select: {
           id: true,
           title: true,
@@ -188,7 +191,7 @@ export async function updatePhase(
 }
 
 /**
- * Deletes a phase (tickets will have phaseId set to null)
+ * Soft deletes a phase (tickets will have phaseId set to null)
  */
 export async function deletePhase(
   phaseId: string,
@@ -199,8 +202,12 @@ export async function deletePhase(
     throw new Error("Phase not found or access denied");
   }
 
-  await db.phase.delete({
+  await db.phase.update({
     where: { id: phaseId },
+    data: {
+      deleted: true,
+      deletedAt: new Date(),
+    },
   });
 }
 
@@ -234,7 +241,7 @@ export async function reorderPhases(
   );
 
   const updatedPhases = await db.phase.findMany({
-    where: { featureId },
+    where: { featureId, deleted: false },
     select: {
       id: true,
       name: true,

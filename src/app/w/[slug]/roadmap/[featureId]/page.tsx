@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
@@ -184,6 +185,22 @@ export default function FeatureDetailPage() {
     });
   };
 
+  const handleDeleteFeature = async () => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete feature");
+      }
+
+      router.push(`/w/${workspaceSlug}/roadmap`);
+    } catch (error) {
+      console.error("Failed to delete feature:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -340,7 +357,7 @@ export default function FeatureDetailPage() {
               )}
             </div>
 
-            {/* Status & Assignee */}
+            {/* Status, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover
                 statusType="feature"
@@ -351,6 +368,22 @@ export default function FeatureDetailPage() {
                 workspaceSlug={workspaceSlug}
                 currentAssignee={feature.assignee}
                 onSelect={handleUpdateAssignee}
+              />
+
+              {/* Actions Menu */}
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Feature",
+                      description: `Are you sure you want to delete "${feature.title}"? This will also delete all associated phases and tickets.`,
+                      onConfirm: handleDeleteFeature,
+                    },
+                  },
+                ]}
               />
             </div>
           </div>

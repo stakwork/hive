@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -96,6 +97,22 @@ export default function TicketDetailPage() {
   const handleUpdateAssignee = async (assigneeId: string | null) => {
     await handleSave({ assigneeId } as Partial<TicketDetail>);
     triggerSaved("title");
+  };
+
+  const handleDeleteTicket = async () => {
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete ticket");
+      }
+
+      handleBackClick();
+    } catch (error) {
+      console.error("Failed to delete ticket:", error);
+    }
   };
 
   if (loading) {
@@ -200,7 +217,7 @@ export default function TicketDetailPage() {
               )}
             </div>
 
-            {/* Status, Priority, Assignee */}
+            {/* Status, Priority, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover
                 statusType="ticket"
@@ -217,6 +234,22 @@ export default function TicketDetailPage() {
                 workspaceSlug={workspaceSlug}
                 currentAssignee={ticket.assignee}
                 onSelect={handleUpdateAssignee}
+              />
+
+              {/* Actions Menu */}
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Ticket",
+                      description: `Are you sure you want to delete "${ticket.title}"? This action cannot be undone.`,
+                      onConfirm: handleDeleteTicket,
+                    },
+                  },
+                ]}
               />
             </div>
           </div>

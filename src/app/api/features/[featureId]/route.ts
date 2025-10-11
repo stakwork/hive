@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { updateFeature } from "@/services/roadmap";
+import { updateFeature, deleteFeature } from "@/services/roadmap";
 
 export async function GET(
   request: NextRequest,
@@ -91,11 +91,17 @@ export async function GET(
           },
         },
         phases: {
+          where: {
+            deleted: false,
+          },
           orderBy: {
             order: "asc",
           },
           include: {
             tickets: {
+              where: {
+                deleted: false,
+              },
               orderBy: {
                 order: "asc",
               },
@@ -115,6 +121,7 @@ export async function GET(
         tickets: {
           where: {
             phaseId: null,
+            deleted: false,
           },
           orderBy: {
             order: "asc",
@@ -200,6 +207,45 @@ export async function PATCH(
     const status = message.includes("Feature not found") ? 404 :
                    message.includes("denied") ? 403 :
                    message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found") ? 400 : 500;
+
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ featureId: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as { id?: string })?.id;
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Invalid user session" },
+        { status: 401 }
+      );
+    }
+
+    const { featureId } = await params;
+
+    await deleteFeature(featureId, userId);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Feature deleted successfully",
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error deleting feature:", error);
+    const message = error instanceof Error ? error.message : "Failed to delete feature";
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

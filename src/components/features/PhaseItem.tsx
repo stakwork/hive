@@ -6,17 +6,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { StatusPopover } from "@/components/ui/status-popover";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ActionMenu } from "@/components/ui/action-menu";
 import type { PhaseListItem } from "@/types/roadmap";
 import type { PhaseStatus } from "@prisma/client";
 
@@ -103,36 +93,21 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
             onUpdate={handleStatusUpdate}
           />
 
-          {/* Delete Button */}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span className="sr-only">Delete phase</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Phase</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{phase.name}&quot;? Any tickets in this phase will be moved to &quot;Unassigned&quot;.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {/* Actions Menu */}
+          <ActionMenu
+            actions={[
+              {
+                label: "Delete",
+                icon: Trash2,
+                variant: "destructive",
+                confirmation: {
+                  title: "Delete Phase",
+                  description: `Are you sure you want to delete "${phase.name}"? Any tickets in this phase will be moved to "Unassigned".`,
+                  onConfirm: handleDelete,
+                },
+              },
+            ]}
+          />
         </div>
       </div>
     </div>
