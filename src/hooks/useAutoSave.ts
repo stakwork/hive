@@ -12,16 +12,18 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
   const [saved, setSaved] = useState(false);
   const [savedField, setSavedField] = useState<string | null>(null);
   const originalDataRef = useRef<T | null>(data);
+  const hasSyncedRef = useRef(false);
 
   // Update original data when data changes externally
   const updateOriginalData = useCallback((newData: T) => {
     originalDataRef.current = newData;
   }, []);
 
-  // Sync originalDataRef when data is fetched
+  // Sync originalDataRef only on initial data fetch
   useEffect(() => {
-    if (data) {
+    if (data && !hasSyncedRef.current) {
       originalDataRef.current = data;
+      hasSyncedRef.current = true;
     }
   }, [data]);
 
