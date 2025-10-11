@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ export default function FeatureDetailPage() {
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
+  const storyFocusRef = useRef(false);
 
   const fetchFeature = useCallback(
     async (id: string) => {
@@ -109,6 +110,7 @@ export default function FeatureDetailPage() {
           ...feature,
           userStories: [...feature.userStories, result.data],
         });
+        storyFocusRef.current = true;
         setNewStoryTitle("");
       }
     } catch (error) {
@@ -412,6 +414,7 @@ export default function FeatureDetailPage() {
             onAddUserStory={handleAddUserStory}
             onDeleteUserStory={handleDeleteUserStory}
             onReorderUserStories={handleReorderUserStories}
+            shouldFocusRef={storyFocusRef}
           />
 
           <AutoSaveTextarea

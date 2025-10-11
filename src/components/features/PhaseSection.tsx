@@ -35,6 +35,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
   const [newPhaseName, setNewPhaseName] = useState("");
   const [creatingPhase, setCreatingPhase] = useState(false);
   const phaseInputRef = useRef<HTMLInputElement>(null);
+  const shouldFocusRef = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -45,10 +46,11 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
 
   const phaseIds = useMemo(() => phases.map((phase) => phase.id), [phases]);
 
-  // Auto-focus after phase creation completes
+  // Auto-focus after phase creation completes (not on mount)
   useEffect(() => {
-    if (!creatingPhase && !newPhaseName) {
+    if (shouldFocusRef.current && !creatingPhase && !newPhaseName) {
       phaseInputRef.current?.focus();
+      shouldFocusRef.current = false;
     }
   }, [creatingPhase, newPhaseName]);
 
@@ -70,6 +72,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
       const result = await response.json();
       if (result.success) {
         onUpdate([...phases, result.data]);
+        shouldFocusRef.current = true;
         setNewPhaseName("");
       }
     } catch (error) {
