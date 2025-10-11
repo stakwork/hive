@@ -28,7 +28,7 @@ export async function POST(
     const message = error instanceof Error ? error.message : "Failed to reorder user stories";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :
-                   message.includes("Invalid") || message.includes("required") ? 400 : 500;
+                   message.includes("Invalid") || message.includes("required") || message.includes("must be an array") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
