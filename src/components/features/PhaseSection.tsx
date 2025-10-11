@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Loader2, FolderPlus } from "lucide-react";
 import {
   DndContext,
@@ -33,6 +33,7 @@ interface PhaseSectionProps {
 export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps) {
   const [newPhaseName, setNewPhaseName] = useState("");
   const [creatingPhase, setCreatingPhase] = useState(false);
+  const phaseInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -62,6 +63,8 @@ export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps)
       if (result.success) {
         onUpdate([...phases, result.data]);
         setNewPhaseName("");
+        // Refocus input for quick successive entries
+        phaseInputRef.current?.focus();
       }
     } catch (error) {
       console.error("Failed to create phase:", error);
@@ -177,6 +180,7 @@ export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps)
         {/* Add Phase Input */}
         <div className="flex gap-2 p-4">
           <Input
+            ref={phaseInputRef}
             placeholder="Enter phase name..."
             value={newPhaseName}
             onChange={(e) => setNewPhaseName(e.target.value)}

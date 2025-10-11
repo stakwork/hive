@@ -87,12 +87,12 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
           variant="ghost"
           role="combobox"
           aria-expanded={open}
-          className="min-w-[140px] max-w-[200px] justify-start h-8 px-2 text-sm font-normal hover:bg-muted"
+          className="w-auto justify-start h-8 px-2 text-sm font-normal hover:bg-muted"
           onClick={(e) => e.stopPropagation()}
         >
           {currentAssignee ? (
             <div className="flex items-center gap-2">
-              <Avatar className="h-5 w-5">
+              <Avatar key={currentAssignee.id} className="h-5 w-5">
                 <AvatarImage src={currentAssignee.image || undefined} />
                 <AvatarFallback className="text-xs">
                   {currentAssignee.name?.charAt(0) || <UserIcon className="h-3 w-3" />}
@@ -102,7 +102,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <Avatar className="h-5 w-5">
+              <Avatar key="unassigned" className="h-5 w-5">
                 <AvatarFallback className="text-xs">
                   <UserIcon className="h-3 w-3" />
                 </AvatarFallback>
@@ -112,7 +112,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
+      <PopoverContent className="w-[200px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
         <Command>
           <CommandInput placeholder="Search members..." />
           <CommandList>

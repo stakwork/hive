@@ -392,22 +392,16 @@ export default function FeatureDetailPage() {
 
             {/* Status & Assignee */}
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">Status:</Label>
-                <StatusPopover
-                  statusType="feature"
-                  currentStatus={feature.status}
-                  onUpdate={handleUpdateStatus}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">Assigned:</Label>
-                <AssigneeCombobox
-                  workspaceSlug={workspaceSlug}
-                  currentAssignee={feature.assignee}
-                  onSelect={handleUpdateAssignee}
-                />
-              </div>
+              <StatusPopover
+                statusType="feature"
+                currentStatus={feature.status}
+                onUpdate={handleUpdateStatus}
+              />
+              <AssigneeCombobox
+                workspaceSlug={workspaceSlug}
+                currentAssignee={feature.assignee}
+                onSelect={handleUpdateAssignee}
+              />
             </div>
           </div>
         </CardHeader>
