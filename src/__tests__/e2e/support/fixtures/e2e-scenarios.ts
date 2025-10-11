@@ -33,6 +33,10 @@ export async function createStandardWorkspaceScenario(): Promise<TestWorkspaceSc
       slug: `e2e-test-${Date.now()}`,
       description: "Workspace for E2E testing",
     },
+    withSwarm: true,
+    swarm: {
+      status: "ACTIVE"
+    }
   });
 }
 
@@ -49,21 +53,21 @@ export async function createWorkspaceWithTasksScenario() {
       description: "First test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "active",
+      status: "IN_PROGRESS",
     }),
     createTestTask({
       title: "E2E Test Task 2",
       description: "Second test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "active",
+      status: "IN_PROGRESS",
     }),
     createTestTask({
       title: "E2E Test Task 3",
       description: "Third test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "completed",
+      status: "DONE",
     }),
   ]);
 
@@ -90,6 +94,10 @@ export async function createWorkspaceWithMembersScenario() {
     workspace: {
       name: "E2E Team Workspace",
       slug: `e2e-team-${Date.now()}`,
+    },
+    withSwarm: true,
+    swarm: {
+      status: "ACTIVE"
     },
     members: [
       { role: "ADMIN", withGitHubAuth: true, githubUsername: "e2e-admin" },

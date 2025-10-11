@@ -142,6 +142,21 @@ export class TasksPage {
   }
 
   /**
+   * Click view toggle button (List or Kanban)
+   */
+  async clickViewToggle(viewType: 'list' | 'kanban'): Promise<void> {
+    const selector = viewType === 'list' ? selectors.tasks.viewToggleList : selectors.tasks.viewToggleKanban;
+    await this.page.locator(selector).click();
+  }
+
+  /**
+   * Verify view toggle buttons are visible
+   */
+  async verifyViewToggleVisible(): Promise<void> {
+    await expect(this.page.locator(selectors.tasks.viewToggleGroup)).toBeVisible({ timeout: 10000 });
+  }
+
+  /**
    * Click on a task by title to open it
    */
   async clickTask(title: string): Promise<void> {

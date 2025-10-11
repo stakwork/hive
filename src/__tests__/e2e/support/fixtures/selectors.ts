@@ -19,6 +19,7 @@ export const selectors = {
     insightsLink: '[data-testid="nav-insights"]',
     learnLink: '[data-testid="nav-learn"]',
     userJourneysLink: '[data-testid="nav-user-journeys"]',
+    userDropdownTrigger: '[data-testid="user-dropdown-trigger"]',
   },
 
   // Page titles
@@ -99,6 +100,9 @@ export const selectors = {
     connectRepoButton: 'button:has-text("Connect Repository")',
     taskListContainer: '[data-testid="task-card"]',
     recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
+    viewToggleGroup: '[data-testid="view-toggle-group"]',
+    viewToggleList: '[data-testid="view-toggle-list"]',
+    viewToggleKanban: '[data-testid="view-toggle-kanban"]',
   },
 
   // Dashboard

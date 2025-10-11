@@ -100,11 +100,13 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
               value={viewType} 
               onValueChange={handleViewChange}
               className="ml-4"
+              data-testid="view-toggle-group"
             >
               <ToggleGroupItem 
                 value="list" 
                 aria-label="List view"
                 className="h-8 px-2"
+                data-testid="view-toggle-list"
               >
                 <List className="h-4 w-4" />
               </ToggleGroupItem>
@@ -112,6 +114,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                 value="kanban" 
                 aria-label="Kanban view"
                 className="h-8 px-2"
+                data-testid="view-toggle-kanban"
               >
                 <LayoutGrid className="h-4 w-4" />
               </ToggleGroupItem>
