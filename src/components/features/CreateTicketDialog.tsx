@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { useTicketMutations } from "@/hooks/useTicketMutations";
 import type { TicketListItem } from "@/types/roadmap";
 
 interface CreateTicketDialogProps {
@@ -39,12 +40,11 @@ export function CreateTicketDialog({
     assigneeId: null as string | null,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
-  const [apiError, setApiError] = useState<string | null>(null);
+
+  const { createTicket, loading, error: apiError } = useTicketMutations();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setApiError(null);
 
     // Validation
     const newErrors: Record<string, string> = {};
@@ -55,42 +55,25 @@ export function CreateTicketDialog({
       return;
     }
 
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/features/${featureId}/tickets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formData.title.trim(),
-          description: formData.description.trim() || undefined,
-          phaseId,
-          assigneeId: formData.assigneeId,
-        }),
-      });
+    const ticket = await createTicket({
+      featureId,
+      phaseId,
+      title: formData.title,
+      description: formData.description,
+      assigneeId: formData.assigneeId,
+    });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to create ticket");
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        onCreated?.(result.data);
-        setFormData({ title: "", description: "", assigneeId: null });
-        setErrors({});
-        onOpenChange(false);
-      }
-    } catch (err: unknown) {
-      setApiError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
+    if (ticket) {
+      onCreated?.(ticket);
+      setFormData({ title: "", description: "", assigneeId: null });
+      setErrors({});
+      onOpenChange(false);
     }
   };
 
   const handleCancel = () => {
     setFormData({ title: "", description: "", assigneeId: null });
     setErrors({});
-    setApiError(null);
     onOpenChange(false);
   };
 
@@ -147,7 +130,7 @@ export function CreateTicketDialog({
             <AssigneeCombobox
               workspaceSlug={workspaceSlug}
               currentAssignee={null}
-              onSelect={(assigneeId) =>
+              onSelect={async (assigneeId) =>
                 setFormData({ ...formData, assigneeId })
               }
             />

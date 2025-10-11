@@ -370,6 +370,12 @@ export type PhaseWithTickets = Prisma.PhaseGetPayload<{
             image: true;
           };
         };
+        phase: {
+          select: {
+            id: true;
+            name: true;
+          };
+        };
       };
     };
   };

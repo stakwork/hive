@@ -58,6 +58,12 @@ export async function getPhase(
               image: true,
             },
           },
+          phase: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
         orderBy: {
           order: "asc",

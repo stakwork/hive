@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EditableTitle } from "@/components/ui/editable-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusPopover } from "@/components/ui/status-popover";
@@ -13,6 +14,8 @@ import { PriorityPopover } from "@/components/ui/priority-popover";
 import { TicketsTable } from "@/components/features/TicketsTable";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useDetailResource } from "@/hooks/useDetailResource";
+import { useTicketMutations } from "@/hooks/useTicketMutations";
 import type { PhaseWithTickets, TicketListItem } from "@/types/roadmap";
 import type { PhaseStatus, TicketStatus, Priority } from "@prisma/client";
 
@@ -22,9 +25,27 @@ export default function PhaseDetailPage() {
   const { slug: workspaceSlug } = useWorkspace();
   const phaseId = params.phaseId as string;
 
-  const [phase, setPhase] = useState<PhaseWithTickets | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const fetchPhase = useCallback(
+    async (id: string) => {
+      const response = await fetch(`/api/phases/${id}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch phase");
+      }
+      return response.json();
+    },
+    []
+  );
+
+  const {
+    data: phase,
+    setData: setPhase,
+    updateData: updatePhase,
+    loading,
+    error,
+  } = useDetailResource<PhaseWithTickets>({
+    resourceId: phaseId,
+    fetchFn: fetchPhase,
+  });
 
   // Ticket creation state
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
@@ -38,36 +59,9 @@ export default function PhaseDetailPage() {
     email: string | null;
     image: string | null;
   } | null>(null);
-  const [creatingTicket, setCreatingTicket] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchPhase = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/phases/${phaseId}`);
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch phase");
-        }
-
-        const result = await response.json();
-        if (result.success) {
-          setPhase(result.data);
-        } else {
-          throw new Error("Failed to fetch phase");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (phaseId) {
-      fetchPhase();
-    }
-  }, [phaseId]);
+  const { createTicket, loading: creatingTicket } = useTicketMutations();
 
   const handleBackClick = () => {
     if (phase?.feature) {
@@ -93,7 +87,7 @@ export default function PhaseDetailPage() {
 
       const result = await response.json();
       if (result.success) {
-        setPhase({ ...phase, ...result.data });
+        updatePhase(result.data);
       }
     } catch (error) {
       console.error("Failed to update phase:", error);
@@ -107,49 +101,32 @@ export default function PhaseDetailPage() {
   const handleCreateTicket = async () => {
     if (!newTicketTitle.trim() || !phase?.feature) return;
 
-    try {
-      setCreatingTicket(true);
-      const response = await fetch(`/api/features/${phase.feature.id}/tickets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTicketTitle.trim(),
-          phaseId,
-          status: newTicketStatus,
-          priority: newTicketPriority,
-          assigneeId: newTicketAssigneeId,
-        }),
+    const ticket = await createTicket({
+      featureId: phase.feature.id,
+      phaseId,
+      title: newTicketTitle,
+      status: newTicketStatus,
+      priority: newTicketPriority,
+      assigneeId: newTicketAssigneeId,
+    });
+
+    if (ticket && phase) {
+      // Add new ticket to the list
+      setPhase({
+        ...phase,
+        tickets: [...phase.tickets, ticket],
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to create ticket");
-      }
+      // Reset form and auto-focus
+      setNewTicketTitle("");
+      setNewTicketStatus("TODO");
+      setNewTicketPriority("MEDIUM");
+      setNewTicketAssigneeId(null);
+      setNewTicketAssigneeData(null);
 
-      const result = await response.json();
-
-      if (result.success) {
-        // Add new ticket to the list
-        setPhase({
-          ...phase,
-          tickets: [...phase.tickets, result.data],
-        });
-
-        // Reset title only, keep form open and auto-focus
-        setNewTicketTitle("");
-        setNewTicketStatus("TODO");
-        setNewTicketPriority("MEDIUM");
-        setNewTicketAssigneeId(null);
-        setNewTicketAssigneeData(null);
-
-        // Auto-focus back to title input
-        setTimeout(() => {
-          titleInputRef.current?.focus();
-        }, 0);
-      }
-    } catch (error) {
-      console.error("Failed to create ticket:", error);
-    } finally {
-      setCreatingTicket(false);
+      setTimeout(() => {
+        titleInputRef.current?.focus();
+      }, 0);
     }
   };
 
@@ -253,12 +230,12 @@ export default function PhaseDetailPage() {
           <div className="space-y-4">
             {/* Phase Title */}
             <div className="flex items-center gap-4">
-              <Input
+              <EditableTitle
                 value={phase.name}
-                onChange={(e) => setPhase({ ...phase, name: e.target.value })}
-                onBlur={(e) => handleUpdatePhase("name", e.target.value)}
-                className="!text-4xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none flex-1"
+                onChange={(value) => updatePhase({ name: value })}
+                onBlur={(value) => handleUpdatePhase("name", value)}
                 placeholder="Enter phase name..."
+                size="large"
               />
             </div>
 
@@ -323,7 +300,7 @@ export default function PhaseDetailPage() {
                     <AssigneeCombobox
                       workspaceSlug={workspaceSlug}
                       currentAssignee={newTicketAssigneeData}
-                      onSelect={(assigneeId, assigneeData) => {
+                      onSelect={async (assigneeId, assigneeData) => {
                         setNewTicketAssigneeId(assigneeId);
                         setNewTicketAssigneeData(assigneeData || null);
                       }}

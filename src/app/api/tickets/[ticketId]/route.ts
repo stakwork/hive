@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getTicket, updateTicket, deleteTicket } from "@/services/roadmap";
-import type { UpdateTicketRequest, TicketResponse } from "@/types/roadmap";
-import type { ApiSuccessResponse, TicketDetail } from "@/types/roadmap";
+import type { UpdateTicketRequest, TicketResponse, TicketDetail } from "@/types/roadmap";
+import type { ApiSuccessResponse } from "@/types/common";
 
 export async function GET(
   request: NextRequest,
