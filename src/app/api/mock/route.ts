@@ -26,7 +26,11 @@ export async function POST(req: NextRequest) {
         })),
       };
 
-      await axios.post(`${baseUrl}/api/chat/response`, responsePayload);
+      await axios.post(`${baseUrl}/api/chat/response`, responsePayload, {
+        headers: {
+          "x-api-token": process.env.API_TOKEN || "",
+        },
+      });
     } catch (error) {
       console.error("❌ Mock error sending response:", error);
     }
