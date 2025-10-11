@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import {
   DndContext,
   type DragEndEvent,
@@ -11,25 +12,41 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useSortable } from "@/hooks/useSortable";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { InlineCreateForm } from "@/components/shared/InlineCreateForm";
 import { SortableUserStory } from "./SortableUserStory";
 import type { FeatureDetail } from "@/types/roadmap";
 
 interface UserStoriesSectionProps {
   userStories: FeatureDetail["userStories"];
-  onAddUserStory: (title: string) => Promise<void>;
+  newStoryTitle: string;
+  creatingStory: boolean;
+  onNewStoryTitleChange: (title: string) => void;
+  onAddUserStory: () => void;
   onDeleteUserStory: (storyId: string) => void;
   onReorderUserStories: (stories: FeatureDetail["userStories"]) => void;
 }
 
 export function UserStoriesSection({
   userStories,
+  newStoryTitle,
+  creatingStory,
+  onNewStoryTitleChange,
   onAddUserStory,
   onDeleteUserStory,
   onReorderUserStories,
 }: UserStoriesSectionProps) {
+  const storyInputRef = useRef<HTMLInputElement>(null);
+
   const { sensors, collisionDetection } = useSortable();
+
+  // Auto-focus after story creation
+  useEffect(() => {
+    if (!creatingStory && !newStoryTitle) {
+      storyInputRef.current?.focus();
+    }
+  }, [creatingStory, newStoryTitle]);
 
   // Memoize story IDs for sortable context
   const storyIds = useMemo(
@@ -69,13 +86,31 @@ export function UserStoriesSection({
       </div>
 
       <div className="rounded-lg border bg-muted/30">
-        <div className="p-4">
-          <InlineCreateForm
+        <div className="flex gap-2 p-4">
+          <Input
+            ref={storyInputRef}
             placeholder="As a user, I want to..."
-            buttonText="Add"
-            onSubmit={onAddUserStory}
-            keepOpenAfterSubmit={true}
+            value={newStoryTitle}
+            onChange={(e) => onNewStoryTitleChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !creatingStory) {
+                onAddUserStory();
+              }
+            }}
+            disabled={creatingStory}
+            className="flex-1"
           />
+          <Button
+            size="sm"
+            onClick={onAddUserStory}
+            disabled={creatingStory || !newStoryTitle.trim()}
+          >
+            {creatingStory ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "Add"
+            )}
+          </Button>
         </div>
 
         {userStories.length > 0 && (

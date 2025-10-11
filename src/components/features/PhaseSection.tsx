@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { FolderPlus } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { Loader2, FolderPlus } from "lucide-react";
 import {
   DndContext,
   type DragEndEvent,
@@ -12,8 +12,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useSortable } from "@/hooks/useSortable";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { InlineCreateForm } from "@/components/shared/InlineCreateForm";
 import { PhaseItem } from "@/components/features/PhaseItem";
 import type { PhaseListItem } from "@/types/roadmap";
 import type { PhaseStatus } from "@prisma/client";
@@ -26,16 +27,30 @@ interface PhaseSectionProps {
 }
 
 export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: PhaseSectionProps) {
+  const [newPhaseName, setNewPhaseName] = useState("");
+  const [creatingPhase, setCreatingPhase] = useState(false);
+  const phaseInputRef = useRef<HTMLInputElement>(null);
+
   const { sensors, collisionDetection } = useSortable();
 
   const phaseIds = useMemo(() => phases.map((phase) => phase.id), [phases]);
 
-  const handleAddPhase = async (name: string) => {
+  // Auto-focus after phase creation completes
+  useEffect(() => {
+    if (!creatingPhase && !newPhaseName) {
+      phaseInputRef.current?.focus();
+    }
+  }, [creatingPhase, newPhaseName]);
+
+  const handleAddPhase = async () => {
+    if (!newPhaseName.trim()) return;
+
     try {
+      setCreatingPhase(true);
       const response = await fetch(`/api/features/${featureId}/phases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name: newPhaseName.trim() }),
       });
 
       if (!response.ok) {
@@ -45,10 +60,12 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
       const result = await response.json();
       if (result.success) {
         onUpdate([...phases, result.data]);
+        setNewPhaseName("");
       }
     } catch (error) {
       console.error("Failed to create phase:", error);
-      throw error;
+    } finally {
+      setCreatingPhase(false);
     }
   };
 
@@ -157,14 +174,34 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
 
       <div className="rounded-lg border bg-muted/30">
         {/* Add Phase Input */}
-        <div className="p-4">
-          <InlineCreateForm
+        <div className="flex gap-2 p-4">
+          <Input
+            ref={phaseInputRef}
             placeholder="Enter phase name..."
-            buttonText="Add Phase"
-            buttonIcon={FolderPlus}
-            onSubmit={handleAddPhase}
-            keepOpenAfterSubmit={true}
+            value={newPhaseName}
+            onChange={(e) => setNewPhaseName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !creatingPhase) {
+                handleAddPhase();
+              }
+            }}
+            disabled={creatingPhase}
+            className="flex-1"
           />
+          <Button
+            size="sm"
+            onClick={handleAddPhase}
+            disabled={creatingPhase || !newPhaseName.trim()}
+          >
+            {creatingPhase ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <FolderPlus className="h-4 w-4 mr-2" />
+                Add Phase
+              </>
+            )}
+          </Button>
         </div>
 
         {/* Phases List */}
