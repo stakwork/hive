@@ -26,7 +26,7 @@ function extractTokenProperty(token: Record<string, unknown> | null, property: s
 
 function sanitizeMiddlewareHeaders(headers: Headers) {
   Object.values(MIDDLEWARE_HEADERS).forEach((header) => {
-    headers.delete(header);
+    headers.delete(header as string);
   });
 }
 
