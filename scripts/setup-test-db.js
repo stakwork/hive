@@ -36,7 +36,14 @@ async function setupTestDatabase() {
 
     // Clean up any existing test data
     console.log("🧹 Cleaning up existing test data...");
-    await prisma.verificationToken.deleteMany();
+    // Note: Order matters due to foreign key constraints
+    
+    // Clean up workspace-related data first
+    await prisma.workspaceMember.deleteMany();
+    await prisma.task.deleteMany();
+    await prisma.workspace.deleteMany();
+    
+    // Clean up authentication data
     await prisma.session.deleteMany();
     await prisma.account.deleteMany();
     await prisma.gitHubAuth.deleteMany();

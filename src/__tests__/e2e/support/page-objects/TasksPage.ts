@@ -93,6 +93,15 @@ export class TasksPage {
   }
 
   /**
+   * Wait for task detail page to load (after task creation)
+   */
+  async waitForTaskDetail(): Promise<void> {
+    // Wait for chat input to be visible (indicates task detail page loaded)
+    const chatInput = this.page.locator(selectors.tasks.chatMessageInput);
+    await chatInput.waitFor({ state: 'visible', timeout: 10000 });
+  }
+
+  /**
    * Send a message in task chat
    */
   async sendMessage(message: string): Promise<void> {

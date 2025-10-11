@@ -286,6 +286,7 @@ export function RepositoryCard() {
               onClick={handleRerunIngest}
               disabled={isIngesting}
               className="w-full text-xs flex items-center gap-2"
+              data-testid="repository-card-rerun-ingest-button"
             >
               <Database className="w-3 h-3" />
               {isIngesting ? "Ingesting..." : "Rerun Ingest"}

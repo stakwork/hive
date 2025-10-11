@@ -48,10 +48,9 @@ export class DashboardPage {
   }
 
   /**
-   * Reload the page
+   * Click the primary button in the repository card (second card on dashboard)
    */
-  async reload(): Promise<void> {
-    await this.page.reload();
-    await this.waitForLoad();
+  async clickRepositoryCardRerunButton(): Promise<void> {
+    await this.page.locator(selectors.dashboard.repoCardRerunButton).click();
   }
 }

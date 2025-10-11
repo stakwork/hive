@@ -107,6 +107,7 @@ export const selectors = {
     repoSection: '[data-testid="repository-card"]',
     coverageSection: '[data-testid="coverage-card"]',
     recentTasksSection: 'text=/Recent Tasks|No tasks yet/i',
+    repoCardRerunButton: '[data-testid="repository-card-rerun-ingest-button"]',
   },
 
   // Insights
