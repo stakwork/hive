@@ -3,11 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
 import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
-import type { ApiError } from "@/types/errors";
 // Environment validation - fail fast if required secrets are missing
-if (!process.env.NEXTAUTH_SECRET) {
-  throw new Error("NEXTAUTH_SECRET is required for middleware authentication");
-}
 
 // Generate a unique request ID for tracing using crypto API when available
 function generateRequestId(): string {
@@ -69,14 +65,10 @@ function redirectTo(
   return response;
 }
 
-function respondWithApiError(error: ApiError, requestId: string, authStatus: string) {
-  return respondWithJson(
-    { error: error.message, kind: error.kind, details: error.details },
-    { status: error.statusCode, requestId, authStatus },
-  );
-}
-
 export async function middleware(request: NextRequest) {
+  if (!process.env.NEXTAUTH_SECRET) {
+    throw new Error("NEXTAUTH_SECRET is required for middleware authentication");
+  }
   const requestId = generateRequestId();
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith("/api");
@@ -114,22 +106,30 @@ export async function middleware(request: NextRequest) {
     }
 
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token) {
+    const id = extractTokenProperty(token, "id");
+    const email = extractTokenProperty(token, "email");
+    const name = extractTokenProperty(token, "name");
+    if (!token || !id || !email || !name) {
       if (isApiRoute) {
-        return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
+        return respondWithJson(
+          { kind: "unauthorized", statusCode: 401, message: "Unauthorized" },
+          { status: 401, requestId, authStatus: "unauthorized" },
+        );
       }
       return redirectTo("/", request, { requestId, authStatus: "unauthenticated" });
-    } else {
-      requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
     }
-
+    requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+    requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, id);
+    requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, email);
+    requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, name);
     return continueRequest(requestHeaders, "authenticated");
   } catch (error) {
-    if (isApiRoute && typeof error === "object" && error && "kind" in error && "statusCode" in error) {
-      return respondWithApiError(error as ApiError, requestId, "error");
+    console.error("Error in middleware:", error);
+    if (isApiRoute) {
+      return respondWithJson(
+        { kind: "server_error", statusCode: 500, message: "Internal Server Error" },
+        { status: 500, requestId, authStatus: "error" },
+      );
     }
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_ID);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_EMAIL);
