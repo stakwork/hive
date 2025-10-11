@@ -112,18 +112,9 @@ describe("Slug Availability API - Integration Tests", () => {
           const data = await expectSuccess(response, 200);
           expect(data.success).toBe(true);
           
-          // CURRENT BUG: Endpoint returns false (unavailable) because it doesn't filter by deleted: false
-          // The database query: db.workspace.findUnique({ where: { slug: slug.toLowerCase() } })
-          // does not exclude soft-deleted workspaces, so they still show as unavailable.
-          expect(data.data.isAvailable).toBe(false);
-          expect(data.data.message).toBe("A workspace with this slug already exists");
-          
-          // EXPECTED BEHAVIOR (after bug fix):
-          // The endpoint should filter soft-deleted workspaces:
-          // db.workspace.findUnique({ where: { slug: slug.toLowerCase(), deleted: false } })
-          // Then soft-deleted slugs would correctly show as available:
-          // expect(data.data.isAvailable).toBe(true);
-          // expect(data.data.message).toBe("Slug is available");
+          // BUG FIXED: Endpoint now filters by deleted: false, so soft-deleted workspace slugs are available
+          expect(data.data.isAvailable).toBe(true);
+          expect(data.data.message).toBe("Slug is available");
         },
       },
       {
