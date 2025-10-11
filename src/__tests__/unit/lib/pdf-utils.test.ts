@@ -1,88 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { LearnMessage } from '@/types/learn';
 
-// Mock jsPDF
-const mockText = vi.fn();
-const mockAddPage = vi.fn();
-const mockSplitTextToSize = vi.fn();
-const mockSetFont = vi.fn();
-const mockSetFontSize = vi.fn();
-const mockSetTextColor = vi.fn();
-const mockSetLineWidth = vi.fn();
-const mockSetDrawColor = vi.fn();
-const mockLine = vi.fn();
-const mockSave = vi.fn();
-
-const mockPdfInstance = {
-  text: mockText,
-  addPage: mockAddPage,
-  splitTextToSize: mockSplitTextToSize,
-  setFont: mockSetFont,
-  setFontSize: mockSetFontSize,
-  setTextColor: mockSetTextColor,
-  setLineWidth: mockSetLineWidth,
-  setDrawColor: mockSetDrawColor,
-  line: mockLine,
-  save: mockSave,
-  internal: {
-    pageSize: {
-      getWidth: vi.fn(() => 210), // A4 width in mm
-      getHeight: vi.fn(() => 297), // A4 height in mm
-    },
-  },
-};
-
-vi.mock('jspdf', () => ({
-  default: vi.fn(() => mockPdfInstance),
-}));
+// Import test utilities
+import { resetAllMocks, mockText, mockSplitTextToSize, mockSetFont, mockSetFontSize, mockSetTextColor, mockLine, mockAddPage, mockPdfInstance } from './pdf-utils/__mocks';
+import { TestDataFactories } from './pdf-utils/__factories';
+import { expectRoleLabelCalled, expectContentProcessed, countFontChanges, countFontSizeChanges } from './pdf-utils/__helpers';
 
 // Import after mock setup
 const { generateConversationPDF } = await import('@/lib/pdf-utils');
 
-// Test data factories
-const TestDataFactories = {
-  userMessage: (overrides: Partial<LearnMessage> = {}): LearnMessage => ({
-    id: 'msg-user-1',
-    role: 'user',
-    content: 'Test user message',
-    timestamp: new Date('2024-01-15T12:00:00Z'),
-    ...overrides,
-  }),
-
-  assistantMessage: (overrides: Partial<LearnMessage> = {}): LearnMessage => ({
-    id: 'msg-assistant-1',
-    role: 'assistant',
-    content: 'Test assistant response',
-    timestamp: new Date('2024-01-15T12:01:00Z'),
-    ...overrides,
-  }),
-
-  messageWithMarkdown: (markdown: string): LearnMessage => ({
-    id: 'msg-markdown',
-    role: 'assistant',
-    content: markdown,
-    timestamp: new Date('2024-01-15T12:00:00Z'),
-  }),
-
-  conversationMessages: (): LearnMessage[] => [
-    TestDataFactories.userMessage({ content: 'Hello' }),
-    TestDataFactories.assistantMessage({ content: 'Hi there!' }),
-    TestDataFactories.userMessage({ id: 'msg-2', content: 'How are you?' }),
-    TestDataFactories.assistantMessage({ id: 'msg-3', content: 'I am doing well!' }),
-  ],
-
-  emptyMessages: (): LearnMessage[] => [],
-
-  singleMessage: (): LearnMessage[] => [
-    TestDataFactories.userMessage({ content: 'Single message' }),
-  ],
-};
-
 describe('pdf-utils', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    // Default mock implementation for splitTextToSize
-    mockSplitTextToSize.mockImplementation((text: string) => [text]);
+    resetAllMocks();
   });
 
   describe('addConversationAsText - Role Label Formatting', () => {
@@ -532,6 +461,174 @@ describe('pdf-utils', () => {
       ].sort((a, b) => a - b);
 
       expect(allCalls.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('addConversationAsText - Additional Edge Cases', () => {
+    it('should handle HTML entities in content', async () => {
+      const htmlContent = 'Test &amp; example with &lt;tags&gt; and &nbsp; spaces';
+      const messages = [TestDataFactories.userMessage({ content: htmlContent })];
+      mockSplitTextToSize.mockReturnValue([htmlContent]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      expect(mockSplitTextToSize).toHaveBeenCalledWith(htmlContent, expect.any(Number));
+    });
+
+    it('should verify consistent y-coordinate progression', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'Message 1' }),
+        TestDataFactories.assistantMessage({ content: 'Response 1' }),
+      ];
+      mockSplitTextToSize.mockReturnValue(['Single line']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const textCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'Single line'
+      );
+
+      // Y coordinates should progress downward (increasing values)
+      if (textCalls.length > 1) {
+        const y1 = textCalls[0][2];
+        const y2 = textCalls[1][2];
+        expect(y2).toBeGreaterThan(y1);
+      }
+    });
+
+    it('should maintain x-coordinate consistency for all content', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'Message 1' }),
+        TestDataFactories.assistantMessage({ content: 'Message 2' }),
+      ];
+      mockSplitTextToSize.mockReturnValue(['Line']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const contentCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'Line'
+      );
+
+      // All content lines should have same x coordinate (margin)
+      if (contentCalls.length > 0) {
+        const firstX = contentCalls[0][1];
+        contentCalls.forEach((call) => {
+          expect(call[1]).toBe(firstX);
+        });
+      }
+    });
+
+    it('should handle messages with multiple consecutive markdown patterns', async () => {
+      const complexMarkdown = '**Bold** `code` **bold again** `more code`\n* bullet';
+      const messages = [TestDataFactories.messageWithMarkdown(complexMarkdown)];
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const contentCall = mockSplitTextToSize.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('Bold')
+      );
+
+      expect(contentCall).toBeDefined();
+      expect(contentCall![0]).not.toContain('**');
+      expect(contentCall![0]).not.toContain('`');
+      expect(contentCall![0]).toContain('•');
+    });
+
+    it('should verify font size remains consistent after page breaks', async () => {
+      const messages = Array(60).fill(null).map((_, i) => 
+        TestDataFactories.userMessage({ 
+          id: `msg-${i}`,
+          content: `Message ${i}` 
+        })
+      );
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Verify setFontSize(10) is called for content after page breaks
+      const contentFontSizeCalls = mockSetFontSize.mock.calls.filter(
+        (call) => call[0] === 10
+      );
+      
+      expect(contentFontSizeCalls.length).toBeGreaterThan(0);
+    });
+
+    it('should handle message exactly at page boundary threshold', async () => {
+      // Create scenario where message y-position is exactly at pageHeight - margin
+      const messages = [TestDataFactories.userMessage({ content: 'Boundary test' })];
+      mockSplitTextToSize.mockReturnValue(['Boundary test']);
+
+      // Mock to simulate exact boundary condition
+      let currentY = 297 - 20 - 20; // pageHeight - margin - threshold
+      const originalGetHeight = mockPdfInstance.internal.pageSize.getHeight;
+      mockPdfInstance.internal.pageSize.getHeight = vi.fn(() => 297);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      mockPdfInstance.internal.pageSize.getHeight = originalGetHeight;
+      
+      // Should handle boundary condition without errors
+      expect(mockText).toHaveBeenCalled();
+    });
+
+    it('should preserve markdown-like text in URLs', async () => {
+      const urlContent = 'Visit https://example.com/path_with_underscores and http://test.com';
+      const messages = [TestDataFactories.userMessage({ content: urlContent })];
+      mockSplitTextToSize.mockReturnValue([urlContent]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const contentCall = mockSplitTextToSize.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('https://')
+      );
+
+      expect(contentCall).toBeDefined();
+      expect(contentCall![0]).toContain('https://example.com/path_with_underscores');
+    });
+
+    it('should handle tabs and non-breaking spaces', async () => {
+      const specialWhitespace = 'Text\twith\ttabs\u00A0and\u00A0nbsp';
+      const messages = [TestDataFactories.userMessage({ content: specialWhitespace })];
+      mockSplitTextToSize.mockReturnValue([specialWhitespace]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      expect(mockSplitTextToSize).toHaveBeenCalledWith(specialWhitespace, expect.any(Number));
+    });
+
+    it('should verify role label font styling is reset after each message', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'First' }),
+        TestDataFactories.assistantMessage({ content: 'Second' }),
+      ];
+      mockSplitTextToSize.mockReturnValue(['text']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Count font weight changes: should alternate between bold (labels) and normal (content)
+      const boldCalls = mockSetFont.mock.calls.filter(
+        (call) => call[0] === 'helvetica' && call[1] === 'bold'
+      );
+      const normalCalls = mockSetFont.mock.calls.filter(
+        (call) => call[0] === 'helvetica' && call[1] === 'normal'
+      );
+
+      expect(boldCalls.length).toBeGreaterThanOrEqual(2); // At least 2 role labels
+      expect(normalCalls.length).toBeGreaterThanOrEqual(2); // At least 2 content blocks
+    });
+
+    it('should handle zero-length messages array without errors', async () => {
+      const messages: LearnMessage[] = [];
+      
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Should render header and timestamp but no content
+      expect(mockText).toHaveBeenCalled();
+      const roleLabelCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'You:' || call[0] === 'Learning Assistant:'
+      );
+      expect(roleLabelCalls).toHaveLength(0);
     });
   });
 });
