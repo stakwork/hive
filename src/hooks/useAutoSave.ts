@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 interface UseAutoSaveParams<T> {
   data: T | null;
@@ -17,6 +17,13 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
   const updateOriginalData = useCallback((newData: T) => {
     originalDataRef.current = newData;
   }, []);
+
+  // Sync originalDataRef when data is fetched
+  useEffect(() => {
+    if (data) {
+      originalDataRef.current = data;
+    }
+  }, [data]);
 
   const handleFieldBlur = useCallback(
     async (field: string, value: unknown) => {
