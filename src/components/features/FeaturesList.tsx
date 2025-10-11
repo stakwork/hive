@@ -8,23 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { FileText, Plus, List, LayoutGrid, MoreVertical, Trash2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { FileText, Plus, List, LayoutGrid, Trash2 } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
@@ -54,84 +39,46 @@ function FeatureRow({
   onDelete: (featureId: string) => Promise<void>;
   onClick: () => void;
 }) {
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
   return (
-    <>
-      <TableRow
-        className="cursor-pointer hover:bg-muted/50 transition-colors"
-        onClick={onClick}
-      >
-        <TableCell className="font-medium">{feature.title}</TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <StatusPopover
-            statusType="feature"
-            currentStatus={feature.status}
-            onUpdate={(status) => onStatusUpdate(feature.id, status)}
-          />
-        </TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <AssigneeCombobox
-            workspaceSlug={workspaceSlug}
-            currentAssignee={feature.assignee}
-            onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
-          />
-        </TableCell>
-        <TableCell className="text-right text-muted-foreground text-sm">
-          {new Date(feature.createdAt).toLocaleDateString()}
-        </TableCell>
-        <TableCell className="w-[50px]">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">More actions</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDeleteDialog(true);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </TableCell>
-      </TableRow>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Feature</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete &quot;{feature.title}&quot;? This will also delete all associated phases and tickets.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                onDelete(feature.id);
-                setShowDeleteDialog(false);
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <TableRow
+      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      onClick={onClick}
+    >
+      <TableCell className="font-medium">{feature.title}</TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <StatusPopover
+          statusType="feature"
+          currentStatus={feature.status}
+          onUpdate={(status) => onStatusUpdate(feature.id, status)}
+        />
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <AssigneeCombobox
+          workspaceSlug={workspaceSlug}
+          currentAssignee={feature.assignee}
+          onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
+        />
+      </TableCell>
+      <TableCell className="text-right text-muted-foreground text-sm">
+        {new Date(feature.createdAt).toLocaleDateString()}
+      </TableCell>
+      <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
+        <ActionMenu
+          actions={[
+            {
+              label: "Delete",
+              icon: Trash2,
+              variant: "destructive",
+              confirmation: {
+                title: "Delete Feature",
+                description: `Are you sure you want to delete "${feature.title}"? This will also delete all associated phases and tickets.`,
+                onConfirm: () => onDelete(feature.id),
+              },
+            },
+          ]}
+        />
+      </TableCell>
+    </TableRow>
   );
 }
 

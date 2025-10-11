@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -10,22 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
@@ -44,9 +29,6 @@ export default function FeatureDetailPage() {
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
-
-  // Delete confirmation state
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const fetchFeature = useCallback(
     async (id: string) => {
@@ -213,7 +195,6 @@ export default function FeatureDetailPage() {
         throw new Error("Failed to delete feature");
       }
 
-      setShowDeleteDialog(false);
       router.push(`/w/${workspaceSlug}/roadmap`);
     } catch (error) {
       console.error("Failed to delete feature:", error);
@@ -390,49 +371,21 @@ export default function FeatureDetailPage() {
               />
 
               {/* Actions Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-muted-foreground"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                    <span className="sr-only">More actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => setShowDeleteDialog(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Feature",
+                      description: `Are you sure you want to delete "${feature.title}"? This will also delete all associated phases and tickets.`,
+                      onConfirm: handleDeleteFeature,
+                    },
+                  },
+                ]}
+              />
             </div>
-
-            {/* Delete Confirmation Dialog */}
-            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Feature</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete &quot;{feature.title}&quot;? This will also delete all associated phases and tickets.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDeleteFeature}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </div>
         </CardHeader>
 

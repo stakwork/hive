@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GripVertical, MoreVertical, Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -16,22 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
@@ -65,7 +48,6 @@ function SortableTableRow({
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
   onDelete: () => void;
 }) {
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const {
     attributes,
     listeners,
@@ -122,54 +104,20 @@ function SortableTableRow({
         />
       </TableCell>
       <TableCell className="w-[50px]">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreVertical className="h-4 w-4" />
-              <span className="sr-only">More actions</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDeleteDialog(true);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete &quot;{ticket.title}&quot;? This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  onDelete();
-                  setShowDeleteDialog(false);
-                }}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <ActionMenu
+          actions={[
+            {
+              label: "Delete",
+              icon: Trash2,
+              variant: "destructive",
+              confirmation: {
+                title: "Delete Ticket",
+                description: `Are you sure you want to delete "${ticket.title}"? This action cannot be undone.`,
+                onConfirm: onDelete,
+              },
+            },
+          ]}
+        />
       </TableCell>
     </TableRow>
   );
