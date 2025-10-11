@@ -31,6 +31,7 @@ interface UserStoriesSectionProps {
   onAddUserStory: () => void;
   onDeleteUserStory: (storyId: string) => void;
   onReorderUserStories: (stories: FeatureDetail["userStories"]) => void;
+  shouldFocusRef: React.MutableRefObject<boolean>;
 }
 
 export function UserStoriesSection({
@@ -41,6 +42,7 @@ export function UserStoriesSection({
   onAddUserStory,
   onDeleteUserStory,
   onReorderUserStories,
+  shouldFocusRef,
 }: UserStoriesSectionProps) {
   const storyInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,10 +54,11 @@ export function UserStoriesSection({
     })
   );
 
-  // Auto-focus after story creation
+  // Auto-focus after story creation (not on mount)
   useEffect(() => {
-    if (!creatingStory && !newStoryTitle) {
+    if (shouldFocusRef.current && !creatingStory && !newStoryTitle) {
       storyInputRef.current?.focus();
+      shouldFocusRef.current = false;
     }
   }, [creatingStory, newStoryTitle]);
 
