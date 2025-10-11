@@ -4,19 +4,14 @@ import { useRef, useMemo, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import {
   DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useSortable } from "@/hooks/useSortable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,13 +39,7 @@ export function UserStoriesSection({
 }: UserStoriesSectionProps) {
   const storyInputRef = useRef<HTMLInputElement>(null);
 
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const { sensors, collisionDetection } = useSortable();
 
   // Auto-focus after story creation
   useEffect(() => {
@@ -127,7 +116,7 @@ export function UserStoriesSection({
         {userStories.length > 0 && (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={collisionDetection}
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={storyIds} strategy={verticalListSortingStrategy}>

@@ -4,19 +4,14 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { Loader2, FolderPlus } from "lucide-react";
 import {
   DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useSortable } from "@/hooks/useSortable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,12 +31,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
   const [creatingPhase, setCreatingPhase] = useState(false);
   const phaseInputRef = useRef<HTMLInputElement>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const { sensors, collisionDetection } = useSortable();
 
   const phaseIds = useMemo(() => phases.map((phase) => phase.id), [phases]);
 
@@ -218,7 +208,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         {phases.length > 0 ? (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={collisionDetection}
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
