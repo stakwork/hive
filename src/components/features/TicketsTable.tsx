@@ -172,7 +172,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border overflow-hidden">
       <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}

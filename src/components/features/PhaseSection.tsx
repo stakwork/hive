@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Loader2, FolderPlus } from "lucide-react";
 import {
   DndContext,
@@ -45,6 +45,13 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
 
   const phaseIds = useMemo(() => phases.map((phase) => phase.id), [phases]);
 
+  // Auto-focus after phase creation completes
+  useEffect(() => {
+    if (!creatingPhase && !newPhaseName) {
+      phaseInputRef.current?.focus();
+    }
+  }, [creatingPhase, newPhaseName]);
+
   const handleAddPhase = async () => {
     if (!newPhaseName.trim()) return;
 
@@ -64,8 +71,6 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
       if (result.success) {
         onUpdate([...phases, result.data]);
         setNewPhaseName("");
-        // Refocus input for quick successive entries
-        phaseInputRef.current?.focus();
       }
     } catch (error) {
       console.error("Failed to create phase:", error);
@@ -217,7 +222,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
-              <div className="px-4 pb-4 flex flex-col gap-2">
+              <div className="px-4 pb-4 flex flex-col gap-2 overflow-hidden">
                 {phases
                   .sort((a, b) => a.order - b.order)
                   .map((phase) => (

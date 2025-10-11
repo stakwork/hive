@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FileText, Plus, List, LayoutGrid, Trash2 } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
@@ -104,6 +103,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     image: string | null;
   } | null>(null);
   const [creating, setCreating] = useState(false);
+  const featureInputRef = useRef<HTMLInputElement>(null);
 
   // View state management with localStorage persistence
   const [viewType, setViewType] = useState<"list" | "kanban">(() => {
@@ -149,6 +149,22 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     fetchFeatures(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, viewType]);
+
+  // Auto-open creation form when no features exist
+  useEffect(() => {
+    if (!loading && features.length === 0 && !isCreating) {
+      setIsCreating(true);
+      setViewType("list");
+      localStorage.setItem("features-view-preference", "list");
+    }
+  }, [loading, features.length, isCreating]);
+
+  // Auto-focus after feature creation completes
+  useEffect(() => {
+    if (!creating && !newFeatureTitle && isCreating) {
+      featureInputRef.current?.focus();
+    }
+  }, [creating, newFeatureTitle, isCreating]);
 
   // Save view preference to localStorage
   const handleViewChange = (value: string) => {
@@ -253,12 +269,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         setFeatures((prev) => [result.data, ...prev]);
         setTotalCount((prev) => prev + 1);
 
-        // Reset state
+        // Reset state (keep form open for successive entries, focus handled by useEffect)
         setNewFeatureTitle("");
         setNewFeatureStatus("BACKLOG");
         setNewFeatureAssigneeId(null);
         setNewFeatureAssigneeDisplay(null);
-        setIsCreating(false);
       }
     } catch (error) {
       console.error("Failed to create feature:", error);
@@ -357,39 +372,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     );
   }
 
-  // Show empty state only if no features and not creating
-  if (features.length === 0 && !isCreating) {
-    return (
-      <Card>
-        <CardContent className="p-0">
-          <Empty className="border-0">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <FileText className="h-6 w-6" />
-              </EmptyMedia>
-              <EmptyTitle>No Features Yet</EmptyTitle>
-              <EmptyDescription>Create your first feature to get started with your product roadmap.</EmptyDescription>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => {
-                  setIsCreating(true);
-                  setViewType("list");
-                  localStorage.setItem("features-view-preference", "list");
-                }}
-                className="mt-4"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                New feature
-              </Button>
-            </EmptyHeader>
-          </Empty>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // If creating with no features, show table with just the creation row
+  // Always show table if creating or have features
   const showTable = features.length > 0 || isCreating;
 
   return showTable ? (
@@ -444,6 +427,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <div className="space-y-3">
                 <div>
                   <Input
+                    ref={featureInputRef}
                     placeholder="Feature title..."
                     value={newFeatureTitle}
                     onChange={(e) => setNewFeatureTitle(e.target.value)}
