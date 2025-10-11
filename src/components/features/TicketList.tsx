@@ -1,29 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, GripVertical, User as UserIcon } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useTicketMutations } from "@/hooks/useTicketMutations";
+import { useReorderTickets } from "@/hooks/useReorderTickets";
 import type { TicketListItem } from "@/types/roadmap";
 
 interface TicketListProps {
@@ -118,95 +106,31 @@ export function TicketList({
 }: TicketListProps) {
   const router = useRouter();
   const [newTicketTitle, setNewTicketTitle] = useState("");
-  const [creatingTicket, setCreatingTicket] = useState(false);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const ticketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
+  const { createTicket, loading: creatingTicket } = useTicketMutations();
+  const { sensors, ticketIds, handleDragEnd, collisionDetection } = useReorderTickets({
+    tickets,
+    phaseId,
+    onOptimisticUpdate: onTicketsReordered,
+  });
 
   const handleAddTicket = async () => {
     if (!newTicketTitle.trim()) return;
 
-    try {
-      setCreatingTicket(true);
-      const response = await fetch(`/api/features/${featureId}/tickets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTicketTitle.trim(),
-          phaseId,
-        }),
-      });
+    const ticket = await createTicket({
+      featureId,
+      phaseId,
+      title: newTicketTitle,
+    });
 
-      if (!response.ok) {
-        throw new Error("Failed to create ticket");
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        onTicketAdded(result.data);
-        setNewTicketTitle("");
-      }
-    } catch (error) {
-      console.error("Failed to create ticket:", error);
-    } finally {
-      setCreatingTicket(false);
+    if (ticket) {
+      onTicketAdded(ticket);
+      setNewTicketTitle("");
     }
   };
 
   const handleTicketClick = (ticketId: string) => {
     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (!over || active.id === over.id) {
-      return;
-    }
-
-    const oldIndex = tickets.findIndex((t) => t.id === active.id);
-    const newIndex = tickets.findIndex((t) => t.id === over.id);
-
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const reorderedTickets = arrayMove(tickets, oldIndex, newIndex).map(
-        (ticket, index) => ({
-          ...ticket,
-          order: index,
-        })
-      );
-
-      // Optimistically update parent
-      if (onTicketsReordered) {
-        onTicketsReordered(reorderedTickets);
-      }
-
-      // Call API to save new order
-      try {
-        const reorderData = reorderedTickets.map((ticket, index) => ({
-          id: ticket.id,
-          order: index,
-          phaseId: phaseId,
-        }));
-
-        const response = await fetch(`/api/tickets/reorder`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tickets: reorderData }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to reorder tickets");
-        }
-      } catch (error) {
-        console.error("Failed to reorder tickets:", error);
-      }
-    }
   };
 
   return (
@@ -243,7 +167,7 @@ export function TicketList({
       {tickets.length > 0 ? (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={collisionDetection}
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={ticketIds} strategy={verticalListSortingStrategy}>

@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { EditableTitle } from "@/components/ui/editable-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useDetailResource } from "@/hooks/useDetailResource";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import type { TicketDetail } from "@/types/roadmap";
 import type { TicketStatus, Priority } from "@prisma/client";
 
@@ -21,58 +23,30 @@ export default function TicketDetailPage() {
   const { slug: workspaceSlug } = useWorkspace();
   const ticketId = params.ticketId as string;
 
-  const [ticket, setTicket] = useState<TicketDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedField, setSavedField] = useState<string | null>(null);
-
-  const originalTicketRef = useRef<TicketDetail | null>(null);
-
-  useEffect(() => {
-    const fetchTicket = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/tickets/${ticketId}`);
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch ticket");
-        }
-
-        const result = await response.json();
-        if (result.success) {
-          setTicket(result.data);
-          originalTicketRef.current = result.data;
-        } else {
-          throw new Error("Failed to fetch ticket");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
+  const fetchTicket = useCallback(
+    async (id: string) => {
+      const response = await fetch(`/api/tickets/${id}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch ticket");
       }
-    };
+      return response.json();
+    },
+    []
+  );
 
-    if (ticketId) {
-      fetchTicket();
-    }
-  }, [ticketId]);
+  const {
+    data: ticket,
+    setData: setTicket,
+    updateData: updateTicket,
+    loading,
+    error,
+  } = useDetailResource<TicketDetail>({
+    resourceId: ticketId,
+    fetchFn: fetchTicket,
+  });
 
-  const handleBackClick = () => {
-    if (ticket?.phase) {
-      router.push(`/w/${workspaceSlug}/phases/${ticket.phase.id}`);
-    } else if (ticket?.feature) {
-      router.push(`/w/${workspaceSlug}/roadmap/${ticket.feature.id}`);
-    } else {
-      router.push(`/w/${workspaceSlug}/roadmap`);
-    }
-  };
-
-  const updateTicket = async (updates: Partial<TicketDetail> & { assigneeId?: string | null }) => {
-    try {
-      setSaving(true);
-
+  const handleSave = useCallback(
+    async (updates: Partial<TicketDetail> | { assigneeId: string | null }) => {
       const response = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -88,42 +62,37 @@ export default function TicketDetailPage() {
         // Merge the update with existing ticket to preserve feature/phase relations
         const updatedTicket = { ...ticket, ...result.data };
         setTicket(updatedTicket);
-        originalTicketRef.current = updatedTicket;
-
-        setSaved(true);
-        setTimeout(() => {
-          setSaved(false);
-          setSavedField(null);
-        }, 2000);
+        updateOriginalData(updatedTicket);
       }
-    } catch (error) {
-      console.error("Failed to update ticket:", error);
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    [ticketId, ticket, setTicket]
+  );
 
-  const handleFieldBlur = (field: string, value: string | null) => {
-    const originalValue = originalTicketRef.current?.[field as keyof TicketDetail];
-    if (ticket && originalValue !== value) {
-      setSavedField(field);
-      updateTicket({ [field]: value });
+  const { saving, saved, savedField, handleFieldBlur, updateOriginalData } = useAutoSave({
+    data: ticket,
+    onSave: handleSave,
+  });
+
+  const handleBackClick = () => {
+    if (ticket?.phase) {
+      router.push(`/w/${workspaceSlug}/phases/${ticket.phase.id}`);
+    } else if (ticket?.feature) {
+      router.push(`/w/${workspaceSlug}/roadmap/${ticket.feature.id}`);
+    } else {
+      router.push(`/w/${workspaceSlug}/roadmap`);
     }
   };
 
   const handleUpdateStatus = async (status: TicketStatus) => {
-    setSavedField("general");
-    await updateTicket({ status });
+    await handleSave({ status });
   };
 
   const handleUpdatePriority = async (priority: Priority) => {
-    setSavedField("general");
-    await updateTicket({ priority });
+    await handleSave({ priority });
   };
 
   const handleUpdateAssignee = async (assigneeId: string | null) => {
-    setSavedField("general");
-    await updateTicket({ assigneeId });
+    await handleSave({ assigneeId } as Partial<TicketDetail>);
   };
 
   if (loading) {
@@ -195,9 +164,9 @@ export default function TicketDetailPage() {
             <>
               <span
                 className="hover:underline cursor-pointer"
-                onClick={() => router.push(`/w/${workspaceSlug}/phases/${ticket.phase.id}`)}
+                onClick={() => router.push(`/w/${workspaceSlug}/phases/${ticket.phase?.id}`)}
               >
-                {ticket.phase.name}
+                {ticket.phase?.name}
               </span>
               <span className="mx-2">›</span>
             </>
@@ -212,14 +181,14 @@ export default function TicketDetailPage() {
           <div className="space-y-4">
             {/* Title */}
             <div className="flex items-center gap-3">
-              <Input
+              <EditableTitle
                 value={ticket.title}
-                onChange={(e) => setTicket({ ...ticket, title: e.target.value })}
-                onBlur={(e) => handleFieldBlur("title", e.target.value)}
-                className="!text-4xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none flex-1"
+                onChange={(value) => updateTicket({ title: value })}
+                onBlur={(value) => handleFieldBlur("title", value)}
                 placeholder="Enter ticket title..."
+                size="large"
               />
-              {savedField === "general" && saved && !saving && (
+              {saved && !saving && (
                 <div className="flex items-center gap-2 text-sm flex-shrink-0">
                   <Check className="h-4 w-4 text-green-600" />
                   <span className="text-green-600">Saved</span>
@@ -259,7 +228,7 @@ export default function TicketDetailPage() {
             savedField={savedField}
             saving={saving}
             saved={saved}
-            onChange={(value) => setTicket({ ...ticket, description: value })}
+            onChange={(value) => updateTicket({ description: value })}
             onBlur={(value) => handleFieldBlur("description", value)}
           />
         </CardContent>

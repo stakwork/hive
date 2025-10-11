@@ -1,24 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { GripVertical } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -32,6 +17,8 @@ import {
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { useTicketMutations } from "@/hooks/useTicketMutations";
+import { useReorderTickets } from "@/hooks/useReorderTickets";
 import type { TicketListItem } from "@/types/roadmap";
 import type { TicketStatus, Priority } from "@prisma/client";
 
@@ -54,9 +41,9 @@ function SortableTableRow({
   ticket: TicketListItem;
   workspaceSlug: string;
   onClick: () => void;
-  onStatusUpdate: (status: TicketStatus) => void;
-  onPriorityUpdate: (priority: Priority) => void;
-  onAssigneeUpdate: (assigneeId: string | null) => void;
+  onStatusUpdate: (status: TicketStatus) => Promise<void>;
+  onPriorityUpdate: (priority: Priority) => Promise<void>;
+  onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
 }) {
   const {
     attributes,
@@ -120,83 +107,21 @@ function SortableTableRow({
 export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReordered, onTicketUpdate }: TicketsTableProps) {
   const router = useRouter();
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const ticketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
+  const { updateTicket } = useTicketMutations();
+  const { sensors, ticketIds, handleDragEnd, collisionDetection } = useReorderTickets({
+    tickets,
+    phaseId,
+    onOptimisticUpdate: onTicketsReordered,
+  });
 
   const handleRowClick = (ticketId: string) => {
     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
   };
 
   const handleUpdateTicket = async (ticketId: string, updates: { status?: TicketStatus; priority?: Priority; assigneeId?: string | null }) => {
-    try {
-      const response = await fetch(`/api/tickets/${ticketId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update ticket");
-      }
-
-      const result = await response.json();
-      if (result.success && onTicketUpdate) {
-        onTicketUpdate(ticketId, result.data);
-      }
-    } catch (error) {
-      console.error("Failed to update ticket:", error);
-    }
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (!over || active.id === over.id) {
-      return;
-    }
-
-    const oldIndex = tickets.findIndex((t) => t.id === active.id);
-    const newIndex = tickets.findIndex((t) => t.id === over.id);
-
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const reorderedTickets = arrayMove(tickets, oldIndex, newIndex).map(
-        (ticket, index) => ({
-          ...ticket,
-          order: index,
-        })
-      );
-
-      // Optimistically update parent
-      if (onTicketsReordered) {
-        onTicketsReordered(reorderedTickets);
-      }
-
-      // Call API to save new order
-      try {
-        const reorderData = reorderedTickets.map((ticket, index) => ({
-          id: ticket.id,
-          order: index,
-          phaseId: phaseId,
-        }));
-
-        const response = await fetch(`/api/tickets/reorder`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tickets: reorderData }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to reorder tickets");
-        }
-      } catch (error) {
-        console.error("Failed to reorder tickets:", error);
-      }
+    const updatedTicket = await updateTicket({ ticketId, updates });
+    if (updatedTicket && onTicketUpdate) {
+      onTicketUpdate(ticketId, updatedTicket);
     }
   };
 
@@ -212,7 +137,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
     <div className="rounded-md border">
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={collisionDetection}
         onDragEnd={handleDragEnd}
       >
         <Table>
