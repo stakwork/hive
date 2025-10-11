@@ -178,6 +178,18 @@ export function createAuthenticatedGetRequest(
 }
 
 /**
+ * Creates a PATCH request with middleware auth headers
+ */
+export function createAuthenticatedPatchRequest(
+  url: string,
+  body: object,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const baseRequest = createPatchRequest(url, body);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
  * Creates a DELETE request with middleware auth headers
  */
 export function createAuthenticatedDeleteRequest(
