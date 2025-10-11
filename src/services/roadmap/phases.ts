@@ -6,7 +6,7 @@ import type {
   PhaseListItem,
   PhaseWithTickets,
 } from "@/types/roadmap";
-import { validateFeatureAccess, validatePhaseAccess } from "./utils";
+import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
 
 /**
  * Gets a phase with its tickets and feature context
@@ -99,13 +99,7 @@ export async function createPhase(
     throw new Error("Name is required");
   }
 
-  const maxOrderPhase = await db.phase.findFirst({
-    where: { featureId },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
-
-  const nextOrder = (maxOrderPhase?.order ?? -1) + 1;
+  const nextOrder = await calculateNextOrder(db.phase, { featureId });
 
   const phase = await db.phase.create({
     data: {

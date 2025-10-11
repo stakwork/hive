@@ -6,7 +6,9 @@ import type {
   TicketWithDetails,
   TicketDetail,
 } from "@/types/roadmap";
-import { validateFeatureAccess, validateTicketAccess } from "./utils";
+import { validateFeatureAccess, validateTicketAccess, calculateNextOrder } from "./utils";
+import { USER_SELECT } from "@/lib/db/selects";
+import { validateEnum } from "@/lib/validators";
 
 /**
  * Gets a ticket with full context (feature, phase, creator, updater)
@@ -34,12 +36,7 @@ export async function getTicket(
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {
@@ -56,20 +53,10 @@ export async function getTicket(
         },
       },
       createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       updatedBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
     },
   });
@@ -98,17 +85,8 @@ export async function createTicket(
     throw new Error("Title is required");
   }
 
-  if (data.status && !Object.values(TicketStatus).includes(data.status)) {
-    throw new Error(
-      `Invalid status. Must be one of: ${Object.values(TicketStatus).join(", ")}`
-    );
-  }
-
-  if (data.priority && !Object.values(Priority).includes(data.priority)) {
-    throw new Error(
-      `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`
-    );
-  }
+  validateEnum(data.status, TicketStatus, "status");
+  validateEnum(data.priority, Priority, "priority");
 
   if (data.phaseId) {
     const phase = await db.phase.findFirst({
@@ -141,16 +119,10 @@ export async function createTicket(
     throw new Error("User not found");
   }
 
-  const maxOrderTicket = await db.ticket.findFirst({
-    where: {
-      featureId,
-      phaseId: data.phaseId || null,
-    },
-    orderBy: { order: "desc" },
-    select: { order: true },
+  const nextOrder = await calculateNextOrder(db.ticket, {
+    featureId,
+    phaseId: data.phaseId || null,
   });
-
-  const nextOrder = (maxOrderTicket?.order ?? -1) + 1;
 
   const ticket = await db.ticket.create({
     data: {
@@ -177,12 +149,7 @@ export async function createTicket(
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {
@@ -225,20 +192,12 @@ export async function updateTicket(
   }
 
   if (data.status !== undefined) {
-    if (!Object.values(TicketStatus).includes(data.status)) {
-      throw new Error(
-        `Invalid status. Must be one of: ${Object.values(TicketStatus).join(", ")}`
-      );
-    }
+    validateEnum(data.status, TicketStatus, "status");
     updateData.status = data.status;
   }
 
   if (data.priority !== undefined) {
-    if (!Object.values(Priority).includes(data.priority)) {
-      throw new Error(
-        `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`
-      );
-    }
+    validateEnum(data.priority, Priority, "priority");
     updateData.priority = data.priority;
   }
 
@@ -293,12 +252,7 @@ export async function updateTicket(
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {
@@ -385,12 +339,7 @@ export async function reorderTickets(
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {

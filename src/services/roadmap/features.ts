@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
+import { USER_SELECT } from "@/lib/db/selects";
+import { validateEnum } from "@/lib/validators";
 
 /**
  * Lists features for a workspace with pagination
@@ -30,20 +32,10 @@ export async function listFeatures(
         createdAt: true,
         updatedAt: true,
         assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
+          select: USER_SELECT,
         },
         createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
+          select: USER_SELECT,
         },
         _count: {
           select: {
@@ -110,17 +102,8 @@ export async function createFeature(
     throw new Error("User not found");
   }
 
-  if (data.status && !Object.values(FeatureStatus).includes(data.status)) {
-    throw new Error(
-      `Invalid status. Must be one of: ${Object.values(FeatureStatus).join(", ")}`
-    );
-  }
-
-  if (data.priority && !Object.values(FeaturePriority).includes(data.priority)) {
-    throw new Error(
-      `Invalid priority. Must be one of: ${Object.values(FeaturePriority).join(", ")}`
-    );
-  }
+  validateEnum(data.status, FeatureStatus, "status");
+  validateEnum(data.priority, FeaturePriority, "priority");
 
   if (data.assigneeId) {
     const assignee = await db.user.findFirst({
@@ -150,20 +133,10 @@ export async function createFeature(
     },
     include: {
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       workspace: {
         select: {
@@ -202,17 +175,8 @@ export async function updateFeature(
   // Validates access and throws specific "Feature not found" or "Access denied" errors
   await validateFeatureAccess(featureId, userId);
 
-  if (data.status && !Object.values(FeatureStatus).includes(data.status)) {
-    throw new Error(
-      `Invalid status. Must be one of: ${Object.values(FeatureStatus).join(", ")}`
-    );
-  }
-
-  if (data.priority && !Object.values(FeaturePriority).includes(data.priority)) {
-    throw new Error(
-      `Invalid priority. Must be one of: ${Object.values(FeaturePriority).join(", ")}`
-    );
-  }
+  validateEnum(data.status, FeatureStatus, "status");
+  validateEnum(data.priority, FeaturePriority, "priority");
 
   if (data.assigneeId !== undefined && data.assigneeId !== null) {
     const assignee = await db.user.findFirst({
@@ -274,28 +238,13 @@ export async function updateFeature(
         },
       },
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       updatedBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       userStories: {
         orderBy: {
