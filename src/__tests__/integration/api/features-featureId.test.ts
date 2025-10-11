@@ -7,14 +7,13 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   createGetRequest,
   createPatchRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedPatchRequest,
 } from "@/__tests__/support/helpers";
 
 describe("Single Feature API - Integration Tests", () => {
@@ -66,10 +65,9 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features/${feature.id}`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        user
       );
 
       // Execute
@@ -112,10 +110,9 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(creator));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features/${feature.id}`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        creator
       );
 
       // Execute
@@ -141,8 +138,6 @@ describe("Single Feature API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createGetRequest(
         "http://localhost:3000/api/features/test-feature-id"
       );
@@ -156,10 +151,10 @@ describe("Single Feature API - Integration Tests", () => {
 
     test("returns 404 for non-existent feature", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/features/non-existent-id"
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/features/non-existent-id",
+        user
       );
 
       const response = await GET(request, {
@@ -188,10 +183,9 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features/${feature.id}`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        nonMember
       );
 
       // Execute
@@ -223,11 +217,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { title: "Updated Title" }
+        { title: "Updated Title" },
+        user
       );
 
       // Execute
@@ -260,11 +253,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { status: FeatureStatus.IN_PROGRESS }
+        { status: FeatureStatus.IN_PROGRESS },
+        user
       );
 
       // Execute
@@ -296,11 +288,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { priority: FeaturePriority.URGENT }
+        { priority: FeaturePriority.URGENT },
+        user
       );
 
       // Execute
@@ -332,11 +323,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { assigneeId: assignee.id }
+        { assigneeId: assignee.id },
+        owner
       );
 
       // Execute
@@ -372,11 +362,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { assigneeId: null }
+        { assigneeId: null },
+        owner
       );
 
       // Execute
@@ -410,15 +399,14 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         {
           title: "New Title",
           status: FeatureStatus.COMPLETED,
           priority: FeaturePriority.HIGH,
-        }
+        },
+        user
       );
 
       // Execute
@@ -453,11 +441,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { title: "  Trimmed Title  " }
+        { title: "  Trimmed Title  " },
+        user
       );
 
       // Execute
@@ -471,8 +458,6 @@ describe("Single Feature API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPatchRequest(
         "http://localhost:3000/api/features/test-feature-id",
         { title: "New Title" }
@@ -487,11 +472,11 @@ describe("Single Feature API - Integration Tests", () => {
 
     test("returns 404 for non-existent feature", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         "http://localhost:3000/api/features/non-existent-id",
-        { title: "New Title" }
+        { title: "New Title" },
+        user
       );
 
       const response = await PATCH(request, {
@@ -520,11 +505,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { title: "Updated Title" }
+        { title: "Updated Title" },
+        nonMember
       );
 
       // Execute
@@ -554,11 +538,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { status: "INVALID_STATUS" }
+        { status: "INVALID_STATUS" },
+        user
       );
 
       // Execute
@@ -588,11 +571,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { priority: "INVALID_PRIORITY" }
+        { priority: "INVALID_PRIORITY" },
+        user
       );
 
       // Execute
@@ -622,11 +604,10 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { assigneeId: "non-existent-user-id" }
+        { assigneeId: "non-existent-user-id" },
+        user
       );
 
       // Execute

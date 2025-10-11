@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getTicket, updateTicket, deleteTicket } from "@/services/roadmap";
 import type { UpdateTicketRequest, TicketResponse, TicketDetail } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
@@ -10,22 +9,13 @@ export async function GET(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { ticketId } = await params;
 
-    const ticket = await getTicket(ticketId, userId);
+    const ticket = await getTicket(ticketId, userOrResponse.id);
 
     return NextResponse.json<ApiSuccessResponse<TicketDetail>>(
       {
@@ -49,23 +39,14 @@ export async function PATCH(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { ticketId } = await params;
     const body: UpdateTicketRequest = await request.json();
 
-    const ticket = await updateTicket(ticketId, userId, body);
+    const ticket = await updateTicket(ticketId, userOrResponse.id, body);
 
     return NextResponse.json<TicketResponse>(
       {
@@ -90,22 +71,13 @@ export async function DELETE(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { ticketId } = await params;
 
-    await deleteTicket(ticketId, userId);
+    await deleteTicket(ticketId, userOrResponse.id);
 
     return NextResponse.json(
       {

@@ -7,9 +7,6 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
@@ -17,6 +14,10 @@ import {
   createPostRequest,
   createPatchRequest,
   createDeleteRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedPostRequest,
+  createAuthenticatedPatchRequest,
+  createAuthenticatedDeleteRequest,
 } from "@/__tests__/support/helpers";
 
 describe("User Stories API - Integration Tests", () => {
@@ -68,10 +69,9 @@ describe("User Stories API - Integration Tests", () => {
         ],
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features/${feature.id}/user-stories`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features/${feature.id}/user-stories`,
+        user
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -84,8 +84,6 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createGetRequest(
         "http://localhost:3000/api/features/test-id/user-stories"
       );
@@ -97,10 +95,10 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates feature exists", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/features/non-existent-id/user-stories"
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/features/non-existent-id/user-stories",
+        user
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
@@ -126,10 +124,9 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features/${feature.id}/user-stories`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features/${feature.id}/user-stories`,
+        nonMember
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -154,10 +151,9 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features/${feature.id}/user-stories`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features/${feature.id}/user-stories`,
+        user
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -195,11 +191,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        { title: "New Story" }
+        { title: "New Story" },
+        user
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -231,11 +226,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        { title: "First Story" }
+        { title: "First Story" },
+        user
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -245,14 +239,12 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest(
         "http://localhost:3000/api/features/test-id/user-stories",
         { title: "New Story" }
       );
 
-      const response = await POST(request, { params: { featureId: "test-id" } });
+      const response = await POST(request, { params: Promise.resolve({ featureId: "test-id" }) });
 
       await expectUnauthorized(response);
     });
@@ -274,11 +266,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        {}
+        {},
+        user
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -303,11 +294,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        { title: "   " }
+        { title: "   " },
+        user
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -332,11 +322,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        { title: "  Trimmed Story  " }
+        { title: "  Trimmed Story  " },
+        user
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -347,11 +336,11 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates feature exists", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/non-existent-id/user-stories",
-        { title: "New Story" }
+        { title: "New Story" },
+        user
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
@@ -377,11 +366,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        { title: "New Story" }
+        { title: "New Story" },
+        nonMember
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -418,11 +406,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { title: "Updated Title" }
+        { title: "Updated Title" },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -459,11 +446,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { order: 5 }
+        { order: 5 },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -500,11 +486,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { completed: true }
+        { completed: true },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -541,11 +526,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { title: "New Title", order: 3, completed: true }
+        { title: "New Title", order: 3, completed: true },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -559,8 +543,6 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPatchRequest(
         "http://localhost:3000/api/user-stories/test-id",
         { title: "Updated" }
@@ -573,11 +555,11 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates user story exists", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         "http://localhost:3000/api/user-stories/non-existent-id",
-        { title: "Updated" }
+        { title: "Updated" },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: "non-existent-id" }) });
@@ -612,11 +594,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { title: "   " }
+        { title: "   " },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -651,11 +632,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { order: -1 }
+        { order: -1 },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -690,11 +670,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { completed: "true" }
+        { completed: "true" },
+        user
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -730,11 +709,10 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createPatchRequest(
+      const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
-        { title: "Updated" }
+        { title: "Updated" },
+        nonMember
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -771,10 +749,9 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createDeleteRequest(
-        `http://localhost:3000/api/user-stories/${story.id}`
+      const request = createAuthenticatedDeleteRequest(
+        `http://localhost:3000/api/user-stories/${story.id}`,
+        user
       );
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -789,8 +766,6 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createDeleteRequest(
         "http://localhost:3000/api/user-stories/test-id"
       );
@@ -802,10 +777,10 @@ describe("User Stories API - Integration Tests", () => {
 
     test("validates user story exists", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createDeleteRequest(
-        "http://localhost:3000/api/user-stories/non-existent-id"
+      const request = createAuthenticatedDeleteRequest(
+        "http://localhost:3000/api/user-stories/non-existent-id",
+        user
       );
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: "non-existent-id" }) });
@@ -841,10 +816,9 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createDeleteRequest(
-        `http://localhost:3000/api/user-stories/${story.id}`
+      const request = createAuthenticatedDeleteRequest(
+        `http://localhost:3000/api/user-stories/${story.id}`,
+        nonMember
       );
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: story.id }) });
