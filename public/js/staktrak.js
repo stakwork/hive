@@ -1728,6 +1728,36 @@ var userBehaviour = (() => {
     };
     return roleMap[role] || `[role="${role}"]`;
   }
+  async function captureScreenshot() {
+    try {
+      // Check if html2canvas is available
+      if (typeof html2canvas === 'undefined') {
+        // Load html2canvas dynamically if not available
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        document.head.appendChild(script);
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = reject;
+        });
+      }
+
+      // Capture screenshot - page is already loaded at this point
+      const canvas = await html2canvas(document.body, {
+        allowTaint: true,
+        useCORS: true,
+        logging: false,
+        width: Math.min(window.innerWidth, 1920),
+        height: Math.min(window.innerHeight, 1080)
+      });
+
+      // Convert to data URL with compression
+      return canvas.toDataURL('image/jpeg', 0.7);
+    } catch (error) {
+      console.warn('Screenshot capture failed:', error);
+      return null;
+    }
+  }
   async function executePlaywrightAction(action) {
     var _a;
     try {
@@ -1741,6 +1771,29 @@ var userBehaviour = (() => {
               },
               "*"
             );
+
+            // Wait for page to load
+            if (document.readyState !== 'complete') {
+              await new Promise(resolve => {
+                window.addEventListener('load', resolve, { once: true });
+              });
+            }
+
+            // Capture screenshot after navigation completes
+            const screenshot = await captureScreenshot();
+            if (screenshot) {
+              const state = playwrightReplayRef.current;
+              window.parent.postMessage(
+                {
+                  type: "staktrak-playwright-replay-screenshot",
+                  actionIndex: state ? state.currentActionIndex : 0,
+                  screenshot: screenshot,
+                  timestamp: Date.now(),
+                  url: action.value
+                },
+                "*"
+              );
+            }
           }
           break;
         case "setViewportSize" /* SET_VIEWPORT_SIZE */:
@@ -1755,6 +1808,12 @@ var userBehaviour = (() => {
           }
           break;
         case "waitForLoadState" /* WAIT_FOR_LOAD_STATE */:
+          // Wait for page load to complete
+          if (document.readyState !== 'complete') {
+            await new Promise(resolve => {
+              window.addEventListener('load', resolve, { once: true });
+            });
+          }
           break;
         case "waitForSelector" /* WAIT_FOR_SELECTOR */:
           if (action.selector) {

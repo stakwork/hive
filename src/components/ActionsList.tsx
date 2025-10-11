@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { X, CheckCircle2, Loader2 } from "lucide-react";
-import { useRef, useEffect } from "react";
+import { X, CheckCircle2, Loader2, Camera } from "lucide-react";
+import { useRef, useEffect, useState } from "react";
+import { Screenshot } from "@/types";
 
 interface Action {
   id: string;
@@ -25,6 +26,7 @@ interface ActionsListProps {
   isReplaying?: boolean;
   currentActionIndex?: number;
   totalActions?: number;
+  screenshots?: Screenshot[];
 }
 
 // Helper function to extract the most descriptive element identifier
@@ -166,9 +168,11 @@ export function ActionsList({
   isReplaying = false,
   currentActionIndex = -1,
   totalActions = 0,
+  screenshots = [],
 }: ActionsListProps) {
   const actionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<Screenshot | null>(null);
 
   // Auto-scroll to current action during replay
   useEffect(() => {
@@ -206,6 +210,11 @@ export function ActionsList({
     }
   };
 
+  // Find screenshot for a given action index
+  const getScreenshotForAction = (index: number): Screenshot | undefined => {
+    return screenshots.find((s) => s.actionIndex === index);
+  };
+
   return (
     <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm">
       <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
@@ -237,6 +246,9 @@ export function ActionsList({
               const status = getActionStatus(index);
               const isActive = status === "active";
               const isCompleted = status === "completed";
+              const screenshot = getScreenshotForAction(index);
+              const isNavAction = action.kind === "nav";
+              const hasScreenshot = isNavAction && screenshot;
 
               return (
                 <div
@@ -256,6 +268,20 @@ export function ActionsList({
                   title={`${action.kind}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
                 >
                   {isReplaying && getStatusIcon(status)}
+                  {hasScreenshot && (
+                    <button
+                      onClick={() => setSelectedScreenshot(screenshot)}
+                      className="flex-shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:border-primary transition-colors"
+                      title="Click to view screenshot"
+                    >
+                      <img src={screenshot.dataUrl} alt="Screenshot" className="w-full h-full object-cover" />
+                    </button>
+                  )}
+                  {isNavAction && !hasScreenshot && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted border border-border">
+                      <Camera className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                     {getActionDisplay(action)}
                   </div>
@@ -264,7 +290,7 @@ export function ActionsList({
                     size="sm"
                     onClick={() => onRemoveAction(action)}
                     disabled={!isRecording || isReplaying}
-                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
                     title="Remove this action"
                   >
                     <X className="h-3 w-3" />
@@ -275,6 +301,32 @@ export function ActionsList({
           </div>
         )}
       </div>
+
+      {/* Screenshot Modal - TODO: Extract to separate component */}
+      {selectedScreenshot && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setSelectedScreenshot(null)}
+        >
+          <div
+            className="max-w-6xl max-h-[90vh] bg-background rounded-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">Screenshot</h3>
+                <p className="text-sm text-muted-foreground">{selectedScreenshot.url}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedScreenshot(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
+              <img src={selectedScreenshot.dataUrl} alt="Screenshot" className="w-full h-auto" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

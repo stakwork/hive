@@ -87,6 +87,7 @@ export function BrowserArtifactPanel({
     currentAction,
     startPlaywrightReplay,
     stopPlaywrightReplay,
+    replayScreenshots,
   } = usePlaywrightReplay(iframeRef);
 
   // Auto-show actions list when replay starts
@@ -364,6 +365,7 @@ export function BrowserArtifactPanel({
                     isReplaying={isPlaywrightReplaying}
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
+                    screenshots={replayScreenshots}
                   />
                 </div>
               )}

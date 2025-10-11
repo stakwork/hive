@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Screenshot } from "@/types";
 
 export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement | null>) {
   const [isPlaywrightReplaying, setIsPlaywrightReplaying] = useState(false);
@@ -10,6 +11,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
   const [replayErrors, setReplayErrors] = useState<
     { message: string; actionIndex: number; action: string; timestamp: string }[]
   >([]);
+  const [replayScreenshots, setReplayScreenshots] = useState<Screenshot[]>([]);
 
   const startPlaywrightReplay = (testCode: string) => {
     if (!iframeRef?.current?.contentWindow) {
@@ -29,6 +31,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     setPlaywrightStatus("playing");
     setReplayErrors([]);
     setCurrentAction(null);
+    setReplayScreenshots([]);
 
     try {
       const container = document.querySelector(".iframe-container");
@@ -169,6 +172,19 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
           }
           break;
 
+        case "staktrak-playwright-replay-screenshot":
+          setReplayScreenshots((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-${data.actionIndex}`,
+              actionIndex: data.actionIndex,
+              dataUrl: data.screenshot,
+              timestamp: data.timestamp,
+              url: data.url,
+            },
+          ]);
+          break;
+
         default:
           break;
       }
@@ -185,6 +201,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     playwrightProgress,
     currentAction,
     replayErrors,
+    replayScreenshots,
     startPlaywrightReplay,
     pausePlaywrightReplay,
     resumePlaywrightReplay,

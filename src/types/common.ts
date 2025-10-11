@@ -72,3 +72,12 @@ export interface SwarmService {
   readonly serviceName: string;
   getConfig(): ServiceConfig;
 }
+
+// Screenshot types for user journey replay
+export interface Screenshot {
+  id: string;
+  actionIndex: number;
+  dataUrl: string;
+  timestamp: number;
+  url?: string;
+}
