@@ -33,6 +33,12 @@ export async function createStandardWorkspaceScenario(): Promise<TestWorkspaceSc
       slug: `e2e-test-${Date.now()}`,
       description: "Workspace for E2E testing",
     },
+    // Add swarm with ACTIVE status to enable CodeGraph functionality
+    withSwarm: true,
+    swarm: {
+      status: "ACTIVE",
+      name: "E2E Test Swarm",
+    },
   });
 }
 

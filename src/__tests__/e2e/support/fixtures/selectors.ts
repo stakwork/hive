@@ -89,7 +89,7 @@ export const selectors = {
 
   // Tasks
   tasks: {
-    newTaskButton: 'button:has-text("New Task")',
+    newTaskButton: 'button:has-text("New Task"), button:has-text("Start New Task")',
     taskStartInput: '[data-testid="task-start-input"]',
     taskStartSubmit: '[data-testid="task-start-submit"]',
     chatMessageInput: '[data-testid="chat-message-input"]',

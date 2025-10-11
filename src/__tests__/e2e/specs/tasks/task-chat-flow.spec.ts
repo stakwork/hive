@@ -62,9 +62,9 @@ test.describe('Task Creation & Chat Flow', () => {
     await tasksPage.verifyMessageVisible(initialMessage);
     await tasksPage.verifyMessageVisible(chatMessage);
 
-    // Additional assertions using helper functions
-    await assertVisible(page, 'text=first message');
-    await assertVisible(page, 'text=second message');
+    // Additional assertions using helper functions (using more specific selectors)
+    await assertVisible(page, '[data-testid="task-title"]');
+    await assertContainsText(page, '[data-testid="task-title"]', initialMessage);
     
     // Verify we're on the correct task detail page
     expect(page.url()).toMatch(new RegExp(`/w/${workspaceSlug}/task/${taskId}$`));

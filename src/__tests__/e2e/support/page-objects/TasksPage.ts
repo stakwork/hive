@@ -38,11 +38,29 @@ export class TasksPage {
   }
 
   /**
-   * Click "New Task" button
+   * Click "New Task" button or "Connect Repository" button depending on setup
    */
   async clickNewTask(): Promise<void> {
-    await this.page.locator(selectors.tasks.newTaskButton).click();
-    await this.page.waitForURL(/\/w\/.*\/task\/new/, { timeout: 10000 });
+    // Check if we have the "New Task" button or need to connect repository first
+    const newTaskButton = this.page.locator(selectors.tasks.newTaskButton);
+    const connectRepoButton = this.page.locator(selectors.tasks.connectRepoButton);
+    
+    const hasNewTask = await newTaskButton.count() > 0;
+    const hasConnectRepo = await connectRepoButton.count() > 0;
+    
+    if (hasNewTask) {
+      await newTaskButton.click();
+      await this.page.waitForURL(/\/w\/.*\/task\/new/, { timeout: 10000 });
+    } else if (hasConnectRepo) {
+      // If repository needs to be connected first, click Connect Repository
+      await connectRepoButton.click();
+      // Wait for navigation to code-graph page
+      await this.page.waitForURL(/\/w\/.*\/code-graph/, { timeout: 10000 });
+      // For testing purposes, we'll throw an error here since we need a connected repo
+      throw new Error('Repository needs to be connected before creating tasks. Connect a repository first.');
+    } else {
+      throw new Error('Neither New Task button nor Connect Repository button found on tasks page');
+    }
   }
 
   /**
@@ -115,7 +133,17 @@ export class TasksPage {
    * Verify message appears in chat
    */
   async verifyMessageVisible(message: string): Promise<void> {
-    await expect(this.page.locator(`text=${message}`)).toBeVisible({ timeout: 10000 });
+    // Use a more specific selector that targets chat messages specifically
+    // Look for the message within chat container or use more specific locators
+    const chatMessage = this.page.locator('.chat-message, [data-testid="chat-message"], .message').filter({ hasText: message });
+    const fallbackMessage = this.page.getByRole('paragraph').filter({ hasText: message });
+    
+    // Try chat message first, then fallback to any paragraph with the text
+    try {
+      await expect(chatMessage.first()).toBeVisible({ timeout: 5000 });
+    } catch {
+      await expect(fallbackMessage.first()).toBeVisible({ timeout: 5000 });
+    }
   }
 
   /**
