@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, GripVertical, User as UserIcon } from "lucide-react";
+import { GripVertical, User as UserIcon, Plus } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { InlineCreateForm } from "@/components/shared/InlineCreateForm";
 import { useTicketMutations } from "@/hooks/useTicketMutations";
 import { useReorderTickets } from "@/hooks/useReorderTickets";
 import type { TicketListItem } from "@/types/roadmap";
@@ -105,27 +103,23 @@ export function TicketList({
   onTicketsReordered,
 }: TicketListProps) {
   const router = useRouter();
-  const [newTicketTitle, setNewTicketTitle] = useState("");
 
-  const { createTicket, loading: creatingTicket } = useTicketMutations();
+  const { createTicket } = useTicketMutations();
   const { sensors, ticketIds, handleDragEnd, collisionDetection } = useReorderTickets({
     tickets,
     phaseId,
     onOptimisticUpdate: onTicketsReordered,
   });
 
-  const handleAddTicket = async () => {
-    if (!newTicketTitle.trim()) return;
-
+  const handleAddTicket = async (title: string) => {
     const ticket = await createTicket({
       featureId,
       phaseId,
-      title: newTicketTitle,
+      title,
     });
 
     if (ticket) {
       onTicketAdded(ticket);
-      setNewTicketTitle("");
     }
   };
 
@@ -136,32 +130,14 @@ export function TicketList({
   return (
     <div className="space-y-2">
       {/* Add ticket input */}
-      <div className="flex gap-2">
-        <Input
-          placeholder="Add a ticket..."
-          value={newTicketTitle}
-          onChange={(e) => setNewTicketTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !creatingTicket) {
-              handleAddTicket();
-            }
-          }}
-          disabled={creatingTicket}
-          className="flex-1 h-8 text-sm"
-        />
-        <Button
-          size="sm"
-          onClick={handleAddTicket}
-          disabled={creatingTicket || !newTicketTitle.trim()}
-          className="h-8"
-        >
-          {creatingTicket ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Plus className="h-3 w-3" />
-          )}
-        </Button>
-      </div>
+      <InlineCreateForm
+        placeholder="Add a ticket..."
+        buttonText=""
+        buttonIcon={Plus}
+        onSubmit={handleAddTicket}
+        keepOpenAfterSubmit={true}
+        className=""
+      />
 
       {/* Tickets list with drag and drop */}
       {tickets.length > 0 ? (

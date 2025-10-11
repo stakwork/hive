@@ -26,10 +26,6 @@ export default function FeatureDetailPage() {
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
   const featureId = params.featureId as string;
 
-  // User story creation state
-  const [newStoryTitle, setNewStoryTitle] = useState("");
-  const [creatingStory, setCreatingStory] = useState(false);
-
   const fetchFeature = useCallback(
     async (id: string) => {
       const response = await fetch(`/api/features/${id}`);
@@ -88,15 +84,12 @@ export default function FeatureDetailPage() {
     triggerSaved("title");
   };
 
-  const handleAddUserStory = async () => {
-    if (!newStoryTitle.trim()) return;
-
+  const handleAddUserStory = async (title: string) => {
     try {
-      setCreatingStory(true);
       const response = await fetch(`/api/features/${featureId}/user-stories`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newStoryTitle.trim() }),
+        body: JSON.stringify({ title }),
       });
 
       if (!response.ok) {
@@ -109,12 +102,10 @@ export default function FeatureDetailPage() {
           ...feature,
           userStories: [...feature.userStories, result.data],
         });
-        setNewStoryTitle("");
       }
     } catch (error) {
       console.error("Failed to create user story:", error);
-    } finally {
-      setCreatingStory(false);
+      throw error;
     }
   };
 
@@ -406,9 +397,6 @@ export default function FeatureDetailPage() {
 
           <UserStoriesSection
             userStories={feature.userStories}
-            newStoryTitle={newStoryTitle}
-            creatingStory={creatingStory}
-            onNewStoryTitleChange={setNewStoryTitle}
             onAddUserStory={handleAddUserStory}
             onDeleteUserStory={handleDeleteUserStory}
             onReorderUserStories={handleReorderUserStories}

@@ -1,18 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
+import { type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
+import { useSortable } from "@/hooks/useSortable";
 import type { TicketListItem } from "@/types/roadmap";
 
 interface UseReorderTicketsParams {
@@ -26,12 +17,7 @@ export function useReorderTickets({
   phaseId,
   onOptimisticUpdate,
 }: UseReorderTicketsParams) {
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const { sensors, collisionDetection } = useSortable();
 
   const ticketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
 
@@ -86,6 +72,6 @@ export function useReorderTickets({
     sensors,
     ticketIds,
     handleDragEnd,
-    collisionDetection: closestCenter,
+    collisionDetection,
   };
 }
