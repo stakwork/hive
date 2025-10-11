@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,22 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { TicketsTable } from "@/components/features/TicketsTable";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -78,9 +63,6 @@ export default function PhaseDetailPage() {
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const { createTicket, loading: creatingTicket } = useTicketMutations();
-
-  // Delete confirmation state
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleBackClick = () => {
     if (phase?.feature) {
@@ -186,7 +168,6 @@ export default function PhaseDetailPage() {
         throw new Error("Failed to delete phase");
       }
 
-      setShowDeleteDialog(false);
       handleBackClick();
     } catch (error) {
       console.error("Failed to delete phase:", error);
@@ -284,49 +265,21 @@ export default function PhaseDetailPage() {
               />
 
               {/* Actions Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-muted-foreground"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                    <span className="sr-only">More actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => setShowDeleteDialog(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Phase",
+                      description: `Are you sure you want to delete "${phase.name}"? Any tickets in this phase will be moved to "Unassigned".`,
+                      onConfirm: handleDeletePhase,
+                    },
+                  },
+                ]}
+              />
             </div>
-
-            {/* Delete Confirmation Dialog */}
-            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Phase</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete &quot;{phase.name}&quot;? Any tickets in this phase will be moved to &quot;Unassigned&quot;.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDeletePhase}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </div>
         </CardHeader>
 
