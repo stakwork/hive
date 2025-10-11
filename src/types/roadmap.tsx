@@ -130,6 +130,23 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
         updatedAt: true;
       };
     };
+    phases: {
+      select: {
+        id: true;
+        name: true;
+        description: true;
+        status: true;
+        order: true;
+        featureId: true;
+        createdAt: true;
+        updatedAt: true;
+        _count: {
+          select: {
+            tickets: true;
+          };
+        };
+      };
+    };
   };
 }>;
 
@@ -299,6 +316,7 @@ export interface CreatePhaseRequest {
 export interface UpdatePhaseRequest {
   name?: string;
   description?: string;
+  status?: import("@prisma/client").PhaseStatus;
   order?: number;
 }
 
