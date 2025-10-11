@@ -21,7 +21,7 @@ export async function listFeatures(
 
   const [features, totalCount] = await Promise.all([
     db.feature.findMany({
-      where: { workspaceId },
+      where: { workspaceId, deleted: false },
       select: {
         id: true,
         title: true,
@@ -58,7 +58,7 @@ export async function listFeatures(
       take: limit,
     }),
     db.feature.count({
-      where: { workspaceId },
+      where: { workspaceId, deleted: false },
     }),
   ]);
 
@@ -306,4 +306,22 @@ export async function updateFeature(
   });
 
   return updatedFeature;
+}
+
+/**
+ * Soft deletes a feature
+ */
+export async function deleteFeature(
+  featureId: string,
+  userId: string
+): Promise<void> {
+  await validateFeatureAccess(featureId, userId);
+
+  await db.feature.update({
+    where: { id: featureId },
+    data: {
+      deleted: true,
+      deletedAt: new Date(),
+    },
+  });
 }
