@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 import type { AuthStatus, MiddlewareContext, MiddlewareUser } from "@/types/middleware";
+import { unauthorizedError } from "@/types/errors";
+import { NextResponse } from "next/server";
 
 /**
  * Extracts middleware context from request headers
@@ -14,9 +16,7 @@ export function getMiddlewareContext(request: NextRequest): MiddlewareContext {
 
   // Validate auth status with type safety
   const authStatus: AuthStatus =
-    authStatusHeader === "authenticated" ||
-    authStatusHeader === "public" ||
-    authStatusHeader === "webhook"
+    authStatusHeader === "authenticated" || authStatusHeader === "public" || authStatusHeader === "webhook"
       ? authStatusHeader
       : "error";
 
@@ -42,49 +42,18 @@ export function getMiddlewareContext(request: NextRequest): MiddlewareContext {
 }
 
 /**
- * Requires authentication in route handlers
- * Throws error if not authenticated - caller should wrap in try-catch
- *
- * @throws {Error} If user is not authenticated
- */
-export function requireAuth(context: MiddlewareContext): MiddlewareUser {
-  if (context.authStatus !== "authenticated" || !context.user) {
-    throw new Error("Authentication required");
-  }
-  return context.user;
-}
-
-/**
- * Checks authentication and returns 401 response if not authenticated
- * Returns user if authenticated, or Response if not
- *
- * Use this for cleaner route handler code with early returns:
- * @example
- * const userOrResponse = requireAuthOrUnauthorized(context);
- * if (userOrResponse instanceof Response) return userOrResponse;
- * const userId = userOrResponse.id;
- */
-export function requireAuthOrUnauthorized(
-  context: MiddlewareContext
-): MiddlewareUser | Response {
-  if (context.authStatus !== "authenticated" || !context.user) {
-    return new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      {
-        status: 401,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
-  }
-  return context.user;
-}
-
-/**
  * Type guard for authenticated requests
  * Use this to narrow the type of context to include user
  */
-export function isAuthenticated(context: MiddlewareContext): context is MiddlewareContext & { user: MiddlewareUser } {
-  return context.authStatus === "authenticated" && !!context.user;
+export function requireAuth(context: MiddlewareContext): MiddlewareUser | NextResponse {
+  if (context.authStatus === "authenticated" && context.user) {
+    return context.user;
+  }
+  const error = unauthorizedError("Unauthorized");
+  return NextResponse.json(
+    { error: error.message, kind: error.kind, details: error.details },
+    { status: error.statusCode },
+  );
 }
 
 /**
