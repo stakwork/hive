@@ -63,7 +63,6 @@ vi.mock("@/lib/encryption", () => {
 describe("saveOrUpdateSwarm", () => {
   const mockEncryptionService = EncryptionService.getInstance();
   const mockWorkspaceId = "test-workspace-id";
-  const mockSwarmId = "test-swarm-id";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,8 +74,8 @@ describe("saveOrUpdateSwarm", () => {
 
   describe("when creating a new swarm", () => {
     beforeEach(() => {
-      (db.swarm.findUnique as any).mockResolvedValue(null);
-      (db.swarm.create as any).mockResolvedValue({
+      db.swarm.findUnique.mockResolvedValue(null);
+      db.swarm.create.mockResolvedValue({
         id: "new-swarm-id",
         workspaceId: mockWorkspaceId,
         name: "test-swarm",
@@ -213,10 +212,11 @@ describe("saveOrUpdateSwarm", () => {
     it("should create a swarm with services configuration", async () => {
       const services = [
         {
-          baseURL: "https://api.example.com",
-          apiKey: "service-key",
-          timeout: 5000,
-          headers: { "Content-Type": "application/json" },
+          name: "test-service",
+          port: 3000,
+          scripts: {
+            start: "npm start",
+          },
         },
       ];
 
@@ -248,8 +248,8 @@ describe("saveOrUpdateSwarm", () => {
     };
 
     beforeEach(() => {
-      (db.swarm.findUnique as any).mockResolvedValue(existingSwarm);
-      (db.swarm.update as any).mockResolvedValue({
+      db.swarm.findUnique.mockResolvedValue(existingSwarm);
+      db.swarm.update.mockResolvedValue({
         ...existingSwarm,
         updatedAt: new Date(),
       });
@@ -313,7 +313,7 @@ describe("saveOrUpdateSwarm", () => {
 
       await saveOrUpdateSwarm(params);
 
-      const updateCall = (db.swarm.update as any).mock.calls[0][0];
+      const updateCall = db.swarm.update.mock.calls[0][0];
       const dataKeys = Object.keys(updateCall.data);
 
       expect(dataKeys).toContain("status");
@@ -438,9 +438,6 @@ describe("saveOrUpdateSwarm", () => {
         environmentVariables: [{ name: "ENV_VAR", value: "env_value" }],
         status: SwarmStatus.ACTIVE,
         swarmUrl: "https://test.sphinx.chat",
-        repositoryName: "test-repo",
-        repositoryDescription: "Test repository",
-        repositoryUrl: "https://github.com/test/repo",
         swarmApiKey: "api-key",
         swarmPassword: "password",
         poolName: "test-pool",
@@ -451,7 +448,6 @@ describe("saveOrUpdateSwarm", () => {
         swarmSecretAlias: "secret-alias",
         ingestRefId: "ingest-ref-123",
         containerFiles: { Dockerfile: "FROM node:18" },
-        defaultBranch: "main",
       };
 
       await saveOrUpdateSwarm(params);
@@ -463,15 +459,11 @@ describe("saveOrUpdateSwarm", () => {
           instanceType: "m6i.xlarge",
           status: SwarmStatus.ACTIVE,
           swarmUrl: "https://test.sphinx.chat",
-          repositoryName: "test-repo",
-          repositoryDescription: "Test repository",
-          repositoryUrl: "https://github.com/test/repo",
           poolName: "test-pool",
           poolCpu: "4",
           poolMemory: "8Gi",
           swarmSecretAlias: "secret-alias",
           containerFiles: { Dockerfile: "FROM node:18" },
-          defaultBranch: "main",
           swarmId: "custom-swarm-id",
           ingestRefId: "ingest-ref-123",
           // Verify encrypted fields are JSON strings

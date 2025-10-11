@@ -437,6 +437,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
               createdAt: "asc",
             },
           },
+          attachments: true,
         },
         orderBy: {
           timestamp: "asc",

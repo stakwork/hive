@@ -85,14 +85,23 @@ export function createPatchRequest(
 /**
  * Creates a DELETE request
  */
-export function createDeleteRequest(url: string): NextRequest {
+export function createDeleteRequest(url: string, body?: object): NextRequest {
   const absoluteUrl = url.startsWith('http') 
     ? url 
     : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
 
-  return new NextRequest(absoluteUrl, {
+  const options: RequestInit = {
     method: "DELETE",
-  });
+  };
+
+  if (body) {
+    options.headers = {
+      "Content-Type": "application/json",
+    };
+    options.body = JSON.stringify(body);
+  }
+
+  return new NextRequest(absoluteUrl, options);
 }
 
 /**

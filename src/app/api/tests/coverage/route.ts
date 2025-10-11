@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const swarmId = searchParams.get("swarmId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
+    const repoParam = searchParams.get("repo");
 
     let finalIgnoreDirs = ignoreDirsParam;
 
@@ -43,8 +44,15 @@ export async function GET(request: NextRequest) {
     }
 
     let endpoint = "/tests/coverage";
+    const params = new URLSearchParams();
     if (finalIgnoreDirs) {
-      endpoint += `?ignore_dirs=${encodeURIComponent(finalIgnoreDirs)}`;
+      params.set("ignore_dirs", finalIgnoreDirs);
+    }
+    if (repoParam) {
+      params.set("repo", repoParam);
+    }
+    if (params.toString()) {
+      endpoint += `?${params.toString()}`;
     }
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";

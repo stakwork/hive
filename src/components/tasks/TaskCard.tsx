@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Calendar, User, Sparkles, ExternalLink } from "lucide-react";
+import { Users, Calendar, User, Sparkles, ExternalLink, Bot } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -59,6 +59,12 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
             <Badge variant="secondary" className="gap-1">
               <Sparkles className="w-3 h-3" />
               Janitor
+            </Badge>
+          )}
+          {task.sourceType === "TASK_COORDINATOR" && (
+            <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200">
+              <Bot className="w-3 h-3" />
+              Task Coordinator
             </Badge>
           )}
           {task.stakworkProjectId && (

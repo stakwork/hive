@@ -34,7 +34,7 @@ const mockedTimingSafeEqual = vi.mocked(timingSafeEqual);
 
 describe("StakgraphWebhookService", () => {
   let service: StakgraphWebhookService;
-  let mockSwarm: { id: string; workspaceId: string; repositoryUrl: string | null };
+  let mockSwarm: { id: string; workspaceId: string };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,7 +43,6 @@ describe("StakgraphWebhookService", () => {
     mockSwarm = {
       id: "swarm-123",
       workspaceId: "workspace-456",
-      repositoryUrl: "https://github.com/test/repo.git",
     };
   });
 
@@ -66,7 +65,6 @@ describe("StakgraphWebhookService", () => {
       mockedDbSwarm.findFirst.mockResolvedValueOnce({
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
-        repositoryUrl: mockSwarm.repositoryUrl,
         swarmApiKey: "encrypted-key",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
@@ -103,7 +101,6 @@ describe("StakgraphWebhookService", () => {
       mockedDbSwarm.findFirst.mockResolvedValueOnce({
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
-        repositoryUrl: mockSwarm.repositoryUrl,
         swarmApiKey: "encrypted-key",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
@@ -143,7 +140,6 @@ describe("StakgraphWebhookService", () => {
       mockedDbSwarm.findFirst.mockResolvedValueOnce({
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
-        repositoryUrl: mockSwarm.repositoryUrl,
         swarmApiKey: "encrypted-key",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);

@@ -11,7 +11,6 @@ export default function RoadmapPage() {
     <div className="space-y-6">
       <PageHeader
         title="Roadmap"
-        description="Plan and track your product features and development roadmap."
       />
 
       <FeaturesList workspaceId={workspaceId} />

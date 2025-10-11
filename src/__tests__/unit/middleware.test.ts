@@ -38,6 +38,13 @@ describe("middleware", () => {
     expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("webhook");
   });
 
+  it("allows system routes (cron) and marks them as system", async () => {
+    const response = await middleware(createRequest("/api/cron/task-coordinator"));
+
+    expect(getTokenMock).not.toHaveBeenCalled();
+    expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("system");
+  });
+
   it("returns 401 JSON for protected API routes without a token", async () => {
     getTokenMock.mockResolvedValueOnce(null);
 

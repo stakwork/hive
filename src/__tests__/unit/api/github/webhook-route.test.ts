@@ -13,7 +13,7 @@ import {
   mockGitHubEvents,
   testBranches,
 } from "@/__tests__/support/fixtures/github-webhook";
-import { generateUniqueId } from "@/__tests__/support/helpers";
+import { NextRequest } from "next/server";
 
 // Mock dependencies
 vi.mock("@/lib/db", () => ({
@@ -69,13 +69,9 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
   describe("Header Validation", () => {
     test("should return 400 when x-hub-signature-256 header is missing", async () => {
       const payload = createGitHubPushPayload();
-      const request = createWebhookRequestWithMissingHeaders(
-        webhookUrl,
-        payload,
-        "signature"
-      );
+      const request = createWebhookRequestWithMissingHeaders(webhookUrl, payload, "signature");
 
-      const response = await POST(request as any);
+      const response = await POST(request as NextRequest);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -85,13 +81,9 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
 
     test("should return 400 when x-github-event header is missing", async () => {
       const payload = createGitHubPushPayload();
-      const request = createWebhookRequestWithMissingHeaders(
-        webhookUrl,
-        payload,
-        "event"
-      );
+      const request = createWebhookRequestWithMissingHeaders(webhookUrl, payload, "event");
 
-      const response = await POST(request as any);
+      const response = await POST(request as NextRequest);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -113,7 +105,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         body,
       });
 
-      const response = await POST(request as any);
+      const response = await POST(request as NextRequest);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -133,7 +125,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         body: "invalid json {",
       });
 
-      const response = await POST(request as any);
+      const response = await POST(request as NextRequest);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -155,7 +147,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         body,
       });
 
-      const response = await POST(request as any);
+      const response = await POST(request as NextRequest);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -176,7 +168,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -207,12 +199,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -234,7 +221,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: null, // Missing secret
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -243,12 +230,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -268,7 +250,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -277,12 +259,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const invalidSignature = "sha256=invalid_signature_12345";
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        invalidSignature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, invalidSignature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -300,7 +277,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -336,12 +313,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const validSignature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        validSignature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, validSignature, mockWebhookId);
 
       const response = await POST(request as any);
 
@@ -360,7 +332,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -394,12 +366,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -437,12 +404,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -456,12 +418,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -480,7 +437,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -512,12 +469,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -538,7 +490,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -549,13 +501,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId,
-        mockGitHubEvents.pullRequest
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId, mockGitHubEvents.pullRequest);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -570,13 +516,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId,
-        mockGitHubEvents.issues
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId, mockGitHubEvents.issues);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -614,13 +554,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId,
-        mockGitHubEvents.push
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId, mockGitHubEvents.push);
 
       const response = await POST(request as any);
 
@@ -639,7 +573,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -677,12 +611,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -694,7 +623,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         "sk_test_swarm_123", // decrypted API key
         "https://github.com/test-owner/test-repo",
         { username: "testuser", pat: "github_pat_123" },
-        expect.stringContaining("/api/swarm/stakgraph/webhook")
+        expect.stringContaining("/api/swarm/stakgraph/webhook"),
       );
     });
 
@@ -714,12 +643,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       await POST(request as any);
 
@@ -746,12 +670,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       await POST(request as any);
 
@@ -768,12 +687,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -799,12 +713,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       await POST(request as any);
 
@@ -813,27 +722,20 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         expect.any(String),
         expect.any(String),
         undefined, // No credentials
-        expect.any(String)
+        expect.any(String),
       );
     });
   });
 
   describe("Error Handling", () => {
     test("should return 500 when database query fails", async () => {
-      vi.mocked(db.repository.findFirst).mockRejectedValue(
-        new Error("Database connection failed")
-      );
+      vi.mocked(db.repository.findFirst).mockRejectedValue(new Error("Database connection failed"));
 
       const payload = createGitHubPushPayload();
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -851,7 +753,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -867,12 +769,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -899,7 +796,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         githubWebhookSecret: JSON.stringify({ data: "encrypted" }),
         workspace: {
           swarm: {
-            defaultBranch: "main",
+            id: "swarm-123",
           },
         },
       } as any);
@@ -919,9 +816,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 
       // Repository update fails
-      vi.mocked(db.repository.update).mockRejectedValue(
-        new Error("Update failed")
-      );
+      vi.mocked(db.repository.update).mockRejectedValue(new Error("Update failed"));
 
       vi.mocked(triggerAsyncSync).mockResolvedValue({
         ok: true,
@@ -935,12 +830,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(mockWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        mockWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();

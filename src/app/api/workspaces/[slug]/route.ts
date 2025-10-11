@@ -140,22 +140,22 @@ export async function PUT(
 
     const message =
       error instanceof Error ? error.message : "Internal server error";
-    
-    const status =
-      error instanceof Error &&
-      (error.message.includes("not found") ||
-        error.message.includes("access denied"))
-        ? 404
-        : error instanceof Error &&
-            (error.message.includes("Only workspace owners") ||
-             error.message.includes("Only workspace") ||
-             error.message.includes("owners and admins"))
-          ? 403
-          : error instanceof Error &&
-              error.message.includes("already exists")
-            ? 409
-            : 500;
 
+    let status = 500;
+    if (error instanceof Error) {
+      if (error.message.includes("not found") || error.message.includes("access denied")) {
+        status = 404;
+      } else if (
+        error.message.includes("Only workspace owners") ||
+        error.message.includes("owners and admins") ||
+        error.message.includes("insufficient permissions") ||
+        error.message.toLowerCase().includes("forbidden")
+      ) {
+        status = 403;
+      } else if (error.message.includes("already exists")) {
+        status = 409;
+      }
+    }
     return NextResponse.json({ error: message }, { status });
   }
 }

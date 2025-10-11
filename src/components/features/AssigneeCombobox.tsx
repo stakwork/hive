@@ -87,7 +87,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
           variant="ghost"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-start h-8 px-2 text-sm font-normal hover:bg-muted"
+          className="min-w-[140px] max-w-[200px] justify-start h-8 px-2 text-sm font-normal hover:bg-muted"
           onClick={(e) => e.stopPropagation()}
         >
           {currentAssignee ? (

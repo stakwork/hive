@@ -156,15 +156,15 @@ function getActionBorderColor(kind: string): string {
 
 export function ActionsList({ actions, onRemoveAction, onClearAll, isRecording }: ActionsListProps) {
   return (
-    <div className="mx-4 my-3 rounded-lg border bg-card shadow-sm">
-      <div className="flex items-center justify-between p-3 border-b">
+    <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm">
+      <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
         <h3 className="text-sm font-semibold">Test Actions ({actions.length})</h3>
         <Button variant="destructive" size="sm" onClick={onClearAll} disabled={!isRecording || actions.length === 0}>
           Clear All
         </Button>
       </div>
 
-      <div className="max-h-96 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {actions.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">No actions recorded yet</div>
         ) : (
@@ -174,9 +174,10 @@ export function ActionsList({ actions, onRemoveAction, onClearAll, isRecording }
                 key={action.id}
                 className={`flex items-center justify-between rounded border-l-4 ${getActionBorderColor(
                   action.kind,
-                )} bg-muted/50 p-2 transition-colors hover:bg-muted`}
+                )} bg-muted/50 p-1.5 transition-colors hover:bg-muted`}
+                title={`${action.kind}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
               >
-                <div className="flex-1 text-sm overflow-hidden text-ellipsis whitespace-nowrap">
+                <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                   {getActionDisplay(action)}
                 </div>
                 <Button

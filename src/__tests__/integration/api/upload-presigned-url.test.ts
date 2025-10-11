@@ -5,12 +5,10 @@ import { WorkflowStatus } from "@prisma/client";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
-  expectUnauthorized,
   generateUniqueId,
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Create mock S3 service methods
 const mockS3Service = {
@@ -61,9 +59,6 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
           name: `test-swarm-${Date.now()}`,
           status: "ACTIVE",
           instanceType: "XL",
-          repositoryName: "test-repo",
-          repositoryUrl: "https://github.com/test/repo",
-          defaultBranch: "main",
           swarmApiKey: "test-api-key",
           swarmUrl: "https://test-swarm.com/api",
           swarmSecretAlias: "test-secret",
@@ -279,10 +274,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg"
+        "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg",
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -299,12 +294,15 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         const error = await response.json();
         console.log("Unexpected error response:", response.status, error);
         // Log request data for debugging
-        console.log("Request body:", JSON.stringify({
-          taskId: testTask.id,
-          filename: "test.jpg",
-          contentType: "image/jpeg",
-          size: 1024000,
-        }));
+        console.log(
+          "Request body:",
+          JSON.stringify({
+            taskId: testTask.id,
+            filename: "test.jpg",
+            contentType: "image/jpeg",
+            size: 1024000,
+          }),
+        );
       }
 
       expect(response.status).toBe(200);
@@ -393,10 +391,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg"
+        "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg",
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
       const imageTypes = [
@@ -431,10 +429,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        `uploads/${testWorkspace.id}/${testSwarm.id}/${testTask.id}/1234567890_abc123_test.jpg`
+        `uploads/${testWorkspace.id}/${testSwarm.id}/${testTask.id}/1234567890_abc123_test.jpg`,
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -451,7 +449,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         testWorkspace.id,
         testSwarm.id,
         testTask.id,
-        "test.jpg"
+        "test.jpg",
       );
 
       const data = await response.json();
@@ -468,10 +466,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        "uploads/workspace123/swarm456/task789/1234567890_abc123_file_with_special_chars.jpg"
+        "uploads/workspace123/swarm456/task789/1234567890_abc123_file_with_special_chars.jpg",
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -488,7 +486,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         expect.any(String),
         expect.any(String),
         testTask.id,
-        "file with spaces & special!chars@.jpg"
+        "file with spaces & special!chars@.jpg",
       );
     });
 
@@ -530,10 +528,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        `uploads/${testWorkspace.id}/default/${testTask.id}/1234567890_abc123_test.jpg`
+        `uploads/${testWorkspace.id}/default/${testTask.id}/1234567890_abc123_test.jpg`,
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -550,7 +548,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         testWorkspace.id,
         "default", // Default swarmId when no swarm configured
         testTask.id,
-        "test.jpg"
+        "test.jpg",
       );
     });
   });
@@ -564,10 +562,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg"
+        "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg",
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123",
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -583,13 +581,11 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       expect(mockS3Service.generatePresignedUploadUrl).toHaveBeenCalledWith(
         "uploads/workspace123/swarm456/task789/1234567890_abc123_test.jpg",
         "image/jpeg",
-        300 // 5 minutes expiration
+        300, // 5 minutes expiration
       );
 
       const data = await response.json();
-      expect(data.presignedUrl).toBe(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123"
-      );
+      expect(data.presignedUrl).toBe("https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?signature=abc123");
     });
 
     test("should include correct Content-Type in presigned URL generation", async () => {
@@ -601,7 +597,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue("test-path");
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
       const contentTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -616,11 +612,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
 
         await POST(request);
 
-        expect(mockS3Service.generatePresignedUploadUrl).toHaveBeenCalledWith(
-          expect.any(String),
-          contentType,
-          300
-        );
+        expect(mockS3Service.generatePresignedUploadUrl).toHaveBeenCalledWith(expect.any(String), contentType, 300);
       }
     });
 
@@ -632,10 +624,10 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileType).mockReturnValue(true);
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue(
-        "uploads/workspace123/swarm456/task789/1234567890_abc123_image.png"
+        "uploads/workspace123/swarm456/task789/1234567890_abc123_image.png",
       );
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123",
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -658,7 +650,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       expect(data).toHaveProperty("size");
 
       expect(data.presignedUrl).toBe(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url?X-Amz-Signature=abc123",
       );
       expect(data.s3Path).toBe("uploads/workspace123/swarm456/task789/1234567890_abc123_image.png");
       expect(data.filename).toBe("image.png");
@@ -677,7 +669,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue("test-path");
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockRejectedValue(
-        new Error("AWS SDK Error: Invalid credentials")
+        new Error("AWS SDK Error: Invalid credentials"),
       );
 
       const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
@@ -760,7 +752,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       vi.mocked(mockS3Service.validateFileSize).mockReturnValue(true);
       vi.mocked(mockS3Service.generateS3Path).mockReturnValue("test-path");
       vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url"
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-url",
       );
 
       const longFilename = "a".repeat(500) + ".jpg"; // 500+ character filename
@@ -779,7 +771,7 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         expect.any(String),
         expect.any(String),
         testTask.id,
-        longFilename
+        longFilename,
       );
     });
   });

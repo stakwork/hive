@@ -52,9 +52,6 @@ export interface SwarmSelectResult {
   updatedAt: Date;
   workspaceId: string;
   instanceType: string;
-  repositoryName: string;
-  repositoryDescription: string;
-  repositoryUrl: string;
   swarmSecretAlias: string;
   swarmApiKey: string | null;
   poolName: string;
@@ -63,7 +60,6 @@ export interface SwarmSelectResult {
   environmentVariables: Record<string, string>[];
   services: ServicesConfig[] | string; // string if not parsed yet
   containerFiles: Record<string, string>;
-  defaultBranch: string;
 }
 
 export interface ServicesConfig {

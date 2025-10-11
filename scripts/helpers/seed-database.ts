@@ -100,7 +100,6 @@ async function seedWorkspacesAndSwarms(
       update: {
         name: item.swarm.name,
         status: SwarmStatus.ACTIVE,
-        repositoryUrl: item.swarm.repoUrl,
         swarmApiKey,
         poolApiKey,
         environmentVariables: [
@@ -111,7 +110,6 @@ async function seedWorkspacesAndSwarms(
       create: {
         name: item.swarm.name,
         status: SwarmStatus.ACTIVE,
-        repositoryUrl: item.swarm.repoUrl,
         workspaceId: ws.id,
         swarmApiKey,
         poolApiKey,

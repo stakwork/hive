@@ -436,7 +436,8 @@ export async function getJanitorRecommendations(
 export async function acceptJanitorRecommendation(
   recommendationId: string,
   userId: string,
-  options: AcceptRecommendationRequest = {}
+  options: AcceptRecommendationRequest = {},
+  sourceType: "JANITOR" | "TASK_COORDINATOR" = "JANITOR"
 ) {
   const recommendation = await db.janitorRecommendation.findUnique({
     where: { id: recommendationId },
@@ -514,7 +515,7 @@ export async function acceptJanitorRecommendation(
 
   // Create task and trigger Stakwork workflow using shared service
   const message = `${recommendation.title}\n\n${recommendation.description}\n\n`;
-  
+
   const taskResult = await createTaskWithStakworkWorkflow({
     title: recommendation.title,
     description: recommendation.description,
@@ -522,7 +523,7 @@ export async function acceptJanitorRecommendation(
     assigneeId: options.assigneeId,
     repositoryId: options.repositoryId,
     priority: recommendation.priority,
-    sourceType: "JANITOR",
+    sourceType: sourceType,
     userId: userId,
     initialMessage: message,
     mode: "live"  // Use production workflow for janitor-created tasks

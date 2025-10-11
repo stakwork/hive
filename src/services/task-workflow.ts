@@ -281,7 +281,7 @@ async function createChatMessageAndTriggerStakwork(params: {
 /**
  * Call Stakwork API - extracted from callStakwork function in chat/message route
  */
-async function callStakworkAPI(params: {
+export async function callStakworkAPI(params: {
   taskId: string;
   message: string;
   contextTags?: any[];
