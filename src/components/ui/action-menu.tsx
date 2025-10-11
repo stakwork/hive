@@ -51,10 +51,14 @@ export function ActionMenu({
   triggerVariant = "ghost",
   triggerSize = "sm",
 }: ActionMenuProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [confirmationStates, setConfirmationStates] = useState<Record<number, boolean>>({});
+
+  const closeMenu = () => setIsMenuOpen(false);
 
   const handleActionClick = async (action: ActionMenuItem, index: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    closeMenu();
 
     if (action.confirmation) {
       setConfirmationStates((prev) => ({ ...prev, [index]: true }));
@@ -65,8 +69,8 @@ export function ActionMenu({
 
   const handleConfirm = async (action: ActionMenuItem, index: number) => {
     if (action.confirmation) {
-      await action.confirmation.onConfirm();
       setConfirmationStates((prev) => ({ ...prev, [index]: false }));
+      await action.confirmation.onConfirm();
     }
   };
 
@@ -76,7 +80,7 @@ export function ActionMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant={triggerVariant}
