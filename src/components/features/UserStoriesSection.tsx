@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import {
   DndContext,
@@ -51,6 +51,13 @@ export function UserStoriesSection({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Auto-focus after story creation
+  useEffect(() => {
+    if (!creatingStory && !newStoryTitle) {
+      storyInputRef.current?.focus();
+    }
+  }, [creatingStory, newStoryTitle]);
 
   // Memoize story IDs for sortable context
   const storyIds = useMemo(

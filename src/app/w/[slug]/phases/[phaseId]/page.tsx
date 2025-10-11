@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,13 @@ export default function PhaseDetailPage() {
 
   const { createTicket, loading: creatingTicket } = useTicketMutations();
 
+  // Auto-focus after ticket creation completes
+  useEffect(() => {
+    if (!creatingTicket && !newTicketTitle && isCreatingTicket) {
+      titleInputRef.current?.focus();
+    }
+  }, [creatingTicket, newTicketTitle, isCreatingTicket]);
+
   const handleBackClick = () => {
     if (phase?.feature) {
       router.push(`/w/${workspaceSlug}/roadmap/${phase.feature.id}`);
@@ -118,16 +125,12 @@ export default function PhaseDetailPage() {
         tickets: [...phase.tickets, ticket],
       });
 
-      // Reset form and auto-focus
+      // Reset form (focus handled by useEffect)
       setNewTicketTitle("");
       setNewTicketStatus("TODO");
       setNewTicketPriority("MEDIUM");
       setNewTicketAssigneeId(null);
       setNewTicketAssigneeData(null);
-
-      setTimeout(() => {
-        titleInputRef.current?.focus();
-      }, 0);
     }
   };
 
