@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 interface UseAutoSaveParams<T> {
   data: T | null;
@@ -11,25 +11,27 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedField, setSavedField] = useState<string | null>(null);
-  const originalDataRef = useRef<T | null>(data);
-  const hasSyncedRef = useRef(false);
+  const [originalData, setOriginalData] = useState<T | null>(data);
 
-  // Update original data when data changes externally
-  const updateOriginalData = useCallback((newData: T) => {
-    originalDataRef.current = newData;
-  }, []);
+  // Track the resource ID to detect navigation to different resources
+  const currentIdRef = useRef<string | null>(null);
 
-  // Sync originalDataRef only on initial data fetch
+  // Reset baseline when navigating to a different resource (by ID)
   useEffect(() => {
-    if (data && !hasSyncedRef.current) {
-      originalDataRef.current = data;
-      hasSyncedRef.current = true;
+    if (data) {
+      const dataId = (data as T & { id?: string }).id;
+
+      // If we have an ID and it's different from current, or if we don't have an ID yet
+      if (dataId !== currentIdRef.current) {
+        currentIdRef.current = dataId || null;
+        setOriginalData(data);
+      }
     }
   }, [data]);
 
   const handleFieldBlur = useCallback(
     async (field: string, value: unknown) => {
-      const originalValue = originalDataRef.current?.[field];
+      const originalValue = originalData?.[field];
 
       if (data && originalValue !== value) {
         setSavedField(field);
@@ -37,6 +39,9 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
 
         try {
           await onSave({ [field]: value } as Partial<T>);
+
+          // Update baseline for this field
+          setOriginalData((prev) => (prev ? { ...prev, [field]: value } : prev));
 
           // Show "Saved" indicator
           setSaved(true);
@@ -51,8 +56,13 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
         }
       }
     },
-    [data, onSave]
+    [data, originalData, onSave]
   );
+
+  // Manual baseline reset for full data updates (e.g., after server response)
+  const updateOriginalData = useCallback((newData: T) => {
+    setOriginalData(newData);
+  }, []);
 
   // Trigger saved state manually for non-field saves (like status/assignee)
   const triggerSaved = useCallback((field: string) => {
