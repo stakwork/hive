@@ -4,8 +4,82 @@ import type {
   CreateTicketRequest,
   UpdateTicketRequest,
   TicketWithDetails,
+  TicketDetail,
 } from "@/types/roadmap";
 import { validateFeatureAccess, validateTicketAccess } from "./utils";
+
+/**
+ * Gets a ticket with full context (feature, phase, creator, updater)
+ */
+export async function getTicket(
+  ticketId: string,
+  userId: string
+): Promise<TicketDetail> {
+  const ticket = await validateTicketAccess(ticketId, userId);
+  if (!ticket) {
+    throw new Error("Ticket not found or access denied");
+  }
+
+  const ticketDetail = await db.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      order: true,
+      featureId: true,
+      phaseId: true,
+      createdAt: true,
+      updatedAt: true,
+      assignee: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      phase: {
+        select: {
+          id: true,
+          name: true,
+          status: true,
+        },
+      },
+      feature: {
+        select: {
+          id: true,
+          title: true,
+          workspaceId: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      updatedBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+    },
+  });
+
+  if (!ticketDetail) {
+    throw new Error("Ticket not found");
+  }
+
+  return ticketDetail;
+}
 
 /**
  * Creates a new ticket for a feature

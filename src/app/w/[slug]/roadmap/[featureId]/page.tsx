@@ -242,7 +242,7 @@ export default function FeatureDetailPage() {
             onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Roadmap
+            Back
           </Button>
           <span className="text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -336,7 +336,7 @@ export default function FeatureDetailPage() {
           onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Roadmap
+          Back
         </Button>
         <Card>
           <CardHeader>
@@ -360,7 +360,7 @@ export default function FeatureDetailPage() {
           onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Roadmap
+          Back
         </Button>
       </div>
 
@@ -473,6 +473,7 @@ export default function FeatureDetailPage() {
 
           <PhaseSection
             featureId={featureId}
+            workspaceSlug={workspaceSlug}
             phases={feature.phases || []}
             onUpdate={handleUpdatePhases}
           />

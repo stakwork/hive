@@ -26,11 +26,12 @@ import type { PhaseStatus } from "@prisma/client";
 
 interface PhaseSectionProps {
   featureId: string;
+  workspaceSlug: string;
   phases: PhaseListItem[];
   onUpdate: (phases: PhaseListItem[]) => void;
 }
 
-export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps) {
+export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: PhaseSectionProps) {
   const [newPhaseName, setNewPhaseName] = useState("");
   const [creatingPhase, setCreatingPhase] = useState(false);
   const phaseInputRef = useRef<HTMLInputElement>(null);
@@ -223,6 +224,8 @@ export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps)
                     <PhaseItem
                       key={phase.id}
                       phase={phase}
+                      featureId={featureId}
+                      workspaceSlug={workspaceSlug}
                       onUpdate={handleUpdatePhase}
                       onDelete={handleDeletePhase}
                     />
