@@ -78,7 +78,7 @@ export function StreamingMessage({
 
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="bg-muted/50 border border-border/50 rounded-lg p-2 my-1">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-col gap-1.5">
             {message.toolCalls.map((toolCall) => (
               <StreamToolCall key={toolCall.id} toolCall={toolCall} />
             ))}
