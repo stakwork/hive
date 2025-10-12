@@ -692,6 +692,7 @@ model Feature {
   id          String           @id @default(cuid())
   title       String
   brief       String?
+  personas    String?
   requirements String?
   architecture String?
   workspaceId String           @map("workspace_id")
