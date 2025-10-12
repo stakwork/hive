@@ -203,6 +203,31 @@ export default function FeatureDetailPage() {
     }
   };
 
+  const handleAcceptGeneratedStory = async (storyTitle: string) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}/user-stories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: storyTitle }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create user story");
+      }
+
+      const result = await response.json();
+      if (result.success && feature) {
+        setFeature({
+          ...feature,
+          userStories: [...feature.userStories, result.data],
+        });
+      }
+    } catch (error) {
+      console.error("Failed to accept generated story:", error);
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -407,6 +432,7 @@ export default function FeatureDetailPage() {
           />
 
           <UserStoriesSection
+            featureId={featureId}
             userStories={feature.userStories}
             newStoryTitle={newStoryTitle}
             creatingStory={creatingStory}
@@ -414,6 +440,7 @@ export default function FeatureDetailPage() {
             onAddUserStory={handleAddUserStory}
             onDeleteUserStory={handleDeleteUserStory}
             onReorderUserStories={handleReorderUserStories}
+            onAcceptGeneratedStory={handleAcceptGeneratedStory}
             shouldFocusRef={storyFocusRef}
           />
 

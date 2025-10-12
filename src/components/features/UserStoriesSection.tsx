@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useMemo, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { useRef, useMemo, useEffect, useState } from "react";
+import { Loader2, Check, X, Sparkles } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -20,10 +20,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SortableUserStory } from "./SortableUserStory";
+import { GenerateStoriesButton, type GeneratedStory } from "./GenerateStoriesButton";
 import type { FeatureDetail } from "@/types/roadmap";
 
 interface UserStoriesSectionProps {
+  featureId: string;
   userStories: FeatureDetail["userStories"];
   newStoryTitle: string;
   creatingStory: boolean;
@@ -31,10 +39,12 @@ interface UserStoriesSectionProps {
   onAddUserStory: () => void;
   onDeleteUserStory: (storyId: string) => void;
   onReorderUserStories: (stories: FeatureDetail["userStories"]) => void;
+  onAcceptGeneratedStory: (title: string) => Promise<void>;
   shouldFocusRef: React.MutableRefObject<boolean>;
 }
 
 export function UserStoriesSection({
+  featureId,
   userStories,
   newStoryTitle,
   creatingStory,
@@ -42,9 +52,12 @@ export function UserStoriesSection({
   onAddUserStory,
   onDeleteUserStory,
   onReorderUserStories,
+  onAcceptGeneratedStory,
   shouldFocusRef,
 }: UserStoriesSectionProps) {
   const storyInputRef = useRef<HTMLInputElement>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<GeneratedStory[]>([]);
+  const [accepting, setAccepting] = useState<string | null>(null);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -90,10 +103,48 @@ export function UserStoriesSection({
     }
   };
 
+  const handleAiGenerated = (stories: GeneratedStory[]) => {
+    // Stagger animation: add delay between each story
+    stories.forEach((story, index) => {
+      setTimeout(() => {
+        setAiSuggestions((prev) => [...prev, story]);
+      }, index * 200);
+    });
+  };
+
+  const handleAcceptAi = async (story: GeneratedStory, index: number) => {
+    setAccepting(`ai-${index}`);
+    await onAcceptGeneratedStory(story.title);
+    setAiSuggestions((prev) => prev.filter((_, i) => i !== index));
+    setAccepting(null);
+  };
+
+  const handleRejectAi = (index: number) => {
+    setAiSuggestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="space-y-4">
       <div>
-        <Label className="text-sm font-medium">User Stories</Label>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">User Stories</Label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <GenerateStoriesButton
+                    featureId={featureId}
+                    onGenerated={handleAiGenerated}
+                    iconOnly
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Generate with AI</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <p className="text-sm text-muted-foreground mt-1">
           Define the user stories and acceptance criteria for this feature.
         </p>
@@ -127,7 +178,7 @@ export function UserStoriesSection({
           </Button>
         </div>
 
-        {userStories.length > 0 && (
+        {(userStories.length > 0 || aiSuggestions.length > 0) && (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -144,6 +195,36 @@ export function UserStoriesSection({
                       onDelete={onDeleteUserStory}
                     />
                   ))}
+
+                {aiSuggestions.map((story, index) => (
+                  <div
+                    key={`ai-${index}`}
+                    className="flex items-center gap-3 px-4 py-3 rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300"
+                  >
+                    <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0" />
+                    <span className="flex-1 text-sm">{story.title}</span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAcceptAi(story, index)}
+                        disabled={accepting !== null}
+                      >
+                        <Check className="h-4 w-4 mr-2 text-green-600" />
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleRejectAi(index)}
+                        disabled={accepting !== null}
+                      >
+                        <X className="h-4 w-4 mr-2 text-red-600" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </SortableContext>
           </DndContext>
