@@ -1,21 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   GET as GET_STAK,
-  PUT as PUT_STAK,
 } from "@/app/api/workspaces/[slug]/stakgraph/route";
 import { db } from "@/lib/db";
+import type { User, Workspace, Swarm } from "@prisma/client";
 import { encryptEnvVars } from "@/lib/encryption";
 import {
-  createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
-  getMockedSession,
-  createGetRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 
 describe("/api/workspaces/[slug]/stakgraph", () => {
   const PLAINTEXT_ENV = [{ name: "SECRET", value: "my_value" }];
-  let testData: { user: any; workspace: any; swarm: any };
+  let testData: { user: User; workspace: Workspace; swarm: Swarm };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -44,20 +42,20 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
           workspaceId: workspace.id,
           name: generateUniqueId("s2"),
           status: "ACTIVE",
-          environmentVariables: encryptEnvVars(PLAINTEXT_ENV as any) as any,
+          // @ts-expect-error - encryptEnvVars returns correct type for Prisma Json field
+          environmentVariables: encryptEnvVars(PLAINTEXT_ENV),
           services: [],
         },
       });
 
       return { user, workspace, swarm };
     });
-
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   it("GET returns decrypted env vars but DB remains encrypted", async () => {
-    const req = createGetRequest(
-      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`
+    const req = createAuthenticatedGetRequest(
+      `/api/workspaces/${testData.workspace.slug}/stakgraph`,
+      { id: testData.user.id, email: testData.user.email || "", name: testData.user.name || "" }
     );
     const res = await GET_STAK(req, {
       params: Promise.resolve({ slug: testData.workspace.slug }),

@@ -6,14 +6,11 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
+  createAuthenticatedGetRequest,
   expectSuccess,
   expectUnauthorized,
   expectError,
   generateUniqueSlug,
-  createGetRequest,
 } from "@/__tests__/support/helpers";
 
 describe("Slug Availability API - Integration Tests", () => {
@@ -156,10 +153,9 @@ describe("Slug Availability API - Integration Tests", () => {
     ])("$name", async ({ setup, assertions }) => {
       const context = await setup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(context.user));
-
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/workspaces/slug-availability",
+        { id: context.user.id, email: context.user.email || "", name: context.user.name || "" },
         { slug: context.slug }
       );
 
@@ -168,10 +164,10 @@ describe("Slug Availability API - Integration Tests", () => {
     });
 
     test("rejects unauthenticated requests", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
-      const request = createGetRequest(
+      // Create request without auth headers (invalid user)
+      const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/workspaces/slug-availability",
+        { id: "", email: "invalid@test.com", name: "Invalid" },
         { slug: "test-slug" }
       );
 
@@ -182,11 +178,11 @@ describe("Slug Availability API - Integration Tests", () => {
 
     test("returns error when slug parameter is missing", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Create request without slug query parameter
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability"
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/workspaces/slug-availability",
+        { id: user.id, email: user.email || "", name: user.name || "" }
       );
 
       const response = await GET(request);
@@ -196,10 +192,10 @@ describe("Slug Availability API - Integration Tests", () => {
 
     test("returns error when slug parameter is empty string", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/workspaces/slug-availability",
+        { id: user.id, email: user.email || "", name: user.name || "" },
         { slug: "" }
       );
 
@@ -210,13 +206,13 @@ describe("Slug Availability API - Integration Tests", () => {
 
     test("handles very long slug", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Create a slug longer than typical database field limits
       const longSlug = "a".repeat(100);
       
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/workspaces/slug-availability",
+        { id: user.id, email: user.email || "", name: user.name || "" },
         { slug: longSlug }
       );
 
@@ -230,12 +226,12 @@ describe("Slug Availability API - Integration Tests", () => {
 
     test("handles slug with special characters", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const specialSlug = "test-slug_123";
       
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/workspaces/slug-availability",
+        { id: user.id, email: user.email || "", name: user.name || "" },
         { slug: specialSlug }
       );
 

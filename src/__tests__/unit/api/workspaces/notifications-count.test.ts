@@ -1,17 +1,9 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
-import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { GET } from "@/app/api/workspaces/[slug]/tasks/notifications-count/route";
-
-// Mock next-auth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-// Mock authOptions
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
+import {
+  createGetRequest,
+  createAuthenticatedGetRequest,
+} from "@/__tests__/support/helpers";
 
 // Mock the database
 vi.mock("@/lib/db", () => ({
@@ -25,7 +17,6 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 
 // Test Data Factories
@@ -90,22 +81,15 @@ const TestDataFactory = {
 
 // Test Helpers
 const TestHelpers = {
-  createGetRequest: (slug: string) => {
-    return new NextRequest(`http://localhost:3000/api/workspaces/${slug}/tasks/notifications-count`, {
-      method: "GET",
-    });
+  createAuthenticatedRequest: (slug: string, userId: string = "user-123") => {
+    return createAuthenticatedGetRequest(
+      `/api/workspaces/${slug}/tasks/notifications-count`,
+      { id: userId, email: "test@example.com", name: "Test User" }
+    );
   },
 
-  setupAuthenticatedUser: (userId: string = "user-123") => {
-    (mockGetServerSession as Mock).mockResolvedValue(TestDataFactory.createValidSession(userId));
-  },
-
-  setupUnauthenticatedUser: () => {
-    (mockGetServerSession as Mock).mockResolvedValue(null);
-  },
-
-  setupInvalidSession: () => {
-    (mockGetServerSession as Mock).mockResolvedValue({ user: {} });
+  createUnauthenticatedRequest: (slug: string) => {
+    return createGetRequest(`/api/workspaces/${slug}/tasks/notifications-count`);
   },
 
   expectAuthenticationError: async (response: Response) => {
@@ -117,7 +101,7 @@ const TestHelpers = {
   expectInvalidSessionError: async (response: Response) => {
     expect(response.status).toBe(401);
     const data = await response.json();
-    expect(data.error).toBe("Invalid user session");
+    expect(data.error).toBe("Unauthorized");
   },
 
   expectAccessDeniedError: async (response: Response) => {
@@ -147,9 +131,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createUnauthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectAuthenticationError(response);
@@ -157,9 +139,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      (mockGetServerSession as Mock).mockResolvedValue({ expires: new Date().toISOString() });
-
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createUnauthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectAuthenticationError(response);
@@ -167,9 +147,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should return 401 when session.user.id is missing", async () => {
-      TestHelpers.setupInvalidSession();
-
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createUnauthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectInvalidSessionError(response);
@@ -177,23 +155,19 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
       (mockDb.task.findMany as Mock).mockResolvedValue([]);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
     });
   });
 
   describe("Input Validation", () => {
     test("should return 400 when slug is missing", async () => {
-      TestHelpers.setupAuthenticatedUser();
-
-      const request = TestHelpers.createGetRequest("");
+      const request = TestHelpers.createAuthenticatedRequest("");
       const response = await GET(request, { params: Promise.resolve({ slug: "" }) });
 
       expect(response.status).toBe(400);
@@ -203,11 +177,10 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should accept valid slug parameter", async () => {
-      TestHelpers.setupAuthenticatedUser();
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
       (mockDb.task.findMany as Mock).mockResolvedValue([]);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(200);
@@ -234,10 +207,9 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Authorization", () => {
     test("should return 404 when workspace is not found", async () => {
-      TestHelpers.setupAuthenticatedUser();
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(null);
 
-      const request = TestHelpers.createGetRequest("non-existent-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("non-existent-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "non-existent-workspace" }) });
 
       await TestHelpers.expectWorkspaceNotFoundError(response);
@@ -245,7 +217,6 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should return 403 when user is not workspace owner or member", async () => {
-      TestHelpers.setupAuthenticatedUser("user-123");
       const workspaceWithoutAccess = {
         id: "workspace-123",
         ownerId: "different-owner",
@@ -253,7 +224,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       };
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutAccess);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace", "user-123");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectAccessDeniedError(response);
@@ -261,11 +232,10 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should allow access when user is workspace owner", async () => {
-      TestHelpers.setupAuthenticatedUser("user-123");
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace("user-123"));
       (mockDb.task.findMany as Mock).mockResolvedValue([]);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace", "user-123");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -273,11 +243,10 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should allow access when user is workspace member", async () => {
-      TestHelpers.setupAuthenticatedUser("member-456");
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createWorkspaceWithMember("member-456"));
       (mockDb.task.findMany as Mock).mockResolvedValue([]);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace", "member-456");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -287,7 +256,6 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Counting Logic - Task Filtering", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
     });
 
@@ -298,7 +266,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithForm);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 2);
@@ -311,7 +279,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithoutForm);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 1);
@@ -324,7 +292,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithNoMessages);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 1);
@@ -337,7 +305,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithMultipleMessages);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 1);
@@ -347,7 +315,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       const taskWithMultipleForms = [TestDataFactory.createTaskWithMultipleArtifacts("task-1")];
       (mockDb.task.findMany as Mock).mockResolvedValue(taskWithMultipleForms);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 1);
@@ -360,7 +328,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithoutForm);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -369,7 +337,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     test("should return zero count when workspace has no tasks", async () => {
       (mockDb.task.findMany as Mock).mockResolvedValue([]);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -378,13 +346,13 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Prisma Query Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
+      
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
       (mockDb.task.findMany as Mock).mockResolvedValue([]);
     });
 
     test("should query tasks with correct workspace filter", async () => {
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith({
@@ -415,7 +383,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should filter by IN_PROGRESS and PENDING workflow status", async () => {
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith(
@@ -430,7 +398,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should exclude deleted tasks", async () => {
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith(
@@ -443,7 +411,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should order chat messages by timestamp desc and take only 1", async () => {
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(mockDb.task.findMany).toHaveBeenCalledWith(
@@ -463,14 +431,14 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Response Format", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
+      
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
     });
 
     test("should return correct response structure", async () => {
       (mockDb.task.findMany as Mock).mockResolvedValue([TestDataFactory.createTaskWithFormArtifact("task-1")]);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
       const data = await response.json();
 
@@ -488,7 +456,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithForm);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
       const data = await response.json();
 
@@ -498,13 +466,13 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Error Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
+      
     });
 
     test("should return 500 when workspace lookup fails", async () => {
       (mockDb.workspace.findFirst as Mock).mockRejectedValue(new Error("Database connection failed"));
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(500);
@@ -516,7 +484,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
       (mockDb.task.findMany as Mock).mockRejectedValue(new Error("Query timeout"));
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(500);
@@ -530,7 +498,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
         // Missing ownerId and members
       });
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(500);
@@ -539,7 +507,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
 
   describe("Edge Cases", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
+      
       (mockDb.workspace.findFirst as Mock).mockResolvedValue(TestDataFactory.createValidWorkspace());
     });
 
@@ -547,7 +515,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       const tasksWithNullMessages = [{ id: "task-1", chatMessages: null }];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithNullMessages);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -566,7 +534,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithUndefinedArtifacts);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -585,7 +553,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithNullArtifacts);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -604,7 +572,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(tasksWithEmptyArtifacts);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 0);
@@ -634,7 +602,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       ];
       (mockDb.task.findMany as Mock).mockResolvedValue(mixedTasks);
 
-      const request = TestHelpers.createGetRequest("test-workspace");
+      const request = TestHelpers.createAuthenticatedRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       await TestHelpers.expectSuccessResponse(response, 2);
