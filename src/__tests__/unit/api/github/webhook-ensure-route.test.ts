@@ -1,13 +1,8 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/github/webhook/ensure/route";
-import { getServerSession } from "next-auth/next";
 
 // Mock dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
 vi.mock("@/lib/db", () => ({
   db: {
     repository: {
@@ -28,17 +23,11 @@ vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
 // Import mocked modules
 import { db } from "@/lib/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { getServiceConfig } from "@/config/services";
-
-const mockGetServerSession = getServerSession as Mock;
 const mockDbRepositoryFindUnique = db.repository.findUnique as Mock;
 const mockWebhookService = WebhookService as Mock;
 const mockGetGithubWebhookCallbackUrl = getGithubWebhookCallbackUrl as Mock;
@@ -87,39 +76,35 @@ const TestDataFactory = {
 
 // Test Helpers
 const TestHelpers = {
-  createMockRequest: (body: object) => {
+  createMockRequest: (body: object, userId?: string) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (userId) {
+      headers["x-middleware-user-id"] = userId;
+      headers["x-middleware-user-email"] = "test@example.com";
+      headers["x-middleware-user-name"] = "Test User";
+      headers["x-middleware-auth-status"] = "authenticated";
+    }
     return new NextRequest("http://localhost:3000/api/github/webhook/ensure", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
   },
 
-  setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+  createAuthenticatedRequest: (body: object, userId: string = "user-123") => {
+    return TestHelpers.createMockRequest(body, userId);
   },
 
-  setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
-  },
-
-  setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ expires: new Date().toISOString() });
-  },
-
-  setupSessionWithoutUserId: () => {
-    mockGetServerSession.mockResolvedValue({
-      user: { email: "test@example.com" },
-      expires: new Date().toISOString(),
-    });
+  createUnauthenticatedRequest: (body: object) => {
+    return TestHelpers.createMockRequest(body);
   },
 
   expectAuthenticationError: async (response: Response) => {
     expect(response.status).toBe(401);
     const data = await response.json();
     expect(data).toEqual({
-      success: false,
-      message: "Unauthorized",
+      error: "Unauthorized",
+      kind: "forbidden",
     });
   },
 
@@ -191,9 +176,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createUnauthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -206,9 +189,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      TestHelpers.setupSessionWithoutUser();
-
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createUnauthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -219,9 +200,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should return 401 when session.user.id is missing", async () => {
-      TestHelpers.setupSessionWithoutUserId();
-
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createUnauthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -232,10 +211,9 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
       MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -243,17 +221,15 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const response = await POST(request);
 
       expect(response.status).not.toBe(401);
-      expect(mockGetServerSession).toHaveBeenCalled();
     });
   });
 
   describe("Request Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 400 when workspaceId is missing", async () => {
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
 
@@ -266,7 +242,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should return 400 when both repositoryUrl and repositoryId are missing", async () => {
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
       });
 
@@ -281,7 +257,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     test("should accept request with workspaceId and repositoryUrl", async () => {
       MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -297,7 +273,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       MockSetup.setupRepositoryLookup(repository);
       MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -312,7 +288,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should handle null values for repositoryUrl and repositoryId", async () => {
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: null,
         repositoryId: null,
@@ -327,7 +303,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should handle empty string for workspaceId", async () => {
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -343,13 +319,12 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
   describe("Repository Lookup", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 404 when repository is not found by repositoryId", async () => {
       MockSetup.setupRepositoryLookup(null);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "nonexistent-repo",
       });
@@ -369,7 +344,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       });
       MockSetup.setupRepositoryLookup(repository);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -390,7 +365,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       MockSetup.setupRepositoryLookup(repository);
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -411,7 +386,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       });
       MockSetup.setupRepositoryLookup(repository);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -424,13 +399,12 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
   describe("Webhook Setup", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should call WebhookService.ensureRepoWebhook with correct parameters", async () => {
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -452,7 +426,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const webhookId = 987654321;
       MockSetup.setupSuccessfulWebhookCreation(webhookId);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -465,7 +439,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     test("should generate callback URL correctly", async () => {
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -483,7 +457,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     test("should retrieve service config for github service", async () => {
       MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -500,7 +474,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       MockSetup.setupRepositoryLookup(repository);
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation(111222333);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -522,7 +496,6 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
   describe("Error Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 500 when WebhookService throws error", async () => {
@@ -533,7 +506,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       mockGetGithubWebhookCallbackUrl.mockReturnValue("https://app.example.com/api/github/webhook");
       mockGetServiceConfig.mockReturnValue(TestDataFactory.createServiceConfig());
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -546,7 +519,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     test("should return 500 when database query fails", async () => {
       mockDbRepositoryFindUnique.mockRejectedValue(new Error("Database connection failed"));
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -562,7 +535,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       });
       mockGetServiceConfig.mockReturnValue(TestDataFactory.createServiceConfig());
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -578,7 +551,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       });
       mockGetGithubWebhookCallbackUrl.mockReturnValue("https://app.example.com/api/github/webhook");
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -596,7 +569,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
         throw testError;
       });
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -616,7 +589,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       mockGetGithubWebhookCallbackUrl.mockReturnValue("https://app.example.com/api/github/webhook");
       mockGetServiceConfig.mockReturnValue(TestDataFactory.createServiceConfig());
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -630,14 +603,13 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
   describe("Edge Cases", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should handle very long workspace IDs", async () => {
       const longWorkspaceId = "workspace-" + "a".repeat(1000);
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: longWorkspaceId,
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -656,7 +628,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const specialRepoUrl = "https://github.com/org-name/repo-name-with-special-chars_123";
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: specialRepoUrl,
       });
@@ -672,9 +644,16 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     });
 
     test("should handle malformed JSON in request body", async () => {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-middleware-user-id": "user-123",
+        "x-middleware-user-email": "test@example.com",
+        "x-middleware-user-name": "Test User",
+        "x-middleware-auth-status": "authenticated",
+      };
       const request = new NextRequest("http://localhost:3000/api/github/webhook/ensure", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: "invalid json {",
       });
 
@@ -686,7 +665,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     test("should handle request with extra unexpected fields", async () => {
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
         unexpectedField: "unexpected-value",
@@ -703,7 +682,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
     test("should handle webhook service returning webhookId of 0", async () => {
       MockSetup.setupSuccessfulWebhookCreation(0);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -719,7 +698,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       });
       MockSetup.setupRepositoryLookup(repository);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -732,14 +711,13 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
   describe("Integration Scenarios", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should complete full webhook setup flow with repositoryUrl", async () => {
       const webhookId = 555666777;
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation(webhookId);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
       });
@@ -747,7 +725,6 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const response = await POST(request);
 
       // Verify all services were called in correct order
-      expect(mockGetServerSession).toHaveBeenCalled();
       expect(mockGetGithubWebhookCallbackUrl).toHaveBeenCalled();
       expect(mockGetServiceConfig).toHaveBeenCalledWith("github");
       expect(mockWebhookService).toHaveBeenCalled();
@@ -763,7 +740,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const webhookId = 888999000;
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation(webhookId);
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryId: "repo-123",
       });
@@ -789,20 +766,13 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
     test("should handle different user IDs correctly", async () => {
       const differentUserId = "user-different-456";
-      mockGetServerSession.mockResolvedValue({
-        user: {
-          id: differentUserId,
-          email: "different@example.com",
-        },
-        expires: new Date(Date.now() + 86400000).toISOString(),
-      });
 
       const mockInstance = MockSetup.setupSuccessfulWebhookCreation();
 
-      const request = TestHelpers.createMockRequest({
+      const request = TestHelpers.createAuthenticatedRequest({
         workspaceId: "workspace-123",
         repositoryUrl: "https://github.com/test-org/test-repo",
-      });
+      }, differentUserId);
 
       await POST(request);
 
