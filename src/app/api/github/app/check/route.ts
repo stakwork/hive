@@ -1,8 +1,7 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -10,15 +9,11 @@ export const runtime = "nodejs";
  * Check that the GitHub App token can actually fetch data from a specific repository
  * This validates both authentication and repository access permissions
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Unauthorized"
-      }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspaceSlug");
@@ -32,7 +27,7 @@ export async function GET(request: Request) {
     }
 
     // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
     if (!workspaceAccess.hasAccess) {
       return NextResponse.json({
         canFetchData: false,
@@ -69,7 +64,7 @@ export async function GET(request: Request) {
     }
 
     console.log("[REPO CHECK] Starting repository data fetch check:", {
-      userId: session.user.id,
+      userId: userOrResponse.id,
       workspaceSlug,
       repositoryUrl: repoUrl,
       source: repositoryUrl ? "parameter" : "primary_repository",
@@ -89,9 +84,9 @@ export async function GET(request: Request) {
     console.log("[REPO CHECK] Parsed repository:", { owner, repo });
 
     // Get access token for the specific GitHub owner
-    const tokens = await getUserAppTokens(session.user.id, owner);
+    const tokens = await getUserAppTokens(userOrResponse.id, owner);
     if (!tokens?.accessToken) {
-      console.error("[REPO CHECK] No access token available for user:", session.user.id, "and owner:", owner);
+      console.error("[REPO CHECK] No access token available for user:", userOrResponse.id, "and owner:", owner);
       return NextResponse.json({
         canFetchData: false,
         error: "No GitHub App tokens found for this repository owner"

@@ -1,12 +1,10 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/github/repository/branch/numofcommits/route";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   expectSuccess,
   expectUnauthorized,
-  getMockedSession,
   createGetRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
@@ -17,9 +15,6 @@ import {
   createMockAxiosResponse,
 } from "@/__tests__/support/fixtures/github-numofcommits";
 import axios from "axios";
-
-// Mock next-auth for session management
-vi.mock("next-auth/next");
 
 // Mock axios
 vi.mock("axios");
@@ -32,13 +27,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
   describe("GET /api/github/repository/branch/numofcommits", () => {
     describe("Success scenarios", () => {
       test("should successfully retrieve commit counts for repository with pagination", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        // Mock axios responses in sequence: repository, total commits, last week commits
+        const { testUser, accessToken } = await createTestUserWithGitHubCreds();        // Mock axios responses in sequence: repository, total commits, last week commits
         vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
@@ -55,8 +44,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -116,13 +106,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle repository without pagination (small commit count)", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -138,8 +122,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -153,13 +138,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should support HTTPS repository URL format", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -174,8 +153,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -191,13 +171,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should support SSH repository URL format", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -212,8 +186,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.ssh,
           }
@@ -229,13 +204,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should support repository URL with .git suffix", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -250,8 +219,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.httpsWithGit,
           }
@@ -267,13 +237,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle repository with master default branch", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(
               mockGitHubApiResponses.repositoryMaster.data
@@ -291,8 +255,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -317,13 +282,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle last week commits with pagination", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -340,8 +299,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -357,7 +317,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
 
     describe("Authentication and authorization scenarios", () => {
       test("should return 401 for unauthenticated user", async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
+        // Unauthenticated test
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
@@ -373,9 +333,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should return 401 for session without user ID", async () => {
-        getMockedSession().mockResolvedValue({
-          user: { email: "test@example.com" },
-        });
+        // Unauthenticated test - no valid session
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
@@ -393,14 +351,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should return 400 when GitHub access token not found", async () => {
-        const testUser = await createTestUser({ name: "User Without Token" });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        const testUser = await createTestUser({ name: "User Without Token" });        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -418,11 +371,6 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
     describe("Input validation scenarios", () => {
       test("should return 400 for missing repoUrl", async () => {
         const testUser = await createTestUser();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
         const request = createGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits"
         );
@@ -435,14 +383,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should return 500 for invalid repository URL format", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        const { testUser } = await createTestUserWithGitHubCreds();        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.invalid,
           }
@@ -456,14 +399,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should return 500 for malformed URL", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        const { testUser } = await createTestUserWithGitHubCreds();        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.malformed,
           }
@@ -477,14 +415,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should return 500 for incomplete URL", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        const { testUser } = await createTestUserWithGitHubCreds();        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.incomplete,
           }
@@ -500,18 +433,13 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
 
     describe("GitHub API error scenarios", () => {
       test("should handle GitHub API 404 (repository not found)", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get).mockRejectedValueOnce(
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get).mockRejectedValueOnce(
           mockAxiosErrors.repositoryNotFound
         );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: "https://github.com/test-owner/nonexistent-repo",
           }
@@ -525,18 +453,13 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle GitHub API 403 (access forbidden)", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get).mockRejectedValueOnce(
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get).mockRejectedValueOnce(
           mockAxiosErrors.accessForbidden
         );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: "https://github.com/test-owner/private-repo",
           }
@@ -550,18 +473,13 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle GitHub API 401 (invalid token)", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get).mockRejectedValueOnce(
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get).mockRejectedValueOnce(
           mockAxiosErrors.invalidToken
         );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -575,16 +493,11 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle GitHub API 500 (server error)", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get).mockRejectedValueOnce(mockAxiosErrors.serverError);
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get).mockRejectedValueOnce(mockAxiosErrors.serverError);
-
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -598,18 +511,13 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle GitHub API rate limit", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get).mockRejectedValueOnce(
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get).mockRejectedValueOnce(
           mockAxiosErrors.rateLimitExceeded
         );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -623,16 +531,11 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle network errors", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get).mockRejectedValueOnce(mockAxiosErrors.networkError);
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get).mockRejectedValueOnce(mockAxiosErrors.networkError);
-
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -648,13 +551,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
 
     describe("Edge cases", () => {
       test("should handle empty repository (no commits)", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -665,8 +562,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             createMockAxiosResponse(mockGitHubApiResponses.emptyRepository.data)
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -680,13 +578,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle malformed Link header", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -702,8 +594,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -717,13 +610,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should calculate correct date for last week filter", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -738,8 +625,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }
@@ -765,13 +653,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
       });
 
       test("should handle popular repository with many recent commits", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -790,8 +672,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.nodejs,
           }
@@ -807,13 +690,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
 
     describe("Response format validation", () => {
       test("should return properly formatted success response", async () => {
-        const { testUser } = await createTestUserWithGitHubCreds();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(axios.get)
+        const { testUser } = await createTestUserWithGitHubCreds();        vi.mocked(axios.get)
           .mockResolvedValueOnce(
             createMockAxiosResponse(mockGitHubApiResponses.repositoryMain.data)
           )
@@ -828,8 +705,9 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
             )
           );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/repository/branch/numofcommits",
+          testUser,
           {
             repoUrl: testRepositoryUrls.https,
           }

@@ -4,14 +4,12 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import axios from "axios";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   generateUniqueId,
-  getMockedSession,
   createGetRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 
@@ -74,8 +72,6 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should search GitHub users successfully with real database operations", async () => {
       const { testUser, testAccount } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock GitHub API response
       const mockGitHubResponse = {
         data: {
@@ -103,7 +99,9 @@ describe("GitHub Users Search API Integration Tests", () => {
 
       mockAxios.get.mockResolvedValue(mockGitHubResponse);
 
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser, {
+        q: "john",
+      });
       const response = await GET(request);
       const data = await expectSuccess(response);
 
@@ -113,19 +111,16 @@ describe("GitHub Users Search API Integration Tests", () => {
       expect(data.total_count).toBe(2);
 
       // Verify GitHub API was called with decrypted token
-      expect(mockAxios.get).toHaveBeenCalledWith(
-        "https://api.github.com/search/users",
-        {
-          headers: {
-            Authorization: "token github_pat_test_token",
-            Accept: "application/vnd.github.v3+json",
-          },
-          params: {
-            q: "john",
-            per_page: 10,
-          },
-        }
-      );
+      expect(mockAxios.get).toHaveBeenCalledWith("https://api.github.com/search/users", {
+        headers: {
+          Authorization: "token github_pat_test_token",
+          Accept: "application/vnd.github.v3+json",
+        },
+        params: {
+          q: "john",
+          per_page: 10,
+        },
+      });
 
       // Verify real database lookup occurred
       const accountInDb = await db.account.findFirst({
@@ -136,8 +131,6 @@ describe("GitHub Users Search API Integration Tests", () => {
     });
 
     test("should return 401 for unauthenticated user", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
       const response = await GET(request);
 
@@ -147,9 +140,7 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 400 for missing query parameter", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createGetRequest("http://localhost:3000/api/github/users/search");
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser);
       const response = await GET(request);
 
       await expectError(response, "Search query must be at least 2 characters", 400);
@@ -158,9 +149,9 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 400 for query too short", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "a" });
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser, {
+        q: "a",
+      });
       const response = await GET(request);
 
       await expectError(response, "Search query must be at least 2 characters", 400);
@@ -170,9 +161,11 @@ describe("GitHub Users Search API Integration Tests", () => {
       // Create user without GitHub account
       const userWithoutGitHub = await createTestUser({ name: "No Auth User" });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(userWithoutGitHub));
-
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/github/users/search",
+        userWithoutGitHub,
+        { q: "john" },
+      );
       const response = await GET(request);
 
       await expectError(response, "GitHub access token not found", 400);
@@ -181,14 +174,14 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 401 for expired GitHub token", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock GitHub API 401 response
       mockAxios.get.mockRejectedValue({
         response: { status: 401 },
       });
 
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser, {
+        q: "john",
+      });
       const response = await GET(request);
 
       await expectError(response, "GitHub token expired or invalid", 401);
@@ -197,11 +190,11 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should return 500 for other GitHub API errors", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockAxios.get.mockRejectedValue(new Error("Network error"));
 
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser, {
+        q: "john",
+      });
       const response = await GET(request);
 
       await expectError(response, "Failed to search GitHub users", 500);
@@ -210,8 +203,6 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should handle empty search results", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockAxios.get.mockResolvedValue({
         data: {
           total_count: 0,
@@ -219,7 +210,9 @@ describe("GitHub Users Search API Integration Tests", () => {
         },
       });
 
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "veryrareusername" });
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser, {
+        q: "veryrareusername",
+      });
       const response = await GET(request);
       const data = await expectSuccess(response);
 
@@ -230,13 +223,13 @@ describe("GitHub Users Search API Integration Tests", () => {
     test("should properly encrypt and decrypt access tokens", async () => {
       const { testUser } = await createTestUserWithGitHubAccount();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockAxios.get.mockResolvedValue({
         data: { total_count: 0, items: [] },
       });
 
-      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "test" });
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/github/users/search", testUser, {
+        q: "test",
+      });
       await GET(request);
 
       // Verify the stored token is encrypted
@@ -255,7 +248,7 @@ describe("GitHub Users Search API Integration Tests", () => {
           headers: expect.objectContaining({
             Authorization: "token github_pat_test_token",
           }),
-        })
+        }),
       );
     });
   });

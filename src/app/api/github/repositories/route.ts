@@ -1,19 +1,17 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { NextRequest, NextResponse } from "next/server";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id: string }).id;
+    const userId = userOrResponse.id;
 
     // Use user's OAuth token for repository listing (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);

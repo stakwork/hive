@@ -1,17 +1,15 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { NextRequest, NextResponse } from "next/server";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q");
@@ -20,7 +18,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Search query must be at least 2 characters" }, { status: 400 });
     }
 
-    const userId = (session.user as { id: string }).id;
+    const userId = userOrResponse.id;
 
     // Use user's OAuth token for user search (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);

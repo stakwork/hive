@@ -1,17 +1,17 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) {
       return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });
     }
 
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
     // Validate workspace access if workspaceSlug is provided
     if (workspaceSlug) {
-      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+      const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
       if (!workspaceAccess.hasAccess) {
         return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
       }
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         const sourceControlToken = await db.sourceControlToken.findUnique({
           where: {
             userId_sourceControlOrgId: {
-              userId: session.user.id,
+              userId: userOrResponse.id,
               sourceControlOrgId: workspace.sourceControlOrg.id,
             },
           },
@@ -64,12 +64,12 @@ export async function GET(request: Request) {
         // Check repository access if we have tokens and a repository URL
         if (hasTokens && repoUrl && workspace?.sourceControlOrg?.githubInstallationId) {
           console.log("[STATUS ROUTE] Checking repository access:", {
-            userId: session.user.id,
+            userId: userOrResponse.id,
             installationId: workspace.sourceControlOrg.githubInstallationId,
             repositoryUrl: repoUrl,
           });
           hasRepoAccess = await checkRepositoryAccess(
-            session.user.id,
+            userOrResponse.id,
             workspace.sourceControlOrg.githubInstallationId.toString(),
             repoUrl,
           );
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
             const sourceControlToken = await db.sourceControlToken.findUnique({
               where: {
                 userId_sourceControlOrgId: {
-                  userId: session.user.id,
+                  userId: userOrResponse.id,
                   sourceControlOrgId: sourceControlOrg.id,
                 },
               },
@@ -126,12 +126,12 @@ export async function GET(request: Request) {
             // Check repository access if we have tokens and installation ID
             if (hasTokens && sourceControlOrg?.githubInstallationId) {
               console.log("[STATUS ROUTE] Checking repository access (workspace not linked):", {
-                userId: session.user.id,
+                userId: userOrResponse.id,
                 installationId: sourceControlOrg.githubInstallationId,
                 repositoryUrl: repoUrl,
               });
               hasRepoAccess = await checkRepositoryAccess(
-                session.user.id,
+                userOrResponse.id,
                 sourceControlOrg.githubInstallationId.toString(),
                 repoUrl,
               );
@@ -145,7 +145,7 @@ export async function GET(request: Request) {
       }
     } else {
       // No workspace specified - check if user has ANY GitHub App tokens
-      const apptokens = await getUserAppTokens(session.user.id);
+      const apptokens = await getUserAppTokens(userOrResponse.id);
       hasTokens = !!apptokens?.accessToken;
     }
 

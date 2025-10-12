@@ -1,19 +1,17 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
-import { getServerSession } from "next-auth/next";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     if (!config.GITHUB_APP_SLUG) {
       return NextResponse.json({ success: false, message: "GitHub App not configured" }, { status: 500 });
@@ -39,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Store the GitHub state in the user's session
     await db.session.updateMany({
-      where: { userId: session.user.id as string },
+      where: { userId: userOrResponse.id as string },
       data: { githubState: state },
     });
 
@@ -104,7 +102,7 @@ export async function POST(request: NextRequest) {
       console.log(`✅ App already installed on ${githubOwner}! Installation ID: ${installationId} (from database)`);
     } else {
       // No installation record found, try to check via API if this user has tokens
-      const appTokens = await getUserAppTokens(session.user.id, githubOwner);
+      const appTokens = await getUserAppTokens(userOrResponse.id, githubOwner);
       if (appTokens?.accessToken) {
         // User has app tokens, so we can check installation status via API
         try {
