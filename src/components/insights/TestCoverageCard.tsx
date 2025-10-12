@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetricDisplay } from "@/components/ui/metric-display";
 import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useCoverageStore } from "@/stores/useCoverageStore";
 
 export function TestCoverageCard() {
   const { id: workspaceId } = useWorkspace();
+  const { ignoreDirs, setIgnoreDirs, repo } = useCoverageStore();
   const [data, setData] = useState<TestCoverageData | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
+  const hasInitializedIgnoreDirs = useRef(false);
 
   const fetchTestCoverage = useCallback(async () => {
     if (!workspaceId) {
@@ -25,7 +28,15 @@ export function TestCoverageCard() {
       setIsLoading(true);
       setError(undefined);
 
-      const response = await fetch(`/api/tests/coverage?workspaceId=${workspaceId}`);
+      const params = new URLSearchParams({ workspaceId });
+      if (hasInitializedIgnoreDirs.current && ignoreDirs) {
+        params.set("ignoreDirs", ignoreDirs);
+      }
+      if (repo) {
+        params.set("repo", repo);
+      }
+
+      const response = await fetch(`/api/tests/coverage?${params.toString()}`);
       const result = await response.json();
 
       if (!response.ok) {
@@ -34,6 +45,11 @@ export function TestCoverageCard() {
 
       if (result.success && result.data) {
         setData(result.data);
+        
+        if (!hasInitializedIgnoreDirs.current && result.ignoreDirs !== undefined) {
+          setIgnoreDirs(result.ignoreDirs);
+          hasInitializedIgnoreDirs.current = true;
+        }
       } else {
         setError(result.message || "No coverage data available");
       }
@@ -42,22 +58,11 @@ export function TestCoverageCard() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, ignoreDirs, repo, setIgnoreDirs]);
 
   useEffect(() => {
     fetchTestCoverage();
-  }, [workspaceId, fetchTestCoverage]);
-  const getPercentageColor = (percent: number) => {
-    if (percent >= 20) return "text-green-600 border-green-200 bg-green-50";
-    if (percent >= 10) return "text-yellow-600 border-yellow-200 bg-yellow-50";
-    return "text-red-600 border-red-200 bg-red-50";
-  };
-
-  const getProgressColor = (percent: number) => {
-    if (percent >= 20) return "bg-green-500";
-    if (percent >= 10) return "bg-yellow-500";
-    return "bg-red-500";
-  };
+  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage]);
 
   if (isLoading) {
     return (
@@ -145,87 +150,57 @@ export function TestCoverageCard() {
           {/* Unit Tests Coverage */}
           {data.unit_tests && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <FunctionSquare className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Unit Tests</span>
-                </div>
-                <Badge variant="outline" className={getPercentageColor(data.unit_tests.percent || 0)}>
-                  {(data.unit_tests.percent || 0).toFixed(1)}%
-                </Badge>
+              <div className="flex items-center space-x-2">
+                <FunctionSquare className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Unit Tests</span>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.unit_tests.percent || 0)}`}
-                  style={{
-                    width: `${Math.min(data.unit_tests.percent || 0, 100)}%`,
-                  }}
+              {data.unit_tests.total_lines !== undefined ? (
+                <MetricDisplay
+                  label="Line Coverage"
+                  percent={data.unit_tests.line_percent || 0}
+                  covered={data.unit_tests.covered_lines || 0}
+                  total={data.unit_tests.total_lines || 0}
                 />
-              </div>
-
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.unit_tests.covered || 0} covered</span>
-                <span>{data.unit_tests.total || 0} total</span>
-              </div>
+              ) : (
+                <div className="text-xs text-muted-foreground py-2">
+                  Line coverage data not available
+                </div>
+              )}
             </div>
           )}
 
           {/* Integration Tests Coverage */}
           {data.integration_tests && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Integration Tests</span>
-                </div>
-                <Badge variant="outline" className={getPercentageColor(data.integration_tests.percent || 0)}>
-                  {(data.integration_tests.percent || 0).toFixed(1)}%
-                </Badge>
+              <div className="flex items-center space-x-2">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Integration Tests</span>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.integration_tests.percent || 0)}`}
-                  style={{
-                    width: `${Math.min(data.integration_tests.percent || 0, 100)}%`,
-                  }}
-                />
-              </div>
-
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.integration_tests.covered || 0} covered</span>
-                <span>{data.integration_tests.total || 0} total</span>
-              </div>
+              <MetricDisplay
+                label="Test Coverage"
+                percent={data.integration_tests.percent || 0}
+                covered={data.integration_tests.covered || 0}
+                total={data.integration_tests.total || 0}
+              />
             </div>
           )}
 
           {/* End to End Tests */}
           {data.e2e_tests && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">End to End Tests</span>
-                </div>
-                <Badge variant="outline" className={getPercentageColor(data.e2e_tests.percent || 0)}>
-                  {(data.e2e_tests.percent || 0).toFixed(1)}%
-                </Badge>
+              <div className="flex items-center space-x-2">
+                <Target className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">End to End Tests</span>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(data.e2e_tests.percent || 0)}`}
-                  style={{
-                    width: `${Math.min(data.e2e_tests.percent || 0, 100)}%`,
-                  }}
-                />
-              </div>
-
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{data.e2e_tests.covered || 0} covered</span>
-                <span>{data.e2e_tests.total || 0} total</span>
-              </div>
+              <MetricDisplay
+                label="Test Coverage"
+                percent={data.e2e_tests.percent || 0}
+                covered={data.e2e_tests.covered || 0}
+                total={data.e2e_tests.total || 0}
+              />
             </div>
           )}
         </div>

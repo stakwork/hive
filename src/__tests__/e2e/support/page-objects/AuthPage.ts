@@ -25,6 +25,7 @@ export class AuthPage {
    * Sign in using mock provider
    */
   async signInWithMock(): Promise<void> {
+    await this.goto();
     const signInButton = this.page.locator(selectors.auth.mockSignInButton);
     await expect(signInButton).toBeVisible({ timeout: 10000 });
     await signInButton.click();

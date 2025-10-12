@@ -87,6 +87,7 @@ export async function GET(
             createdAt: "asc",
           },
         },
+        attachments: true,
       },
       orderBy: {
         timestamp: "asc", // Show messages in chronological order

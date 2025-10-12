@@ -5,10 +5,7 @@ import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import {
-  getSwarmPoolApiKeyFor,
-  updateSwarmPoolApiKeyFor,
-} from "@/services/swarm/secrets";
+import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -37,10 +34,7 @@ interface Workspace {
   useDevContainer: boolean;
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -50,20 +44,14 @@ export async function POST(
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const { workspaceId } = await params;
 
     // Validate required fields
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "Missing required field: workspaceId" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
     // Verify user has access to the workspace
@@ -80,9 +68,13 @@ export async function POST(
     });
 
     if (!workspace) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
+    if (process.env.MOCK_BROWSER_URL) {
       return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
+        { success: true, message: "Pod claimed successfully", frontend: process.env.MOCK_BROWSER_URL },
+        { status: 200 },
       );
     }
 
@@ -95,10 +87,7 @@ export async function POST(
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
-      return NextResponse.json(
-        { error: "No swarm found for this workspace" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
     let poolApiKey = workspace.swarm.poolApiKey;
@@ -110,18 +99,12 @@ export async function POST(
 
     // Check if swarm has pool configuration
     if (!workspace.swarm.poolName || !poolApiKey) {
-      return NextResponse.json(
-        { error: "Swarm not properly configured with pool information" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
     // Call Pool Manager API to claim pod
     const poolName = workspace.swarm.poolName;
-    const poolApiKeyPlain = encryptionService.decryptField(
-      "poolApiKey",
-      poolApiKey,
-    );
+    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspace`;
     const headers = {
@@ -136,9 +119,7 @@ export async function POST(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        `Pool Manager API error: ${response.status} - ${errorText}`,
-      );
+      console.error(`Pool Manager API error: ${response.status} - ${errorText}`);
       throw new Error(`Failed to claim pod: ${response.status}`);
     }
 
@@ -168,10 +149,7 @@ export async function POST(
     }
 
     if (!frontend) {
-      return NextResponse.json(
-        { error: "Failed to claim pod" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Failed to claim pod" }, { status: 500 });
     }
 
     console.log(">>> frontend", frontend);

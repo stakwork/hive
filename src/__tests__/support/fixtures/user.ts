@@ -16,6 +16,15 @@ export async function createTestUser(
   const uniqueId = generateUniqueId("user");
   const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
 
+  // Check if user with this email already exists
+  const existingUser = await db.user.findUnique({
+    where: { email: options.email || `test-${uniqueId}@example.com` },
+  });
+
+  if (existingUser) {
+    return existingUser;
+  }
+
   const user = await db.user.create({
     data: {
       name: options.name || `Test User ${uniqueId}`,

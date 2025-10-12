@@ -53,7 +53,7 @@ declare global {
 export const useStaktrak = (
   initialUrl?: string,
   onTestGenerated?: (test: string) => void,
-  onAssertionCaptured?: (text: string) => void,
+  onActionCaptured?: (type: string, text: string) => void,
 ) => {
   const [currentUrl, setCurrentUrl] = useState<string | null>(initialUrl || null);
   const [isSetup, setIsSetup] = useState(false);
@@ -61,26 +61,30 @@ export const useStaktrak = (
   const [isAssertionMode, setIsAssertionMode] = useState(false);
   const [capturedActions, setCapturedActions] = useState<any[]>([]);
   const [showActions, setShowActions] = useState(false);
+  const [isRecorderReady, setIsRecorderReady] = useState(false);
 
   const [generatedPlaywrightTest, setGeneratedPlaywrightTest] = useState<string>("");
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const recorderRef = useRef<RecordingManager | null>(null);
   const onTestGeneratedRef = useRef(onTestGenerated);
-  const onAssertionCapturedRef = useRef(onAssertionCaptured);
+  const onActionCapturedRef = useRef(onActionCaptured);
 
   // Keep callback refs up to date
   useEffect(() => {
     onTestGeneratedRef.current = onTestGenerated;
-    onAssertionCapturedRef.current = onAssertionCaptured;
-  }, [onTestGenerated, onAssertionCaptured]);
+    onActionCapturedRef.current = onActionCaptured;
+  }, [onTestGenerated, onActionCaptured]);
+
+  // Initialize RecordingManager when PlaywrightGenerator is available
+  useEffect(() => {
+    if (window.PlaywrightGenerator?.RecordingManager && !recorderRef.current) {
+      recorderRef.current = new window.PlaywrightGenerator.RecordingManager();
+      setIsRecorderReady(true);
+    }
+  }, []);
 
   const startRecording = () => {
-    // Lazy initialize RecordingManager on first recording
-    if (!recorderRef.current && window.PlaywrightGenerator?.RecordingManager) {
-      recorderRef.current = new window.PlaywrightGenerator.RecordingManager();
-    }
-
     // Clear existing recording data when starting a new recording
     if (recorderRef.current) {
       recorderRef.current.clear();
@@ -142,6 +146,11 @@ export const useStaktrak = (
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // Only accept messages from our iframe
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+
       if (event.data && event.data.type) {
         const staktrakEvent = event as StaktrakMessageEvent;
 
@@ -158,11 +167,54 @@ export const useStaktrak = (
                 // Update captured actions in real-time
                 setCapturedActions(recorderRef.current.getActions());
 
-                // Show notification for assertions
-                if (staktrakEvent.data.eventType === "assertion" && onAssertionCapturedRef.current) {
-                  const assertionData = staktrakEvent.data.data as any;
-                  const assertionText = assertionData.value || "Element";
-                  onAssertionCapturedRef.current(assertionText);
+                // Show notification for all action types
+                if (onActionCapturedRef.current) {
+                  const eventType = staktrakEvent.data.eventType;
+                  const eventData = staktrakEvent.data.data as any;
+
+                  let toastType = "";
+                  let toastText = "";
+
+                  switch (eventType) {
+                    case "click":
+                      toastType = "Click captured";
+                      toastText = eventData.selectors?.text || eventData.selectors?.tagName || "Element";
+                      break;
+
+                    case "input":
+                      toastType = "Input captured";
+                      toastText = eventData.value || "Input field";
+                      break;
+
+                    case "form":
+                      toastType = "Form change captured";
+                      const formType = eventData.formType || "input";
+                      if (formType === "checkbox" || formType === "radio") {
+                        toastText = `${formType} ${eventData.checked ? "checked" : "unchecked"}`;
+                      } else if (formType === "select") {
+                        toastText = `Selected: ${eventData.text || eventData.value || "option"}`;
+                      } else {
+                        toastText = formType;
+                      }
+                      break;
+
+                    case "nav":
+                    case "navigation":
+                      toastType = "Navigation captured";
+                      toastText = eventData.url || "Page navigation";
+                      break;
+
+                    case "assertion":
+                      toastType = "Assertion captured";
+                      toastText = `"${eventData.value || "Element"}"`;
+                      break;
+
+                    default:
+                      toastType = `${eventType} captured`;
+                      toastText = "Action recorded";
+                  }
+
+                  onActionCapturedRef.current(toastType, toastText);
                 }
               } catch (error) {
                 console.error("Error handling staktrak event:", error);
@@ -219,5 +271,6 @@ export const useStaktrak = (
     removeAction,
     clearAllActions,
     toggleActionsView,
+    isRecorderReady,
   };
 };

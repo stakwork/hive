@@ -12,6 +12,8 @@ type CoverageStore = {
   limit: number;
   offset: number;
   coverage: "all" | "tested" | "untested";
+  ignoreDirs: string;
+  repo: string;
   setNodeType: (t: UncoveredNodeType) => void;
   setSort: (s: CoverageSortOption) => void;
   setSortDirection: (d: SortDirection) => void;
@@ -19,6 +21,8 @@ type CoverageStore = {
   setLimit: (n: number) => void;
   setOffset: (n: number) => void;
   setCoverage: (c: "all" | "tested" | "untested") => void;
+  setIgnoreDirs: (dirs: string) => void;
+  setRepo: (repo: string) => void;
   resetPagination: () => void;
 };
 
@@ -30,6 +34,8 @@ export const useCoverageStore = create<CoverageStore>()(
     limit: 10,
     offset: 0,
     coverage: "all",
+    ignoreDirs: "",
+    repo: "",
     setNodeType: (t) => set({ nodeType: t, offset: 0 }),
     setSort: (s) => set({ sort: s, offset: 0 }),
     setSortDirection: (d) => set({ sortDirection: d, offset: 0 }),
@@ -44,6 +50,8 @@ export const useCoverageStore = create<CoverageStore>()(
     setLimit: (n) => set({ limit: Math.max(1, Math.min(100, n)), offset: 0 }),
     setOffset: (n) => set({ offset: Math.max(0, n) }),
     setCoverage: (c) => set({ coverage: c, offset: 0 }),
+    setIgnoreDirs: (dirs) => set({ ignoreDirs: dirs, offset: 0 }),
+    setRepo: (repo) => set({ repo, offset: 0 }),
     resetPagination: () => set({ offset: 0 }),
   })),
 );

@@ -77,9 +77,21 @@ model User {
   // Task assignments
   assignedTasks Task[] @relation("TaskAssignee")
 
+  // Feature assignments
+  assignedFeatures Feature[] @relation("FeatureAssignee")
+
+  // Ticket assignments
+  assignedTickets Ticket[] @relation("TicketAssignee")
+
   // Audit trail
   createdTasks       Task[]      @relation("TaskCreator")
   updatedTasks       Task[]      @relation("TaskUpdater")
+  createdFeatures    Feature[]   @relation("FeatureCreator")
+  updatedFeatures    Feature[]   @relation("FeatureUpdater")
+  createdUserStories UserStory[] @relation("UserStoryCreator")
+  updatedUserStories UserStory[] @relation("UserStoryUpdater")
+  createdTickets     Ticket[]    @relation("TicketCreator")
+  updatedTickets     Ticket[]    @relation("TicketUpdater")
 
   // Janitor recommendations
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
@@ -178,6 +190,7 @@ model Workspace {
   id          String    @id @default(cuid())
   name        String
   description String?
+  mission     String?
   slug        String    @unique
   originalSlug String?  @map("original_slug") // Store original slug for recovery
   deleted     Boolean   @default(false)
@@ -208,6 +221,9 @@ model Workspace {
 
   // Janitor configuration
   janitorConfig JanitorConfig?
+
+  // Roadmap features
+  features Feature[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -247,19 +263,15 @@ model Swarm {
   updatedAt    DateTime    @updatedAt @map("updated_at")
 
   // Stakgraph configuration fields
-  poolState             PoolState @default(NOT_STARTED) @map("pool_state")
-  poolName              String? @map("pool_name")
-  poolApiKey            String? @map("pool_api_key") // Pool API Key for Pool Manager
-  poolCpu               String? @map("pool_cpu") // CPU allocation for pool tasks
-  poolMemory            String? @map("pool_memory") // Memory allocation for pool tasks
-  repositoryName        String? @map("repository_name")
-  defaultBranch         String? @map("default_branch")
-  repositoryDescription String? @map("repository_description")
-  repositoryUrl         String? @map("repository_url")
-  swarmApiKey           String? @map("swarm_api_key")
-  swarmSecretAlias      String? @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
-  environmentVariables  Json    @default("[]") @map("environment_variables")
-  services              Json    @default("[]")
+  poolState            PoolState @default(NOT_STARTED) @map("pool_state")
+  poolName             String?   @map("pool_name")
+  poolApiKey           String?   @map("pool_api_key") // Pool API Key for Pool Manager
+  poolCpu              String?   @map("pool_cpu") // CPU allocation for pool tasks
+  poolMemory           String?   @map("pool_memory") // Memory allocation for pool tasks
+  swarmApiKey          String?   @map("swarm_api_key")
+  swarmSecretAlias     String?   @map("swarm_secret_alias") // e.g., {{SWARM_{regex_swarm_id_number}_API_KEY}}
+  environmentVariables Json      @default("[]") @map("environment_variables")
+  services             Json      @default("[]")
 
   // ingestion status tracking
   ingestRefId String?         @map("ingest_ref_id")
@@ -281,6 +293,7 @@ model Swarm {
 model Repository {
   id            String           @id @default(cuid())
   name          String
+  description   String?
   repositoryUrl String           @map("repository_url")
   branch        String           @default("main")
   status        RepositoryStatus @default(PENDING)
@@ -294,6 +307,8 @@ model Repository {
   // Test setup flags
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
+
+  ignoreDirs String? @default("") @map("ignore_dirs")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
@@ -576,6 +591,20 @@ enum TaskStatus {
   CANCELLED
 }
 
+enum TicketStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+enum PhaseStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
 enum WorkflowStatus {
   PENDING
   IN_PROGRESS
@@ -646,10 +675,162 @@ enum RecommendationStatus {
 enum TaskSourceType {
   USER
   JANITOR
+  TASK_COORDINATOR
   SYSTEM
 }
 
 enum SourceControlOrgType {
   ORG
   USER
+}
+
+// =============================================
+// ROADMAP FEATURES
+// =============================================
+
+model Feature {
+  id          String           @id @default(cuid())
+  title       String
+  brief       String?
+  requirements String?
+  architecture String?
+  workspaceId String           @map("workspace_id")
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Assignee/Lead
+  assigneeId  String?          @map("assignee_id")
+  assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  status      FeatureStatus    @default(BACKLOG)
+  priority    FeaturePriority  @default(NONE)
+
+  // Audit fields
+  createdById String           @map("created_by_id")
+  createdBy   User             @relation("FeatureCreator", fields: [createdById], references: [id])
+  updatedById String           @map("updated_by_id")
+  updatedBy   User             @relation("FeatureUpdater", fields: [updatedById], references: [id])
+
+  // Relationships
+  userStories UserStory[]
+  phases      Phase[]
+  tickets     Ticket[]
+
+  deleted     Boolean          @default(false)
+  deletedAt   DateTime?        @map("deleted_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([deleted])
+  @@map("features")
+}
+
+enum FeatureStatus {
+  BACKLOG
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FeaturePriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model UserStory {
+  id          String   @id @default(cuid())
+  featureId   String   @map("feature_id")
+  feature     Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  title       String
+  order       Int      @default(0)
+  completed   Boolean  @default(false)
+
+  // Audit fields
+  createdById String   @map("created_by_id")
+  createdBy   User     @relation("UserStoryCreator", fields: [createdById], references: [id])
+  updatedById String   @map("updated_by_id")
+  updatedBy   User     @relation("UserStoryUpdater", fields: [updatedById], references: [id])
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([featureId])
+  @@index([order])
+  @@map("user_stories")
+}
+
+model Phase {
+  id          String      @id @default(cuid())
+  featureId   String      @map("feature_id")
+  name        String
+  description String?
+  status      PhaseStatus @default(NOT_STARTED)
+  order       Int         @default(0)
+
+  // Relationships
+  feature Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([featureId])
+  @@index([status])
+  @@index([order])
+  @@index([deleted])
+  @@map("phases")
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+
+  // Feature relationship (required)
+  featureId String  @map("feature_id")
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  // Phase relationship (optional)
+  phaseId String? @map("phase_id")
+  phase   Phase?  @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+
+  // Task attributes
+  status   TicketStatus @default(TODO)
+  priority Priority     @default(MEDIUM)
+  order    Int          @default(0)
+
+  // Assignment
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  // Dependencies - array of ticket IDs this ticket depends on
+  dependsOnTicketIds String[] @default([]) @map("depends_on_ticket_ids")
+
+  // Audit fields
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("TicketCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("TicketUpdater", fields: [updatedById], references: [id])
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([featureId])
+  @@index([phaseId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([order])
+  @@index([deleted])
+  @@map("tickets")
 }

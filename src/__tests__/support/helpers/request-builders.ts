@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 /**
  * Creates a GET request with optional search parameters
@@ -11,7 +12,12 @@ export function createGetRequest(
     ? `${url}?${new URLSearchParams(searchParams).toString()}`
     : url;
 
-  return new NextRequest(fullUrl, {
+  // Ensure absolute URL for NextRequest
+  const absoluteUrl = fullUrl.startsWith('http') 
+    ? fullUrl 
+    : `http://localhost${fullUrl.startsWith('/') ? '' : '/'}${fullUrl}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "GET",
   });
 }
@@ -23,7 +29,11 @@ export function createPostRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+  
+  return new NextRequest(absoluteUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -39,7 +49,11 @@ export function createPutRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -55,7 +69,11 @@ export function createPatchRequest(
   url: string,
   body: object
 ): NextRequest {
-  return new NextRequest(url, {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+
+  return new NextRequest(absoluteUrl, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -67,10 +85,23 @@ export function createPatchRequest(
 /**
  * Creates a DELETE request
  */
-export function createDeleteRequest(url: string): NextRequest {
-  return new NextRequest(url, {
+export function createDeleteRequest(url: string, body?: object): NextRequest {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+
+  const options: RequestInit = {
     method: "DELETE",
-  });
+  };
+
+  if (body) {
+    options.headers = {
+      "Content-Type": "application/json",
+    };
+    options.body = JSON.stringify(body);
+  }
+
+  return new NextRequest(absoluteUrl, options);
 }
 
 /**
@@ -82,6 +113,10 @@ export function createRequestWithHeaders(
   headers: Record<string, string>,
   body?: object
 ): NextRequest {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+  
   const options: RequestInit = {
     method,
     headers,
@@ -91,5 +126,76 @@ export function createRequestWithHeaders(
     options.body = JSON.stringify(body);
   }
 
-  return new NextRequest(url, options);
+  return new NextRequest(absoluteUrl, options);
+}
+
+/**
+ * Adds middleware authentication headers to a request
+ * Used for testing routes that use middleware context instead of getServerSession
+ */
+export function addMiddlewareHeaders(
+  request: NextRequest,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const headers = new Headers(request.headers);
+  headers.set(MIDDLEWARE_HEADERS.USER_ID, user.id);
+  headers.set(MIDDLEWARE_HEADERS.USER_EMAIL, user.email || "");
+  headers.set(MIDDLEWARE_HEADERS.USER_NAME, user.name || "");
+  headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+  headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, crypto.randomUUID());
+
+  return new NextRequest(request.url, {
+    method: request.method,
+    headers,
+    body: request.body,
+    // @ts-ignore - duplex is needed for body streaming
+    duplex: request.body ? "half" : undefined,
+  });
+}
+
+/**
+ * Creates a POST request with middleware auth headers
+ */
+export function createAuthenticatedPostRequest(
+  url: string,
+  body: object,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const baseRequest = createPostRequest(url, body);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
+ * Creates a GET request with middleware auth headers
+ */
+export function createAuthenticatedGetRequest(
+  url: string,
+  user: { id: string; email: string; name: string },
+  searchParams?: Record<string, string>
+): NextRequest {
+  const baseRequest = createGetRequest(url, searchParams);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
+ * Creates a PATCH request with middleware auth headers
+ */
+export function createAuthenticatedPatchRequest(
+  url: string,
+  body: object,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const baseRequest = createPatchRequest(url, body);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
+ * Creates a DELETE request with middleware auth headers
+ */
+export function createAuthenticatedDeleteRequest(
+  url: string,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  const baseRequest = createDeleteRequest(url);
+  return addMiddlewareHeaders(baseRequest, user);
 }
