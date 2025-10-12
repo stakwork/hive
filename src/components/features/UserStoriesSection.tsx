@@ -20,15 +20,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { SortableUserStory } from "./SortableUserStory";
-import { GenerateStoriesButton, type GeneratedStory } from "./GenerateStoriesButton";
+import { AIButton } from "@/components/ui/ai-button";
 import type { FeatureDetail } from "@/types/roadmap";
+
+interface GeneratedStory {
+  title: string;
+}
 
 interface UserStoriesSectionProps {
   featureId: string;
@@ -128,26 +126,18 @@ export function UserStoriesSection({
       <div>
         <div className="flex items-center gap-2">
           <Label className="text-sm font-medium">User Stories</Label>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <GenerateStoriesButton
-                    featureId={featureId}
-                    existingStories={[
-                      ...userStories.map((s) => s.title),
-                      ...aiSuggestions.map((s) => s.title),
-                    ]}
-                    onGenerated={handleAiGenerated}
-                    iconOnly
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Generate with AI</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <AIButton<GeneratedStory>
+            endpoint={`/api/features/${featureId}/generate-stories`}
+            params={{
+              existingStories: [
+                ...userStories.map((s) => s.title),
+                ...aiSuggestions.map((s) => s.title),
+              ],
+            }}
+            onGenerated={handleAiGenerated}
+            tooltip="Generate with AI"
+            iconOnly
+          />
         </div>
         <p className="text-sm text-muted-foreground mt-1">
           Define the user stories and acceptance criteria for this feature.
