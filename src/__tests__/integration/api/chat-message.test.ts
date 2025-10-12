@@ -5,14 +5,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
-import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  expectUnauthorized,
-  generateUniqueId,
-  createPostRequest,
-  getMockedSession,
-} from "@/__tests__/support/helpers";
+import { generateUniqueId, createPostRequest, createAuthenticatedPostRequest } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock environment config
@@ -121,32 +114,16 @@ describe("POST /api/chat/message Integration Tests", () => {
 
   describe("Authentication Tests", () => {
     test("should return 401 for unauthenticated request", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest("http://localhost:3000/api/chat/message", {
         taskId: "test-task-id",
         message: "Test message",
       });
 
       const response = await POST(request);
-
-      await expectUnauthorized(response);
-    });
-
-    test("should return 401 for invalid user session", async () => {
-      getMockedSession().mockResolvedValue({
-        user: { email: "test@example.com" }, // Missing id
-      });
-
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: "test-task-id",
-        message: "Test message",
-      });
-
-      const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({ error: "Invalid user session" });
+      expect(data.error).toBe("Unauthorized");
     });
   });
 
@@ -154,12 +131,14 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 400 for missing message", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: "test-task-id",
-        // message missing
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: "test-task-id",
+          // message missing
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
 
@@ -170,12 +149,14 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 400 for missing taskId", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        message: "Test message",
-        // taskId missing
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          message: "Test message",
+          // taskId missing
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
 
@@ -188,12 +169,14 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should return 404 for non-existent task", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: "non-existent-task-id",
-        message: "Test message",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: "non-existent-task-id",
+          message: "Test message",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
 
@@ -207,12 +190,14 @@ describe("POST /api/chat/message Integration Tests", () => {
       // Create different user who doesn't have access
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
-
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Test message",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Test message",
+        },
+        unauthorizedUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
 
@@ -225,8 +210,6 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should successfully create chat message with mock service", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock successful mock service call
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -236,25 +219,29 @@ describe("POST /api/chat/message Integration Tests", () => {
       // Clear STAKWORK config to use mock service
       vi.mocked(config).STAKWORK_API_KEY = "";
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Test message content",
-        contextTags: [{ type: "file", value: "test.js" }],
-        artifacts: [
-          {
-            type: ArtifactType.CODE,
-            content: { language: "javascript", code: "console.log('test')" },
-          },
-        ],
-        attachments: [
-          {
-            path: "uploads/test/file.jpg",
-            filename: "file.jpg",
-            mimeType: "image/jpeg",
-            size: 1024,
-          },
-        ],
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Test message content",
+          contextTags: [{ type: "file", value: "test.js" }],
+          artifacts: [
+            {
+              type: ArtifactType.CODE,
+              content: { language: "javascript", code: "console.log('test')" },
+            },
+          ],
+          attachments: [
+            {
+              path: "uploads/test/file.jpg",
+              filename: "file.jpg",
+              mimeType: "image/jpeg",
+              size: 1024,
+            },
+          ],
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -283,8 +270,6 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should successfully create chat message with Stakwork service", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock successful Stakwork service call
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -297,11 +282,15 @@ describe("POST /api/chat/message Integration Tests", () => {
       // Restore STAKWORK config to use Stakwork service
       vi.mocked(config).STAKWORK_API_KEY = "test-stakwork-key";
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Test Stakwork message",
-        mode: "test",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Test Stakwork message",
+          mode: "test",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -323,39 +312,49 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle different task modes correctly", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ success: true, data: {} }),
       } as Response);
 
       // Test live mode
-      const liveRequest = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Live mode test",
-        mode: "live",
-      });
+      const liveRequest = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Live mode test",
+          mode: "live",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const liveResponse = await POST(liveRequest);
       expect(liveResponse.status).toBe(201);
 
       // Test unit mode
-      const unitRequest = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Unit mode test",
-        mode: "unit",
-      });
+      const unitRequest = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Unit mode test",
+          mode: "unit",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const unitResponse = await POST(unitRequest);
       expect(unitResponse.status).toBe(201);
 
       // Test integration mode
-      const integrationRequest = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Integration mode test",
-        mode: "integration",
-      });
+      const integrationRequest = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Integration mode test",
+          mode: "integration",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const integrationResponse = await POST(integrationRequest);
       expect(integrationResponse.status).toBe(201);
@@ -366,8 +365,6 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle Stakwork service failure", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock failed Stakwork service call
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -376,10 +373,14 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       vi.mocked(config).STAKWORK_API_KEY = "test-stakwork-key";
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Test message",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Test message",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -398,17 +399,19 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle mock service failure gracefully", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       // Mock failed mock service call
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
       vi.mocked(config).STAKWORK_API_KEY = ""; // Use mock service
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Test message",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Test message",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -422,12 +425,14 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle database errors gracefully", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: "invalid-task-format", // This will cause database error
-        message: "Test message",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: "invalid-task-format", // This will cause database error
+          message: "Test message",
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
 
@@ -440,8 +445,6 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle empty arrays for contextTags, artifacts, and attachments", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ success: true }),
@@ -449,13 +452,17 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       vi.mocked(config).STAKWORK_API_KEY = "";
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: "Test message",
-        contextTags: [],
-        artifacts: [],
-        attachments: [],
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: "Test message",
+          contextTags: [],
+          artifacts: [],
+          attachments: [],
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -470,8 +477,6 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle very long message content", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ success: true }),
@@ -481,10 +486,14 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       const longMessage = "a".repeat(10000); // Very long message
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: longMessage,
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: longMessage,
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -497,8 +506,6 @@ describe("POST /api/chat/message Integration Tests", () => {
     test("should handle special characters in message content", async () => {
       const { testUser, testTask } = await createTestUserWithWorkspaceAndTask();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ success: true }),
@@ -508,10 +515,14 @@ describe("POST /api/chat/message Integration Tests", () => {
 
       const specialMessage = "Test with 🚀 emojis and special chars: àáâäåæçèéêë & <html> tags";
 
-      const request = createPostRequest("http://localhost:3000/api/chat/message", {
-        taskId: testTask.id,
-        message: specialMessage,
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/chat/message",
+        {
+          taskId: testTask.id,
+          message: specialMessage,
+        },
+        testUser as { id: string; email: string; name: string },
+      );
 
       const response = await POST(request);
       const data = await response.json();
