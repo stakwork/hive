@@ -43,6 +43,7 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
         githubLogin: githubOwner,
         githubInstallationId,
         name: `${githubOwner} Organization`,
+        type: "USER", // Default to USER type
       },
     });
 
