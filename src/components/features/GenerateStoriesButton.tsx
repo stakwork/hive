@@ -11,12 +11,14 @@ export interface GeneratedStory {
 
 interface GenerateStoriesButtonProps {
   featureId: string;
+  existingStories: string[];
   iconOnly?: boolean;
   onGenerated: (stories: GeneratedStory[]) => void;
 }
 
 export function GenerateStoriesButton({
   featureId,
+  existingStories,
   iconOnly = false,
   onGenerated,
 }: GenerateStoriesButtonProps) {
@@ -25,7 +27,7 @@ export function GenerateStoriesButton({
   );
 
   const handleGenerate = async () => {
-    await generate();
+    await generate({ existingStories });
   };
 
   // Notify parent when suggestions change
