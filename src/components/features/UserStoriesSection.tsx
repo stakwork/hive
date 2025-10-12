@@ -134,6 +134,10 @@ export function UserStoriesSection({
                 <div>
                   <GenerateStoriesButton
                     featureId={featureId}
+                    existingStories={[
+                      ...userStories.map((s) => s.title),
+                      ...aiSuggestions.map((s) => s.title),
+                    ]}
                     onGenerated={handleAiGenerated}
                     iconOnly
                   />
