@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 
@@ -12,26 +11,16 @@ export async function GET(
   { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
-    }
+    const userId = userOrResponse.id;
 
     const { taskId } = await params;
 
     if (!taskId) {
-      return NextResponse.json(
-        { error: "Task ID is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
     }
 
     // Verify task exists and user has access through workspace
@@ -123,9 +112,6 @@ export async function GET(
     );
   } catch (error) {
     console.error("Error fetching chat messages for task:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch chat messages" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch chat messages" }, { status: 500 });
   }
 }
