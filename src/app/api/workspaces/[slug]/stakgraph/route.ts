@@ -1,5 +1,6 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
@@ -13,7 +14,6 @@ import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
@@ -87,31 +87,11 @@ const stakgraphSettingsSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
     const { slug } = await params;
-
-    if (!session?.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Authentication required",
-          error: "UNAUTHORIZED",
-        },
-        { status: 401 },
-      );
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid user session",
-          error: "INVALID_SESSION",
-        },
-        { status: 401 },
-      );
-    }
 
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
@@ -236,31 +216,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   console.log("PUT request received");
 
   try {
-    const session = await getServerSession(authOptions);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
     const { slug } = await params;
-
-    if (!session?.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Authentication required",
-          error: "UNAUTHORIZED",
-        },
-        { status: 401 },
-      );
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid user session",
-          error: "INVALID_SESSION",
-        },
-        { status: 401 },
-      );
-    }
 
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {

@@ -1,28 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
 
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+export async function GET(request: NextRequest) {
+  const context = getMiddlewareContext(request);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
+  const userId = userOrResponse.id;
   const workspaces = await getUserWorkspaces(userId);
   return NextResponse.json({ workspaces }, { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+  const context = getMiddlewareContext(request);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
+  const userId = userOrResponse.id;
   const body = await request.json();
   const { name, description, slug } = body;
   if (!name || !slug) {
@@ -50,12 +47,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+export async function DELETE(request: NextRequest) {
+  const context = getMiddlewareContext(request);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
+  const userId = userOrResponse.id;
   // Find the workspace owned by this user
   const workspace = await db.workspace.findFirst({
     where: { ownerId: userId, deleted: false },
