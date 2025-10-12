@@ -1,12 +1,10 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/github/app/check/route";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   expectSuccess,
   expectUnauthorized,
-  getMockedSession,
   createGetRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
@@ -15,9 +13,6 @@ import {
   testRepositoryUrls,
 } from "@/__tests__/support/fixtures/github-repository-permissions";
 import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
-
-// Mock next-auth for session management
-vi.mock("next-auth/next");
 
 // Mock getUserAppTokens from githubApp
 vi.mock("@/lib/githubApp", () => ({
@@ -49,13 +44,7 @@ describe("GitHub App Check API Integration Tests", () => {
           ownerId: testUser.id,
           name: "Test Workspace",
           slug: "test-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -85,8 +74,9 @@ describe("GitHub App Check API Integration Tests", () => {
           json: async () => [{ sha: "abc123" }],
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -141,13 +131,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "admin-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -175,8 +159,9 @@ describe("GitHub App Check API Integration Tests", () => {
           json: async () => [],
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -196,13 +181,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "maintain-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -230,8 +209,9 @@ describe("GitHub App Check API Integration Tests", () => {
           json: async () => [{ sha: "abc123" }],
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -250,13 +230,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "pull-only-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -284,8 +258,9 @@ describe("GitHub App Check API Integration Tests", () => {
           json: async () => [{ sha: "abc123" }],
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -308,13 +283,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "ssh-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -342,8 +311,9 @@ describe("GitHub App Check API Integration Tests", () => {
           json: async () => [{ sha: "def456" }],
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.ssh,
@@ -366,13 +336,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "git-suffix-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -397,8 +361,9 @@ describe("GitHub App Check API Integration Tests", () => {
           json: async () => [],
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.httpsWithGit,
@@ -417,13 +382,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "no-commits-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -450,8 +409,9 @@ describe("GitHub App Check API Integration Tests", () => {
           statusText: "Forbidden",
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -469,8 +429,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
     describe("Authentication and authorization scenarios", () => {
       test("should return 401 for unauthenticated user", async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
+        // Unauthenticated test
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
@@ -486,9 +445,7 @@ describe("GitHub App Check API Integration Tests", () => {
       });
 
       test("should return 401 for session without user ID", async () => {
-        getMockedSession().mockResolvedValue({
-          user: { email: "test@example.com" }, // Missing id field
-        });
+        // Unauthenticated test - no valid session
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
@@ -515,14 +472,9 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: otherUser.id,
           slug: "other-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        });        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -545,16 +497,11 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "no-tokens-workspace",
-        });
+        });        vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue(null);
-
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -576,19 +523,14 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "missing-access-token",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        // Mock getUserAppTokens to return object without accessToken
+        });        // Mock getUserAppTokens to return object without accessToken
         vi.mocked(getUserAppTokens).mockResolvedValue({
           refreshToken: "some-refresh-token",
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -606,14 +548,9 @@ describe("GitHub App Check API Integration Tests", () => {
 
     describe("Input validation scenarios", () => {
       test("should return 400 for missing workspaceSlug", async () => {
-        const testUser = await createTestUser();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        const testUser = await createTestUser();        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             repositoryUrl: testRepositoryUrls.https,
           }
@@ -628,14 +565,9 @@ describe("GitHub App Check API Integration Tests", () => {
       });
 
       test("should return 404 for non-existent workspace", async () => {
-        const testUser = await createTestUser();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        const testUser = await createTestUser();        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: "non-existent-workspace",
             repositoryUrl: testRepositoryUrls.https,
@@ -656,14 +588,9 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "no-swarm-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        });        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             // No repositoryUrl parameter
@@ -684,14 +611,9 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "invalid-url-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        });        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.invalid,
@@ -712,14 +634,9 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "malformed-url-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
+        });        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.malformed,
@@ -741,20 +658,15 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "not-found-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.repositoryNotFound);
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: "https://github.com/test-owner/nonexistent-repo",
@@ -776,20 +688,15 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "forbidden-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.accessForbidden);
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: "https://github.com/test-owner/private-repo",
@@ -811,13 +718,7 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "auth-failed-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
@@ -828,8 +729,9 @@ describe("GitHub App Check API Integration Tests", () => {
           text: async () => "Bad credentials",
         });
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -851,20 +753,15 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "server-error-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.serverError);
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -888,19 +785,14 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "error-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        // Mock getUserAppTokens to throw an error
+        });        // Mock getUserAppTokens to throw an error
         vi.mocked(getUserAppTokens).mockRejectedValue(
           new Error("Database connection failed")
         );
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
@@ -921,20 +813,15 @@ describe("GitHub App Check API Integration Tests", () => {
         const workspace = await createTestWorkspace({
           ownerId: testUser.id,
           slug: "network-error-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
+        });        vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
         });
 
         mockFetch.mockRejectedValue(new Error("Network error"));
 
-        const request = createGetRequest(
+        const request = createAuthenticatedGetRequest(
           "http://localhost:3000/api/github/app/check",
+          testUser,
           {
             workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,

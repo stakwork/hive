@@ -1,9 +1,9 @@
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
-import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const repoUrl = searchParams.get("repoUrl");
 
@@ -12,13 +12,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const session = await getServerSession(authOptions);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id: string }).id;
+    const userId = userOrResponse.id;
 
     // Use user's OAuth token for repository operations (no workspace required)
     const githubProfile = await getGithubUsernameAndPAT(userId);

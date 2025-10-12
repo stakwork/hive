@@ -1,8 +1,7 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
-import { getServerSession } from "next-auth/next";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
@@ -141,8 +140,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is authenticated
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) {
       // Redirect to login if not authenticated
       return NextResponse.redirect(new URL("/auth", request.url));
     }
@@ -150,13 +150,13 @@ export async function GET(request: NextRequest) {
     // Get the user's session to validate the GitHub state
     const userSession = await db.session.findFirst({
       where: {
-        userId: session.user.id as string,
+        userId: userOrResponse.id as string,
         githubState: state,
       },
     });
 
     if (!userSession) {
-      console.error("Invalid or expired GitHub state for user:", session.user.id);
+      console.error("Invalid or expired GitHub state for user:", userOrResponse.id);
       return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     }
 
@@ -374,7 +374,7 @@ export async function GET(request: NextRequest) {
     const existingToken = await db.sourceControlToken.findUnique({
       where: {
         userId_sourceControlOrgId: {
-          userId: session.user.id as string,
+          userId: userOrResponse.id as string,
           sourceControlOrgId: sourceControlOrg.id,
         },
       },
@@ -390,24 +390,24 @@ export async function GET(request: NextRequest) {
           expiresAt: appExpiresAt,
         },
       });
-      console.log(`🔄 Updated SourceControlToken for user ${session.user.id} on ${githubOwner}`);
+      console.log(`🔄 Updated SourceControlToken for user ${userOrResponse.id} on ${githubOwner}`);
     } else {
       // Create new token
       await db.sourceControlToken.create({
         data: {
-          userId: session.user.id as string,
+          userId: userOrResponse.id as string,
           sourceControlOrgId: sourceControlOrg.id,
           token: encryptedAccessToken,
           refreshToken: encryptedRefreshToken,
           expiresAt: appExpiresAt,
         },
       });
-      console.log(`✅ Created SourceControlToken for user ${session.user.id} on ${githubOwner}`);
+      console.log(`✅ Created SourceControlToken for user ${userOrResponse.id} on ${githubOwner}`);
     }
 
     // Clear the GitHub state from the session after successful validation
     await db.session.updateMany({
-      where: { userId: session.user.id as string },
+      where: { userId: userOrResponse.id as string },
       data: { githubState: null },
     });
 
