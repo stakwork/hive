@@ -43,7 +43,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="font-medium">{feature.title}</TableCell>
+      <TableCell className="font-medium hover:underline">{feature.title}</TableCell>
       <TableCell onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="feature"

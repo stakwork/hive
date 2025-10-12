@@ -81,7 +81,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
             className="flex-1 min-w-0 cursor-pointer hover:text-primary"
             onClick={handleNavigateToPhase}
           >
-            <span className="text-sm font-medium truncate">
+            <span className="text-sm font-medium truncate hover:underline">
               {phase.name}
             </span>
           </div>

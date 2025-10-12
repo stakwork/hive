@@ -69,7 +69,7 @@ function SortableTicketItem({
         className="flex items-center gap-2 flex-1 cursor-pointer min-w-0"
       >
         {/* Title */}
-        <span className="text-sm flex-1 truncate group-hover:text-primary">
+        <span className="text-sm flex-1 truncate group-hover:text-primary hover:underline">
           {ticket.title}
         </span>
 
