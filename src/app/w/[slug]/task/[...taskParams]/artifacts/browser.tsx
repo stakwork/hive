@@ -81,7 +81,13 @@ export function BrowserArtifactPanel({
   );
 
   // Use playwright replay hook
-  const { isPlaywrightReplaying, startPlaywrightReplay, stopPlaywrightReplay } = usePlaywrightReplay(iframeRef);
+  const {
+    isPlaywrightReplaying,
+    playwrightProgress,
+    currentAction,
+    startPlaywrightReplay,
+    stopPlaywrightReplay,
+  } = usePlaywrightReplay(iframeRef);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -182,7 +188,7 @@ export function BrowserArtifactPanel({
                     <span className="text-sm font-medium truncate">{tabUrl}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    {isSetup && isRecorderReady && isRecording && (
+                    {isSetup && isRecorderReady && (isRecording || isPlaywrightReplaying) && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -346,6 +352,9 @@ export function BrowserArtifactPanel({
                     onRemoveAction={removeAction}
                     onClearAll={clearAllActions}
                     isRecording={isRecording}
+                    isReplaying={isPlaywrightReplaying}
+                    currentActionIndex={playwrightProgress.current - 1}
+                    totalActions={playwrightProgress.total}
                   />
                 </div>
               )}
