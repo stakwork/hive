@@ -17,7 +17,8 @@ global.fetch = mockFetch;
 
 describe("POST /api/transcript/chunk - Integration Tests", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Clear mock call history but preserve mock implementation
+    mockFetch.mockClear();
 
     // Mock successful Stakwork API response by default
     mockFetch.mockResolvedValue({
@@ -31,7 +32,7 @@ describe("POST /api/transcript/chunk - Integration Tests", () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // No need to restore since we're managing the mock manually
   });
 
   describe("Successful Requests", () => {
