@@ -15,6 +15,7 @@ import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { PhaseSection } from "@/components/features/PhaseSection";
+import { PersonasSection } from "@/components/features/PersonasSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -308,6 +309,16 @@ export default function FeatureDetailPage() {
 
             <Separator />
 
+            {/* User Personas */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                User Personas
+              </Label>
+              <Skeleton className="h-20 w-full rounded-lg" />
+            </div>
+
+            <Separator />
+
             {/* User Stories */}
             <div className="space-y-4">
               <div>
@@ -456,6 +467,15 @@ export default function FeatureDetailPage() {
             saved={saved}
             onChange={(value) => updateFeature({ brief: value })}
             onBlur={(value) => handleFieldBlur("brief", value)}
+          />
+
+          <PersonasSection
+            personas={feature.personas || []}
+            savedField={savedField}
+            saving={saving}
+            saved={saved}
+            onChange={(value) => updateFeature({ personas: value })}
+            onBlur={(value) => handleFieldBlur("personas", value)}
           />
 
           <UserStoriesSection

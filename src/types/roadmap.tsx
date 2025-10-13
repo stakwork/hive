@@ -132,6 +132,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     brief: true;
     requirements: true;
     architecture: true;
+    personas: true;
     status: true;
     priority: true;
     createdAt: true;
@@ -271,6 +272,7 @@ export interface CreateFeatureRequest {
   brief?: string;
   requirements?: string;
   architecture?: string;
+  personas?: string[];
   workspaceId: string;
   status?: FeatureStatus;
   priority?: FeaturePriority;
@@ -282,6 +284,7 @@ export interface UpdateFeatureRequest {
   brief?: string | null;
   requirements?: string | null;
   architecture?: string | null;
+  personas?: string[];
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string | null;

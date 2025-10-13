@@ -34,6 +34,7 @@ export async function POST(
         id: true,
         title: true,
         brief: true,
+        personas: true,
         workspace: {
           select: {
             id: true,
@@ -70,12 +71,17 @@ export async function POST(
       ? `\n\nExisting user stories (DO NOT repeat these):\n${existingStories.map((s: string) => `- ${s}`).join('\n')}`
       : '';
 
+    const personasText = feature.personas && feature.personas.length > 0
+      ? `\n\nTarget Personas:\n${feature.personas.map((p: string) => `- ${p}`).join('\n')}`
+      : '';
+
     const userPrompt = `Generate 3-5 user stories for this feature:
 
 Title: ${feature.title}
-${feature.brief ? `Brief: ${feature.brief}` : ''}${existingStoriesText}
+${feature.brief ? `Brief: ${feature.brief}` : ''}${personasText}${existingStoriesText}
 
 Each story should follow the format: "As a [user type], I want to [action], so that [benefit]"
+${feature.personas && feature.personas.length > 0 ? 'Tailor the stories to the specific personas listed above. Use those exact persona names in your stories.' : ''}
 Generate NEW stories that complement the existing ones (if any) but do not duplicate them.`;
 
     // Use anthropic provider (Claude)
