@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
@@ -181,9 +182,11 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
 
   if (tickets.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>No tickets in this phase yet.</p>
-      </div>
+      <Empty className="h-[500px]">
+        <EmptyHeader>
+          <EmptyDescription>No tickets in this phase yet.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
