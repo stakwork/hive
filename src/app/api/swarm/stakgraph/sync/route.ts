@@ -1,20 +1,19 @@
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    console.log("SESSION", session);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
 
     const body = await request.json();
     const { workspaceId, swarmId } = body as {
@@ -38,7 +37,6 @@ export async function POST(request: NextRequest) {
 
     let username: string | undefined;
     let pat: string | undefined;
-    const userId = session.user.id as string;
 
     // Get the workspace associated with this swarm for GitHub access
     const workspace = await db.workspace.findUnique({

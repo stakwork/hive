@@ -1,18 +1,13 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getServiceConfig } from "@/services";
 import { SwarmService } from "@/services/swarm";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
     try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.id) {
-            return NextResponse.json(
-                { success: false, message: "Unauthorized" },
-                { status: 401 },
-            );
-        }
+        const context = getMiddlewareContext(request);
+        const userOrResponse = requireAuth(context);
+        if (userOrResponse instanceof NextResponse) return userOrResponse;
 
         const { searchParams } = new URL(request.url);
         const uri = searchParams.get("uri");

@@ -1,5 +1,5 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -9,20 +9,19 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
 
     const body = await request.json();
     const { workspaceId, swarmId, useLsp } = body;
@@ -79,7 +78,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
-    const creds = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
+    const creds = await getGithubUsernameAndPAT(userId, workspace.slug);
     const username = creds?.username ?? "";
     const pat = creds?.token ?? "";
 
@@ -97,7 +96,7 @@ export async function POST(request: NextRequest) {
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService(getServiceConfig("github"));
       await webhookService.ensureRepoWebhook({
-        userId: session.user.id,
+        userId,
         workspaceId: repoWorkspaceId,
         repositoryUrl: final_repo_url,
         callbackUrl,
@@ -128,16 +127,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   const workspaceId = searchParams.get("workspaceId");
 
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
 
     if (!id || !workspaceId) {
       return NextResponse.json(
@@ -156,7 +155,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
-    const githubCreds = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
+    const githubCreds = await getGithubUsernameAndPAT(userId, workspace.slug);
     if (!githubCreds) {
       return NextResponse.json(
         {

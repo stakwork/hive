@@ -1,13 +1,13 @@
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { fetchStakgraphServices, pollAgentProgress } from "@/services/swarm/stakgraph-services";
 import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
@@ -17,10 +17,10 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Workspace not found for swarm" }, { status: 404 });
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(userId, workspace.slug);
 
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repo_url = repo_url_param || primaryRepo?.repositoryUrl;

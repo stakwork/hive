@@ -1,16 +1,12 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/swarm/validate/route";
-import { getServerSession } from "next-auth/next";
 import { SwarmService } from "@/services/swarm";
 import { getServiceConfig } from "@/config/services";
 import { ValidateUriResponse } from "@/types/swarm";
+import { createAuthenticatedGetRequest } from "@/__tests__/support/helpers";
 
 // Mock external dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
 vi.mock("@/services/swarm", () => ({
   SwarmService: vi.fn(),
 }));
@@ -19,11 +15,6 @@ vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-const mockGetServerSession = getServerSession as Mock;
 const mockSwarmService = SwarmService as Mock;
 const mockGetServiceConfig = getServiceConfig as Mock;
 
@@ -54,13 +45,10 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
   // Test Data Factories
   const TestDataFactory = {
-    createValidSession: () => ({
-      user: {
-        id: "user-123",
-        email: "test@example.com",
-        name: "Test User",
-      },
-      expires: new Date(Date.now() + 86400000).toISOString(),
+    createTestUser: () => ({
+      id: "user-123",
+      email: "test@example.com",
+      name: "Test User",
     }),
 
     createValidateUriResponse: (overrides = {}): ValidateUriResponse => ({
@@ -80,27 +68,29 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     }),
   };
 
+  const testUser = TestDataFactory.createTestUser();
+
   // Test Helpers
   const TestHelpers = {
     createGetRequest: (uri?: string) => {
       const url = uri
         ? `http://localhost:3000/api/swarm/validate?uri=${encodeURIComponent(uri)}`
         : "http://localhost:3000/api/swarm/validate";
+      return createAuthenticatedGetRequest(url, testUser);
+    },
+
+    createUnauthenticatedGetRequest: (uri?: string) => {
+      const url = uri
+        ? `http://localhost:3000/api/swarm/validate?uri=${encodeURIComponent(uri)}`
+        : "http://localhost:3000/api/swarm/validate";
+      // Create a request without auth headers for unauthenticated tests
       return new NextRequest(url, { method: "GET" });
-    },
-
-    setupAuthenticatedUser: () => {
-      mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
-    },
-
-    setupUnauthenticatedUser: () => {
-      mockGetServerSession.mockResolvedValue(null);
     },
 
     expectAuthenticationError: async (response: Response) => {
       expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data).toEqual({ success: false, message: "Unauthorized" });
+      expect(data).toEqual({ error: "Unauthorized", kind: "forbidden" });
     },
 
     expectValidationError: async (response: Response, expectedStatus: number, expectedMessage: string) => {
@@ -122,40 +112,14 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
+      const request = TestHelpers.createUnauthenticatedGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
 
       await TestHelpers.expectAuthenticationError(response);
       expect(mockSwarmServiceInstance.validateUri).not.toHaveBeenCalled();
     });
 
-    test("should return 401 when session exists but user is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
-        expires: new Date().toISOString(),
-      });
-
-      const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
-      const response = await GET(request);
-
-      await TestHelpers.expectAuthenticationError(response);
-    });
-
-    test("should return 401 when session.user.id is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { email: "test@example.com" },
-        expires: new Date().toISOString(),
-      });
-
-      const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
-      const response = await GET(request);
-
-      await TestHelpers.expectAuthenticationError(response);
-    });
-
-    test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
+    test("should proceed with valid authenticated request", async () => {
       mockSwarmServiceInstance.validateUri.mockResolvedValue(
         TestDataFactory.createValidateUriResponse()
       );
@@ -164,14 +128,10 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
     });
   });
 
   describe("Authorization Gaps (Security Vulnerability)", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("SECURITY GAP: endpoint does NOT validate workspace access", async () => {
       // CRITICAL: This test documents that the endpoint is missing workspace-level authorization
@@ -228,9 +188,6 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
   });
 
   describe("Parameter Validation", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("should return 404 when uri parameter is missing", async () => {
       const request = TestHelpers.createGetRequest();
@@ -286,9 +243,6 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
   });
 
   describe("Input Sanitization Gaps (Security Vulnerability)", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("SECURITY GAP: does NOT sanitize XSS patterns in URI", async () => {
       // CRITICAL: No XSS protection - malicious URIs are passed directly to external API
@@ -298,7 +252,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
       const xssUri = "javascript:alert('xss')";
       const request = TestHelpers.createGetRequest(xssUri);
-      const response = await GET(request);
+      void (await GET(request));
 
       // Currently passes unsanitized URI to service - potential XSS vulnerability
       expect(mockSwarmServiceInstance.validateUri).toHaveBeenCalledWith(xssUri);
@@ -317,7 +271,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
       const malformedUri = "not-a-valid-uri@#$%";
       const request = TestHelpers.createGetRequest(malformedUri);
-      const response = await GET(request);
+      void (await GET(request));
 
       // Passes malformed URI without validation
       expect(mockSwarmServiceInstance.validateUri).toHaveBeenCalledWith(malformedUri);
@@ -331,7 +285,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
       const ssrfUri = "localhost:8080";
       const request = TestHelpers.createGetRequest(ssrfUri);
-      const response = await GET(request);
+      void (await GET(request));
 
       // Currently allows potential SSRF targets
       expect(mockSwarmServiceInstance.validateUri).toHaveBeenCalledWith(ssrfUri);
@@ -350,7 +304,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
       const uriWithSpecialChars = "test<script>alert('xss')</script>.sphinx.chat";
       const request = TestHelpers.createGetRequest(uriWithSpecialChars);
-      const response = await GET(request);
+      void (await GET(request));
 
       // No escaping or sanitization applied
       expect(mockSwarmServiceInstance.validateUri).toHaveBeenCalledWith(uriWithSpecialChars);
@@ -358,9 +312,6 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
   });
 
   describe("Service Integration", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("should call SwarmService.validateUri with correct parameters", async () => {
       mockSwarmServiceInstance.validateUri.mockResolvedValue(
@@ -480,9 +431,6 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
   });
 
   describe("Response Format", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("should return 200 status on successful validation", async () => {
       mockSwarmServiceInstance.validateUri.mockResolvedValue(
@@ -564,9 +512,6 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
   });
 
   describe("Error Handling", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("should return 500 when unexpected error occurs", async () => {
       mockSwarmServiceInstance.validateUri.mockRejectedValue(
@@ -605,7 +550,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       mockSwarmServiceInstance.validateUri.mockResolvedValue({
         // Missing required fields
         incomplete: true,
-      } as any);
+      } as unknown as ValidateUriResponse);
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -637,9 +582,6 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
   });
 
   describe("Edge Cases", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     test("should handle extremely long URI", async () => {
       mockSwarmServiceInstance.validateUri.mockResolvedValue(

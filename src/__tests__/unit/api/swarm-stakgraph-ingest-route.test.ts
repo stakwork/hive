@@ -1,9 +1,13 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
-import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/swarm/stakgraph/ingest/route";
-import { getServerSession } from "next-auth/next";
 import { RepositoryStatus } from "@prisma/client";
 import type { AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
+import {
+  createAuthenticatedPostRequest,
+  createAuthenticatedGetRequest,
+  createPostRequest,
+  createGetRequest,
+} from "@/__tests__/support/helpers/request-builders";
 
 // Mock encryption service first using vi.hoisted for proper initialization
 const mockEncryptionInstance = vi.hoisted(() => {
@@ -17,10 +21,6 @@ const mockEncryptionInstance = vi.hoisted(() => {
 });
 
 // Mock all external dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
 vi.mock("@/lib/db", () => ({
   db: {
     swarm: {
@@ -55,7 +55,6 @@ vi.mock("@/services/github/WebhookService", () => ({
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
   getGithubUsernameAndPAT: vi.fn(),
 }));
 
@@ -96,7 +95,6 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { EncryptionService } from "@/lib/encryption";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
-const mockGetServerSession = getServerSession as Mock;
 const mockDbSwarmFindFirst = db.swarm.findFirst as Mock;
 const mockDbSwarmFindUnique = db.swarm.findUnique as Mock;
 const mockDbRepositoryUpsert = db.repository.upsert as Mock;
@@ -110,13 +108,10 @@ const mockGetGithubUsernameAndPAT = getGithubUsernameAndPAT as Mock;
 
 // Test Data Factories
 const TestDataFactory = {
-  createValidSession: () => ({
-    user: {
-      id: "user-123",
-      email: "test@example.com",
-      name: "Test User",
-    },
-    expires: new Date(Date.now() + 86400000).toISOString(),
+  createTestUser: () => ({
+    id: "user-123",
+    email: "test@example.com",
+    name: "Test User",
   }),
 
   createValidSwarm: (overrides = {}) => ({
@@ -186,32 +181,24 @@ const TestDataFactory = {
 
 // Test Helpers
 const TestHelpers = {
-  createPostRequest: (body: object) => {
-    return new NextRequest("http://localhost:3000/api/swarm/stakgraph/ingest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  createPostRequest: (body: object, user = TestDataFactory.createTestUser()) => {
+    return createAuthenticatedPostRequest(
+      "http://localhost:3000/api/swarm/stakgraph/ingest",
+      body,
+      user
+    );
   },
 
-  createGetRequest: (params: Record<string, string>) => {
+  createGetRequest: (params: Record<string, string>, user = TestDataFactory.createTestUser()) => {
     const url = new URL("http://localhost:3000/api/swarm/stakgraph/ingest");
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-    return new NextRequest(url.toString(), { method: "GET" });
-  },
-
-  setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
-  },
-
-  setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
+    return createAuthenticatedGetRequest(url.toString(), user);
   },
 
   expectAuthenticationError: async (response: Response) => {
     expect(response.status).toBe(401);
     const data = await response.json();
-    expect(data).toEqual({ success: false, message: "Unauthorized" });
+    expect(data).toEqual({ error: "Unauthorized", kind: "forbidden" });
   },
 
   expectValidationError: async (response: Response, expectedStatus: number, expectedMessage?: string) => {
@@ -282,47 +269,20 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createPostRequest({
-        workspaceId: "workspace-123",
-        swarmId: "swarm-123",
-      });
+      const request = createPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        {
+          workspaceId: "workspace-123",
+          swarmId: "swarm-123",
+        }
+      );
       const response = await POST(request);
 
       await TestHelpers.expectAuthenticationError(response);
       expect(mockDbSwarmFindFirst).not.toHaveBeenCalled();
     });
 
-    test("should return 401 when session exists but user is missing", async () => {
-      mockGetServerSession.mockResolvedValue({ expires: new Date().toISOString() });
-
-      const request = TestHelpers.createPostRequest({
-        workspaceId: "workspace-123",
-        swarmId: "swarm-123",
-      });
-      const response = await POST(request);
-
-      await TestHelpers.expectAuthenticationError(response);
-    });
-
-    test("should return 401 when session.user.id is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { email: "test@example.com" },
-        expires: new Date().toISOString(),
-      });
-
-      const request = TestHelpers.createPostRequest({
-        workspaceId: "workspace-123",
-        swarmId: "swarm-123",
-      });
-      const response = await POST(request);
-
-      await TestHelpers.expectAuthenticationError(response);
-    });
-
-    test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
+    test("should proceed with authenticated request", async () => {
       MockSetup.setupSuccessfulPostIngestion();
 
       const request = TestHelpers.createPostRequest({
@@ -332,15 +292,10 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
     });
   });
 
   describe("Request Validation", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
-
     test("should handle request with swarmId", async () => {
       MockSetup.setupSuccessfulPostIngestion();
 
@@ -413,7 +368,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Swarm Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 404 when swarm is not found", async () => {
@@ -482,7 +436,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Workspace Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 404 when workspace is not found", async () => {
@@ -518,7 +471,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Repository Operations", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should upsert repository with PENDING status", async () => {
@@ -604,10 +556,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
   });
 
   describe("External API Integration", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
-
     test("should call triggerIngestAsync with correct parameters", async () => {
       MockSetup.setupSuccessfulPostIngestion();
 
@@ -653,7 +601,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
     });
 
     test("should not store ingestRefId when API response has no request_id", async () => {
-      TestHelpers.setupAuthenticatedUser();
       const swarm = TestDataFactory.createValidSwarm();
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
       mockDbRepositoryUpsert.mockResolvedValue(TestDataFactory.createValidRepository());
@@ -685,7 +632,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("GitHub Credentials", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should retrieve GitHub credentials with workspace slug", async () => {
@@ -727,7 +673,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Webhook Setup", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should call ensureRepoWebhook with correct parameters", async () => {
@@ -765,7 +710,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
     });
 
     test("should not fail ingestion when webhook setup fails", async () => {
-      TestHelpers.setupAuthenticatedUser();
       const swarm = TestDataFactory.createValidSwarm();
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
       mockDbRepositoryUpsert.mockResolvedValue(TestDataFactory.createValidRepository());
@@ -794,7 +738,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Error Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 500 when unexpected error occurs", async () => {
@@ -842,7 +785,6 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Security", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should not expose sensitive credentials in response", async () => {
@@ -897,35 +839,16 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createGetRequest({
-        id: "ingest-req-123",
-        workspaceId: "workspace-123",
-      });
+      const request = createGetRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest?id=ingest-req-123&workspaceId=workspace-123"
+      );
       const response = await GET(request);
 
       await TestHelpers.expectAuthenticationError(response);
       expect(mockDbWorkspaceFindUnique).not.toHaveBeenCalled();
     });
 
-    test("should return 401 when session.user.id is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { email: "test@example.com" },
-        expires: new Date().toISOString(),
-      });
-
-      const request = TestHelpers.createGetRequest({
-        id: "ingest-req-123",
-        workspaceId: "workspace-123",
-      });
-      const response = await GET(request);
-
-      await TestHelpers.expectAuthenticationError(response);
-    });
-
-    test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
+    test("should proceed with authenticated request", async () => {
       MockSetup.setupSuccessfulGetStatus();
 
       const request = TestHelpers.createGetRequest({
@@ -935,15 +858,10 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
     });
   });
 
   describe("Query Parameter Validation", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
-
     test("should return 400 when id parameter is missing", async () => {
       const request = TestHelpers.createGetRequest({
         workspaceId: "workspace-123",
@@ -996,7 +914,6 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Workspace Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 404 when workspace is not found", async () => {
@@ -1028,10 +945,6 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
   });
 
   describe("GitHub Credentials Validation", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
-
     test("should return 400 when GitHub credentials are not found", async () => {
       mockDbWorkspaceFindUnique.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockGetGithubUsernameAndPAT.mockResolvedValue(null);
@@ -1067,7 +980,6 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Swarm Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 404 when swarm is not found", async () => {
@@ -1130,10 +1042,6 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
   });
 
   describe("Status Check", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
-
     test("should call swarmApiRequest with correct parameters", async () => {
       MockSetup.setupSuccessfulGetStatus();
 
@@ -1281,7 +1189,6 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Error Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should return 500 when unexpected error occurs", async () => {
@@ -1335,7 +1242,6 @@ describe("GET /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
   describe("Security", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should not expose sensitive credentials in response", async () => {
