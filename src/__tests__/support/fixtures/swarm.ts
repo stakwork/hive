@@ -6,6 +6,7 @@ const encryptionService = EncryptionService.getInstance();
 
 export interface CreateTestSwarmOptions {
   name?: string;
+  swarmId?: string;
   workspaceId: string;
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
