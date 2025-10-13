@@ -380,11 +380,11 @@ export default function PhaseDetailPage() {
               <TabsList>
                 <TabsTrigger value="table" className="gap-2">
                   <TableIcon className="h-4 w-4" />
-                  Table View
+                  Table
                 </TabsTrigger>
                 <TabsTrigger value="graph" className="gap-2">
                   <Network className="h-4 w-4" />
-                  Graph View
+                  Graph
                 </TabsTrigger>
               </TabsList>
 
