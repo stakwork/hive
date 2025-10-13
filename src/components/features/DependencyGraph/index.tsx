@@ -14,6 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { getLayoutedElements } from "./layouts/dagre";
 import type { DependencyGraphProps, GraphEntity } from "./types";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 const DEFAULT_NODE_WIDTH = 250;
 const DEFAULT_NODE_HEIGHT = 80;
@@ -96,9 +97,11 @@ export function DependencyGraph<T extends GraphEntity>({
 
   if (entities.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[500px] text-muted-foreground">
-        {emptyStateMessage}
-      </div>
+      <Empty className="h-[500px]">
+        <EmptyHeader>
+          <EmptyDescription>{emptyStateMessage}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -108,62 +111,17 @@ export function DependencyGraph<T extends GraphEntity>({
 
   if (!hasDependencies) {
     return (
-      <div className="flex flex-col items-center justify-center h-[500px] text-center text-muted-foreground">
-        <p className="text-lg font-medium mb-2">
-          {noDependenciesMessage.title}
-        </p>
-        <p className="text-sm">{noDependenciesMessage.description}</p>
-      </div>
+      <Empty className="h-[500px]">
+        <EmptyHeader>
+          <EmptyTitle>{noDependenciesMessage.title}</EmptyTitle>
+          <EmptyDescription>{noDependenciesMessage.description}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
   return (
-    <>
-      <style dangerouslySetInnerHTML={{__html: `
-        .react-flow__controls {
-          display: flex !important;
-          flex-direction: column !important;
-          gap: 8px !important;
-          box-shadow: none !important;
-          border: none !important;
-          background: transparent !important;
-        }
-        .react-flow__controls-button {
-          background: white !important;
-          border: 1px solid #d1d5db !important;
-          border-radius: 6px !important;
-          width: 32px !important;
-          height: 32px !important;
-          padding: 0 !important;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-        }
-        .react-flow__controls-button:hover {
-          background: #f3f4f6 !important;
-          border-color: #9ca3af !important;
-        }
-        .react-flow__controls-button svg {
-          fill: #374151 !important;
-          width: 16px !important;
-          height: 16px !important;
-        }
-        @media (prefers-color-scheme: dark) {
-          .react-flow__controls-button {
-            background: #1f2937 !important;
-            border-color: #4b5563 !important;
-          }
-          .react-flow__controls-button:hover {
-            background: #374151 !important;
-            border-color: #6b7280 !important;
-          }
-          .react-flow__controls-button svg {
-            fill: #d1d5db !important;
-          }
-        }
-      `}} />
-      <div className="h-[600px] w-full border rounded-lg bg-gray-50 dark:bg-gray-950 relative">
+    <div className="h-[600px] w-full border rounded-lg bg-gray-50 dark:bg-gray-950 relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -218,7 +176,6 @@ export function DependencyGraph<T extends GraphEntity>({
           showInteractive={false}
         />
       </ReactFlow>
-      </div>
-    </>
+    </div>
   );
 }
