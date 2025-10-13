@@ -14,9 +14,10 @@ Your task is to analyze the feature details provided and generate 3-5 well-struc
 
 1. Use the standard user story format: "As a [user type], I want to [action], so that [benefit]"
 2. Each story should be specific, actionable, and testable
-3. If user personas are provided, tailor stories to those specific user types
+3. If user personas are provided, you MUST use those exact persona names in your stories (e.g., if "Power User" is provided, use "As a Power User..." not "As a user...")
 4. Ensure stories are properly scoped - not too large, not too granular
 5. Stories should collectively cover the main functionality described in the feature
+6. When personas are provided, distribute stories across different personas to show how each user type interacts with the feature
 
 Return your response as a JSON array of strings (just the user story titles):
 [
