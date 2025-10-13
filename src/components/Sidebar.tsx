@@ -7,6 +7,7 @@ import {
   BookOpen,
   CheckSquare,
   LayoutDashboard,
+  Map,
   Menu,
   Settings,
   Users,
@@ -58,7 +59,7 @@ interface SidebarProps {
 const baseNavigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
-  // { icon: Map, label: "Roadmap", href: "/roadmap" },
+  { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
   { icon: BookOpen, label: "Learn", href: "/learn" },

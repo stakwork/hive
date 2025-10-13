@@ -15,6 +15,17 @@ async function fetchLearnings(swarmUrl: string, swarmApiKey: string, q: string, 
   return res.ok ? await res.json() : [];
 }
 
+async function askQuestion(swarmUrl: string, swarmApiKey: string, q: string) {
+  const res = await fetch(`${swarmUrl}/ask?question=${encodeURIComponent(q)}&forceCache=true`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": swarmApiKey,
+    },
+  });
+  return res.ok ? (await res.json()).answer : "";
+}
+
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string, pat: string, apiKey: string) {
   const { owner: repoOwner, repo: repoName } = parseOwnerRepo(repoUrl);
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
@@ -32,6 +43,15 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
           console.error("Error retrieving learnings:", e);
           return "Could not retrieve learnings";
         }
+      },
+    }),
+    ask_question: tool({
+      description: "Fetch a learning + answer from the knowledge base.",
+      inputSchema: z.object({
+        question: z.string().describe("The exact text of a Hint or Prompt from the get_learnings tool response."),
+      }),
+      execute: async ({ question }: { question: string }) => {
+        return await askQuestion(swarmUrl, swarmApiKey, question);
       },
     }),
     recent_commits: tool({

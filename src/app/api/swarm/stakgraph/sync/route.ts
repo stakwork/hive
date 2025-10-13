@@ -6,6 +6,7 @@ import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-ac
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +29,10 @@ export async function POST(request: NextRequest) {
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
       return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
     }
-    if (!swarm.repositoryUrl) {
+    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+    const repositoryUrl = primaryRepo?.repositoryUrl;
+
+    if (!repositoryUrl) {
       return NextResponse.json({ success: false, message: "Repository URL not set" }, { status: 400 });
     }
 
@@ -39,7 +43,7 @@ export async function POST(request: NextRequest) {
     // Get the workspace associated with this swarm for GitHub access
     const workspace = await db.workspace.findUnique({
       where: { id: swarm.workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
@@ -55,7 +59,7 @@ export async function POST(request: NextRequest) {
       await db.repository.update({
         where: {
           repositoryUrl_workspaceId: {
-            repositoryUrl: swarm.repositoryUrl,
+            repositoryUrl: repositoryUrl,
             workspaceId: swarm.workspaceId,
           },
         },
@@ -70,7 +74,7 @@ export async function POST(request: NextRequest) {
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarm.name,
       swarm.swarmApiKey,
-      swarm.repositoryUrl,
+      repositoryUrl,
       username && pat ? { username, pat } : undefined,
       callbackUrl,
     );
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
         requestId,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
-        repositoryUrl: swarm.repositoryUrl,
+        repositoryUrl: repositoryUrl,
       });
       try {
         console.log("ABOUT TO SAVE INGEST REF ID", {
@@ -127,7 +131,7 @@ export async function POST(request: NextRequest) {
         await db.repository.update({
           where: {
             repositoryUrl_workspaceId: {
-              repositoryUrl: swarm.repositoryUrl,
+              repositoryUrl: repositoryUrl,
               workspaceId: swarm.workspaceId,
             },
           },

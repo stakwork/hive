@@ -62,10 +62,7 @@ export async function createTestRepository(options?: CreateTestRepositoryOptions
         workspaceId: workspace.id,
         name: "test-swarm",
         swarmUrl: "https://test-swarm.sphinx.chat",
-        swarmApiKey: JSON.stringify(
-          encryptionService.encryptField("swarmApiKey", "sk_test_swarm_123")
-        ),
-        defaultBranch: "main",
+        swarmApiKey: JSON.stringify(encryptionService.encryptField("swarmApiKey", "sk_test_swarm_123")),
       },
     });
 

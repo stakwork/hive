@@ -116,6 +116,7 @@ export function WorkspaceSettings() {
                   <FormLabel>Workspace Name</FormLabel>
                   <FormControl>
                     <Input 
+                      data-testid="workspace-settings-name-input"
                       placeholder="The display name for your workspace" 
                       {...field} 
                       disabled={isSubmitting}
@@ -138,6 +139,7 @@ export function WorkspaceSettings() {
                         /w/
                       </span>
                       <Input 
+                        data-testid="workspace-settings-slug-input"
                         placeholder="lowercase, use hyphens for spaces" 
                         {...field} 
                         disabled={isSubmitting}
@@ -157,6 +159,7 @@ export function WorkspaceSettings() {
                   <FormLabel>Description (Optional)</FormLabel>
                   <FormControl>
                     <Textarea 
+                      data-testid="workspace-settings-description-input"
                       placeholder="A brief description of your workspace"
                       className="resize-none"
                       {...field} 
@@ -171,6 +174,7 @@ export function WorkspaceSettings() {
             <div className="flex justify-end">
               <Button 
                 type="submit" 
+                data-testid="workspace-settings-save-button"
                 disabled={isSubmitting || !form.formState.isDirty}
               >
                 {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

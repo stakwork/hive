@@ -44,7 +44,6 @@ export class StakgraphWebhookService {
         requestId: request_id,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
-        repositoryUrl: swarm.repositoryUrl,
         status: payload.status,
       });
 
@@ -66,7 +65,6 @@ export class StakgraphWebhookService {
   ): Promise<{
     id: string;
     workspaceId: string;
-    repositoryUrl: string | null;
   } | null> {
     const swarm = await db.swarm.findFirst({
       where: { ingestRefId: requestId },
@@ -74,7 +72,6 @@ export class StakgraphWebhookService {
         id: true,
         workspaceId: true,
         swarmApiKey: true,
-        repositoryUrl: true,
       },
     });
 
@@ -108,7 +105,6 @@ export class StakgraphWebhookService {
     return {
       id: swarm.id,
       workspaceId: swarm.workspaceId,
-      repositoryUrl: swarm.repositoryUrl,
     };
   }
 }

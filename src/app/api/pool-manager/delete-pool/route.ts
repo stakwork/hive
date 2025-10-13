@@ -12,7 +12,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      // Handle empty body or malformed JSON
+      body = {};
+    }
+    
     const { name } = body;
 
     // Validate required fields

@@ -69,13 +69,18 @@ export function CoverageInsights() {
     prefetchPrev,
   } = useCoverageNodes();
 
-  const { ignoreDirs, setIgnoreDirs } = useCoverageNodes();
+  const { ignoreDirs, setIgnoreDirs, repo, setRepo } = useCoverageNodes();
 
   const [inputValue, setInputValue] = useState(ignoreDirs);
+  const [repoInputValue, setRepoInputValue] = useState(repo);
 
   useEffect(() => {
     setInputValue(ignoreDirs);
   }, [ignoreDirs]);
+
+  useEffect(() => {
+    setRepoInputValue(repo);
+  }, [repo]);
 
   const handleApplyFilter = () => {
     const cleaned = inputValue
@@ -89,9 +94,28 @@ export function CoverageInsights() {
     }
   };
 
+  const handleApplyRepoFilter = () => {
+    const cleaned = repoInputValue
+      .split(",")
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0)
+      .join(",");
+
+    if (cleaned !== repo) {
+      setRepo(cleaned);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleApplyFilter();
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleRepoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleApplyRepoFilter();
       e.currentTarget.blur();
     }
   };
@@ -178,6 +202,19 @@ export function CoverageInsights() {
                 onBlur={handleApplyFilter}
                 onKeyDown={handleKeyDown}
                 className="h-8 w-[200px] text-xs"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Repo:</span>
+              <Input
+                type="text"
+                placeholder="all, /path/repo1, or /path/repo1,/path/repo2"
+                value={repoInputValue}
+                onChange={(e) => setRepoInputValue(e.target.value)}
+                onBlur={handleApplyRepoFilter}
+                onKeyDown={handleRepoKeyDown}
+                className="h-8 w-[280px] text-xs"
               />
             </div>
           </div>

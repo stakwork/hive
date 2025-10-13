@@ -61,6 +61,7 @@ export const useStaktrak = (
   const [isAssertionMode, setIsAssertionMode] = useState(false);
   const [capturedActions, setCapturedActions] = useState<any[]>([]);
   const [showActions, setShowActions] = useState(false);
+  const [isRecorderReady, setIsRecorderReady] = useState(false);
 
   const [generatedPlaywrightTest, setGeneratedPlaywrightTest] = useState<string>("");
 
@@ -75,12 +76,15 @@ export const useStaktrak = (
     onActionCapturedRef.current = onActionCaptured;
   }, [onTestGenerated, onActionCaptured]);
 
-  const startRecording = () => {
-    // Lazy initialize RecordingManager on first recording
-    if (!recorderRef.current && window.PlaywrightGenerator?.RecordingManager) {
+  // Initialize RecordingManager when PlaywrightGenerator is available
+  useEffect(() => {
+    if (window.PlaywrightGenerator?.RecordingManager && !recorderRef.current) {
       recorderRef.current = new window.PlaywrightGenerator.RecordingManager();
+      setIsRecorderReady(true);
     }
+  }, []);
 
+  const startRecording = () => {
     // Clear existing recording data when starting a new recording
     if (recorderRef.current) {
       recorderRef.current.clear();
@@ -142,6 +146,11 @@ export const useStaktrak = (
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // Only accept messages from our iframe
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+
       if (event.data && event.data.type) {
         const staktrakEvent = event as StaktrakMessageEvent;
 
@@ -262,5 +271,6 @@ export const useStaktrak = (
     removeAction,
     clearAllActions,
     toggleActionsView,
+    isRecorderReady,
   };
 };
