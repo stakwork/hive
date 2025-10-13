@@ -4,7 +4,7 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "../hooks/use-theme";
 
 export function ThemeToggle() {
-  const { theme, toggleTheme, mounted } = useTheme();
+  const { resolvedTheme, toggleTheme, mounted } = useTheme();
 
   // Prevent hydration mismatch
   if (!mounted) {
@@ -22,7 +22,7 @@ export function ThemeToggle() {
       className="h-9 w-9 rounded-md border border-gray-300 bg-transparent hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800 transition-colors"
     >
       <span className="sr-only">Toggle theme</span>
-      {theme === "light" ? (
+      {resolvedTheme === "light" ? (
         <Moon className="h-4 w-4" />
       ) : (
         <Sun className="h-4 w-4" />
