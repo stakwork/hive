@@ -1,4 +1,6 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { db } from "@/lib/db";
+import { getUserAppTokens } from "@/lib/githubApp";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
@@ -6,6 +8,7 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const repoUrl = searchParams.get("repoUrl");
+  const workspaceSlug = searchParams.get("workspaceSlug");
 
   if (!repoUrl) {
     return NextResponse.json({ error: "Repo URL is required" }, { status: 400 });
@@ -20,13 +23,6 @@ export async function GET(request: Request) {
 
     const userId = (session.user as { id: string }).id;
 
-    // Use user's OAuth token for repository operations (no workspace required)
-    const githubProfile = await getGithubUsernameAndPAT(userId);
-    if (!githubProfile?.token) {
-      return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
-    }
-    const pat = githubProfile.token;
-
     function parseOwnerRepo(url: string): { owner: string; repo: string } {
       const u = url.replace(/\.git$/i, "");
       // SSH form
@@ -40,9 +36,42 @@ export async function GET(request: Request) {
 
     const { owner, repo } = parseOwnerRepo(repoUrl);
 
+    // Try to use GitHub App installation token first, fall back to OAuth token
+    let accessToken;
+
+    // First try GitHub App installation token if we have a workspace
+    if (workspaceSlug) {
+      try {
+        const workspace = await db.workspace.findUnique({
+          where: { slug: workspaceSlug },
+          include: { sourceControlOrg: true }
+        });
+
+        if (workspace?.sourceControlOrg?.githubLogin) {
+          const appTokens = await getUserAppTokens(userId, workspace.sourceControlOrg.githubLogin);
+          if (appTokens?.accessToken) {
+            accessToken = appTokens.accessToken;
+            console.log("Using GitHub App installation token");
+          }
+        }
+      } catch (error) {
+        console.warn("Could not get GitHub App token, falling back to OAuth token:", error);
+      }
+    }
+
+    // Fall back to OAuth token if GitHub App token not available
+    if (!accessToken) {
+      const githubProfile = await getGithubUsernameAndPAT(userId);
+      if (!githubProfile?.token) {
+        return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
+      }
+      accessToken = githubProfile.token;
+      console.log("Using OAuth token");
+    }
+
     const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        Authorization: `token ${pat}`,
+        Authorization: `token ${accessToken}`,
         Accept: "application/vnd.github.v3+json",
       },
     });
