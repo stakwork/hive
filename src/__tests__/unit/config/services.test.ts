@@ -81,7 +81,7 @@ describe("getServiceConfig", () => {
       });
       expect(config.baseURL).toBe(process.env.SWARM_SUPER_ADMIN_URL || "");
       expect(config.apiKey).toBe(""); // Added under x-user-token
-      expect(config.timeout).toBe(120000); // 2 minutes timeout
+      expect(config.timeout).toBe(600000); // 10 minutes timeout
       expect(config.headers).toHaveProperty("Content-Type", "application/json");
     });
   });
