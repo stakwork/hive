@@ -1,12 +1,12 @@
 import { serviceConfigs } from "@/config/services";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { PoolManagerService } from "@/services/pool-manager/PoolManagerService";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { EnvironmentVariable, type ApiError } from "@/types";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -36,23 +36,14 @@ async function withRetry<T>(
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!session.user.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
     const { swarmId, workspaceId, container_files } = body;
 
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
+    const userId = userOrResponse.id;
 
     // Find the swarm and verify user has access to the workspace
     const swarm = await db.swarm.findFirst({

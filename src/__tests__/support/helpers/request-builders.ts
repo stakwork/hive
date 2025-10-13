@@ -194,8 +194,9 @@ export function createAuthenticatedPatchRequest(
  */
 export function createAuthenticatedDeleteRequest(
   url: string,
+  body: object | undefined,
   user: { id: string; email: string; name: string }
 ): NextRequest {
-  const baseRequest = createDeleteRequest(url);
+  const baseRequest = createDeleteRequest(url, body);
   return addMiddlewareHeaders(baseRequest, user);
 }
