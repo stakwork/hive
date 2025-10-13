@@ -253,8 +253,8 @@ export function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
   const styles = createStyles(isUser);
-  const { theme } = useTheme();
-  const isDarkTheme = theme === "dark";
+  const { resolvedTheme } = useTheme();
+  const isDarkTheme = resolvedTheme === "dark";
   const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
   const components = createComponents(styles, codeInlineClass);
 
