@@ -3,12 +3,11 @@ import { POST, GET } from "@/app/api/swarm/stakgraph/ingest/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
+import { generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
 import {
-  createAuthenticatedSession,
-  generateUniqueId,
-  generateUniqueSlug,
-  getMockedSession,
-} from "@/__tests__/support/helpers";
+  createAuthenticatedPostRequest,
+  createAuthenticatedGetRequest,
+} from "@/__tests__/support/helpers/request-builders";
 
 // Mock external API calls
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
@@ -46,34 +45,17 @@ import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 
-const mockTriggerIngestAsync = triggerIngestAsync as vi.Mock;
-const mockSwarmApiRequest = swarmApiRequest as vi.Mock;
-
-// Helper to create POST request
-function createPostRequest(body: object) {
-  return new Request("http://localhost:3000/api/swarm/stakgraph/ingest", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }) as any;
-}
-
-// Helper to create GET request
-function createGetRequest(params: Record<string, string>) {
-  const url = new URL("http://localhost:3000/api/swarm/stakgraph/ingest");
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  return new Request(url.toString(), { method: "GET" }) as any;
-}
+const mockTriggerIngestAsync = triggerIngestAsync as vi.MockedFunction<typeof triggerIngestAsync>;
+const mockSwarmApiRequest = swarmApiRequest as vi.MockedFunction<typeof swarmApiRequest>;
 
 describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
   const enc = EncryptionService.getInstance();
   const PLAINTEXT_SWARM_API_KEY = "swarm_test_key_integration";
   const PLAINTEXT_GITHUB_PAT = "github_pat_integration";
 
-  let userId: string;
+  let testUser: { id: string; email: string; name: string };
   let workspaceId: string;
   let swarmId: string;
-  let sourceControlOrgId: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -150,12 +132,13 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       return { user, workspace, swarm, sourceControlOrg };
     });
 
-    userId = testData.user.id;
+    testUser = {
+      id: testData.user.id,
+      email: testData.user.email!,
+      name: testData.user.name!,
+    };
     workspaceId = testData.workspace.id;
     swarmId = testData.swarm.swarmId!;
-    sourceControlOrgId = testData.sourceControlOrg.id;
-
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   describe("Repository Upsert Operations", () => {
@@ -166,7 +149,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -211,7 +198,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-456" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -234,7 +225,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: {
           name: "Test Workspace 2",
           slug: generateUniqueSlug("test-workspace-2"),
-          ownerId: userId,
+          ownerId: testUser.id,
         },
       });
 
@@ -271,7 +262,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: requestId },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -297,7 +292,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       });
       const initialIngestRefId = initialSwarm?.ingestRefId;
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -324,7 +323,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: newRequestId },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -347,7 +350,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -372,7 +379,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       await POST(request);
 
       // Verify triggerIngestAsync was called (decryption happens inside)
@@ -392,7 +403,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -412,7 +427,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -434,7 +453,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/swarm/stakgraph/ingest",
+        { workspaceId, swarmId },
+        testUser,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -443,8 +466,11 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       const token = await db.sourceControlToken.findUnique({
         where: {
           userId_sourceControlOrgId: {
-            userId,
-            sourceControlOrgId,
+            userId: testUser.id,
+            sourceControlOrgId: (await db.workspace.findUnique({
+              where: { id: workspaceId },
+              select: { sourceControlOrgId: true },
+            }))!.sourceControlOrgId!,
           },
         },
       });
@@ -463,9 +489,8 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
   const enc = EncryptionService.getInstance();
   const PLAINTEXT_SWARM_API_KEY = "swarm_test_key_get";
 
-  let userId: string;
+  let testUser: { id: string; email: string; name: string };
   let workspaceId: string;
-  let sourceControlOrgId: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -533,11 +558,12 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
       return { user, workspace, sourceControlOrg };
     });
 
-    userId = testData.user.id;
+    testUser = {
+      id: testData.user.id,
+      email: testData.user.email!,
+      name: testData.user.name!,
+    };
     workspaceId = testData.workspace.id;
-    sourceControlOrgId = testData.sourceControlOrg.id;
-
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
   describe("Status Check Operations", () => {
@@ -552,7 +578,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
         },
       });
 
-      const request = createGetRequest({
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/ingest", testUser, {
         id: "ingest-req-123",
         workspaceId,
       });
@@ -574,7 +600,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { status: "Complete" },
       });
 
-      const request = createGetRequest({
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/ingest", testUser, {
         id: "ingest-req-123",
         workspaceId,
       });
@@ -611,7 +637,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: statusData,
       });
 
-      const request = createGetRequest({
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/ingest", testUser, {
         id: "ingest-req-123",
         workspaceId,
       });
@@ -629,7 +655,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { error: "Request not found" },
       });
 
-      const request = createGetRequest({
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/ingest", testUser, {
         id: "nonexistent-request",
         workspaceId,
       });
@@ -647,7 +673,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { status: "InProgress" },
       });
 
-      const request = createGetRequest({
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/ingest", testUser, {
         id: "ingest-req-123",
         workspaceId,
       });
@@ -671,7 +697,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { status: "InProgress" },
       });
 
-      const request = createGetRequest({
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/ingest", testUser, {
         id: "ingest-req-123",
         workspaceId,
       });

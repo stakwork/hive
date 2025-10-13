@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSwarmVanityAddress } from "@/lib/constants";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 
@@ -40,10 +39,9 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
       }
     } else {
-      const session = await getServerSession(authOptions);
-      if (!session?.user?.id) {
-        return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-      }
+      const context = getMiddlewareContext(request);
+      const userOrResponse = requireAuth(context);
+      if (userOrResponse instanceof NextResponse) return userOrResponse;
     }
 
     const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;

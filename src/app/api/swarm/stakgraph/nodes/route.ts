@@ -1,20 +1,15 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");

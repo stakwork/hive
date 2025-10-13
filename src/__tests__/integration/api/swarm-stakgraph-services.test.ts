@@ -2,23 +2,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/swarm/stakgraph/services/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  createAuthenticatedSession,
-  generateUniqueId,
-  generateUniqueSlug,
-  getMockedSession,
-  createGetRequest,
-} from "@/__tests__/support/helpers";
+import { generateUniqueId, generateUniqueSlug, createAuthenticatedGetRequest } from "@/__tests__/support/helpers";
 
 describe("GET /api/swarm/stakgraph/services", () => {
   const enc = EncryptionService.getInstance();
   const PLAINTEXT_SWARM_API_KEY = "swarm_test_key_abc";
   let workspaceId: string;
   let swarmId: string;
+  let testUser: { id: string; email: string; name: string };
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    
+
     // Don't manually clean - let the global cleanup handle it
     // Use transaction to atomically create test data
     const testData = await db.$transaction(async (tx) => {
@@ -45,9 +40,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
           swarmId: generateUniqueId("s1"),
           status: "ACTIVE",
           swarmUrl: "https://s1-name.sphinx.chat/api",
-          swarmApiKey: JSON.stringify(
-            enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY),
-          ),
+          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
           services: [],
         },
       });
@@ -57,8 +50,11 @@ describe("GET /api/swarm/stakgraph/services", () => {
 
     workspaceId = testData.workspace.id;
     swarmId = testData.swarm.swarmId!;
-
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
+    testUser = {
+      id: testData.user.id,
+      email: testData.user.email!,
+      name: testData.user.name!,
+    };
   });
 
   it("proxies with decrypted header and keeps DB encrypted", async () => {
@@ -71,10 +67,10 @@ describe("GET /api/swarm/stakgraph/services", () => {
       } as unknown as Response);
 
     const res = await GET(
-      createGetRequest(
-        "http://localhost:3000/api/swarm/stakgraph/services",
-        { workspaceId, swarmId }
-      )
+      createAuthenticatedGetRequest("http://localhost:3000/api/swarm/stakgraph/services", testUser, {
+        workspaceId,
+        swarmId,
+      }),
     );
     
     const responseBody = await res.json();
