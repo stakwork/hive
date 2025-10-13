@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { vi } from "vitest";
 import { getServerSession } from "next-auth/next";
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 export interface InvokeRouteOptions {
   method?: string;
@@ -9,6 +10,7 @@ export interface InvokeRouteOptions {
   body?: unknown;
   headers?: HeadersInit;
   params?: Record<string, string | string[]> | Promise<Record<string, string | string[]>>;
+  useMiddlewareAuth?: boolean;
 }
 
 export interface InvokeRouteResult {
@@ -54,11 +56,33 @@ export async function invokeRoute(
   handler: RouteHandler,
   options: InvokeRouteOptions = {},
 ): Promise<InvokeRouteResult> {
-  const request = createRequest(options);
+  let request = createRequest(options);
 
-  vi.mocked(getServerSession).mockResolvedValue(
-    options.session === undefined ? null : options.session,
-  );
+  // Support middleware authentication if requested
+  if (options.useMiddlewareAuth && options.session) {
+    const session = options.session as { user?: { id?: string; email?: string; name?: string } };
+    if (session.user) {
+      const headers = new Headers(request.headers);
+      headers.set(MIDDLEWARE_HEADERS.USER_ID, session.user.id || "");
+      headers.set(MIDDLEWARE_HEADERS.USER_EMAIL, session.user.email || "");
+      headers.set(MIDDLEWARE_HEADERS.USER_NAME, session.user.name || "");
+      headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+      headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, crypto.randomUUID());
+      
+      request = new NextRequest(request.url, {
+        method: request.method,
+        headers,
+        body: request.body,
+        // @ts-ignore - duplex is needed for body streaming
+        duplex: request.body ? "half" : undefined,
+      });
+    }
+  } else {
+    // Legacy NextAuth session mocking for routes not yet migrated
+    vi.mocked(getServerSession).mockResolvedValue(
+      options.session === undefined ? null : options.session,
+    );
+  }
 
   const context = options.params
     ? {

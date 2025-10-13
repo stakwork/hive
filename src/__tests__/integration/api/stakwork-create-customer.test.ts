@@ -3,11 +3,10 @@ import { POST } from "@/app/api/stakwork/create-customer/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
-  createAuthenticatedSession,
   generateUniqueId,
   generateUniqueSlug,
   createPostRequest,
-  getMockedSession,
+  createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 
 // Mock stakwork service factory to capture calls
@@ -102,6 +101,7 @@ const setupTestData = async (options: {
 describe("POST /api/stakwork/create-customer", () => {
   let workspaceId: string;
   let PLAINTEXT_SWARM_API_KEY: string;
+  let testUser: { id: string; email: string | null; name: string | null };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -109,12 +109,15 @@ describe("POST /api/stakwork/create-customer", () => {
     const { testData, PLAINTEXT_SWARM_API_KEY: plainTextKey } = await setupTestData();
     workspaceId = testData.workspace.id;
     PLAINTEXT_SWARM_API_KEY = plainTextKey;
-
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
+    testUser = testData.user;
   });
 
   it("creates secret with plaintext value (not encrypted JSON)", async () => {
-    const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+    const req = createAuthenticatedPostRequest(
+      "http://localhost:3000/api/stakwork/create-customer",
+      { workspaceId },
+      { id: testUser.id, email: testUser.email || "", name: testUser.name || "" }
+    );
 
     const res = await POST(req);
 
@@ -133,7 +136,11 @@ describe("POST /api/stakwork/create-customer", () => {
       data: { swarmApiKey: JSON.stringify(doubleCipher) },
     });
 
-    const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+    const req = createAuthenticatedPostRequest(
+      "http://localhost:3000/api/stakwork/create-customer",
+      { workspaceId },
+      { id: testUser.id, email: testUser.email || "", name: testUser.name || "" }
+    );
 
     mockCreateSecret.mockClear();
     const res = await POST(req);
@@ -144,20 +151,22 @@ describe("POST /api/stakwork/create-customer", () => {
 
   describe("authentication failures", () => {
     it("returns 401 when user is not authenticated", async () => {
-      getMockedSession().mockResolvedValue(null);
-
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
       const res = await POST(req);
       expect(res?.status).toBe(401);
 
       const json = await res.json();
-      expect(json).toEqual({ error: "Unauthorized" });
+      expect(json.error).toBe("Unauthorized");
       expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
 
     it("returns error when workspaceId is missing from request body", async () => {
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {});
+      const req = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/stakwork/create-customer",
+        {},
+        { id: testUser.id, email: testUser.email || "", name: testUser.name || "" }
+      );
 
       const res = await POST(req);
       
@@ -174,9 +183,9 @@ describe("POST /api/stakwork/create-customer", () => {
       });
 
       const nonExistentWorkspaceId = generateUniqueId("nonexistent");
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", {
         workspaceId: nonExistentWorkspaceId,
-      });
+      }, testUser);
 
       const res = await POST(req);
       
@@ -194,16 +203,13 @@ describe("POST /api/stakwork/create-customer", () => {
 
     it("handles swarm not found by skipping secret creation", async () => {
       // Create workspace without swarm using helper
-      const { testData: userData } = await setupTestData({ includeSwarm: false });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(userData.user));
-      mockCreateCustomer.mockResolvedValueOnce({
+      const { testData: userData } = await setupTestData({ includeSwarm: false });      mockCreateCustomer.mockResolvedValueOnce({
         data: { token: "stak-token-no-swarm" },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", {
         workspaceId: userData.workspace.id,
-      });
+      }, testUser);
 
       const res = await POST(req);
       expect(res?.status).toBe(201);
@@ -219,7 +225,7 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { message: "Customer created but no token" },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       await expectErrorResponse(res, 500, { error: "Invalid response from Stakwork API" });
@@ -230,7 +236,7 @@ describe("POST /api/stakwork/create-customer", () => {
         message: "Success",
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       await expectErrorResponse(res, 500, { error: "Invalid response from Stakwork API" });
@@ -246,7 +252,7 @@ describe("POST /api/stakwork/create-customer", () => {
 
       mockCreateCustomer.mockRejectedValueOnce(apiError);
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       await expectErrorResponse(res, 503, {
@@ -265,7 +271,7 @@ describe("POST /api/stakwork/create-customer", () => {
         new Error("Failed to create secret on Stakwork")
       );
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       
@@ -279,7 +285,7 @@ describe("POST /api/stakwork/create-customer", () => {
         new Error("Network timeout")
       );
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       await expectErrorResponse(res, 500, { error: "Failed to create customer" });
@@ -298,7 +304,7 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { token: "stak-token-no-alias" },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       expect(res?.status).toBe(201);
@@ -318,7 +324,7 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { token: "stak-token-null-key" },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       expect(res?.status).toBe(201);
@@ -332,7 +338,7 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { token: "stak-token-sanitize" },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       expect(res?.status).toBe(201);
@@ -353,7 +359,7 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { token: stakworkToken },
       });
 
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
+      const req = createAuthenticatedPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId }, testUser);
 
       const res = await POST(req);
       expect(res?.status).toBe(201);

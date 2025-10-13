@@ -3,10 +3,8 @@ import { POST } from "@/app/api/stakwork/user-journey/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   createPostRequest,
+  createAuthenticatedPostRequest,
   expectSuccess,
   expectError,
   expectUnauthorized,
@@ -136,8 +134,6 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
   describe("Authentication & Authorization", () => {
     test("should return 401 for unauthenticated requests", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
@@ -152,11 +148,6 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
     });
 
     test("should return 401 for invalid user session (missing userId)", async () => {
-      getMockedSession().mockResolvedValue({
-        user: { name: "Test" },
-        expires: new Date(Date.now() + 86400000).toISOString(),
-      });
-
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
@@ -167,19 +158,20 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await expectError(response, "Invalid user session", 401);
+      await expectUnauthorized(response);
     });
 
     test("should return 404 for workspace not found", async () => {
       const { user } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test user journey",
           workspaceId: "non-existent-workspace-id",
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -197,16 +189,14 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         email: `unauthorized-${generateUniqueId()}@example.com`,
       });
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(unauthorizedUser)
-      );
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test user journey",
           workspaceId: workspace.id,
         }
+      ,
+      unauthorizedUser
       );
 
       const response = await POST(request);
@@ -222,13 +212,14 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
   describe("Request Validation", () => {
     test("should return 400 for missing message field", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -238,14 +229,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
     test("should return 400 for empty message", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -255,13 +247,14 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
     test("should return 400 for missing workspaceId field", async () => {
       const { user } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test user journey",
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -271,14 +264,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
     test("should return 400 for empty workspaceId", async () => {
       const { user } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test user journey",
           workspaceId: "",
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -295,14 +289,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         name: "Workspace Without Swarm",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test user journey",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -316,15 +311,16 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace, swarm, testGithubUsername, testGithubToken } =
         await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const testMessage = "User navigated to dashboard and created a task";
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: testMessage,
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -388,16 +384,14 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         data: { ownerId: userWithoutGithub.id },
       });
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(userWithoutGithub)
-      );
-
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test without GitHub",
           workspaceId: workspace.id,
         }
+      ,
+      userWithoutGithub
       );
 
       const response = await POST(request);
@@ -420,14 +414,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         data: { poolName: null },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test poolName fallback",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -443,14 +438,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
     test("should transform swarmUrl correctly to repo2graph format", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test URL transformation",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -478,14 +474,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         data: { swarmUrl: null },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test empty swarmUrl",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -500,16 +497,17 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
     test("should support analytics data collection through workflow parameters", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const analyticsMessage =
         "User viewed insights page, clicked on recommendation #42, and opened file explorer";
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: analyticsMessage,
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -538,14 +536,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         json: async () => ({ error: "Workflow execution failed" }),
       } as Response);
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test API error",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -564,14 +563,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       // Mock network error
       fetchSpy.mockRejectedValueOnce(new Error("Network error"));
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test network error",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -587,14 +587,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       // This test verifies that with valid config, the API works correctly
       const { user, workspace } = await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test with valid API key",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -610,14 +611,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       // This test verifies that with valid config, the API works correctly
       const { user, workspace } = await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test with valid workflow ID",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -633,14 +635,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
   describe("Database Operations", () => {
     test("should query workspace with proper authorization checks", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test workspace query",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -656,14 +659,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
     test("should retrieve swarm configuration from database", async () => {
       const { user, workspace, swarm } = await createUserJourneyTestSetup();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test swarm retrieval",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -690,14 +694,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace, testGithubToken, testGithubUsername } =
         await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "Test credential decryption",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -722,15 +727,16 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace, testGithubUsername } =
         await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const userSpecificMessage = `User ${testGithubUsername} completed onboarding tutorial`;
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: userSpecificMessage,
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);
@@ -752,14 +758,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
     test("should include workspace context for multi-tenant personalization", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
+      const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
           message: "User interacted with workspace-specific features",
           workspaceId: workspace.id,
         }
+      ,
+      user
       );
 
       const response = await POST(request);

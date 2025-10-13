@@ -1,13 +1,8 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/create-customer/route";
-import { getServerSession } from "next-auth/next";
 import { type ApiError } from "@/types";
-
-// Mock dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 // Mock function declarations - will be assigned after vi.mocked() imports
 
@@ -63,12 +58,6 @@ vi.mock("@/lib/db", () => {
     __mockSwarmFindFirst: mockSwarmFindFirst,
   };
 });
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-const mockGetServerSession = getServerSession as Mock;
 
 // Test Data Factories
 const TestDataFactory = {
@@ -138,7 +127,26 @@ const TestDataFactory = {
 
 // Test Helpers
 const TestHelpers = {
-  createMockRequest: (body: object) => {
+  createMockRequest: (body: object, authenticated = true) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    
+    if (authenticated) {
+      const user = TestDataFactory.createValidUser();
+      headers[MIDDLEWARE_HEADERS.USER_ID] = user.id;
+      headers[MIDDLEWARE_HEADERS.USER_EMAIL] = user.email;
+      headers[MIDDLEWARE_HEADERS.USER_NAME] = user.name;
+      headers[MIDDLEWARE_HEADERS.AUTH_STATUS] = "authenticated";
+      headers[MIDDLEWARE_HEADERS.REQUEST_ID] = crypto.randomUUID();
+    }
+    
+    return new NextRequest("http://localhost:3000/api/stakwork/create-customer", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  },
+
+  createUnauthenticatedRequest: (body: object) => {
     return new NextRequest("http://localhost:3000/api/stakwork/create-customer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,22 +154,10 @@ const TestHelpers = {
     });
   },
 
-  setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
-  },
-
-  setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
-  },
-
-  setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ user: null });
-  },
-
   expectAuthenticationError: async (response: Response) => {
     expect(response.status).toBe(401);
     const data = await response.json();
-    expect(data).toEqual({ error: "Unauthorized" });
+    expect(data.error).toBe("Unauthorized");
     expect(mockCreateCustomer).not.toHaveBeenCalled();
   },
 
@@ -254,45 +250,38 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, false);
       const response = await POST(request);
 
       await TestHelpers.expectAuthenticationError(response);
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      TestHelpers.setupSessionWithoutUser();
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, false);
       const response = await POST(request);
 
       await TestHelpers.expectAuthenticationError(response);
     });
 
     test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockGetServerSession).toHaveBeenCalled();
       expect(mockCreateCustomer).toHaveBeenCalled();
     });
   });
 
   describe("Request Validation", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should accept request with valid workspaceId", async () => {
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       expect(response.status).toBe(201);
@@ -303,7 +292,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse("test-token"));
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({});
+      const request = TestHelpers.createMockRequest({}, true);
       const response = await POST(request);
 
       expect(mockCreateCustomer).toHaveBeenCalledWith(undefined);
@@ -312,7 +301,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
     test("should handle null workspaceId", async () => {
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: null });
+      const request = TestHelpers.createMockRequest({ workspaceId: null }, true);
       const response = await POST(request);
 
       expect(mockCreateCustomer).toHaveBeenCalledWith(null);
@@ -321,14 +310,13 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Service Layer Integration", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should successfully call createCustomer with workspaceId", async () => {
       const token = "stakwork-token-123";
       MockSetup.setupSuccessfulCustomerCreation(token);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       expect(mockCreateCustomer).toHaveBeenCalledTimes(1);
@@ -345,7 +333,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(apiError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -360,7 +348,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(apiError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -375,7 +363,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(apiError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -384,14 +372,13 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Response Processing", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should extract token from valid response", async () => {
       const token = "valid-token-123";
       MockSetup.setupSuccessfulCustomerCreation(token);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectSuccessfulResponse(response, token);
@@ -401,7 +388,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockCreateCustomer.mockResolvedValue({ invalid: "response" });
       mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectInvalidResponseError(response);
@@ -411,7 +398,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockCreateCustomer.mockResolvedValue({ data: {} });
       mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectInvalidResponseError(response);
@@ -421,7 +408,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockCreateCustomer.mockResolvedValue({ data: null });
       mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectInvalidResponseError(response);
@@ -431,7 +418,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const token = "";
       MockSetup.setupSuccessfulCustomerCreation(token);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       expect(mockEncryptField).toHaveBeenCalledWith("stakworkApiKey", "");
@@ -441,7 +428,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Token Encryption", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should encrypt token with EncryptionService", async () => {
@@ -454,7 +440,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockEncryptField).toHaveBeenCalledTimes(1);
@@ -465,7 +451,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const token = "singleton-test-token";
       MockSetup.setupSuccessfulCustomerCreation(token);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       // The singleton is created at module level, so getInstance is called during import
@@ -481,7 +467,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       expect(response.status).toBe(201);
@@ -490,7 +476,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Database Operations", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should find workspace by workspaceId", async () => {
@@ -503,7 +488,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(workspace);
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-456" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-456" }, true);
       await POST(request);
 
       expect(mockWorkspaceFindFirst).toHaveBeenCalledWith({
@@ -522,7 +507,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(workspace);
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id });
+      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id }, true);
       await POST(request);
 
       expect(mockWorkspaceUpdate).toHaveBeenCalledWith({
@@ -540,7 +525,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceFindFirst.mockResolvedValue(null);
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "nonexistent-workspace" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "nonexistent-workspace" }, true);
       const response = await POST(request);
 
       expect(mockWorkspaceUpdate).not.toHaveBeenCalled();
@@ -557,7 +542,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(workspace);
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id });
+      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id }, true);
       await POST(request);
 
       expect(mockSwarmFindFirst).toHaveBeenCalledWith({
@@ -571,7 +556,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse("test-token"));
       mockWorkspaceFindFirst.mockRejectedValue(dbError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectGenericErrorResponse(response);
@@ -580,14 +565,13 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Secret Creation Logic", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should not create secret when swarm is not found", async () => {
       const token = "no-swarm-token";
       MockSetup.setupSuccessfulCustomerCreation(token);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockSwarmFindFirst).toHaveBeenCalled();
@@ -599,7 +583,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const swarmApiKey = "decrypted-swarm-key";
       MockSetup.setupWithSwarm(token, swarmApiKey);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockCreateSecret).toHaveBeenCalledWith("SWARM_API_KEY", swarmApiKey, token);
@@ -620,7 +604,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockDecryptField.mockReturnValue(swarmApiKey);
       mockCreateSecret.mockResolvedValue({ success: true });
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockCreateSecret).toHaveBeenCalledWith("CUSTOM_API_KEY", swarmApiKey, token);
@@ -647,7 +631,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateSecret.mockResolvedValue({ success: true });
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockDecryptField).toHaveBeenCalledTimes(2);
@@ -666,7 +650,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockSwarmFindFirst.mockResolvedValue(swarm);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockCreateSecret).not.toHaveBeenCalled();
@@ -684,7 +668,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockSwarmFindFirst.mockResolvedValue(swarm);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockCreateSecret).not.toHaveBeenCalled();
@@ -693,7 +677,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Error Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should handle ApiError with specific status codes", async () => {
@@ -734,10 +717,9 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       for (const { apiError } of apiErrorTestCases) {
         MockSetup.reset();
-        TestHelpers.setupAuthenticatedUser();
         mockCreateCustomer.mockRejectedValue(apiError);
 
-        const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+        const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
         const response = await POST(request);
 
         await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -759,7 +741,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(apiError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -770,7 +752,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(genericError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectGenericErrorResponse(response);
@@ -779,7 +761,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
     test("should handle string errors and return 500", async () => {
       mockCreateCustomer.mockRejectedValue("String error message");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectGenericErrorResponse(response);
@@ -788,7 +770,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
     test("should handle null/undefined errors and return 500", async () => {
       mockCreateCustomer.mockRejectedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectGenericErrorResponse(response);
@@ -802,7 +784,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(errorWithoutStatus);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       await TestHelpers.expectGenericErrorResponse(response);
@@ -814,7 +796,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockRejectedValue(testError);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -828,13 +810,12 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
   describe("Edge Cases", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should handle empty workspaceId string", async () => {
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "" }, true);
       const response = await POST(request);
 
       expect(mockCreateCustomer).toHaveBeenCalledWith("");
@@ -854,7 +835,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(workspace);
       mockSwarmFindFirst.mockResolvedValue(null);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id });
+      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id }, true);
       await POST(request);
 
       expect(mockWorkspaceUpdate).toHaveBeenCalled();
@@ -873,7 +854,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockSwarmFindFirst.mockResolvedValue(swarm);
       mockDecryptField.mockReturnValue("plaintext-key");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       expect(response.status).toBe(201);
@@ -883,7 +864,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const longWorkspaceId = "workspace-" + "a".repeat(1000);
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: longWorkspaceId });
+      const request = TestHelpers.createMockRequest({ workspaceId: longWorkspaceId }, true);
       const response = await POST(request);
 
       expect(mockCreateCustomer).toHaveBeenCalledWith(longWorkspaceId);
@@ -894,7 +875,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const specialWorkspaceId = "workspace-!@#$%^&*()";
       MockSetup.setupSuccessfulCustomerCreation("test-token");
 
-      const request = TestHelpers.createMockRequest({ workspaceId: specialWorkspaceId });
+      const request = TestHelpers.createMockRequest({ workspaceId: specialWorkspaceId }, true);
       const response = await POST(request);
 
       expect(mockCreateCustomer).toHaveBeenCalledWith(specialWorkspaceId);
@@ -913,7 +894,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockDecryptField.mockReturnValue(swarmApiKey);
       mockCreateSecret.mockRejectedValue(new Error("Secret creation failed"));
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       const response = await POST(request);
 
       // Should still return 500 due to error in createSecret
@@ -932,7 +913,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockSwarmFindFirst.mockResolvedValue(swarm);
 
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" }, true);
       await POST(request);
 
       expect(mockCreateSecret).not.toHaveBeenCalled();
