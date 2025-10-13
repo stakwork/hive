@@ -35,6 +35,7 @@ async function withRetry<T>(
 }
 
 export async function POST(request: NextRequest) {
+  let workspaceId: string | undefined;
   try {
     const session = await getServerSession(authOptions);
 
@@ -47,7 +48,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { swarmId, workspaceId, container_files } = body;
+    const { swarmId, workspaceId: bodyWorkspaceId, container_files } = body;
+    workspaceId = bodyWorkspaceId;
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
@@ -207,13 +209,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
     console.error("Error creating Pool Manager pool:", error);
-    const body = await request.json();
-    const { workspaceId } = body;
-
-    saveOrUpdateSwarm({
-      workspaceId,
-      poolState: 'FAILED',
-    });
+    
+    if (workspaceId) {
+      saveOrUpdateSwarm({
+        workspaceId,
+        poolState: 'FAILED',
+      });
+    }
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
