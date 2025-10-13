@@ -136,6 +136,22 @@ export function generateLongformResponse() {
   ]);
 }
 
+export function generateGraphResponse(refId: string) {
+  const messageId = generateUniqueId();
+
+  return makeRes("Here's the knowledge graph for that reference:", [
+    createArtifact({
+      id: "graph-artifact-1",
+      messageId: messageId,
+      type: ArtifactType.GRAPH,
+      content: {
+        ref_id: refId,
+        depth: 2,
+      },
+    }),
+  ]);
+}
+
 export function generateBugReportResponse(artifacts: { type: string; content: unknown }[]) {
   // Find BUG_REPORT artifacts
   const bugReportArtifacts = artifacts?.filter(artifact => artifact.type === "BUG_REPORT") || [];
@@ -181,6 +197,13 @@ export function generateResponseBasedOnMessage(
 
   if (process.env.MOCK_BROWSER_URL) {
     mockBrowserUrl = process.env.MOCK_BROWSER_URL;
+  }
+
+  // Check for "graph REF_ID" pattern
+  const graphMatch = message.match(/^graph\s+([a-zA-Z0-9-_]+)/i);
+  if (graphMatch) {
+    const refId = graphMatch[1];
+    return generateGraphResponse(refId);
   }
 
   if (messageText.includes("browser")) {

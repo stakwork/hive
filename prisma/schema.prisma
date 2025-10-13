@@ -461,6 +461,7 @@ enum ArtifactType {
   STREAM
   LONGFORM
   BUG_REPORT
+  GRAPH
 }
 
 // =============================================
