@@ -87,23 +87,30 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
+		console.log("do we get here? 1")
     // System and webhook routes bypass all authentication checks
     if (routeAccess === "webhook" || routeAccess === "system") {
+				console.log("do we get here? 1.5")
       return continueRequest(requestHeaders, routeAccess);
     }
+		console.log("do we get here? 2")
 
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
+				console.log("do we get here? 2.5")
       const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
       const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
       const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
       if (!hasValidCookie && !token) {
         if (pathname === "/") {
+				console.log("do we get here? 2.6")
           return continueRequest(requestHeaders, "landing_required");
         }
         if (pathname === "/api/auth/verify-landing") {
+				console.log("do we get here? 2.7")
           return continueRequest(requestHeaders, "landing_required");
         }
+				console.log("do we get here? 2.8")
         return redirectTo("/", request, { requestId, authStatus: "landing_required" });
       }
     }
@@ -114,12 +121,14 @@ export async function middleware(request: NextRequest) {
     }
 
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+		console.log("do we get here?")
     if (!token) {
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
       }
       return redirectTo("/", request, { requestId, authStatus: "unauthenticated" });
     } else {
+		  console.log("authorized")
       requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
