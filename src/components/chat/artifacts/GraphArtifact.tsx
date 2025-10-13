@@ -17,11 +17,14 @@ export function GraphArtifact({ content, workspaceSlug }: GraphArtifactProps) {
     );
   }
 
+  // Handle comma-separated ref_ids - take only the first one for now
+  const refId = content.ref_id.split(",")[0].trim();
+
   return (
     <Graph
       endpoint="/api/subgraph"
       params={{
-        ref_id: content.ref_id,
+        ref_id: refId,
         workspace: workspaceSlug || "",
         ...(content.depth && { depth: content.depth.toString() }),
       }}
