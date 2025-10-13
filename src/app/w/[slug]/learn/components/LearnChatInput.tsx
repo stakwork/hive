@@ -47,12 +47,14 @@ export function LearnChatInput({
 
   // Auto-start recording when in mic mode
   useEffect(() => {
-    if (mode === "mic" && isSupported && !isListening) {
+    if (mode === "mic" && isSupported) {
       startListening();
-    } else if (mode !== "mic" && isListening) {
-      stopListening();
+      return () => {
+        stopListening();
+      };
     }
-  }, [mode, isSupported, isListening, startListening, stopListening]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isSupported]);
 
   // Auto-scroll textarea to bottom when content changes
   useEffect(() => {
