@@ -72,7 +72,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <Card className="bg-card text-card-foreground">
+      <Card className="bg-card text-card-foreground" data-testid="onboarding-welcome-step">
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
             <Image src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
@@ -91,6 +91,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             onChange={(e) => handleRepositoryUrlChange(e.target.value)}
             onKeyPress={handleKeyPress}
             className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
+            data-testid="onboarding-repo-url-input"
           />
           {error && (
             <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
@@ -101,7 +102,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
         </div>
 
         <div className="flex flex-col items-center gap-3">
-          <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()}>
+          <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()} data-testid="onboarding-get-started-button">
             Get Started
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

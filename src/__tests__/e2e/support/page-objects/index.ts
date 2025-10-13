@@ -5,5 +5,6 @@
 
 export { AuthPage } from './AuthPage';
 export { DashboardPage } from './DashboardPage';
+export { OnboardingPage } from './OnboardingPage';
 export { TasksPage } from './TasksPage';
 export { WorkspaceSettingsPage } from './WorkspaceSettingsPage';

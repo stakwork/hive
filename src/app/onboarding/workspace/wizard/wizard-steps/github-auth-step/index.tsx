@@ -80,7 +80,7 @@ export function GithubAuthStep() {
   };
 
   return (
-    <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
+    <Card className="max-w-2xl mx-auto bg-card text-card-foreground" data-testid="onboarding-github-auth-step">
       <CardHeader className="text-center pb-6">
         <CardTitle className="text-2xl font-bold">
           Welcome to Hive

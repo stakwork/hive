@@ -226,7 +226,7 @@ export function ProjectNameSetupStep() {
 
 
   return (
-    <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
+    <Card className="max-w-2xl mx-auto bg-card text-card-foreground" data-testid="onboarding-project-name-step">
       <CardHeader className="text-center">
         <ErrorDisplay error={error} className="mb-4" />
         {!swarmIsLoading && (
@@ -381,6 +381,7 @@ export function ProjectNameSetupStep() {
                     placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter workspace name"}
                     value={isLookingForAvailableName ? "" : projectName}
                     className={`${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
+                    data-testid="onboarding-project-name-input"
                     onChange={(e) => {
                       // Remove spaces and convert to lowercase
                       const value = e.target.value.replace(/\s+/g, '').toLowerCase();
@@ -398,6 +399,7 @@ export function ProjectNameSetupStep() {
                     type="button"
                     onClick={resetProgress}
                     className="text-muted-foreground"
+                    data-testid="onboarding-cancel-button"
                   >
                     Cancel
                   </Button>
@@ -406,6 +408,7 @@ export function ProjectNameSetupStep() {
                     className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
                     type="button"
                     onClick={handleCreateWorkspace}
+                    data-testid="onboarding-create-button"
                   >
                     Create
                     <ArrowRight className="w-4 h-4 ml-2" />

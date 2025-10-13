@@ -126,11 +126,25 @@ export const selectors = {
 
   // Onboarding
   onboarding: {
+    // Steps
+    welcomeStep: '[data-testid="onboarding-welcome-step"]',
+    githubAuthStep: '[data-testid="onboarding-github-auth-step"]',
+    projectNameStep: '[data-testid="onboarding-project-name-step"]',
+    
+    // Welcome step elements
+    repoUrlInput: '[data-testid="onboarding-repo-url-input"]',
+    getStartedButton: '[data-testid="onboarding-get-started-button"]',
+    
+    // Project name step elements
+    projectNameInput: '[data-testid="onboarding-project-name-input"]',
+    createButton: '[data-testid="onboarding-create-button"]',
+    cancelButton: '[data-testid="onboarding-cancel-button"]',
+    
+    // Legacy selectors (kept for backwards compatibility)
     welcomeText: 'text=/Welcome|Get Started|Create.*Workspace/i',
     nextButton: 'button:has-text("Next"), button:has-text("Continue")',
     backButton: 'button:has-text("Back"), button:has-text("Previous")',
     nameInput: 'input[name="name"], input[placeholder*="workspace" i]',
-    createButton: 'button:has-text("Create")',
   },
 
   // Common UI elements
