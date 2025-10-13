@@ -416,12 +416,9 @@ describe("callStakworkAPI", () => {
     test("handles network errors gracefully", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
-      const result = await callStakworkAPI(createTestParams());
-
-      expect(result).toEqual({
-        success: false,
-        error: "Network error",
-      });
+      await expect(callStakworkAPI(createTestParams())).rejects.toThrow(
+        "Network error"
+      );
     });
 
     test("handles JSON parsing errors", async () => {
@@ -432,23 +429,17 @@ describe("callStakworkAPI", () => {
         },
       } as any);
 
-      const result = await callStakworkAPI(createTestParams());
-
-      expect(result).toEqual({
-        success: false,
-        error: "Invalid JSON",
-      });
+      await expect(callStakworkAPI(createTestParams())).rejects.toThrow(
+        "Invalid JSON"
+      );
     });
 
     test("handles timeout errors", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Request timeout"));
 
-      const result = await callStakworkAPI(createTestParams());
-
-      expect(result).toEqual({
-        success: false,
-        error: "Request timeout",
-      });
+      await expect(callStakworkAPI(createTestParams())).rejects.toThrow(
+        "Request timeout"
+      );
     });
   });
 
