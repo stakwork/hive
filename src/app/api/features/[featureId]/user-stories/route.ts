@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { createUserStory } from "@/services/roadmap";
 import type {
@@ -13,9 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { featureId } = await params;
 
@@ -34,7 +32,7 @@ export async function GET(
             deleted: true,
             members: {
               where: {
-                userId: userOrResponse.id,
+                userId: userId,
               },
               select: {
                 role: true,
@@ -60,7 +58,7 @@ export async function GET(
     }
 
     // Check if user is workspace owner or member
-    const isOwner = feature.workspace.ownerId === userOrResponse.id;
+    const isOwner = feature.workspace.ownerId === userId;
     const isMember = feature.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
@@ -122,14 +120,12 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { featureId } = await params;
     const body: CreateUserStoryRequest = await request.json();
 
-    const userStory = await createUserStory(featureId, userOrResponse.id, body);
+    const userStory = await createUserStory(featureId, userId, body);
 
     return NextResponse.json<UserStoryResponse>(
       {

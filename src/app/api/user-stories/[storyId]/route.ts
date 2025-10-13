@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { updateUserStory, deleteUserStory } from "@/services/roadmap";
 
 export async function PATCH(
@@ -7,14 +7,12 @@ export async function PATCH(
   { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { storyId } = await params;
     const body = await request.json();
 
-    const updatedStory = await updateUserStory(storyId, userOrResponse.id, body);
+    const updatedStory = await updateUserStory(storyId, userId, body);
 
     return NextResponse.json(
       {
@@ -39,13 +37,11 @@ export async function DELETE(
   { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { storyId } = await params;
 
-    await deleteUserStory(storyId, userOrResponse.id);
+    await deleteUserStory(storyId, userId);
 
     return NextResponse.json(
       {

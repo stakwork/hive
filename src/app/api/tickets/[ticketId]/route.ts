@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { getTicket, updateTicket, deleteTicket } from "@/services/roadmap";
 import type { UpdateTicketRequest, TicketResponse, TicketDetail } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
@@ -9,13 +9,11 @@ export async function GET(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { ticketId } = await params;
 
-    const ticket = await getTicket(ticketId, userOrResponse.id);
+    const ticket = await getTicket(ticketId, userId);
 
     return NextResponse.json<ApiSuccessResponse<TicketDetail>>(
       {
@@ -39,14 +37,12 @@ export async function PATCH(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { ticketId } = await params;
     const body: UpdateTicketRequest = await request.json();
 
-    const ticket = await updateTicket(ticketId, userOrResponse.id, body);
+    const ticket = await updateTicket(ticketId, userId, body);
 
     return NextResponse.json<TicketResponse>(
       {
@@ -75,13 +71,11 @@ export async function DELETE(
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { ticketId } = await params;
 
-    await deleteTicket(ticketId, userOrResponse.id);
+    await deleteTicket(ticketId, userId);
 
     return NextResponse.json(
       {

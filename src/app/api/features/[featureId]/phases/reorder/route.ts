@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { reorderPhases } from "@/services/roadmap";
 import type { ReorderPhasesRequest, PhaseListResponse } from "@/types/roadmap";
 
@@ -8,14 +8,12 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { featureId } = await params;
     const body: ReorderPhasesRequest = await request.json();
 
-    const phases = await reorderPhases(featureId, userOrResponse.id, body.phases);
+    const phases = await reorderPhases(featureId, userId, body.phases);
 
     return NextResponse.json<PhaseListResponse>(
       {

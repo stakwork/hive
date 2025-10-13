@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { createPhase } from "@/services/roadmap";
 import type { CreatePhaseRequest, PhaseResponse } from "@/types/roadmap";
 
@@ -8,14 +8,12 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { featureId } = await params;
     const body: CreatePhaseRequest = await request.json();
 
-    const phase = await createPhase(featureId, userOrResponse.id, body);
+    const phase = await createPhase(featureId, userId, body);
 
     return NextResponse.json<PhaseResponse>(
       {

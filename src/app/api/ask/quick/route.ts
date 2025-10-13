@@ -9,15 +9,13 @@ import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequest) {
   try {
-  const context = getMiddlewareContext(request);
-  const userOrResponse = requireAuth(context);
-  if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
@@ -30,7 +28,7 @@ export async function GET(request: NextRequest) {
       throw validationError("Missing required parameter: workspace");
     }
 
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId);
     if (!workspaceAccess.hasAccess) {
       throw forbiddenError("Workspace not found or access denied");
     }
@@ -69,7 +67,7 @@ export async function GET(request: NextRequest) {
       throw notFoundError("Workspace not found");
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(userId, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {

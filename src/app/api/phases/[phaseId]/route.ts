@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { getPhase, updatePhase, deletePhase } from "@/services/roadmap";
 import type { UpdatePhaseRequest, PhaseResponse, PhaseWithTickets } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
@@ -9,13 +9,11 @@ export async function GET(
   { params }: { params: Promise<{ phaseId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { phaseId } = await params;
 
-    const phase = await getPhase(phaseId, userOrResponse.id);
+    const phase = await getPhase(phaseId, userId);
 
     return NextResponse.json<ApiSuccessResponse<PhaseWithTickets>>(
       {
@@ -39,14 +37,12 @@ export async function PATCH(
   { params }: { params: Promise<{ phaseId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { phaseId } = await params;
     const body: UpdatePhaseRequest = await request.json();
 
-    const phase = await updatePhase(phaseId, userOrResponse.id, body);
+    const phase = await updatePhase(phaseId, userId, body);
 
     return NextResponse.json<PhaseResponse>(
       {
@@ -71,13 +67,11 @@ export async function DELETE(
   { params }: { params: Promise<{ phaseId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { phaseId } = await params;
 
-    await deletePhase(phaseId, userOrResponse.id);
+    await deletePhase(phaseId, userId);
 
     return NextResponse.json(
       {

@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { reorderTickets } from "@/services/roadmap";
 import type { ReorderTicketsRequest, TicketListResponse } from "@/types/roadmap";
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const body: ReorderTicketsRequest = await request.json();
 
-    const tickets = await reorderTickets(userOrResponse.id, body.tickets);
+    const tickets = await reorderTickets(userId, body.tickets);
 
     return NextResponse.json<TicketListResponse>(
       {
