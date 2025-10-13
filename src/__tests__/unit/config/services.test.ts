@@ -81,7 +81,7 @@ describe("getServiceConfig", () => {
       });
       expect(config.baseURL).toBe(process.env.SWARM_SUPER_ADMIN_URL || "");
       expect(config.apiKey).toBe(""); // Added under x-user-token
-      expect(config.timeout).toBe(120000); // 2 minutes timeout
+      expect(config.timeout).toBe(600000); // 10 minutes timeout
       expect(config.headers).toHaveProperty("Content-Type", "application/json");
     });
   });
@@ -223,7 +223,9 @@ describe("getServiceConfig", () => {
         // Timeout should be reasonable for service calls
         if (config.timeout) {
           expect(config.timeout).toBeGreaterThan(0);
-          expect(config.timeout).toBeLessThanOrEqual(300000); // Max 5 minutes
+          // Swarm service needs longer timeout for complex operations
+          const maxTimeout = serviceName === "swarm" ? 600000 : 300000; // 10 minutes for swarm, 5 minutes for others
+          expect(config.timeout).toBeLessThanOrEqual(maxTimeout);
         }
         
         // Headers should be properly formatted if present

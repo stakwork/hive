@@ -43,11 +43,10 @@ export async function POST(request: NextRequest) {
       data: { githubState: state },
     });
 
-    // Get workspace and optionally its swarm (only if repositoryUrl param not provided)
+    // Get workspace
     const workspace = await db.workspace.findUnique({
       where: { slug: workspaceSlug },
       include: {
-        swarm: !repositoryUrl, // Only include swarm if repositoryUrl not provided
         sourceControlOrg: true,
       },
     });
@@ -59,8 +58,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get repository URL from parameter or workspace swarm
-    const repoUrl = repositoryUrl || workspace?.swarm?.repositoryUrl;
+    // Get repository URL from parameter or primary repository
+    let repoUrl = repositoryUrl;
+    if (!repoUrl) {
+      const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+      const primaryRepo = await getPrimaryRepository(workspace.id);
+      repoUrl = primaryRepo?.repositoryUrl;
+    }
 
     if (!repoUrl) {
       return NextResponse.json(

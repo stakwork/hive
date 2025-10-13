@@ -1,5 +1,4 @@
 import { authOptions } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
@@ -29,6 +28,50 @@ export async function GET(request: Request) {
         error: "Missing required parameter: repositoryUrl"
       }, { status: 400 });
     }
+
+    // Validate workspace access
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      return NextResponse.json({
+        canFetchData: false,
+        error: "Workspace not found or access denied"
+      }, { status: 403 });
+    }
+
+    // Get workspace
+    const { db } = await import("@/lib/db");
+    const workspace = await db.workspace.findUnique({
+      where: { slug: workspaceSlug },
+    });
+
+    if (!workspace) {
+      return NextResponse.json({
+        canFetchData: false,
+        error: "Workspace not found"
+      }, { status: 404 });
+    }
+
+    // Use repositoryUrl parameter first, fall back to primary repository
+    let repoUrl: string | null = repositoryUrl;
+    if (!repoUrl) {
+      const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+      const primaryRepo = await getPrimaryRepository(workspace.id);
+      repoUrl = primaryRepo?.repositoryUrl ?? null;
+    }
+
+    if (!repoUrl) {
+      return NextResponse.json({
+        canFetchData: false,
+        error: "No repository URL provided in parameter or workspace configuration"
+      }, { status: 400 });
+    }
+
+    console.log("[REPO CHECK] Starting repository data fetch check:", {
+      userId: session.user.id,
+      workspaceSlug,
+      repositoryUrl: repoUrl,
+      source: repositoryUrl ? "parameter" : "primary_repository",
+    });
 
     // Extract owner and repo name from repository URL
     const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);

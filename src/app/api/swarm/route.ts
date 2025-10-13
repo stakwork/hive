@@ -1,12 +1,13 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
+import { db } from "@/lib/db";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { SwarmStatus } from "@prisma/client";
+import { RepositoryStatus, SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -28,9 +29,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, repositoryName, repositoryUrl, repositoryDescription, repositoryDefaultBranch } = body;
+    const { workspaceId, name, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
 
-    if (!workspaceId || !repositoryName || !repositoryUrl) {
+    if (!workspaceId || !name || !repositoryUrl) {
       return NextResponse.json(
         {
           success: false,
@@ -86,10 +87,6 @@ export async function POST(request: NextRequest) {
       name: swarm_id, // Use swarm_id as name so subsequent API requests can succeed
       instanceType: instance_type,
       status: SwarmStatus.ACTIVE,
-      repositoryName: repositoryName || "",
-      repositoryUrl: repositoryUrl || "",
-      repositoryDescription: repositoryDescription || "",
-      defaultBranch: repositoryDefaultBranch || "",
       swarmUrl: `https://${swarm_address}/api`,
       ec2Id: ec2_id,
       swarmApiKey: x_api_key,
@@ -100,6 +97,22 @@ export async function POST(request: NextRequest) {
 
     if (!createdSwarm) {
       return NextResponse.json({ success: false, message: "Failed to create swarm record" }, { status: 500 });
+    }
+
+    // Create repository record in the database
+    if (repositoryUrl) {
+      const repoName = repositoryName || repositoryUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
+      const branch = repositoryDefaultBranch || "main";
+
+      await db.repository.create({
+        data: {
+          name: repoName,
+          repositoryUrl,
+          branch,
+          workspaceId,
+          status: RepositoryStatus.PENDING,
+        },
+      });
     }
 
     return NextResponse.json({

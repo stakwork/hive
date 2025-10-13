@@ -119,10 +119,7 @@ function SignInContent() {
 
         <Card className="border-0 shadow-xl bg-card text-card-foreground">
           <CardHeader className="text-center pb-6">
-            <CardTitle className="text-2xl font-bold">Welcome to Hive</CardTitle>
-            <CardDescription className="text-base">
-              Sign in to start managing your products with clarity and confidence
-            </CardDescription>
+            <CardTitle className="text-2xl font-bold">Hive</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             {providers?.github && (

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "@/app/api/learnings/route";
 import { db } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
 import { EncryptionService } from "@/lib/encryption";
 import {
   createTestWorkspaceScenario,
@@ -9,12 +8,12 @@ import {
 } from "@/__tests__/support/fixtures";
 import {
   createGetRequest,
+  createAuthenticatedGetRequest,
   generateUniqueId,
 } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 
-vi.mock("next-auth/next");
-const getMockedSession = vi.mocked(getServerSession);
+
 
 describe("GET /api/learnings - Authorization", () => {
   let owner: User;
@@ -78,12 +77,9 @@ describe("GET /api/learnings - Authorization", () => {
     vi.restoreAllMocks();
   });
 
-  it("should return 401 for unauthenticated requests", async () => {
-    getMockedSession.mockResolvedValue(null);
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
-    );
+  it("should return 401 for unauthenticated requests", async () => {
+    const request = createGetRequest(`/api/learnings?workspace=${workspace.slug}`);
     const response = await GET(request);
 
     expect(response.status).toBe(401);
@@ -92,12 +88,7 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should return 400 when workspace parameter is missing", async () => {
-    getMockedSession.mockResolvedValue({
-      user: { id: owner.id, email: owner.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
-    const request = createGetRequest("/api/learnings");
+    const request = createAuthenticatedGetRequest("/api/learnings", owner);
     const response = await GET(request);
 
     expect(response.status).toBe(400);
@@ -106,13 +97,9 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should return 403 for non-member access", async () => {
-    getMockedSession.mockResolvedValue({
-      user: { id: nonMember.id, email: nonMember.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      nonMember
     );
     const response = await GET(request);
 
@@ -127,13 +114,9 @@ describe("GET /api/learnings - Authorization", () => {
       data: { deleted: true, deletedAt: new Date() },
     });
 
-    getMockedSession.mockResolvedValue({
-      user: { id: owner.id, email: owner.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -143,11 +126,6 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should allow VIEWER role to access learnings", async () => {
-    getMockedSession.mockResolvedValue({
-      user: { id: memberViewer.id, email: memberViewer.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
@@ -155,8 +133,9 @@ describe("GET /api/learnings - Authorization", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      memberViewer
     );
     const response = await GET(request);
 
@@ -175,11 +154,6 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should allow DEVELOPER role to access learnings", async () => {
-    getMockedSession.mockResolvedValue({
-      user: { id: memberDeveloper.id, email: memberDeveloper.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
@@ -187,8 +161,9 @@ describe("GET /api/learnings - Authorization", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      memberDeveloper
     );
     const response = await GET(request);
 
@@ -197,11 +172,6 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should allow ADMIN role to access learnings", async () => {
-    getMockedSession.mockResolvedValue({
-      user: { id: memberAdmin.id, email: memberAdmin.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
@@ -209,8 +179,9 @@ describe("GET /api/learnings - Authorization", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      memberAdmin
     );
     const response = await GET(request);
 
@@ -219,11 +190,6 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should allow OWNER role to access learnings", async () => {
-    getMockedSession.mockResolvedValue({
-      user: { id: owner.id, email: owner.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
@@ -231,8 +197,9 @@ describe("GET /api/learnings - Authorization", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -276,10 +243,7 @@ describe("GET /api/learnings - Data Integrity", () => {
       });
     });
 
-    getMockedSession.mockResolvedValue({
-      user: { id: owner.id, email: owner.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
+    // No NextAuth mock needed; use authenticated request
   });
 
   afterEach(() => {
@@ -291,13 +255,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       owner: { name: "No Swarm Owner" },
     });
 
-    getMockedSession.mockResolvedValue({
-      user: { id: newScenario.owner.id, email: newScenario.owner.email },
-      expires: new Date(Date.now() + 86400000).toISOString(),
-    });
-
-    const request = createGetRequest(
-      `/api/learnings?workspace=${newScenario.workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${newScenario.workspace.slug}`,
+      newScenario.owner
     );
     const response = await GET(request);
 
@@ -312,8 +272,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       data: { swarmUrl: null },
     });
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -330,8 +291,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -356,8 +318,9 @@ describe("GET /api/learnings - Data Integrity", () => {
     );
 
     const testQuestion = "How do I implement authentication?";
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}&question=${encodeURIComponent(testQuestion)}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&question=${encodeURIComponent(testQuestion)}`,
+      owner
     );
     const response = await GET(request);
 
@@ -392,8 +355,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -417,8 +381,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -432,8 +397,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       new Error("Network error: Connection timeout")
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     const response = await GET(request);
 
@@ -450,8 +416,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     await GET(request);
 
@@ -479,8 +446,9 @@ describe("GET /api/learnings - Data Integrity", () => {
       })
     );
 
-    const request = createGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}`,
+      owner
     );
     await GET(request);
 

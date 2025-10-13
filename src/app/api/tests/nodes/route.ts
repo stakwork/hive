@@ -60,11 +60,14 @@ function buildQueryString(params: ParsedParams): string {
   return q.toString();
 }
 
-function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null): string {
+function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, repo?: string | null): string {
   const queryString = buildQueryString(params);
   const q = new URLSearchParams(queryString);
   if (ignoreDirs) {
     q.set("ignore_dirs", ignoreDirs);
+  }
+  if (repo) {
+    q.set("repo", repo);
   }
   return `/tests/nodes?${q.toString()}`;
 }
@@ -153,6 +156,7 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId") || searchParams.get("id");
     const swarmId = searchParams.get("swarmId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
+    const repoParam = searchParams.get("repo");
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
@@ -174,7 +178,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs);
+    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs, repoParam);
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";

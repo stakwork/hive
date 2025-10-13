@@ -354,7 +354,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     test("should handle external service errors gracefully", async () => {
       const serviceError = new Error("External service unavailable");
       (serviceError as any).status = 503;
-      (serviceError as any).message = "Service temporarily unavailable";
+      serviceError.message = "Service temporarily unavailable";
 
       mockSwarmServiceInstance.createSwarm.mockRejectedValue(serviceError);
 
@@ -381,7 +381,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(500);
       expect(data.success).toBe(false);
       expect(data.message).toBe("Unknown error while creating swarm");
-      
+
       // Verify sensitive info from error is not exposed
       expect(JSON.stringify(data)).not.toContain("api-key-secret-123");
     });
@@ -400,7 +400,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200); // Should still succeed
-      
+
       // Verify it handles undefined values gracefully
       const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
       expect(saveCall).toMatchObject({
@@ -443,10 +443,6 @@ describe("POST /api/swarm - Unit Tests", () => {
         name: "swarm-456", // Uses swarm_id as name
         instanceType: "m6i.xlarge",
         status: SwarmStatus.ACTIVE,
-        repositoryName: "test-repo",
-        repositoryUrl: "https://github.com/test/repo",
-        repositoryDescription: "Test repository",
-        defaultBranch: "main",
         swarmUrl: "https://test-swarm.sphinx.chat/api",
         ec2Id: "i-1234567890abcdef0",
         swarmApiKey: "api-key-123",

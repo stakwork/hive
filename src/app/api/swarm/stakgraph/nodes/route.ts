@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("id");
     const nodeType = searchParams.get("node_type");
 
-    console.log('workspaceId', workspaceId)
+    console.log('workspaceId', workspaceId, nodeType)
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
@@ -39,11 +39,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:3355`;
+
+
+    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:8444`;
+
 
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
-      endpoint: `/graph?limit=200&node_types=${nodeType}`,
+      endpoint: `graph/search/latest`,
       method: "GET",
       apiKey: swarm.swarmApiKey,
     });

@@ -2,12 +2,16 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-async function checkRepositoryAccess(accessToken: string, repoUrl: string): Promise<{
+async function checkRepositoryAccess(
+  accessToken: string,
+  repoUrl: string,
+): Promise<{
   hasAccess: boolean;
   canPush: boolean;
   repositoryData?: {
@@ -23,7 +27,7 @@ async function checkRepositoryAccess(accessToken: string, repoUrl: string): Prom
     // Extract owner/repo from URL
     const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
     if (!githubMatch) {
-      return { hasAccess: false, canPush: false, error: 'invalid_repository_url' };
+      return { hasAccess: false, canPush: false, error: "invalid_repository_url" };
     }
 
     const [, owner, repo] = githubMatch;
@@ -31,8 +35,8 @@ async function checkRepositoryAccess(accessToken: string, repoUrl: string): Prom
     // Check if we can access the repository
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/vnd.github.v3+json',
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.v3+json",
       },
     });
 
@@ -40,7 +44,8 @@ async function checkRepositoryAccess(accessToken: string, repoUrl: string): Prom
       const repositoryData = await response.json();
 
       // Check push permissions
-      const canPush = repositoryData.permissions?.push === true ||
+      const canPush =
+        repositoryData.permissions?.push === true ||
         repositoryData.permissions?.admin === true ||
         repositoryData.permissions?.maintain === true;
 
@@ -55,19 +60,19 @@ async function checkRepositoryAccess(accessToken: string, repoUrl: string): Prom
           full_name: repositoryData.full_name,
           private: repositoryData.private,
           default_branch: repositoryData.default_branch,
-          permissions: repositoryData.permissions
-        }
+          permissions: repositoryData.permissions,
+        },
       };
     } else if (response.status === 404) {
-      return { hasAccess: false, canPush: false, error: 'repository_not_found_or_no_access_2' };
+      return { hasAccess: false, canPush: false, error: "repository_not_found_or_no_access" };
     } else if (response.status === 403) {
-      return { hasAccess: false, canPush: false, error: 'access_forbidden' };
+      return { hasAccess: false, canPush: false, error: "access_forbidden" };
     } else {
       return { hasAccess: false, canPush: false, error: `http_error_${response.status}` };
     }
   } catch (error) {
-    console.error('Error checking repository access:', error);
-    return { hasAccess: false, canPush: false, error: 'network_error' };
+    console.error("Error checking repository access:", error);
+    return { hasAccess: false, canPush: false, error: "network_error" };
   }
 }
 
@@ -122,10 +127,9 @@ export async function GET(request: NextRequest) {
     console.log("setupAction", setupAction);
     console.log("code", code);
 
-
-    console.log('state--state--state')
-    console.log(state)
-    console.log('state--state--state')
+    console.log("state--state--state");
+    console.log(state);
+    console.log("state--state--state");
 
     // Validate required parameters
     if (!state) {
@@ -215,7 +219,7 @@ export async function GET(request: NextRequest) {
       if (installationsResponse.ok) {
         const installationsData = await installationsResponse.json();
 
-        console.log('installationsData', installationsData)
+        console.log("installationsData", installationsData);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const installation = installationsData.installations?.find((inst: any) => inst.id === parseInt(installationId));
 
@@ -247,7 +251,7 @@ export async function GET(request: NextRequest) {
       // Look up the workspace to see which SourceControlOrg it's linked to
       const workspace = await db.workspace.findUnique({
         where: { slug: workspaceSlug },
-        include: { sourceControlOrg: true }
+        include: { sourceControlOrg: true },
       });
 
       if (workspace?.sourceControlOrg) {
@@ -257,45 +261,53 @@ export async function GET(request: NextRequest) {
         console.log(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`);
       } else {
         // Workspace not linked yet - extract GitHub org from repository URL
-        const workspaceWithSwarm = await db.workspace.findUnique({
+        const workspace = await db.workspace.findUnique({
           where: { slug: workspaceSlug },
-          include: { swarm: true }
         });
 
-        if (workspaceWithSwarm?.swarm?.repositoryUrl) {
-          // Extract GitHub org/user from repository URL (same logic as install route)
-          const repoUrl = workspaceWithSwarm.swarm.repositoryUrl;
-          const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
+        if (workspace) {
+          const primaryRepo = await getPrimaryRepository(workspace.id);
+          const repoUrl = primaryRepo?.repositoryUrl;
 
-          if (githubMatch) {
-            const repoGithubOwner = githubMatch[1];
-            console.log(`📂 Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
+          if (repoUrl) {
+            const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
 
-            // Check if user already has tokens for this GitHub owner
-            const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
-              where: { githubLogin: repoGithubOwner }
-            });
+            if (githubMatch) {
+              const repoGithubOwner = githubMatch[1];
+              console.log(`Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
 
-            if (existingSourceControlOrg) {
-              // User already has access to this GitHub org - use it
-              githubOwner = repoGithubOwner;
-              ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
-              console.log(`♻️ Found existing SourceControlOrg for ${repoGithubOwner}, reusing for workspace ${workspaceSlug}`);
+              const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
+                where: { githubLogin: repoGithubOwner },
+              });
+
+              if (existingSourceControlOrg) {
+                githubOwner = repoGithubOwner;
+                ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
+                console.log(
+                  ` Found existing SourceControlOrg for ${repoGithubOwner}, reusing for workspace ${workspaceSlug}`,
+                );
+              } else {
+                // No existing SourceControlOrg for this GitHub owner - this shouldn't happen in OAuth flow
+                console.log(` No SourceControlOrg found for ${repoGithubOwner}, falling back to authenticated user`);
+                githubOwner = githubUser.login;
+                ownerType = "user";
+              }
             } else {
-              // No existing SourceControlOrg for this GitHub owner - this shouldn't happen in OAuth flow
-              console.log(`⚠️ No SourceControlOrg found for ${repoGithubOwner}, falling back to authenticated user`);
+              // Invalid repository URL - fallback to authenticated user
+              console.log(`Could not extract GitHub owner from repo URL: ${repoUrl}`);
               githubOwner = githubUser.login;
               ownerType = "user";
             }
           } else {
-            // Invalid repository URL - fallback to authenticated user
-            console.log(`⚠️ Could not extract GitHub owner from repo URL: ${repoUrl}`);
+            // No repository URL - fallback to authenticated user
+            console.log(
+              ` Workspace ${workspaceSlug} has no repository URL, using authenticated user: ${githubUser.login}`,
+            );
             githubOwner = githubUser.login;
             ownerType = "user";
           }
         } else {
-          // No repository URL - fallback to authenticated user
-          console.log(`⚠️ Workspace ${workspaceSlug} has no repository URL, using authenticated user: ${githubUser.login}`);
+          console.log(` Workspace ${workspaceSlug} not found, using authenticated user: ${githubUser.login}`);
           githubOwner = githubUser.login;
           ownerType = "user";
         }
@@ -400,7 +412,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Link the workspace to the source control org and check repository access
-    let repositoryAccessStatus = 'unknown';
+    let repositoryAccessStatus = "unknown";
 
     if (setupAction === "install" || setupAction === "update" || !setupAction) {
       console.log(`Linking workspace ${workspaceSlug} to SourceControlOrg ${githubOwner}`);
@@ -416,11 +428,15 @@ export async function GET(request: NextRequest) {
       // Check repository access after linking
       const workspace = await db.workspace.findUnique({
         where: { slug: workspaceSlug },
-        include: { swarm: true }
       });
 
-      // Try to get repository URL from localStorage data or from existing swarm
-      let targetRepositoryUrl = workspace?.swarm?.repositoryUrl;
+      // Try to get repository URL from localStorage data or primary repository
+      let targetRepositoryUrl: string | undefined;
+
+      if (workspace) {
+        const primaryRepo = await getPrimaryRepository(workspace.id);
+        targetRepositoryUrl = primaryRepo?.repositoryUrl;
+      }
 
       // If no swarm yet, try to reconstruct from the state data
       if (!targetRepositoryUrl) {
@@ -439,28 +455,27 @@ export async function GET(request: NextRequest) {
 
           if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
             console.log(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);
-            repositoryAccessStatus = 'accessible';
+            repositoryAccessStatus = "accessible";
           } else if (repositoryAccess.hasAccess && !repositoryAccess.canPush) {
             console.log(`❌ GitHub App has read-only access to repository: ${targetRepositoryUrl}`);
-            console.log('🚫 Blocking swarm setup - push permissions required');
-            repositoryAccessStatus = 'read_only_blocked';
+            console.log("🚫 Blocking swarm setup - push permissions required");
+            repositoryAccessStatus = "read_only_blocked";
           } else {
             console.log(`❌ GitHub App does not have access to repository: ${targetRepositoryUrl}`);
             console.log(`Error: ${repositoryAccess.error}`);
-            console.log('🚫 Blocking swarm setup - no repository access');
-            repositoryAccessStatus = repositoryAccess.error || 'no_access';
+            console.log("🚫 Blocking swarm setup - no repository access");
+            repositoryAccessStatus = repositoryAccess.error || "no_access";
           }
         } catch (error) {
-          console.error('Error checking repository access:', error);
-          console.log('🚫 Blocking swarm setup - permission check failed');
-          repositoryAccessStatus = 'check_failed';
+          console.error("Error checking repository access:", error);
+          console.log("🚫 Blocking swarm setup - permission check failed");
+          repositoryAccessStatus = "check_failed";
         }
       } else {
-        console.log('⚠️ No repository URL found to check access');
-        console.log('🚫 Blocking swarm setup - no repository URL');
-        repositoryAccessStatus = 'no_repository_url';
+        console.log("⚠️ No repository URL found to check access");
+        console.log("🚫 Blocking swarm setup - no repository URL");
+        repositoryAccessStatus = "no_repository_url";
       }
-
     } else if (setupAction === "uninstall") {
       console.log(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`);
 
@@ -475,9 +490,9 @@ export async function GET(request: NextRequest) {
 
     // Redirect to the workspace page with setup action and repository access status
     const redirectUrl = new URL(`/w/${workspaceSlug}`, request.url);
-    redirectUrl.searchParams.set('github_setup_action', setupAction || 'connected');
-    if (repositoryAccessStatus !== 'unknown') {
-      redirectUrl.searchParams.set('repository_access', repositoryAccessStatus);
+    redirectUrl.searchParams.set("github_setup_action", setupAction || "connected");
+    if (repositoryAccessStatus !== "unknown") {
+      redirectUrl.searchParams.set("repository_access", repositoryAccessStatus);
     }
 
     return NextResponse.redirect(redirectUrl);

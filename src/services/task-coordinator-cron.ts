@@ -118,11 +118,12 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
             // Use the existing acceptJanitorRecommendation service
             const { acceptJanitorRecommendation } = await import("@/services/janitor");
 
-            // Accept the recommendation - this will create a task with sourceType: JANITOR
+            // Accept the recommendation - this will create a task with sourceType: TASK_COORDINATOR
             await acceptJanitorRecommendation(
               recommendation.id,
               workspace.owner.id, // Use workspace owner as the accepting user
-              {} // No specific assignee or repository
+              {}, // No specific assignee or repository
+              "TASK_COORDINATOR" // Mark as auto-accepted by Task Coordinator
             );
 
             tasksCreated++;
