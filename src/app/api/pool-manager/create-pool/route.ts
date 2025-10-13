@@ -35,6 +35,10 @@ async function withRetry<T>(
 }
 
 export async function POST(request: NextRequest) {
+  // Read body early to avoid double-read errors
+  const body = await request.json();
+  const { swarmId, workspaceId, container_files } = body;
+
   try {
     const session = await getServerSession(authOptions);
 
@@ -45,9 +49,6 @@ export async function POST(request: NextRequest) {
     if (!session.user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const body = await request.json();
-    const { swarmId, workspaceId, container_files } = body;
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
       1000
     );
 
-    saveOrUpdateSwarm({
+    await saveOrUpdateSwarm({
       swarmId,
       workspaceId,
       poolName: swarmId,
@@ -207,10 +208,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
     console.error("Error creating Pool Manager pool:", error);
-    const body = await request.json();
-    const { workspaceId } = body;
 
-    saveOrUpdateSwarm({
+    await saveOrUpdateSwarm({
       workspaceId,
       poolState: 'FAILED',
     });
