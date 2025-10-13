@@ -120,6 +120,33 @@ export default function FeatureDetailPage() {
     }
   };
 
+  const handleUpdateUserStory = async (storyId: string, title: string) => {
+    try {
+      const response = await fetch(`/api/user-stories/${storyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update user story");
+      }
+
+      const result = await response.json();
+      if (result.success && feature) {
+        setFeature({
+          ...feature,
+          userStories: feature.userStories.map((story) =>
+            story.id === storyId ? { ...story, title } : story
+          ),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update user story:", error);
+      throw error;
+    }
+  };
+
   const handleDeleteUserStory = async (storyId: string) => {
     try {
       const response = await fetch(`/api/user-stories/${storyId}`, {
@@ -439,6 +466,7 @@ export default function FeatureDetailPage() {
             onNewStoryTitleChange={setNewStoryTitle}
             onAddUserStory={handleAddUserStory}
             onDeleteUserStory={handleDeleteUserStory}
+            onUpdateUserStory={handleUpdateUserStory}
             onReorderUserStories={handleReorderUserStories}
             onAcceptGeneratedStory={handleAcceptGeneratedStory}
             shouldFocusRef={storyFocusRef}

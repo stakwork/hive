@@ -36,6 +36,7 @@ interface UserStoriesSectionProps {
   onNewStoryTitleChange: (title: string) => void;
   onAddUserStory: () => void;
   onDeleteUserStory: (storyId: string) => void;
+  onUpdateUserStory: (storyId: string, title: string) => Promise<void>;
   onReorderUserStories: (stories: FeatureDetail["userStories"]) => void;
   onAcceptGeneratedStory: (title: string) => Promise<void>;
   shouldFocusRef: React.MutableRefObject<boolean>;
@@ -49,6 +50,7 @@ export function UserStoriesSection({
   onNewStoryTitleChange,
   onAddUserStory,
   onDeleteUserStory,
+  onUpdateUserStory,
   onReorderUserStories,
   onAcceptGeneratedStory,
   shouldFocusRef,
@@ -56,6 +58,8 @@ export function UserStoriesSection({
   const storyInputRef = useRef<HTMLInputElement>(null);
   const [aiSuggestions, setAiSuggestions] = useState<GeneratedStory[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedStoryId, setSavedStoryId] = useState<string | null>(null);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -119,6 +123,24 @@ export function UserStoriesSection({
 
   const handleRejectAi = (index: number) => {
     setAiSuggestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateStory = async (storyId: string, title: string) => {
+    setSaving(true);
+    setSavedStoryId(storyId);
+
+    try {
+      await onUpdateUserStory(storyId, title);
+      // Show saved indicator (matches useAutoSave pattern)
+      setTimeout(() => {
+        setSavedStoryId(null);
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to update user story:", error);
+      setSavedStoryId(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -187,6 +209,9 @@ export function UserStoriesSection({
                       key={story.id}
                       story={story}
                       onDelete={onDeleteUserStory}
+                      onUpdate={handleUpdateStory}
+                      saving={saving && savedStoryId === story.id}
+                      saved={!saving && savedStoryId === story.id}
                     />
                   ))}
 
