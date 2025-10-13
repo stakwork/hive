@@ -41,7 +41,6 @@ interface SaveOrUpdateSwarmParams {
   ingestRefId?: string;
   containerFiles?: Record<string, string>;
   containerFilesSetup?: boolean;
-  defaultBranch?: string;
   poolState?: PoolState;
 }
 
@@ -69,7 +68,6 @@ export const select = {
   environmentVariables: true,
   containerFiles: true,
   containerFilesSetup: true,
-  defaultBranch: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
