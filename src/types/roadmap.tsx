@@ -360,6 +360,7 @@ export type PhaseWithTickets = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
+        dependsOnTicketIds: true;
         createdAt: true;
         updatedAt: true;
         assignee: {
@@ -408,6 +409,7 @@ export type TicketListItem = Prisma.TicketGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    dependsOnTicketIds: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -440,6 +442,7 @@ export type TicketDetail = Prisma.TicketGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    dependsOnTicketIds: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -500,6 +503,7 @@ export interface UpdateTicketRequest {
   order?: number;
   phaseId?: string | null;
   assigneeId?: string | null;
+  dependsOnTicketIds?: string[];
 }
 
 export interface ReorderTicketsRequest {

@@ -33,6 +33,7 @@ export async function getTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
@@ -146,6 +147,7 @@ export async function createTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
@@ -237,6 +239,60 @@ export async function updateTicket(
     updateData.order = data.order;
   }
 
+  if (data.dependsOnTicketIds !== undefined) {
+    if (!Array.isArray(data.dependsOnTicketIds)) {
+      throw new Error("dependsOnTicketIds must be an array");
+    }
+
+    // Prevent ticket from depending on itself
+    if (data.dependsOnTicketIds.includes(ticketId)) {
+      throw new Error("A ticket cannot depend on itself");
+    }
+
+    // Validate all dependency tickets exist and belong to same feature
+    if (data.dependsOnTicketIds.length > 0) {
+      const dependencyTickets = await db.ticket.findMany({
+        where: {
+          id: { in: data.dependsOnTicketIds },
+          deleted: false,
+        },
+        select: {
+          id: true,
+          featureId: true,
+        },
+      });
+
+      if (dependencyTickets.length !== data.dependsOnTicketIds.length) {
+        throw new Error("One or more dependency tickets not found");
+      }
+
+      // Check all dependency tickets belong to same feature
+      const invalidDependencies = dependencyTickets.filter(
+        (dep) => dep.featureId !== ticket.featureId
+      );
+      if (invalidDependencies.length > 0) {
+        throw new Error("Dependencies must be tickets from the same feature");
+      }
+
+      // Simple circular dependency check: prevent A->B and B->A
+      const existingDependents = await db.ticket.findMany({
+        where: {
+          id: { in: data.dependsOnTicketIds },
+          dependsOnTicketIds: { has: ticketId },
+        },
+        select: { id: true, title: true },
+      });
+
+      if (existingDependents.length > 0) {
+        throw new Error(
+          `Circular dependency detected with ticket(s): ${existingDependents.map((t) => t.title).join(", ")}`
+        );
+      }
+    }
+
+    updateData.dependsOnTicketIds = data.dependsOnTicketIds;
+  }
+
   const updatedTicket = await db.ticket.update({
     where: { id: ticketId },
     data: updateData,
@@ -249,6 +305,7 @@ export async function updateTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
@@ -336,6 +393,7 @@ export async function reorderTickets(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
