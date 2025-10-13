@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme as useNextTheme } from "../providers/theme-provider";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export function useTheme() {
   const { theme, setTheme } = useNextTheme();
@@ -11,11 +11,11 @@ export function useTheme() {
     setMounted(true);
   }, []);
 
-  const resolvedTheme = (() => {
+  const resolvedTheme = useMemo(() => {
     if (!mounted) return "light";
     if (theme !== "system") return theme;
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  })();
+  }, [mounted, theme]);
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === "light" ? "dark" : "light");
