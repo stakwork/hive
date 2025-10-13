@@ -11,11 +11,15 @@ export function useTheme() {
     setMounted(true);
   }, []);
 
-  const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
-  };
+  const resolvedTheme = (() => {
+    if (!mounted) return "light";
+    if (theme !== "system") return theme;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  })();
 
-  const resolvedTheme = mounted ? theme : "light";
+  const toggleTheme = () => {
+    setTheme(resolvedTheme === "light" ? "dark" : "light");
+  };
 
   return {
     theme: resolvedTheme,
