@@ -35,6 +35,7 @@ export interface BrowserContent {
 export interface GraphContent {
   ref_id: string;
   depth?: number;
+  cluster_title?: string;
 }
 
 export interface Option {

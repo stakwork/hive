@@ -29,7 +29,7 @@ export function GraphArtifact({ content, workspaceSlug }: GraphArtifactProps) {
         ...(content.depth && { depth: content.depth.toString() }),
       }}
       height={500}
-      title="Knowledge Graph"
+      title={content.cluster_title || "Knowledge Graph"}
       showStats={true}
       emptyMessage="No graph data available for this reference"
     />
