@@ -321,6 +321,208 @@ describe("Workspace Member Queries - Unit Tests", () => {
     });
   });
 
+  describe("findActiveMember", () => {
+    test("should find active member with leftAt: null", async () => {
+      const mockMember = {
+        id: "member-1",
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        role: "DEVELOPER" as const,
+        joinedAt: new Date("2024-01-01"),
+        leftAt: null,
+      };
+
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockMember);
+
+      const result = await findActiveMember("workspace-1", "user-1");
+
+      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+        where: {
+          workspaceId: "workspace-1",
+          userId: "user-1",
+          leftAt: null,
+        },
+      });
+      expect(result).toEqual(mockMember);
+      expect(result?.leftAt).toBeNull();
+    });
+
+    test("should return null when member not found", async () => {
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+      const result = await findActiveMember("workspace-1", "nonexistent-user");
+
+      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+        where: {
+          workspaceId: "workspace-1",
+          userId: "nonexistent-user",
+          leftAt: null,
+        },
+      });
+      expect(result).toBeNull();
+    });
+
+    test("should return null for inactive member (leftAt filter)", async () => {
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+      const result = await findActiveMember("workspace-1", "user-1");
+
+      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+        where: {
+          workspaceId: "workspace-1",
+          userId: "user-1",
+          leftAt: null,
+        },
+      });
+      expect(result).toBeNull();
+    });
+
+    test("should verify leftAt: null filter is always applied", async () => {
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+      await findActiveMember("workspace-1", "user-1");
+
+      const callArgs = (db.workspaceMember.findFirst as Mock).mock.calls[0][0];
+      expect(callArgs.where).toHaveProperty("leftAt", null);
+    });
+  });
+
+  describe("findPreviousMember", () => {
+    test("should find most recent previous member", async () => {
+      const mockPreviousMember = {
+        id: "member-1",
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        role: "DEVELOPER" as const,
+        joinedAt: new Date("2024-01-01"),
+        leftAt: new Date("2024-06-01"),
+      };
+
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(mockPreviousMember);
+
+      const result = await findPreviousMember("workspace-1", "user-1");
+
+      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
+        where: {
+          workspaceId: "workspace-1",
+          userId: "user-1",
+          leftAt: { not: null },
+        },
+        orderBy: { leftAt: "desc" },
+      });
+      expect(result).toEqual(mockPreviousMember);
+      expect(result?.leftAt).not.toBeNull();
+    });
+
+    test("should return null when no previous membership found", async () => {
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+      const result = await findPreviousMember("workspace-1", "user-1");
+
+      expect(result).toBeNull();
+    });
+
+    test("should order by leftAt descending to get most recent", async () => {
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+      await findPreviousMember("workspace-1", "user-1");
+
+      const callArgs = (db.workspaceMember.findFirst as Mock).mock.calls[0][0];
+      expect(callArgs.orderBy).toEqual({ leftAt: "desc" });
+    });
+  });
+
+  describe("getActiveWorkspaceMembers", () => {
+    const mockMembers = [
+      {
+        id: "member-1",
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        role: "OWNER" as const,
+        joinedAt: new Date("2024-01-01"),
+        leftAt: null,
+        user: {
+          id: "user-1",
+          name: "John Doe",
+          email: "john@example.com",
+          image: "https://github.com/johndoe.png",
+          githubAuth: {
+            githubUsername: "johndoe",
+            name: "John Doe",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      },
+      {
+        id: "member-2",
+        workspaceId: "workspace-1",
+        userId: "user-2",
+        role: "DEVELOPER" as const,
+        joinedAt: new Date("2024-02-01"),
+        leftAt: null,
+        user: {
+          id: "user-2",
+          name: "Jane Smith",
+          email: "jane@example.com",
+          image: "https://github.com/janesmith.png",
+          githubAuth: {
+            githubUsername: "janesmith",
+            name: "Jane Smith",
+            bio: "Frontend Developer",
+            publicRepos: 15,
+            followers: 50,
+          },
+        },
+      },
+    ];
+
+    test("should get all active workspace members", async () => {
+      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMembers);
+
+      const result = await getActiveWorkspaceMembers("workspace-1");
+
+      expect(db.workspaceMember.findMany).toHaveBeenCalledWith({
+        where: {
+          workspaceId: "workspace-1",
+          leftAt: null,
+        },
+        include: WORKSPACE_MEMBER_INCLUDE,
+        orderBy: { joinedAt: "asc" },
+      });
+      expect(result).toEqual(mockMembers);
+      expect(result).toHaveLength(2);
+    });
+
+    test("should return empty array when no active members found", async () => {
+      (db.workspaceMember.findMany as Mock).mockResolvedValue([]);
+
+      const result = await getActiveWorkspaceMembers("workspace-1");
+
+      expect(result).toEqual([]);
+      expect(result).toHaveLength(0);
+    });
+
+    test("should order by joinedAt ascending", async () => {
+      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMembers);
+
+      await getActiveWorkspaceMembers("workspace-1");
+
+      const callArgs = (db.workspaceMember.findMany as Mock).mock.calls[0][0];
+      expect(callArgs.orderBy).toEqual({ joinedAt: "asc" });
+    });
+
+    test("should filter by leftAt: null", async () => {
+      (db.workspaceMember.findMany as Mock).mockResolvedValue(mockMembers);
+
+      await getActiveWorkspaceMembers("workspace-1");
+
+      const callArgs = (db.workspaceMember.findMany as Mock).mock.calls[0][0];
+      expect(callArgs.where).toHaveProperty("leftAt", null);
+    });
+  });
+
   describe("findUserByGitHubUsername", () => {
     test("should find user by GitHub username successfully", async () => {
       const mockGitHubAuth = {
