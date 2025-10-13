@@ -35,6 +35,20 @@ async function withRetry<T>(
 }
 
 export async function POST(request: NextRequest) {
+  // Parse body once at the top to avoid "Body already read" errors
+  let body: { swarmId?: string; workspaceId?: string; container_files?: Record<string, string> } = {};
+  try {
+    body = await request.json();
+  } catch (parseError) {
+    console.error("Error parsing request body:", parseError);
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const { swarmId, workspaceId, container_files } = body;
+
+  // Track the swarm for error handling
+  let swarmForErrorHandling: { id: string; workspaceId: string } | null = null;
+
   try {
     const session = await getServerSession(authOptions);
 
@@ -45,9 +59,6 @@ export async function POST(request: NextRequest) {
     if (!session.user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const body = await request.json();
-    const { swarmId, workspaceId, container_files } = body;
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
@@ -78,6 +89,9 @@ export async function POST(request: NextRequest) {
     if (!swarm) {
       return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
     }
+
+    // Store swarm info for error handling
+    swarmForErrorHandling = { id: swarm.id, workspaceId: swarm.workspaceId };
 
     // Get poolApiKey from swarm
     let poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
@@ -207,13 +221,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
     console.error("Error creating Pool Manager pool:", error);
-    const body = await request.json();
-    const { workspaceId } = body;
-
-    saveOrUpdateSwarm({
-      workspaceId,
-      poolState: 'FAILED',
-    });
+    
+    // Try to update swarm state if we have the swarm reference
+    if (swarmForErrorHandling) {
+      try {
+        await db.swarm.update({
+          where: { id: swarmForErrorHandling.id },
+          data: { poolState: 'FAILED' },
+        });
+      } catch (updateError) {
+        console.error("Failed to update swarm state:", updateError);
+      }
+    }
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
