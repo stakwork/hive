@@ -223,7 +223,9 @@ describe("getServiceConfig", () => {
         // Timeout should be reasonable for service calls
         if (config.timeout) {
           expect(config.timeout).toBeGreaterThan(0);
-          expect(config.timeout).toBeLessThanOrEqual(300000); // Max 5 minutes
+          // Swarm service needs longer timeout for complex operations
+          const maxTimeout = serviceName === "swarm" ? 600000 : 300000; // 10 minutes for swarm, 5 minutes for others
+          expect(config.timeout).toBeLessThanOrEqual(maxTimeout);
         }
         
         // Headers should be properly formatted if present
