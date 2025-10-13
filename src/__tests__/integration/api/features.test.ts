@@ -7,14 +7,13 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   createGetRequest,
   createPostRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 
 describe("Features API - Integration Tests", () => {
@@ -55,10 +54,9 @@ describe("Features API - Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features?workspaceId=${workspace.id}`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}`,
+        user
       );
 
       // Execute
@@ -102,10 +100,9 @@ describe("Features API - Integration Tests", () => {
         });
       }
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features?workspaceId=${workspace.id}&page=2&limit=10`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}&page=2&limit=10`,
+        user
       );
 
       // Execute
@@ -124,8 +121,6 @@ describe("Features API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createGetRequest(
         "http://localhost:3000/api/features?workspaceId=test-id"
       );
@@ -137,9 +132,8 @@ describe("Features API - Integration Tests", () => {
 
     test("requires workspaceId parameter", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest("http://localhost:3000/api/features");
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/features", user);
 
       const response = await GET(request);
 
@@ -156,10 +150,9 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features?workspaceId=${workspace.id}`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}`,
+        nonMember
       );
 
       // Execute
@@ -177,10 +170,9 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createGetRequest(
-        `http://localhost:3000/api/features?workspaceId=${workspace.id}&page=0&limit=200`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/features?workspaceId=${workspace.id}&page=0&limit=200`,
+        user
       );
 
       const response = await GET(request);
@@ -199,14 +191,12 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "New Feature",
         workspaceId: workspace.id,
         status: FeatureStatus.PLANNED,
         priority: FeaturePriority.HIGH,
-      });
+      }, user);
 
       // Execute
       const response = await POST(request);
@@ -231,12 +221,10 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "Simple Feature",
         workspaceId: workspace.id,
-      });
+      }, user);
 
       // Execute
       const response = await POST(request);
@@ -261,13 +249,11 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "Assigned Feature",
         workspaceId: workspace.id,
         assigneeId: assignee.id,
-      });
+      }, owner);
 
       // Execute
       const response = await POST(request);
@@ -281,8 +267,6 @@ describe("Features API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest("http://localhost:3000/api/features", {
         title: "New Feature",
         workspaceId: "test-id",
@@ -295,12 +279,11 @@ describe("Features API - Integration Tests", () => {
 
     test("validates required fields", async () => {
       const user = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         // Missing title and workspaceId
         status: FeatureStatus.BACKLOG,
-      });
+      }, user);
 
       const response = await POST(request);
 
@@ -315,13 +298,11 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "New Feature",
         workspaceId: workspace.id,
         status: "INVALID_STATUS",
-      });
+      }, user);
 
       const response = await POST(request);
 
@@ -336,13 +317,11 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "New Feature",
         workspaceId: workspace.id,
         priority: "INVALID_PRIORITY",
-      });
+      }, user);
 
       const response = await POST(request);
 
@@ -357,13 +336,11 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "New Feature",
         workspaceId: workspace.id,
         assigneeId: "non-existent-user-id",
-      });
+      }, user);
 
       const response = await POST(request);
 
@@ -379,12 +356,10 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "New Feature",
         workspaceId: workspace.id,
-      });
+      }, nonMember);
 
       const response = await POST(request);
 
@@ -399,12 +374,10 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/features", {
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
         title: "  Trimmed Feature  ",
         workspaceId: workspace.id,
-      });
+      }, user);
 
       const response = await POST(request);
 

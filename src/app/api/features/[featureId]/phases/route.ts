@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createPhase } from "@/services/roadmap";
 import type { CreatePhaseRequest, PhaseResponse } from "@/types/roadmap";
 
@@ -9,23 +8,14 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { featureId } = await params;
     const body: CreatePhaseRequest = await request.json();
 
-    const phase = await createPhase(featureId, userId, body);
+    const phase = await createPhase(featureId, userOrResponse.id, body);
 
     return NextResponse.json<PhaseResponse>(
       {

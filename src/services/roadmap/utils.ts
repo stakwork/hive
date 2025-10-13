@@ -166,3 +166,30 @@ export async function validateUserStoryAccess(storyId: string, userId: string) {
 
   return story;
 }
+
+/**
+ * Calculates the next order value for an ordered entity
+ *
+ * Finds the maximum order value in the collection and returns the next order.
+ * Returns 0 if no items exist in the collection.
+ *
+ * @param model - Prisma model delegate (e.g., db.phase, db.ticket)
+ * @param where - Filter conditions for the query
+ * @returns The next order value to use
+ *
+ * @example
+ * const nextOrder = await calculateNextOrder(db.phase, { featureId });
+ * const nextOrder = await calculateNextOrder(db.ticket, { featureId, phaseId });
+ */
+export async function calculateNextOrder(
+  model: any,
+  where: Record<string, any>
+): Promise<number> {
+  const maxOrderItem = await model.findFirst({
+    where,
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+
+  return (maxOrderItem?.order ?? -1) + 1;
+}

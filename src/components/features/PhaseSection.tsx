@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Loader2, FolderPlus } from "lucide-react";
 import {
   DndContext,
@@ -26,14 +26,16 @@ import type { PhaseStatus } from "@prisma/client";
 
 interface PhaseSectionProps {
   featureId: string;
+  workspaceSlug: string;
   phases: PhaseListItem[];
   onUpdate: (phases: PhaseListItem[]) => void;
 }
 
-export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps) {
+export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: PhaseSectionProps) {
   const [newPhaseName, setNewPhaseName] = useState("");
   const [creatingPhase, setCreatingPhase] = useState(false);
   const phaseInputRef = useRef<HTMLInputElement>(null);
+  const shouldFocusRef = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -43,6 +45,14 @@ export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps)
   );
 
   const phaseIds = useMemo(() => phases.map((phase) => phase.id), [phases]);
+
+  // Auto-focus after phase creation completes (not on mount)
+  useEffect(() => {
+    if (shouldFocusRef.current && !creatingPhase && !newPhaseName) {
+      phaseInputRef.current?.focus();
+      shouldFocusRef.current = false;
+    }
+  }, [creatingPhase, newPhaseName]);
 
   const handleAddPhase = async () => {
     if (!newPhaseName.trim()) return;
@@ -62,9 +72,8 @@ export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps)
       const result = await response.json();
       if (result.success) {
         onUpdate([...phases, result.data]);
+        shouldFocusRef.current = true;
         setNewPhaseName("");
-        // Refocus input for quick successive entries
-        phaseInputRef.current?.focus();
       }
     } catch (error) {
       console.error("Failed to create phase:", error);
@@ -216,13 +225,15 @@ export function PhaseSection({ featureId, phases, onUpdate }: PhaseSectionProps)
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
-              <div className="px-4 pb-4 flex flex-col gap-2">
+              <div className="px-4 pb-4 flex flex-col gap-2 overflow-hidden">
                 {phases
                   .sort((a, b) => a.order - b.order)
                   .map((phase) => (
                     <PhaseItem
                       key={phase.id}
                       phase={phase}
+                      featureId={featureId}
+                      workspaceSlug={workspaceSlug}
                       onUpdate={handleUpdatePhase}
                       onDelete={handleDeletePhase}
                     />

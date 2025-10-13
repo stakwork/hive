@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { FileText, Plus, List, LayoutGrid } from "lucide-react";
+import { FileText, Plus, List, LayoutGrid, Trash2 } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
@@ -21,6 +21,64 @@ import { KanbanView } from "@/components/ui/kanban-view";
 
 interface FeaturesListProps {
   workspaceId: string;
+}
+
+function FeatureRow({
+  feature,
+  workspaceSlug,
+  onStatusUpdate,
+  onAssigneeUpdate,
+  onDelete,
+  onClick,
+}: {
+  feature: FeatureWithDetails;
+  workspaceSlug: string;
+  onStatusUpdate: (featureId: string, status: FeatureStatus) => Promise<void>;
+  onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
+  onDelete: (featureId: string) => Promise<void>;
+  onClick: () => void;
+}) {
+  return (
+    <TableRow
+      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      onClick={onClick}
+    >
+      <TableCell className="font-medium">{feature.title}</TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <StatusPopover
+          statusType="feature"
+          currentStatus={feature.status}
+          onUpdate={(status) => onStatusUpdate(feature.id, status)}
+        />
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <AssigneeCombobox
+          workspaceSlug={workspaceSlug}
+          currentAssignee={feature.assignee}
+          onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
+        />
+      </TableCell>
+      <TableCell className="text-right text-muted-foreground text-sm">
+        {new Date(feature.createdAt).toLocaleDateString()}
+      </TableCell>
+      <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
+        <ActionMenu
+          actions={[
+            {
+              label: "Delete",
+              icon: Trash2,
+              variant: "destructive",
+              confirmation: {
+                title: "Delete Feature",
+                description: `Are you sure you want to delete "${feature.title}"? This will also delete all associated phases and tickets.`,
+                onConfirm: () => onDelete(feature.id),
+              },
+            },
+          ]}
+        />
+      </TableCell>
+    </TableRow>
+  );
 }
 
 export function FeaturesList({ workspaceId }: FeaturesListProps) {
@@ -45,6 +103,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     image: string | null;
   } | null>(null);
   const [creating, setCreating] = useState(false);
+  const featureInputRef = useRef<HTMLInputElement>(null);
 
   // View state management with localStorage persistence
   const [viewType, setViewType] = useState<"list" | "kanban">(() => {
@@ -90,6 +149,22 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     fetchFeatures(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, viewType]);
+
+  // Auto-open creation form when no features exist
+  useEffect(() => {
+    if (!loading && features.length === 0 && !isCreating) {
+      setIsCreating(true);
+      setViewType("list");
+      localStorage.setItem("features-view-preference", "list");
+    }
+  }, [loading, features.length, isCreating]);
+
+  // Auto-focus after feature creation completes
+  useEffect(() => {
+    if (!creating && !newFeatureTitle && isCreating) {
+      featureInputRef.current?.focus();
+    }
+  }, [creating, newFeatureTitle, isCreating]);
 
   // Save view preference to localStorage
   const handleViewChange = (value: string) => {
@@ -194,12 +269,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         setFeatures((prev) => [result.data, ...prev]);
         setTotalCount((prev) => prev + 1);
 
-        // Reset state
+        // Reset state (keep form open for successive entries, focus handled by useEffect)
         setNewFeatureTitle("");
         setNewFeatureStatus("BACKLOG");
         setNewFeatureAssigneeId(null);
         setNewFeatureAssigneeDisplay(null);
-        setIsCreating(false);
       }
     } catch (error) {
       console.error("Failed to create feature:", error);
@@ -215,6 +289,24 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setNewFeatureAssigneeId(null);
     setNewFeatureAssigneeDisplay(null);
     setIsCreating(false);
+  };
+
+  const handleDeleteFeature = async (featureId: string) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete feature");
+      }
+
+      // Remove from local state
+      setFeatures((prev) => prev.filter((f) => f.id !== featureId));
+      setTotalCount((prev) => prev - 1);
+    } catch (error) {
+      console.error("Failed to delete feature:", error);
+    }
   };
 
   if (loading && features.length === 0) {
@@ -280,39 +372,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     );
   }
 
-  // Show empty state only if no features and not creating
-  if (features.length === 0 && !isCreating) {
-    return (
-      <Card>
-        <CardContent className="p-0">
-          <Empty className="border-0">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <FileText className="h-6 w-6" />
-              </EmptyMedia>
-              <EmptyTitle>No Features Yet</EmptyTitle>
-              <EmptyDescription>Create your first feature to get started with your product roadmap.</EmptyDescription>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => {
-                  setIsCreating(true);
-                  setViewType("list");
-                  localStorage.setItem("features-view-preference", "list");
-                }}
-                className="mt-4"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                New feature
-              </Button>
-            </EmptyHeader>
-          </Empty>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // If creating with no features, show table with just the creation row
+  // Always show table if creating or have features
   const showTable = features.length > 0 || isCreating;
 
   return showTable ? (
@@ -367,6 +427,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <div className="space-y-3">
                 <div>
                   <Input
+                    ref={featureInputRef}
                     placeholder="Feature title..."
                     value={newFeatureTitle}
                     onChange={(e) => setNewFeatureTitle(e.target.value)}
@@ -426,38 +487,24 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="w-[40%]">Title</TableHead>
+                <TableHead className="w-[35%]">Title</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Assigned</TableHead>
                 <TableHead className="text-right">Created</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {features.map((feature) => (
-                <TableRow
+                <FeatureRow
                   key={feature.id}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  feature={feature}
+                  workspaceSlug={workspaceSlug}
+                  onStatusUpdate={handleUpdateStatus}
+                  onAssigneeUpdate={handleUpdateAssignee}
+                  onDelete={handleDeleteFeature}
                   onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                >
-                  <TableCell className="font-medium">{feature.title}</TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <StatusPopover
-                      statusType="feature"
-                      currentStatus={feature.status}
-                      onUpdate={(status) => handleUpdateStatus(feature.id, status)}
-                    />
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <AssigneeCombobox
-                      workspaceSlug={workspaceSlug}
-                      currentAssignee={feature.assignee}
-                      onSelect={(assigneeId) => handleUpdateAssignee(feature.id, assigneeId)}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground text-sm">
-                    {new Date(feature.createdAt).toLocaleDateString()}
-                  </TableCell>
-                </TableRow>
+                />
               ))}
             </TableBody>
           </Table>

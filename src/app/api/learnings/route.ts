@@ -1,36 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth/nextauth";
-import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
     const question = searchParams.get("question");
 
     if (!workspaceSlug) {
-      return NextResponse.json(
-        { error: "Missing required parameter: workspace" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
     if (!workspaceAccess.hasAccess) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
 
     // Get swarm data for the workspace
@@ -41,25 +31,16 @@ export async function GET(request: NextRequest) {
     });
 
     if (!swarm) {
-      return NextResponse.json(
-        { error: "Swarm not found for this workspace" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Swarm not found for this workspace" }, { status: 404 });
     }
 
     if (!swarm.swarmUrl) {
-      return NextResponse.json(
-        { error: "Swarm URL not configured" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Swarm URL not configured" }, { status: 404 });
     }
 
     // Decrypt swarm API key
     const encryptionService: EncryptionService = EncryptionService.getInstance();
-    const decryptedSwarmApiKey = encryptionService.decryptField(
-      "swarmApiKey",
-      swarm.swarmApiKey || ""
-    );
+    const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || "");
 
     // Construct swarm URL (port 3355 as specified)
     const swarmUrlObj = new URL(swarm.swarmUrl);
@@ -90,9 +71,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error) {
     console.error("Learnings API proxy error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch learnings data" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch learnings data" }, { status: 500 });
   }
 }

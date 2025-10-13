@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-import { updateFeature } from "@/services/roadmap";
+import { updateFeature, deleteFeature } from "@/services/roadmap";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { featureId } = await params;
 
@@ -37,7 +27,7 @@ export async function GET(
             ownerId: true,
             members: {
               where: {
-                userId: userId,
+                userId: userOrResponse.id,
               },
               select: {
                 role: true,
@@ -91,11 +81,17 @@ export async function GET(
           },
         },
         phases: {
+          where: {
+            deleted: false,
+          },
           orderBy: {
             order: "asc",
           },
           include: {
             tickets: {
+              where: {
+                deleted: false,
+              },
               orderBy: {
                 order: "asc",
               },
@@ -115,6 +111,7 @@ export async function GET(
         tickets: {
           where: {
             phaseId: null,
+            deleted: false,
           },
           orderBy: {
             order: "asc",
@@ -141,7 +138,7 @@ export async function GET(
     }
 
     // Check if user is workspace owner or member
-    const isOwner = feature.workspace.ownerId === userId;
+    const isOwner = feature.workspace.ownerId === userOrResponse.id;
     const isMember = feature.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
@@ -169,23 +166,14 @@ export async function PATCH(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { featureId } = await params;
     const body = await request.json();
 
-    const updatedFeature = await updateFeature(featureId, userId, body);
+    const updatedFeature = await updateFeature(featureId, userOrResponse.id, body);
 
     return NextResponse.json(
       {
@@ -200,6 +188,36 @@ export async function PATCH(
     const status = message.includes("Feature not found") ? 404 :
                    message.includes("denied") ? 403 :
                    message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found") ? 400 : 500;
+
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ featureId: string }> }
+) {
+  try {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+    const { featureId } = await params;
+
+    await deleteFeature(featureId, userOrResponse.id);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Feature deleted successfully",
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error deleting feature:", error);
+    const message = error instanceof Error ? error.message : "Failed to delete feature";
+    const status = message.includes("not found") ? 404 :
+                   message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

@@ -4,8 +4,84 @@ import type {
   UpdatePhaseRequest,
   PhaseWithDetails,
   PhaseListItem,
+  PhaseWithTickets,
 } from "@/types/roadmap";
-import { validateFeatureAccess, validatePhaseAccess } from "./utils";
+import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
+
+/**
+ * Gets a phase with its tickets and feature context
+ */
+export async function getPhase(
+  phaseId: string,
+  userId: string
+): Promise<PhaseWithTickets> {
+  const phase = await validatePhaseAccess(phaseId, userId);
+  if (!phase) {
+    throw new Error("Phase not found or access denied");
+  }
+
+  const phaseWithTickets = await db.phase.findUnique({
+    where: { id: phaseId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      status: true,
+      order: true,
+      featureId: true,
+      createdAt: true,
+      updatedAt: true,
+      feature: {
+        select: {
+          id: true,
+          title: true,
+          workspaceId: true,
+        },
+      },
+      tickets: {
+        where: {
+          deleted: false,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          order: true,
+          featureId: true,
+          phaseId: true,
+          dependsOnTicketIds: true,
+          createdAt: true,
+          updatedAt: true,
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
+          },
+          phase: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          order: "asc",
+        },
+      },
+    },
+  });
+
+  if (!phaseWithTickets) {
+    throw new Error("Phase not found");
+  }
+
+  return phaseWithTickets;
+}
 
 /**
  * Creates a new phase for a feature
@@ -24,13 +100,7 @@ export async function createPhase(
     throw new Error("Name is required");
   }
 
-  const maxOrderPhase = await db.phase.findFirst({
-    where: { featureId },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
-
-  const nextOrder = (maxOrderPhase?.order ?? -1) + 1;
+  const nextOrder = await calculateNextOrder(db.phase, { featureId });
 
   const phase = await db.phase.create({
     data: {
@@ -116,7 +186,7 @@ export async function updatePhase(
 }
 
 /**
- * Deletes a phase (tickets will have phaseId set to null)
+ * Soft deletes a phase (tickets will have phaseId set to null)
  */
 export async function deletePhase(
   phaseId: string,
@@ -127,8 +197,12 @@ export async function deletePhase(
     throw new Error("Phase not found or access denied");
   }
 
-  await db.phase.delete({
+  await db.phase.update({
     where: { id: phaseId },
+    data: {
+      deleted: true,
+      deletedAt: new Date(),
+    },
   });
 }
 
@@ -162,7 +236,7 @@ export async function reorderPhases(
   );
 
   const updatedPhases = await db.phase.findMany({
-    where: { featureId },
+    where: { featureId, deleted: false },
     select: {
       id: true,
       name: true,

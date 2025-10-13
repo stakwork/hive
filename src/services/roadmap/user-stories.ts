@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { validateFeatureAccess, validateUserStoryAccess } from "./utils";
+import { validateFeatureAccess, validateUserStoryAccess, calculateNextOrder } from "./utils";
+import { USER_SELECT } from "@/lib/db/selects";
 
 /**
  * Creates a new user story for a feature
@@ -23,13 +24,7 @@ export async function createUserStory(
     throw new Error("User not found");
   }
 
-  const maxOrderStory = await db.userStory.findFirst({
-    where: { featureId },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
-
-  const nextOrder = (maxOrderStory?.order ?? -1) + 1;
+  const nextOrder = await calculateNextOrder(db.userStory, { featureId });
 
   const userStory = await db.userStory.create({
     data: {
@@ -42,20 +37,10 @@ export async function createUserStory(
     },
     include: {
       createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       updatedBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       feature: {
         select: {
@@ -114,20 +99,10 @@ export async function updateUserStory(
     data: updateData,
     include: {
       createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       updatedBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       feature: {
         select: {
@@ -192,20 +167,10 @@ export async function reorderUserStories(
       createdAt: true,
       updatedAt: true,
       createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       updatedBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
     },
     orderBy: { order: "asc" },

@@ -18,7 +18,7 @@ interface AutoSaveTextareaProps {
   saved: boolean;
   onChange: (value: string) => void;
   onBlur: (value: string | null) => void;
-  onFocus: () => void;
+  onFocus?: () => void;
 }
 
 export function AutoSaveTextarea({

@@ -1,20 +1,23 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { EditableTitle } from "@/components/ui/editable-title";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { PhaseSection } from "@/components/features/PhaseSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useDetailResource } from "@/hooks/useDetailResource";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import type { FeatureDetail } from "@/types/roadmap";
 
 export default function FeatureDetailPage() {
@@ -23,56 +26,35 @@ export default function FeatureDetailPage() {
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
   const featureId = params.featureId as string;
 
-  const [feature, setFeature] = useState<FeatureDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeField, setActiveField] = useState<string | null>(null); // Track which field is being edited
-  const [savedField, setSavedField] = useState<string | null>(null); // Track which field is being saved/was saved
-
-  // Track original feature values for comparison
-  const originalFeatureRef = useRef<FeatureDetail | null>(null);
-
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
+  const storyFocusRef = useRef(false);
 
-  // Fetch feature data
-  useEffect(() => {
-    const fetchFeature = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/features/${featureId}`);
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch feature");
-        }
-
-        const result = await response.json();
-        if (result.success) {
-          setFeature(result.data);
-          // Store original values for comparison
-          originalFeatureRef.current = result.data;
-        } else {
-          throw new Error("Failed to fetch feature");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
+  const fetchFeature = useCallback(
+    async (id: string) => {
+      const response = await fetch(`/api/features/${id}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch feature");
       }
-    };
+      return response.json();
+    },
+    []
+  );
 
-    if (featureId) {
-      fetchFeature();
-    }
-  }, [featureId]);
+  const {
+    data: feature,
+    setData: setFeature,
+    updateData: updateFeature,
+    loading,
+    error,
+  } = useDetailResource<FeatureDetail>({
+    resourceId: featureId,
+    fetchFn: fetchFeature,
+  });
 
-  const updateFeature = async (updates: Partial<FeatureDetail> & { assigneeId?: string | null }) => {
-    try {
-      setSaving(true);
-
+  const handleSave = useCallback(
+    async (updates: Partial<FeatureDetail> | { assigneeId: string | null }) => {
       const response = await fetch(`/api/features/${featureId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -86,52 +68,25 @@ export default function FeatureDetailPage() {
       const result = await response.json();
       if (result.success) {
         setFeature(result.data);
-        // Update original values after successful save
-        originalFeatureRef.current = result.data;
-
-        // Show "Saved" indicator
-        setSaved(true);
-        setTimeout(() => {
-          setSaved(false);
-          setSavedField(null);
-        }, 2000);
+        updateOriginalData(result.data);
       }
-    } catch (error) {
-      console.error("Failed to update feature:", error);
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    [featureId, setFeature]
+  );
 
-  const handleFieldBlur = (field: string, value: string | null) => {
-    // Compare against original value, not current state
-    const originalValue = originalFeatureRef.current?.[field as keyof FeatureDetail];
-    if (feature && originalValue !== value) {
-      setSavedField(field); // Track which field is being saved
-      updateFeature({ [field]: value });
-    }
-  };
-
-  const handleFieldChange = (field: string) => {
-    // Set active field for textarea edits
-    if (field === 'brief' || field === 'requirements' || field === 'architecture') {
-      setActiveField(field);
-    } else {
-      setActiveField('general'); // For title, status, assignee
-    }
-
-    // Clear saved state
-    setSaved(false);
-  };
+  const { saving, saved, savedField, handleFieldBlur, updateOriginalData, triggerSaved } = useAutoSave({
+    data: feature,
+    onSave: handleSave,
+  });
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
-    setSavedField('general');
-    await updateFeature({ status });
+    await handleSave({ status });
+    triggerSaved("title");
   };
 
   const handleUpdateAssignee = async (assigneeId: string | null) => {
-    setSavedField('general');
-    await updateFeature({ assigneeId });
+    await handleSave({ assigneeId } as Partial<FeatureDetail>);
+    triggerSaved("title");
   };
 
   const handleAddUserStory = async () => {
@@ -155,12 +110,40 @@ export default function FeatureDetailPage() {
           ...feature,
           userStories: [...feature.userStories, result.data],
         });
+        storyFocusRef.current = true;
         setNewStoryTitle("");
       }
     } catch (error) {
       console.error("Failed to create user story:", error);
     } finally {
       setCreatingStory(false);
+    }
+  };
+
+  const handleUpdateUserStory = async (storyId: string, title: string) => {
+    try {
+      const response = await fetch(`/api/user-stories/${storyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update user story");
+      }
+
+      const result = await response.json();
+      if (result.success && feature) {
+        setFeature({
+          ...feature,
+          userStories: feature.userStories.map((story) =>
+            story.id === storyId ? { ...story, title } : story
+          ),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update user story:", error);
+      throw error;
     }
   };
 
@@ -231,6 +214,47 @@ export default function FeatureDetailPage() {
     });
   };
 
+  const handleDeleteFeature = async () => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete feature");
+      }
+
+      router.push(`/w/${workspaceSlug}/roadmap`);
+    } catch (error) {
+      console.error("Failed to delete feature:", error);
+    }
+  };
+
+  const handleAcceptGeneratedStory = async (storyTitle: string) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}/user-stories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: storyTitle }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create user story");
+      }
+
+      const result = await response.json();
+      if (result.success && feature) {
+        setFeature({
+          ...feature,
+          userStories: [...feature.userStories, result.data],
+        });
+      }
+    } catch (error) {
+      console.error("Failed to accept generated story:", error);
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -242,7 +266,7 @@ export default function FeatureDetailPage() {
             onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Roadmap
+            Back
           </Button>
           <span className="text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -336,7 +360,7 @@ export default function FeatureDetailPage() {
           onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Roadmap
+          Back
         </Button>
         <Card>
           <CardHeader>
@@ -360,7 +384,7 @@ export default function FeatureDetailPage() {
           onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Roadmap
+          Back
         </Button>
       </div>
 
@@ -370,19 +394,16 @@ export default function FeatureDetailPage() {
           <div className="space-y-4">
             {/* Title - inline editable */}
             <div className="flex items-center gap-3">
-              <Input
+              <EditableTitle
                 id="title"
                 value={feature.title}
-                onChange={(e) => {
-                  setFeature({ ...feature, title: e.target.value });
-                  handleFieldChange('title');
-                }}
-                onBlur={(e) => handleFieldBlur("title", e.target.value)}
-                className="!text-5xl !font-bold !h-auto !py-0 !px-0 !border-none !bg-transparent !shadow-none focus-visible:!ring-0 focus-visible:!border-none focus:!border-none focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none !tracking-tight !rounded-none flex-1"
+                onChange={(value) => updateFeature({ title: value })}
+                onBlur={(value) => handleFieldBlur("title", value)}
                 placeholder="Enter feature title..."
+                size="xlarge"
               />
-              {/* Save indicator for general edits (title, status, assignee) */}
-              {savedField === 'general' && saved && !saving && (
+              {/* Save indicator - only show for title/status/assignee changes */}
+              {savedField === "title" && saved && !saving && (
                 <div className="flex items-center gap-2 text-sm flex-shrink-0">
                   <Check className="h-4 w-4 text-green-600" />
                   <span className="text-green-600">Saved</span>
@@ -390,7 +411,7 @@ export default function FeatureDetailPage() {
               )}
             </div>
 
-            {/* Status & Assignee */}
+            {/* Status, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover
                 statusType="feature"
@@ -401,6 +422,22 @@ export default function FeatureDetailPage() {
                 workspaceSlug={workspaceSlug}
                 currentAssignee={feature.assignee}
                 onSelect={handleUpdateAssignee}
+              />
+
+              {/* Actions Menu */}
+              <ActionMenu
+                actions={[
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    confirmation: {
+                      title: "Delete Feature",
+                      description: `Are you sure you want to delete "${feature.title}"? This will also delete all associated phases and tickets.`,
+                      onConfirm: handleDeleteFeature,
+                    },
+                  },
+                ]}
               />
             </div>
           </div>
@@ -417,22 +454,22 @@ export default function FeatureDetailPage() {
             savedField={savedField}
             saving={saving}
             saved={saved}
-            onChange={(value) => {
-              setFeature({ ...feature, brief: value });
-              handleFieldChange('brief');
-            }}
+            onChange={(value) => updateFeature({ brief: value })}
             onBlur={(value) => handleFieldBlur("brief", value)}
-            onFocus={() => setActiveField('brief')}
           />
 
           <UserStoriesSection
+            featureId={featureId}
             userStories={feature.userStories}
             newStoryTitle={newStoryTitle}
             creatingStory={creatingStory}
             onNewStoryTitleChange={setNewStoryTitle}
             onAddUserStory={handleAddUserStory}
             onDeleteUserStory={handleDeleteUserStory}
+            onUpdateUserStory={handleUpdateUserStory}
             onReorderUserStories={handleReorderUserStories}
+            onAcceptGeneratedStory={handleAcceptGeneratedStory}
+            shouldFocusRef={storyFocusRef}
           />
 
           <AutoSaveTextarea
@@ -445,12 +482,8 @@ export default function FeatureDetailPage() {
             savedField={savedField}
             saving={saving}
             saved={saved}
-            onChange={(value) => {
-              setFeature({ ...feature, requirements: value });
-              handleFieldChange('requirements');
-            }}
+            onChange={(value) => updateFeature({ requirements: value })}
             onBlur={(value) => handleFieldBlur("requirements", value)}
-            onFocus={() => setActiveField('requirements')}
           />
 
           <AutoSaveTextarea
@@ -463,16 +496,13 @@ export default function FeatureDetailPage() {
             savedField={savedField}
             saving={saving}
             saved={saved}
-            onChange={(value) => {
-              setFeature({ ...feature, architecture: value });
-              handleFieldChange('architecture');
-            }}
+            onChange={(value) => updateFeature({ architecture: value })}
             onBlur={(value) => handleFieldBlur("architecture", value)}
-            onFocus={() => setActiveField('architecture')}
           />
 
           <PhaseSection
             featureId={featureId}
+            workspaceSlug={workspaceSlug}
             phases={feature.phases || []}
             onUpdate={handleUpdatePhases}
           />

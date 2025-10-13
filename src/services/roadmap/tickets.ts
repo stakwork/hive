@@ -4,8 +4,70 @@ import type {
   CreateTicketRequest,
   UpdateTicketRequest,
   TicketWithDetails,
+  TicketDetail,
 } from "@/types/roadmap";
-import { validateFeatureAccess, validateTicketAccess } from "./utils";
+import { validateFeatureAccess, validateTicketAccess, calculateNextOrder } from "./utils";
+import { USER_SELECT } from "@/lib/db/selects";
+import { validateEnum } from "@/lib/validators";
+
+/**
+ * Gets a ticket with full context (feature, phase, creator, updater)
+ */
+export async function getTicket(
+  ticketId: string,
+  userId: string
+): Promise<TicketDetail> {
+  const ticket = await validateTicketAccess(ticketId, userId);
+  if (!ticket) {
+    throw new Error("Ticket not found or access denied");
+  }
+
+  const ticketDetail = await db.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      order: true,
+      featureId: true,
+      phaseId: true,
+      dependsOnTicketIds: true,
+      createdAt: true,
+      updatedAt: true,
+      assignee: {
+        select: USER_SELECT,
+      },
+      phase: {
+        select: {
+          id: true,
+          name: true,
+          status: true,
+        },
+      },
+      feature: {
+        select: {
+          id: true,
+          title: true,
+          workspaceId: true,
+        },
+      },
+      createdBy: {
+        select: USER_SELECT,
+      },
+      updatedBy: {
+        select: USER_SELECT,
+      },
+    },
+  });
+
+  if (!ticketDetail) {
+    throw new Error("Ticket not found");
+  }
+
+  return ticketDetail;
+}
 
 /**
  * Creates a new ticket for a feature
@@ -24,17 +86,8 @@ export async function createTicket(
     throw new Error("Title is required");
   }
 
-  if (data.status && !Object.values(TicketStatus).includes(data.status)) {
-    throw new Error(
-      `Invalid status. Must be one of: ${Object.values(TicketStatus).join(", ")}`
-    );
-  }
-
-  if (data.priority && !Object.values(Priority).includes(data.priority)) {
-    throw new Error(
-      `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`
-    );
-  }
+  validateEnum(data.status, TicketStatus, "status");
+  validateEnum(data.priority, Priority, "priority");
 
   if (data.phaseId) {
     const phase = await db.phase.findFirst({
@@ -67,16 +120,10 @@ export async function createTicket(
     throw new Error("User not found");
   }
 
-  const maxOrderTicket = await db.ticket.findFirst({
-    where: {
-      featureId,
-      phaseId: data.phaseId || null,
-    },
-    orderBy: { order: "desc" },
-    select: { order: true },
+  const nextOrder = await calculateNextOrder(db.ticket, {
+    featureId,
+    phaseId: data.phaseId || null,
   });
-
-  const nextOrder = (maxOrderTicket?.order ?? -1) + 1;
 
   const ticket = await db.ticket.create({
     data: {
@@ -100,15 +147,11 @@ export async function createTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {
@@ -151,20 +194,12 @@ export async function updateTicket(
   }
 
   if (data.status !== undefined) {
-    if (!Object.values(TicketStatus).includes(data.status)) {
-      throw new Error(
-        `Invalid status. Must be one of: ${Object.values(TicketStatus).join(", ")}`
-      );
-    }
+    validateEnum(data.status, TicketStatus, "status");
     updateData.status = data.status;
   }
 
   if (data.priority !== undefined) {
-    if (!Object.values(Priority).includes(data.priority)) {
-      throw new Error(
-        `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`
-      );
-    }
+    validateEnum(data.priority, Priority, "priority");
     updateData.priority = data.priority;
   }
 
@@ -204,6 +239,60 @@ export async function updateTicket(
     updateData.order = data.order;
   }
 
+  if (data.dependsOnTicketIds !== undefined) {
+    if (!Array.isArray(data.dependsOnTicketIds)) {
+      throw new Error("dependsOnTicketIds must be an array");
+    }
+
+    // Prevent ticket from depending on itself
+    if (data.dependsOnTicketIds.includes(ticketId)) {
+      throw new Error("A ticket cannot depend on itself");
+    }
+
+    // Validate all dependency tickets exist and belong to same feature
+    if (data.dependsOnTicketIds.length > 0) {
+      const dependencyTickets = await db.ticket.findMany({
+        where: {
+          id: { in: data.dependsOnTicketIds },
+          deleted: false,
+        },
+        select: {
+          id: true,
+          featureId: true,
+        },
+      });
+
+      if (dependencyTickets.length !== data.dependsOnTicketIds.length) {
+        throw new Error("One or more dependency tickets not found");
+      }
+
+      // Check all dependency tickets belong to same feature
+      const invalidDependencies = dependencyTickets.filter(
+        (dep) => dep.featureId !== ticket.featureId
+      );
+      if (invalidDependencies.length > 0) {
+        throw new Error("Dependencies must be tickets from the same feature");
+      }
+
+      // Simple circular dependency check: prevent A->B and B->A
+      const existingDependents = await db.ticket.findMany({
+        where: {
+          id: { in: data.dependsOnTicketIds },
+          dependsOnTicketIds: { has: ticketId },
+        },
+        select: { id: true, title: true },
+      });
+
+      if (existingDependents.length > 0) {
+        throw new Error(
+          `Circular dependency detected with ticket(s): ${existingDependents.map((t) => t.title).join(", ")}`
+        );
+      }
+    }
+
+    updateData.dependsOnTicketIds = data.dependsOnTicketIds;
+  }
+
   const updatedTicket = await db.ticket.update({
     where: { id: ticketId },
     data: updateData,
@@ -216,15 +305,11 @@ export async function updateTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {
@@ -239,7 +324,7 @@ export async function updateTicket(
 }
 
 /**
- * Deletes a ticket
+ * Soft deletes a ticket
  */
 export async function deleteTicket(
   ticketId: string,
@@ -250,8 +335,12 @@ export async function deleteTicket(
     throw new Error("Ticket not found or access denied");
   }
 
-  await db.ticket.delete({
+  await db.ticket.update({
     where: { id: ticketId },
+    data: {
+      deleted: true,
+      deletedAt: new Date(),
+    },
   });
 }
 
@@ -294,7 +383,7 @@ export async function reorderTickets(
   );
 
   const updatedTickets = await db.ticket.findMany({
-    where: { featureId: firstTicket.featureId },
+    where: { featureId: firstTicket.featureId, deleted: false },
     select: {
       id: true,
       title: true,
@@ -304,15 +393,11 @@ export async function reorderTickets(
       order: true,
       featureId: true,
       phaseId: true,
+      dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
       assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
+        select: USER_SELECT,
       },
       phase: {
         select: {

@@ -80,7 +80,7 @@ const TICKET_STATUS_CONFIG: Record<TicketStatus, StatusConfig> = {
   IN_PROGRESS: {
     icon: <Loader2 className="h-3 w-3 animate-spin" />,
     label: "In Progress",
-    className: "bg-blue-50 text-blue-700 border-blue-200",
+    className: "bg-amber-50 text-amber-700 border-amber-200",
   },
   DONE: {
     icon: <CheckCircle className="h-3 w-3" />,
