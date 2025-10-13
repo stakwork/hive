@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { EncryptionService } from "@/lib/encryption";
@@ -36,16 +35,11 @@ interface Workspace {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
+    const userId = userOrResponse.id;
 
     const { workspaceId } = await params;
 

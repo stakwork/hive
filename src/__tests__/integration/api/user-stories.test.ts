@@ -751,6 +751,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedDeleteRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
+        undefined,
         user
       );
 
@@ -780,6 +781,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedDeleteRequest(
         "http://localhost:3000/api/user-stories/non-existent-id",
+        undefined,
         user
       );
 
@@ -818,6 +820,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedDeleteRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
+        undefined,
         nonMember
       );
 
