@@ -101,6 +101,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           content: data.answer || data.message || "I apologize, but I couldn't generate a response at this time.",
           role: "assistant",
           timestamp: new Date(),
+          ref_id: data.ref_id,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
