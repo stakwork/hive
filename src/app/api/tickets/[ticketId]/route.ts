@@ -60,7 +60,11 @@ export async function PATCH(
     const message = error instanceof Error ? error.message : "Failed to update ticket";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :
-                   message.includes("cannot be empty") || message.includes("Invalid") || message.includes("must be") ? 400 : 500;
+                   message.includes("cannot be empty") ||
+                   message.includes("Invalid") ||
+                   message.includes("must be") ||
+                   message.includes("Circular dependency") ||
+                   message.includes("cannot depend on itself") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
