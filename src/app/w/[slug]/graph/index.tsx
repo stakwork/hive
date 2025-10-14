@@ -168,6 +168,7 @@ export const GraphComponent = () => {
 
   const isDarkMode = mounted && resolvedTheme === 'dark';
   const nodeTypes = Array.from(new Set(nodes.map(n => n.type)));
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   // --- load schemas ---
   useEffect(() => {
@@ -467,7 +468,7 @@ export const GraphComponent = () => {
           >
             {is3DView ? '2D' : '3D'}
           </button>
-          {is3DView && (
+          {is3DView && isLocalhost && (
             <button
               onClick={() => setShowCameraControls(!showCameraControls)}
               className={`px-3 py-1 text-sm rounded transition-colors ${showCameraControls
@@ -535,12 +536,6 @@ export const GraphComponent = () => {
           <svg ref={el => { svgRef.current = el; }} className="w-full h-auto" />
         )}
       </div>
-
-      {nodes.length > 0 && (
-        <div className={`mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          <p><strong>Instructions:</strong> {is3DView ? 'Drag to rotate, scroll to zoom, right-click to pan. Click nodes to highlight connections.' : 'Drag nodes to reposition them. Use mouse wheel to zoom, drag canvas to pan. Click on a node to see details.'}</p>
-        </div>
-      )}
 
       {selectedNode && (
         <NodePopup
