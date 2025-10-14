@@ -17,10 +17,9 @@ export async function triggerSync(
 ) {
   console.log("===Trigger Sync was hit");
   const stakgraphUrl = `https://${swarmName}:7799`;
-  const data: Record<string, string | boolean> = { repo_url: repoUrl };
+  const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
-  if (useLsp) data.use_lsp = useLsp;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync",
@@ -41,11 +40,10 @@ export async function triggerAsyncSync(
 ): Promise<AsyncSyncResult> {
   console.log("===Trigger AsyncSync was hit");
   const stakgraphUrl = `https://${swarmHost}:7799`;
-  const data: Record<string, string | boolean> = { repo_url: repoUrl };
+  const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
   if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
-  if (useLsp) data.use_lsp = useLsp;
   const result = await swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync_async",
