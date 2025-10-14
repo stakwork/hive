@@ -526,6 +526,7 @@ export const GraphComponent = () => {
             colorPalette={COLOR_PALETTE}
             isDarkMode={isDarkMode}
             showCameraControls={showCameraControls}
+            selectedNodeId={selectedNode?.id || null}
             onNodeClick={(node) => {
               setSelectedNode(node);
             }}
@@ -545,8 +546,8 @@ export const GraphComponent = () => {
         <NodePopup
           node={selectedNode}
           onClose={() => {
-            // release fx/fy on selected node
-            if (selectedNodeRef.current) {
+            // Only release pinned node in 2D mode (3D manages its own simulation)
+            if (!is3DView && selectedNodeRef.current) {
               selectedNodeRef.current.fx = null;
               selectedNodeRef.current.fy = null;
               simulationRef.current?.alpha(0.1).restart();

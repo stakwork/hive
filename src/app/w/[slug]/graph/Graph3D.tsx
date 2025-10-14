@@ -66,6 +66,7 @@ interface Graph3DProps {
   isDarkMode?: boolean;
   onNodeClick?: (node: D3Node) => void;
   showCameraControls?: boolean;
+  selectedNodeId?: string | null;
 }
 
 interface NodeMeshProps {
@@ -163,10 +164,17 @@ const LinkLine = ({ link, isDimmed }: { link: D3Link; isDimmed: boolean }) => {
 };
 
 // --- GRAPH SCENE COMPONENT ---
-const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeClick, showCameraControls }: Graph3DProps) => {
+const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeClick, showCameraControls, selectedNodeId }: Graph3DProps) => {
   const [simulatedNodes, setSimulatedNodes] = useState<D3Node[]>([]);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
+
+  // Sync internal selection with parent
+  useEffect(() => {
+    if (selectedNodeId === null) {
+      setSelectedNode(null);
+    }
+  }, [selectedNodeId]);
 
   useEffect(() => {
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -277,7 +285,7 @@ const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeC
 };
 
 // --- MAIN 3D GRAPH COMPONENT ---
-export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeClick, showCameraControls = false }: Graph3DProps) => {
+export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeClick, showCameraControls = false, selectedNodeId }: Graph3DProps) => {
   const [cameraPos, setCameraPos] = useState({ x: 0, y: 0, z: 0, distance: 0 });
 
   // Use a reasonable fixed camera distance based on typical graph size
@@ -374,6 +382,7 @@ export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onN
           isDarkMode={isDarkMode}
           onNodeClick={onNodeClick}
           showCameraControls={showCameraControls}
+          selectedNodeId={selectedNodeId}
         />
       </Canvas>
     </div>
