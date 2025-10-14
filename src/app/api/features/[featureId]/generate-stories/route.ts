@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { streamObject } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { db } from "@/lib/db";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { z } from "zod";
 
 type Provider = "anthropic" | "openai";
@@ -20,9 +20,7 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { featureId } = await params;
     const body = await request.json();
@@ -40,7 +38,7 @@ export async function POST(
             id: true,
             ownerId: true,
             members: {
-              where: { userId: userOrResponse.id },
+              where: { userId: userId },
               select: { role: true }
             }
           }
@@ -56,7 +54,7 @@ export async function POST(
     }
 
     // Check workspace access
-    const isOwner = feature.workspace.ownerId === userOrResponse.id;
+    const isOwner = feature.workspace.ownerId === userId;
     const isMember = feature.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {

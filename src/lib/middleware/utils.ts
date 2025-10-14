@@ -50,10 +50,23 @@ export function requireAuth(context: MiddlewareContext): MiddlewareUser | NextRe
     return context.user;
   }
   const error = unauthorizedError("Unauthorized");
-  return NextResponse.json(
+  throw NextResponse.json(
     { error: error.message, kind: error.kind, details: error.details },
     { status: error.statusCode },
   );
+}
+
+export function getUserId(request: NextRequest): string {
+    const userId = request.headers.get(MIDDLEWARE_HEADERS.USER_ID);
+    if (!userId){
+      const error = unauthorizedError("Unauthorized");
+      throw NextResponse.json(
+        { error: error.message, kind: error.kind, details: error.details },
+        { status: error.statusCode },
+      );
+    }
+    return userId
+
 }
 
 /**

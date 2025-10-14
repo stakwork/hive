@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { createTicket } from "@/services/roadmap";
 import type { CreateTicketRequest, TicketResponse } from "@/types/roadmap";
 
@@ -8,14 +8,11 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
+    const userId = getUserId(request);
     const { featureId } = await params;
     const body: CreateTicketRequest = await request.json();
 
-    const ticket = await createTicket(featureId, userOrResponse.id, body);
+    const ticket = await createTicket(featureId, userId, body);
 
     return NextResponse.json<TicketResponse>(
       {

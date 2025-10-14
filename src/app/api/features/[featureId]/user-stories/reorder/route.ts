@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { reorderUserStories } from "@/services/roadmap";
 
 export async function POST(
@@ -7,14 +7,12 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { featureId } = await params;
     const body = await request.json();
 
-    const updatedStories = await reorderUserStories(featureId, userOrResponse.id, body.stories);
+    const updatedStories = await reorderUserStories(featureId, userId, body.stories);
 
     return NextResponse.json(
       {

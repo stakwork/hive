@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getUserId } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
 import type {
   CreateFeatureRequest,
@@ -9,9 +9,7 @@ import type {
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
@@ -35,7 +33,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await listFeatures(workspaceId, userOrResponse.id, page, limit);
+    const result = await listFeatures(workspaceId, userId, page, limit);
 
     return NextResponse.json<FeatureListResponse>(
       {
@@ -57,9 +55,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = getUserId(request);
 
     const body: CreateFeatureRequest = await request.json();
 
@@ -70,7 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const feature = await createFeature(userOrResponse.id, body);
+    const feature = await createFeature(userId, body);
 
     return NextResponse.json<FeatureResponse>(
       {
