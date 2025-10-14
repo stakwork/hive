@@ -1,6 +1,7 @@
 "use client";
 
 import { GraphVisualization } from "./GraphVisualization";
+import { GraphVisualizationLayered } from "./GraphVisualizationLayered";
 import { useGraphData } from "./useGraphData";
 
 interface GraphNode {
@@ -20,7 +21,7 @@ interface GraphProps {
   // Data fetching options
   endpoint?: string;
   params?: Record<string, string>;
-  transform?: (data: any) => { nodes: GraphNode[]; edges: GraphEdge[] };
+  transform?: (data: unknown) => { nodes: GraphNode[]; edges: GraphEdge[] };
 
   // Visualization options
   width?: number;
@@ -33,6 +34,7 @@ interface GraphProps {
   showStats?: boolean;
   emptyMessage?: string;
   className?: string;
+  layout?: "force" | "layered";
 }
 
 export function Graph({
@@ -47,6 +49,7 @@ export function Graph({
   showStats = true,
   emptyMessage = "No graph data available",
   className = "",
+  layout = "layered",
 }: GraphProps) {
   const { nodes, edges, loading, error } = useGraphData({
     endpoint,
@@ -84,6 +87,8 @@ export function Graph({
     );
   }
 
+  const VisualizationComponent = layout === "layered" ? GraphVisualizationLayered : GraphVisualization;
+
   return (
     <div className={`border rounded-lg bg-card p-4 ${className}`}>
       {(title || showStats) && (
@@ -98,7 +103,7 @@ export function Graph({
       )}
 
       <div className="border rounded overflow-hidden bg-background">
-        <GraphVisualization
+        <VisualizationComponent
           nodes={nodes}
           edges={edges}
           width={width}
