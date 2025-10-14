@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, User as UserIcon } from "lucide-react";
+import { Check, User as UserIcon, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -33,11 +33,13 @@ interface AssigneeComboboxProps {
     assigneeId: string | null,
     assigneeData?: { id: string; name: string | null; email: string | null; image: string | null } | null
   ) => Promise<void>;
+  showSpecialAssignees?: boolean;
 }
 
-export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: AssigneeComboboxProps) {
+export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, showSpecialAssignees = false }: AssigneeComboboxProps) {
   const [open, setOpen] = useState(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [systemAssignees, setSystemAssignees] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
 
@@ -57,6 +59,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
         // Combine owner and members into a single array
         const allMembers = [...(data.owner ? [data.owner] : []), ...(data.members || [])];
         setMembers(allMembers);
+        setSystemAssignees(data.systemAssignees || []);
       }
     } catch (error) {
       console.error("Failed to fetch members:", error);
@@ -93,10 +96,17 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
           {currentAssignee ? (
             <div className="flex items-center gap-2">
               <Avatar key={currentAssignee.id} className="h-5 w-5">
-                <AvatarImage src={currentAssignee.image || undefined} />
-                <AvatarFallback className="text-xs">
-                  {currentAssignee.name?.charAt(0) || <UserIcon className="h-3 w-3" />}
-                </AvatarFallback>
+                {currentAssignee.image ? (
+                  <AvatarImage src={currentAssignee.image} />
+                ) : (
+                  <AvatarFallback className="text-xs">
+                    {currentAssignee.id === "system:task-coordinator" ? (
+                      <Bot className="h-3 w-3" />
+                    ) : (
+                      currentAssignee.name?.charAt(0) || <UserIcon className="h-3 w-3" />
+                    )}
+                  </AvatarFallback>
+                )}
               </Avatar>
               <span className="truncate">{currentAssignee.name || currentAssignee.email}</span>
             </div>
@@ -112,7 +122,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
+      <PopoverContent className="w-[240px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
         <Command>
           <CommandInput placeholder="Search members..." />
           <CommandList>
@@ -127,6 +137,36 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect }: A
                 </Avatar>
                 <span className="text-muted-foreground">Unassigned</span>
               </CommandItem>
+              {showSpecialAssignees &&
+                systemAssignees.map((sys) => (
+                  <CommandItem
+                    key={sys.userId}
+                    value={sys.user.name || sys.userId}
+                    onSelect={() =>
+                      handleSelect(sys.userId, {
+                        id: sys.userId,
+                        name: sys.user.name,
+                        email: sys.user.email,
+                        image: sys.user.image,
+                      })
+                    }
+                    disabled={updating}
+                  >
+                    <Check
+                      className={cn("mr-2 h-4 w-4", currentAssignee?.id === sys.userId ? "opacity-100" : "opacity-0")}
+                    />
+                    <Avatar className="h-5 w-5 mr-2">
+                      {sys.user.image ? (
+                        <AvatarImage src={sys.user.image} />
+                      ) : (
+                        <AvatarFallback className="text-xs">
+                          {sys.userId === "system:task-coordinator" ? <Bot className="h-3 w-3" /> : <UserIcon className="h-3 w-3" />}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    <span className="truncate">{sys.user.name || sys.user.email}</span>
+                  </CommandItem>
+                ))}
               {members.map((member) => (
                 <CommandItem
                   key={member.userId}
