@@ -53,7 +53,13 @@ export function RerunIngest({
         body: JSON.stringify({ workspaceId }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error("Failed to parse response as JSON:", parseError);
+        throw new Error(`Server returned invalid response (${response.status})`);
+      }
 
       if (response.ok) {
         toast({
@@ -62,17 +68,19 @@ export function RerunIngest({
         });
         setIsOpen(false);
       } else {
+        console.error("Ingest API error:", { status: response.status, data });
         toast({
           title: "Ingest Failed",
-          description: data.message || "Failed to start code ingestion",
+          description: data?.message || `Failed to start code ingestion (${response.status})`,
           variant: "destructive",
         });
       }
     } catch (error) {
       console.error("Failed to start ingest:", error);
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       toast({
         title: "Ingest Failed",
-        description: "An error occurred while trying to start code ingestion",
+        description: `Network error: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
