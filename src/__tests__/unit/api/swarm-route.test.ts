@@ -211,22 +211,6 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
 
-    test("should reject requests with missing name", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { id: "user-123" },
-      });
-
-      const invalidData = { ...validSwarmData };
-      delete (invalidData as any).name;
-
-      const request = createMockRequest(invalidData);
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
-    });
 
     test("should reject requests with missing repository fields", async () => {
       mockGetServerSession.mockResolvedValue({

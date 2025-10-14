@@ -90,7 +90,7 @@ describe("getWorkspaceById - Unit Tests", () => {
             select: { id: true, name: true, email: true },
           },
           swarm: {
-            select: { id: true, status: true, ingestRefId: true, poolState: true },
+            select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetup: true },
           },
           repositories: {
             select: {
