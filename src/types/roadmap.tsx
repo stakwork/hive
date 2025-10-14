@@ -539,3 +539,38 @@ export type PhaseListResponse = ApiSuccessResponse<PhaseListItem[]>;
 export type PhaseResponse = ApiSuccessResponse<PhaseListItem>;
 export type TicketListResponse = ApiSuccessResponse<TicketListItem[]>;
 export type TicketResponse = ApiSuccessResponse<TicketWithDetails>;
+
+// AI Generation types for phases and tickets
+export interface GeneratedTicket {
+  title: string;
+  description?: string;
+  priority: Priority;
+  tempId: string; // Temporary ID for dependency mapping (e.g., "T1", "T2")
+  dependsOn?: string[]; // Array of tempIds this ticket depends on
+}
+
+export interface GeneratedPhase {
+  name: string;
+  description?: string;
+  tickets: GeneratedTicket[];
+}
+
+export interface GeneratedPhasesAndTickets {
+  phases: GeneratedPhase[];
+}
+
+// Request type for batch creating phases and tickets
+export interface BatchCreatePhasesRequest {
+  phases: GeneratedPhase[];
+}
+
+// Response type for batch creation
+export interface BatchCreatedPhase {
+  phase: PhaseListItem;
+  tickets: TicketListItem[];
+}
+
+export interface BatchCreatePhasesResponse {
+  success: boolean;
+  data: BatchCreatedPhase[];
+}

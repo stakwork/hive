@@ -8,6 +8,7 @@ import {
   GENERATE_STORIES_SYSTEM_PROMPT,
   GENERATE_REQUIREMENTS_PROMPT,
   GENERATE_ARCHITECTURE_PROMPT,
+  GENERATE_PHASES_TICKETS_PROMPT,
 } from "@/lib/constants/prompt";
 
 type Provider = "anthropic" | "openai";
@@ -40,6 +41,24 @@ const contentSchema = z.object({
   content: z.string().describe("Complete final content incorporating all context"),
 });
 
+const phasesTicketsSchema = z.object({
+  phases: z.array(
+    z.object({
+      name: z.string().describe("Phase name (e.g., 'Foundation', 'Core Features')"),
+      description: z.string().optional().describe("Brief description of the phase"),
+      tickets: z.array(
+        z.object({
+          title: z.string().describe("Ticket title"),
+          description: z.string().optional().describe("Detailed ticket description"),
+          priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM").describe("Ticket priority level"),
+          tempId: z.string().describe("Temporary ID for dependency mapping (e.g., 'T1', 'T2')"),
+          dependsOn: z.array(z.string()).optional().describe("Array of tempIds this ticket depends on (e.g., ['T1', 'T2'])"),
+        })
+      ),
+    })
+  ),
+});
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ featureId: string }> }
@@ -53,9 +72,9 @@ export async function POST(
     const body = await request.json();
     const { type, existingStories } = body;
 
-    if (!type || !["userStories", "requirements", "architecture"].includes(type)) {
+    if (!type || !["userStories", "requirements", "architecture", "phasesTickets"].includes(type)) {
       return NextResponse.json(
-        { error: "Invalid type parameter. Must be 'userStories', 'requirements', or 'architecture'" },
+        { error: "Invalid type parameter. Must be 'userStories', 'requirements', 'architecture', or 'phasesTickets'" },
         { status: 400 }
       );
     }
@@ -129,6 +148,8 @@ export async function POST(
       return await generateRequirements(model, feature, featureId);
     } else if (type === "architecture") {
       return await generateArchitecture(model, feature, featureId);
+    } else if (type === "phasesTickets") {
+      return await generatePhasesAndTickets(model, feature, featureId);
     }
 
     return NextResponse.json(
@@ -267,6 +288,53 @@ ${feature.architecture ? 'Incorporate and enhance the existing architecture abov
     schema: contentSchema,
     prompt: userPrompt,
     system: GENERATE_ARCHITECTURE_PROMPT,
+    temperature: 0.7,
+  });
+
+  return result.toTextStreamResponse();
+}
+
+async function generatePhasesAndTickets(model: ModelType, feature: FeatureData, featureId: string) {
+  const workspaceDesc = feature.workspace.description
+    ? `\n\nWorkspace Context: ${feature.workspace.description}`
+    : '';
+
+  const personasText = feature.personas && feature.personas.length > 0
+    ? `\n\nTarget Personas:\n${feature.personas.map((p: string) => `- ${p}`).join('\n')}`
+    : '';
+
+  const userStoriesText = feature.userStories && feature.userStories.length > 0
+    ? `\n\nUser Stories:\n${feature.userStories.map((s) => `- ${s.title}`).join('\n')}`
+    : '';
+
+  const requirementsText = feature.requirements
+    ? `\n\nRequirements:\n${feature.requirements}`
+    : '';
+
+  const architectureText = feature.architecture
+    ? `\n\nArchitecture:\n${feature.architecture}`
+    : '';
+
+  const userPrompt = `Generate a complete project breakdown with phases and tickets for this feature (incorporating all context below):
+
+Title: ${feature.title}
+${feature.brief ? `Brief: ${feature.brief}` : ''}${workspaceDesc}${personasText}${userStoriesText}${requirementsText}${architectureText}
+
+Break down the work into 1-5 logical phases (fewer for simpler features), with 2-8 actionable tickets per phase.
+Use tempIds (T1, T2, T3...) for dependency mapping between tickets.
+Return a structured breakdown developers can immediately start working from.`;
+
+  console.log("🤖 Generating phases and tickets with:", {
+    model: model?.modelId,
+    featureId,
+    featureTitle: feature.title,
+  });
+
+  const result = streamObject({
+    model,
+    schema: phasesTicketsSchema,
+    prompt: userPrompt,
+    system: GENERATE_PHASES_TICKETS_PROMPT,
     temperature: 0.7,
   });
 
