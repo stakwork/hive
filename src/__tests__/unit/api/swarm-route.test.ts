@@ -208,7 +208,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, name, repositoryName, repositoryUrl");
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
 
     test("should reject requests with missing name", async () => {
@@ -225,7 +225,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, name, repositoryName, repositoryUrl");
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
 
     test("should reject requests with missing repository fields", async () => {
@@ -244,7 +244,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, name, repositoryName, repositoryUrl");
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
   });
 
