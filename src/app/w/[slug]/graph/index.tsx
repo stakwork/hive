@@ -4,6 +4,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
+import { Graph3D } from "./Graph3D";
 
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
@@ -157,6 +158,8 @@ export const GraphComponent = () => {
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const selectedNodeRef = useRef<D3Node | null>(null);
+  const [is3DView, setIs3DView] = useState(false);
+  const [showCameraControls, setShowCameraControls] = useState(false);
 
   // keep selectedNodeRef in sync for use inside D3 handlers
   useEffect(() => {
@@ -165,6 +168,7 @@ export const GraphComponent = () => {
 
   const isDarkMode = mounted && resolvedTheme === 'dark';
   const nodeTypes = Array.from(new Set(nodes.map(n => n.type)));
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   // --- load schemas ---
   useEffect(() => {
@@ -455,6 +459,28 @@ export const GraphComponent = () => {
         <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Graph Visualization</h3>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setIs3DView(!is3DView)}
+            className={`px-3 py-1 text-sm rounded transition-colors ${isDarkMode
+              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            title="Toggle 2D/3D view"
+          >
+            {is3DView ? '2D' : '3D'}
+          </button>
+          {is3DView && isLocalhost && (
+            <button
+              onClick={() => setShowCameraControls(!showCameraControls)}
+              className={`px-3 py-1 text-sm rounded transition-colors ${showCameraControls
+                ? (isDarkMode ? 'bg-blue-700 text-white' : 'bg-blue-500 text-white')
+                : (isDarkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')
+              }`}
+              title="Toggle camera debug controls"
+            >
+              🎥
+            </button>
+          )}
+          <button
             onClick={toggleTheme}
             className={`px-3 py-1 text-sm rounded transition-colors ${isDarkMode
               ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -493,23 +519,30 @@ export const GraphComponent = () => {
           <div className="flex h-96 items-center justify-center">
             <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>No nodes found for selected schema</div>
           </div>
+        ) : is3DView ? (
+          <Graph3D
+            nodes={nodes}
+            links={links}
+            nodeTypes={nodeTypes}
+            colorPalette={COLOR_PALETTE}
+            isDarkMode={isDarkMode}
+            showCameraControls={showCameraControls}
+            selectedNodeId={selectedNode?.id || null}
+            onNodeClick={(node) => {
+              setSelectedNode(node);
+            }}
+          />
         ) : (
           <svg ref={el => { svgRef.current = el; }} className="w-full h-auto" />
         )}
       </div>
 
-      {nodes.length > 0 && (
-        <div className={`mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          <p><strong>Instructions:</strong> Drag nodes to reposition them. Use mouse wheel to zoom, drag canvas to pan, or use the zoom controls above. Click on a node to see details.</p>
-        </div>
-      )}
-
       {selectedNode && (
         <NodePopup
           node={selectedNode}
           onClose={() => {
-            // release fx/fy on selected node
-            if (selectedNodeRef.current) {
+            // Only release pinned node in 2D mode (3D manages its own simulation)
+            if (!is3DView && selectedNodeRef.current) {
               selectedNodeRef.current.fx = null;
               selectedNodeRef.current.fy = null;
               simulationRef.current?.alpha(0.1).restart();
