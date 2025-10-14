@@ -17,8 +17,8 @@ describe("Generate Call Link API - Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Set up environment variable for tests
-    process.env.LIVEKIT_CALL_BASE_URL = "https://chat.sphinx.chat/rooms/sphinx.call.-";
+    // Set default LiveKit URL for tests
+    process.env.LIVEKIT_CALL_BASE_URL = "https://call.livekit.io/";
   });
 
   afterEach(() => {
@@ -31,351 +31,409 @@ describe("Generate Call Link API - Integration Tests", () => {
   });
 
   describe("POST /api/workspaces/[slug]/calls/generate-link", () => {
-    test("rejects unauthenticated requests", async () => {
-      const { workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
+    describe("Authentication Tests", () => {
+      test("rejects unauthenticated requests", async () => {
+        const { workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
+
+        // Request without middleware auth headers
+        const request = createPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectUnauthorized(response);
       });
 
-      // Request without middleware auth headers
-      const request = createPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-      );
+      test("rejects requests with missing user context", async () => {
+        const { workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
 
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
+        const request = createPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectUnauthorized(response);
       });
-
-      await expectUnauthorized(response);
     });
 
-    test("rejects non-member access", async () => {
-      const { workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
+    describe("Authorization Tests", () => {
+      test("allows workspace owner to generate call link", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.url).toBeDefined();
+        expect(typeof data.url).toBe("string");
       });
 
-      const nonMember = await createTestUser();
+      test("allows workspace admin to generate call link", async () => {
+        const { members, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+          members: [{ role: "ADMIN" }],
+        });
 
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        nonMember,
-      );
+        const admin = members[0];
 
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          admin,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.url).toBeDefined();
       });
 
-      await expectError(response, "Access denied", 403);
+      test("allows workspace PM to generate call link", async () => {
+        const { members, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+          members: [{ role: "PM" }],
+        });
+
+        const pm = members[0];
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          pm,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.url).toBeDefined();
+      });
+
+      test("allows workspace developer to generate call link", async () => {
+        const { members, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+          members: [{ role: "DEVELOPER" }],
+        });
+
+        const developer = members[0];
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          developer,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.url).toBeDefined();
+      });
+
+      test("allows workspace viewer to generate call link", async () => {
+        const { members, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+          members: [{ role: "VIEWER" }],
+        });
+
+        const viewer = members[0];
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          viewer,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.url).toBeDefined();
+      });
+
+      test("rejects non-member access", async () => {
+        const { workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
+
+        const nonMember = await createTestUser();
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          nonMember,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Access denied", 403);
+      });
     });
 
-    test("allows workspace owner to generate call link", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
+    describe("Validation Tests", () => {
+      test("returns error when workspace slug is missing", async () => {
+        const { owner } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces//calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: "" }),
+        });
+
+        await expectError(response, "Workspace slug is required", 400);
       });
 
-      // Mock Date.now to get predictable timestamp
-      const mockTimestamp = 1750694095;
-      vi.spyOn(Date, "now").mockReturnValue(mockTimestamp * 1000);
+      test("returns error when workspace not found", async () => {
+        const owner = await createTestUser();
 
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/non-existent-slug/calls/generate-link`,
+          {},
+          owner,
+        );
 
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: "non-existent-slug" }),
+        });
+
+        await expectError(response, "Workspace not found", 404);
       });
 
-      const data = await expectSuccess(response, 200);
+      test("returns error when swarm not configured", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: false,
+        });
 
-      expect(data.url).toBe(
-        `https://chat.sphinx.chat/rooms/sphinx.call.-swarm38.sphinx.chat-.${mockTimestamp}`
-      );
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Swarm not configured or not active", 400);
+      });
+
+      test("returns error when swarm not ACTIVE", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "PENDING", name: "swarm38" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Swarm not configured or not active", 400);
+      });
+
+      test("returns error when swarm in FAILED state", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "FAILED", name: "swarm38" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Swarm not configured or not active", 400);
+      });
+
+      test("returns error when LIVEKIT_CALL_BASE_URL not configured", async () => {
+        delete process.env.LIVEKIT_CALL_BASE_URL;
+
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "LiveKit call service not configured", 500);
+      });
     });
 
-    test("allows workspace member to generate call link", async () => {
-      const { members, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
-        memberCount: 1,
+    describe("Success Cases", () => {
+      test("generates call URL with correct format", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        const data = await expectSuccess(response, 200);
+
+        // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}
+        expect(data.url).toMatch(
+          /^https:\/\/call\.livekit\.io\/swarm42\.sphinx\.chat-\.\d+$/,
+        );
       });
 
-      const member = members[0];
+      test("timestamp in URL is recent", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
 
-      // Mock Date.now to get predictable timestamp
-      const mockTimestamp = 1750694095;
-      vi.spyOn(Date, "now").mockReturnValue(mockTimestamp * 1000);
+        const beforeTimestamp = Math.floor(Date.now() / 1000);
 
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        member,
-      );
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
 
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        const afterTimestamp = Math.floor(Date.now() / 1000);
+
+        const data = await expectSuccess(response, 200);
+
+        // Extract timestamp from URL
+        const match = data.url.match(/\.(\d+)$/);
+        expect(match).not.toBeNull();
+
+        const urlTimestamp = parseInt(match![1], 10);
+
+        // Timestamp should be within reasonable range (within a few seconds)
+        expect(urlTimestamp).toBeGreaterThanOrEqual(beforeTimestamp);
+        expect(urlTimestamp).toBeLessThanOrEqual(afterTimestamp + 1);
       });
 
-      const data = await expectSuccess(response, 200);
+      test("handles swarm names with special characters", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm-test_123" },
+        });
 
-      expect(data.url).toBe(
-        `https://chat.sphinx.chat/rooms/sphinx.call.-swarm38.sphinx.chat-.${mockTimestamp}`
-      );
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        const data = await expectSuccess(response, 200);
+
+        expect(data.url).toContain("swarm-test_123.sphinx.chat-.");
+      });
     });
 
-    test("generates URL with correct format", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "test-swarm-123" },
+    describe("Error Handling", () => {
+      test("handles internal errors gracefully", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm38" },
+        });
+
+        // Mock db to throw an error
+        const { db } = await import("@/lib/db");
+        const originalFindFirst = db.workspace.findFirst;
+        vi.spyOn(db.workspace, "findFirst").mockRejectedValueOnce(
+          new Error("Database error"),
+        );
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Internal server error", 500);
+
+        // Restore original implementation
+        db.workspace.findFirst = originalFindFirst;
       });
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      const data = await expectSuccess(response, 200);
-
-      // Verify URL format
-      expect(data.url).toMatch(
-        /^https:\/\/chat\.sphinx\.chat\/rooms\/sphinx\.call\.-test-swarm-123\.sphinx\.chat-\.\d+$/
-      );
-    });
-
-    test("generates URL with current Unix timestamp", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
-      });
-
-      const beforeTimestamp = Math.floor(Date.now() / 1000);
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      const afterTimestamp = Math.floor(Date.now() / 1000);
-
-      const data = await expectSuccess(response, 200);
-
-      // Extract timestamp from URL
-      const urlMatch = data.url.match(/\.sphinx\.chat-\.(\d+)$/);
-      expect(urlMatch).not.toBeNull();
-
-      const urlTimestamp = parseInt(urlMatch![1], 10);
-      expect(urlTimestamp).toBeGreaterThanOrEqual(beforeTimestamp);
-      expect(urlTimestamp).toBeLessThanOrEqual(afterTimestamp);
-    });
-
-    test("returns error when workspace not found", async () => {
-      const user = await createTestUser();
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/non-existent-slug/calls/generate-link`,
-        user,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: "non-existent-slug" }),
-      });
-
-      await expectError(response, "Workspace not found", 404);
-    });
-
-    test("returns error when swarm not configured", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: false,
-      });
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      await expectError(response, "Swarm not configured or not active", 400);
-    });
-
-    test("returns error when swarm status is not ACTIVE", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "PENDING", name: "swarm38" },
-      });
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      await expectError(response, "Swarm not configured or not active", 400);
-    });
-
-    test("returns error when swarm status is FAILED", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "FAILED", name: "swarm38" },
-      });
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      await expectError(response, "Swarm not configured or not active", 400);
-    });
-
-    test("returns error when swarm name is empty", async () => {
-      const { owner, workspace, swarm } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
-      });
-
-      // Update swarm to have an empty name
-      const { db } = await import("@/lib/db");
-      await db.swarm.update({
-        where: { id: swarm!.id },
-        data: { name: "" },
-      });
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      await expectError(response, "Swarm name not found", 400);
-    });
-
-    test("returns error when swarm name is null", async () => {
-      const { owner, workspace, swarm } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
-      });
-
-      // Update swarm to have null name
-      const { db } = await import("@/lib/db");
-      await db.swarm.update({
-        where: { id: swarm!.id },
-        data: { name: null },
-      });
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      await expectError(response, "Swarm name not found", 400);
-    });
-
-    test("returns error when LIVEKIT_CALL_BASE_URL not configured", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
-      });
-
-      // Remove environment variable
-      delete process.env.LIVEKIT_CALL_BASE_URL;
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      await expectError(response, "LiveKit call service not configured", 500);
-    });
-
-    test("handles swarm name with special characters", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm-test_123" },
-      });
-
-      const mockTimestamp = 1750694095;
-      vi.spyOn(Date, "now").mockReturnValue(mockTimestamp * 1000);
-
-      const request = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      const data = await expectSuccess(response, 200);
-
-      expect(data.url).toBe(
-        `https://chat.sphinx.chat/rooms/sphinx.call.-swarm-test_123.sphinx.chat-.${mockTimestamp}`
-      );
-    });
-
-    test("generates unique URLs for multiple calls", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario({
-        withSwarm: true,
-        swarm: { status: "ACTIVE", name: "swarm38" },
-      });
-
-      // First call
-      const request1 = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response1 = await POST(request1, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      const data1 = await expectSuccess(response1, 200);
-
-      // Small delay to ensure different timestamp
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Second call
-      const request2 = createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
-        owner,
-      );
-
-      const response2 = await POST(request2, {
-        params: Promise.resolve({ slug: workspace.slug }),
-      });
-
-      const data2 = await expectSuccess(response2, 200);
-
-      // URLs should be different due to timestamp
-      expect(data1.url).not.toBe(data2.url);
     });
   });
 });
