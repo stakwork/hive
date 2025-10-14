@@ -215,19 +215,12 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/search/attributes",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=10&offset=0",
         expect.objectContaining({
-          method: "POST",
+          method: "GET",
           headers: {
-            "Content-Type": "application/json",
             "x-api-token": "test-swarm-api-key",
           },
-          body: JSON.stringify({
-            node_type: ["Episode"],
-            limit: 10,
-            skip: 0,
-            include_properties: true,
-          }),
         }),
       );
     });
@@ -320,14 +313,12 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/search/attributes",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=20&offset=10",
         expect.objectContaining({
-          body: JSON.stringify({
-            node_type: ["Episode"],
-            limit: 20,
-            skip: 10,
-            include_properties: true,
-          }),
+          method: "GET",
+          headers: {
+            "x-api-token": "test-swarm-api-key",
+          },
         }),
       );
     });
@@ -354,14 +345,12 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/search/attributes",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=10&offset=0",
         expect.objectContaining({
-          body: JSON.stringify({
-            node_type: ["Episode"],
-            limit: 10,
-            skip: 0,
-            include_properties: true,
-          }),
+          method: "GET",
+          headers: {
+            "x-api-token": "test-swarm-api-key",
+          },
         }),
       );
     });
