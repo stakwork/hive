@@ -12,6 +12,7 @@ import {
   createNodeElements,
   createLinkElements,
   updatePositions,
+  setupNodeHoverHighlight,
 } from "./graphUtils";
 
 interface GraphVisualizationProps {
@@ -87,6 +88,9 @@ export function GraphVisualization({
     // Create links and nodes
     const link = createLinkElements(container, validLinks);
     const node = createNodeElements(container, d3Nodes, colorMap, onNodeClick, dragBehavior);
+
+    // Setup hover highlighting
+    setupNodeHoverHighlight(node, link, validLinks);
 
     // Update positions on simulation tick
     simulation.on("tick", () => {

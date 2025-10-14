@@ -28,6 +28,7 @@ export interface D3Link extends d3.SimulationLinkDatum<D3Node> {
 }
 
 export const DEFAULT_COLORS: Record<string, string> = {
+  // Original types
   Hint: "#3b82f6",
   Prompt: "#10b981",
   File: "#f59e0b",
@@ -37,6 +38,29 @@ export const DEFAULT_COLORS: Record<string, string> = {
   Request: "#ec4899",
   Learning: "#84cc16",
   Task: "#f97316",
+
+  // Repository & Package structure
+  Repository: "#1e40af",
+  Package: "#0891b2",
+  Language: "#0d9488",
+  Directory: "#f59e0b",
+
+  // Code organization
+  Import: "#7c3aed",
+  Library: "#9333ea",
+  Class: "#a855f7",
+  Trait: "#c084fc",
+  Instance: "#d8b4fe",
+
+  // Features & Pages
+  Feature: "#059669",
+  Page: "#10b981",
+  Var: "#34d399",
+
+  // Test types (similar colors - shades of amber/yellow)
+  UnitTest: "#fbbf24",
+  IntegrationTest: "#f59e0b",
+  E2eTest: "#f97316",
 };
 
 export const getNodeColor = (type: string, colorMap?: Record<string, string>): string => {
@@ -183,4 +207,62 @@ export const updatePositions = (
     .attr("y2", d => (d.target as D3Node).y!);
 
   node.attr("transform", d => `translate(${d.x},${d.y})`);
+};
+
+export const getConnectedNodeIds = (
+  nodeId: string,
+  links: D3Link[]
+): Set<string> => {
+  const connected = new Set<string>();
+
+  // Find all nodes connected to this node (both as source and target)
+  links.forEach(link => {
+    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+
+    if (sourceId === nodeId) {
+      connected.add(targetId);
+    }
+    if (targetId === nodeId) {
+      connected.add(sourceId);
+    }
+  });
+
+  return connected;
+};
+
+export const setupNodeHoverHighlight = (
+  node: d3.Selection<SVGGElement, D3Node, SVGGElement, unknown>,
+  link: d3.Selection<SVGLineElement, D3Link, SVGGElement, unknown>,
+  links: D3Link[]
+): void => {
+  node
+    .on("mouseenter", function(_, d) {
+      const hoveredId = d.id;
+      const connectedIds = getConnectedNodeIds(hoveredId, links);
+
+      // Dim all nodes except hovered and connected
+      node.style("opacity", n => {
+        if (n.id === hoveredId || connectedIds.has(n.id)) {
+          return 1;
+        }
+        return 0.3;
+      });
+
+      // Dim all links except those connected to hovered node
+      link.style("opacity", l => {
+        const sourceId = typeof l.source === 'string' ? l.source : l.source.id;
+        const targetId = typeof l.target === 'string' ? l.target : l.target.id;
+
+        if (sourceId === hoveredId || targetId === hoveredId) {
+          return 1;
+        }
+        return 0.15;
+      });
+    })
+    .on("mouseleave", function() {
+      // Reset all opacities
+      node.style("opacity", 1);
+      link.style("opacity", 0.6);
+    });
 };

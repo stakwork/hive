@@ -13,6 +13,7 @@ import {
   createLinkElements,
   addArrowMarker,
   updatePositions,
+  setupNodeHoverHighlight,
 } from "./graphUtils";
 
 interface GraphVisualizationLayeredProps {
@@ -133,6 +134,9 @@ export function GraphVisualizationLayered({
     // Create links and nodes
     const link = createLinkElements(container, validLinks, true);
     const node = createNodeElements(container, d3Nodes, colorMap, onNodeClick, dragBehavior);
+
+    // Setup hover highlighting
+    setupNodeHoverHighlight(node, link, validLinks);
 
     // Update positions on simulation tick
     simulation.on("tick", () => {
