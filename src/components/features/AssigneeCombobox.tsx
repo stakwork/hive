@@ -19,6 +19,7 @@ interface WorkspaceMember {
     email: string | null;
     image: string | null;
   };
+  icon?: string;
 }
 
 interface AssigneeComboboxProps {
@@ -28,10 +29,11 @@ interface AssigneeComboboxProps {
     name: string | null;
     email: string | null;
     image: string | null;
+    icon?: string | null;
   } | null;
   onSelect: (
     assigneeId: string | null,
-    assigneeData?: { id: string; name: string | null; email: string | null; image: string | null } | null
+    assigneeData?: { id: string; name: string | null; email: string | null; image: string | null; icon?: string | null } | null
   ) => Promise<void>;
   showSpecialAssignees?: boolean;
 }
@@ -100,7 +102,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
                   <AvatarImage src={currentAssignee.image} />
                 ) : (
                   <AvatarFallback className="text-xs">
-                    {currentAssignee.id === "system:task-coordinator" ? (
+                    {currentAssignee.icon === "bot" ? (
                       <Bot className="h-3 w-3" />
                     ) : (
                       currentAssignee.name?.charAt(0) || <UserIcon className="h-3 w-3" />
@@ -148,6 +150,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
                         name: sys.user.name,
                         email: sys.user.email,
                         image: sys.user.image,
+                        icon: sys.icon,
                       })
                     }
                     disabled={updating}
@@ -160,7 +163,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
                         <AvatarImage src={sys.user.image} />
                       ) : (
                         <AvatarFallback className="text-xs">
-                          {sys.userId === "system:task-coordinator" ? <Bot className="h-3 w-3" /> : <UserIcon className="h-3 w-3" />}
+                          {sys.icon === "bot" ? <Bot className="h-3 w-3" /> : <UserIcon className="h-3 w-3" />}
                         </AvatarFallback>
                       )}
                     </Avatar>

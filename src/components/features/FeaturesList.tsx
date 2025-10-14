@@ -43,7 +43,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="font-medium">{feature.title}</TableCell>
+      <TableCell className="w-[600px] max-w-0 font-medium truncate">{feature.title}</TableCell>
       <TableCell onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="feature"
@@ -320,12 +320,12 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           </div>
 
           <div className="rounded-md border">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[40%]">Title</TableHead>
+                  <TableHead className="w-[300px]">Title</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Assigned</TableHead>
+                  <TableHead className="w-[180px]">Assigned</TableHead>
                   <TableHead className="text-right">Created</TableHead>
                 </TableRow>
               </TableHeader>
@@ -477,10 +477,10 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
         {viewType === "list" ? (
           <div className="rounded-md border">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="w-[35%]">Title</TableHead>
+                <TableHead className="w-[600px]">Title</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[180px]">Assigned</TableHead>
                 <TableHead className="text-right">Created</TableHead>

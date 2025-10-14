@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, GripVertical, User as UserIcon } from "lucide-react";
+import { Loader2, Plus, GripVertical, User as UserIcon, Bot } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -82,7 +82,11 @@ function SortableTicketItem({
             <>
               <AvatarImage src={ticket.assignee.image || undefined} />
               <AvatarFallback className="text-[10px]">
-                {ticket.assignee.name?.[0]?.toUpperCase() || <UserIcon className="h-3 w-3" />}
+                {ticket.assignee.icon === "bot" ? (
+                  <Bot className="h-3 w-3" />
+                ) : (
+                  ticket.assignee.name?.[0]?.toUpperCase() || <UserIcon className="h-3 w-3" />
+                )}
               </AvatarFallback>
             </>
           ) : (

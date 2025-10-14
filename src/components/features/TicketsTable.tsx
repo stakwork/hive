@@ -88,7 +88,7 @@ function SortableTableRow({
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </TableCell>
-      <TableCell className="font-medium" onClick={onClick}>
+      <TableCell className="w-[600px] max-w-0 font-medium truncate" onClick={onClick}>
         {ticket.title}
       </TableCell>
       <TableCell>
@@ -198,11 +198,11 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
         collisionDetection={collisionDetection}
         onDragEnd={handleDragEnd}
       >
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead className="w-[35%]">Title</TableHead>
+              <TableHead className="w-[600px]">Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead className="w-[180px]">Assignee</TableHead>
