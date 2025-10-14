@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import {
@@ -15,12 +14,9 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string })?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { slug } = await params;
 
@@ -49,7 +45,7 @@ export async function GET(
         },
         members: {
           where: {
-            userId,
+            userId: userOrResponse.id,
             leftAt: null,
           },
         },
@@ -63,7 +59,7 @@ export async function GET(
       );
     }
 
-    if (workspace.ownerId !== userId && workspace.members.length === 0) {
+    if (workspace.ownerId !== userOrResponse.id && workspace.members.length === 0) {
       return NextResponse.json(
         { error: "Access denied" },
         { status: 403 },
