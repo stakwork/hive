@@ -1524,7 +1524,7 @@ describe("User Stories API - Integration Tests", () => {
       );
 
       const response = await POST_REORDER(request, {
-        params: Promise.resolve({ featureId: feature.id }),
+        params: Promise.resolve({ featureId: feature.id, slug: workspace.slug }),
       });
 
       const data = await expectSuccess(response, 200);
