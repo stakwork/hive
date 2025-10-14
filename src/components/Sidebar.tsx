@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Map,
   Menu,
+  Phone,
   Settings,
   Users,
 } from "lucide-react";
@@ -63,6 +64,7 @@ const baseNavigationItems = [
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
   { icon: BookOpen, label: "Learn", href: "/learn" },
+  { icon: Phone, label: "Calls", href: "/calls" },
   // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 

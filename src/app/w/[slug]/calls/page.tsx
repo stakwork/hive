@@ -1,0 +1,170 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { CallRecording, CallsResponse } from "@/types/calls";
+import { CallsTable } from "@/components/calls/CallsTable";
+import { ConnectRepository } from "@/components/ConnectRepository";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { Loader2 } from "lucide-react";
+
+export default function CallsPage() {
+  const { workspace, slug } = useWorkspace();
+  const [calls, setCalls] = useState<CallRecording[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const limit = 10;
+
+  useEffect(() => {
+    if (!slug || !workspace?.isCodeGraphSetup) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchCalls = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const skip = (page - 1) * limit;
+        const response = await fetch(
+          `/api/workspaces/${slug}/calls?limit=${limit}&skip=${skip}`,
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to fetch calls");
+        }
+
+        const data: CallsResponse = await response.json();
+        setCalls(data.calls);
+        setHasMore(data.hasMore);
+      } catch (err) {
+        console.error("Error fetching calls:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to load call recordings",
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCalls();
+  }, [slug, workspace?.isCodeGraphSetup, page]);
+
+  if (!workspace?.isCodeGraphSetup) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Calls"
+          description="View your call recordings"
+        />
+        <ConnectRepository
+          workspaceSlug={slug}
+          title="Connect repository to view call recordings"
+          description="Setup your development environment to access call recordings."
+          buttonText="Connect Repository"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Calls"
+        description="View your call recordings"
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Call Recordings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="text-center py-12">
+              <p className="text-red-600 mb-2">Error loading calls</p>
+              <p className="text-sm text-muted-foreground">{error}</p>
+            </div>
+          )}
+
+          {!loading && !error && <CallsTable calls={calls} />}
+
+          {!loading && !error && calls.length > 0 && (
+            <div className="mt-6">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className={
+                        page === 1
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+
+                  {page > 1 && (
+                    <PaginationItem>
+                      <PaginationLink
+                        onClick={() => setPage(1)}
+                        className="cursor-pointer"
+                      >
+                        1
+                      </PaginationLink>
+                    </PaginationItem>
+                  )}
+
+                  {page > 2 && (
+                    <PaginationItem>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  )}
+
+                  <PaginationItem>
+                    <PaginationLink isActive className="cursor-default">
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+
+                  {hasMore && (
+                    <>
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setPage((p) => p + 1)}
+                          className="cursor-pointer"
+                        />
+                      </PaginationItem>
+                    </>
+                  )}
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

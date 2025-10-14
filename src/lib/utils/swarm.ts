@@ -7,3 +7,7 @@ export function transformSwarmUrlToRepo2Graph(
     ? swarmUrl.replace("/api", ":3355")
     : swarmUrl + ":3355";
 }
+
+export function getJarvisUrl(swarmName: string): string {
+  return `https://${swarmName}.sphinx.chat:8444`;
+}
