@@ -25,10 +25,3 @@ export interface JarvisSearchResponse {
   nodes: JarvisNode[];
   edges: unknown[];
 }
-
-export interface JarvisSearchRequest {
-  node_type: string[];
-  limit: number;
-  skip: number;
-  include_properties: boolean;
-}

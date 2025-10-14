@@ -6,7 +6,6 @@ import { EncryptionService } from "@/lib/encryption";
 import {
   CallRecording,
   CallsResponse,
-  JarvisSearchRequest,
   JarvisSearchResponse,
 } from "@/types/calls";
 
@@ -96,21 +95,16 @@ export async function GET(
     );
 
     const jarvisUrl = getJarvisUrl(workspace.swarm.name);
-    const searchRequest: JarvisSearchRequest = {
-      node_type: ["Episode"],
-      limit,
-      skip,
-      include_properties: true,
-    };
 
-    const jarvisResponse = await fetch(`${jarvisUrl}/graph/search/attributes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-token": decryptedApiKey,
-      },
-      body: JSON.stringify(searchRequest),
-    });
+    const jarvisResponse = await fetch(
+      `${jarvisUrl}/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=${limit}&offset=${skip}`,
+      {
+        method: "GET",
+        headers: {
+          "x-api-token": decryptedApiKey,
+        },
+      }
+    );
 
     if (!jarvisResponse.ok) {
       console.error(
