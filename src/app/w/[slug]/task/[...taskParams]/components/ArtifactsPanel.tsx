@@ -4,7 +4,7 @@ import { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Artifact, ArtifactType } from "@/lib/chat";
-import { CodeArtifactPanel, BrowserArtifactPanel } from "../artifacts";
+import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel } from "../artifacts";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -18,14 +18,16 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
   const codeArtifacts = artifacts.filter((a) => a.type === "CODE");
   const browserArtifacts = artifacts.filter((a) => a.type === "BROWSER");
   const ideArtifacts = artifacts.filter((a) => a.type === "IDE");
+  const graphArtifacts = artifacts.filter((a) => a.type === "GRAPH");
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (ideArtifacts.length > 0) tabs.push("IDE");
+    if (graphArtifacts.length > 0) tabs.push("GRAPH");
     return tabs;
-  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length]);
+  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -76,6 +78,11 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
                 IDE
               </TabsTrigger>
             )}
+            {graphArtifacts.length > 0 && (
+              <TabsTrigger className="cursor-pointer" value="GRAPH">
+                Graph
+              </TabsTrigger>
+            )}
           </TabsList>
         </motion.div>
 
@@ -113,6 +120,16 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               hidden={activeTab !== "IDE"}
             >
               <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} onDebugMessage={onDebugMessage} />
+            </TabsContent>
+          )}
+          {graphArtifacts.length > 0 && (
+            <TabsContent
+              value="GRAPH"
+              className="h-full mt-0"
+              forceMount
+              hidden={activeTab !== "GRAPH"}
+            >
+              <GraphArtifactPanel artifacts={graphArtifacts} />
             </TabsContent>
           )}
         </motion.div>

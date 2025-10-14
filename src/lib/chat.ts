@@ -32,6 +32,12 @@ export interface BrowserContent {
   url: string;
 }
 
+export interface GraphContent {
+  ref_id: string;
+  depth?: number;
+  cluster_title?: string;
+}
+
 export interface Option {
   actionType: "button" | "chat";
   optionLabel: string;
@@ -77,7 +83,7 @@ export interface BugReportContent {
 
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent;
 }
 
 export interface Attachment extends PrismaAttachment {
@@ -127,7 +133,7 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

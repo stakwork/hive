@@ -5,7 +5,7 @@ import { GripVertical, Trash2, Check } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Item,
   ItemContent,
@@ -29,6 +29,7 @@ export function SortableUserStory({
   saved,
 }: SortableUserStoryProps) {
   const [title, setTitle] = useState(story.title);
+  const [isFocused, setIsFocused] = useState(false);
 
   // Sync local state when story prop changes (e.g., after save)
   useEffect(() => {
@@ -49,7 +50,12 @@ export function SortableUserStory({
     transition,
   };
 
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
   const handleBlur = async () => {
+    setIsFocused(false);
     if (title !== story.title && title.trim()) {
       await onUpdate(story.id, title.trim());
     }
@@ -74,11 +80,16 @@ export function SortableUserStory({
         </Button>
         <ItemContent>
           <div className="flex items-center gap-2 flex-1">
-            <Input
+            <Textarea
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onFocus={handleFocus}
               onBlur={handleBlur}
-              className="border-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-auto py-0 px-0 text-sm"
+              className={`border-none bg-transparent dark:bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-0 py-0 px-0 text-sm resize-none ${
+                isFocused
+                  ? "max-h-40 overflow-y-auto"
+                  : "line-clamp-2 overflow-hidden"
+              }`}
               placeholder="Enter user story..."
             />
             {saved && (

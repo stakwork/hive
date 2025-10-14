@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { X, CheckCircle2, Loader2 } from "lucide-react";
+import { useRef, useEffect } from "react";
 
 interface Action {
   id: string;
@@ -21,6 +22,9 @@ interface ActionsListProps {
   onRemoveAction: (action: Action) => void;
   onClearAll: () => void;
   isRecording: boolean;
+  isReplaying?: boolean;
+  currentActionIndex?: number;
+  totalActions?: number;
 }
 
 // Helper function to extract the most descriptive element identifier
@@ -154,44 +158,120 @@ function getActionBorderColor(kind: string): string {
   }
 }
 
-export function ActionsList({ actions, onRemoveAction, onClearAll, isRecording }: ActionsListProps) {
+export function ActionsList({
+  actions,
+  onRemoveAction,
+  onClearAll,
+  isRecording,
+  isReplaying = false,
+  currentActionIndex = -1,
+  totalActions = 0,
+}: ActionsListProps) {
+  const actionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to current action during replay
+  useEffect(() => {
+    if (isReplaying && currentActionIndex >= 0 && actionRefs.current[currentActionIndex]) {
+      const actionElement = actionRefs.current[currentActionIndex];
+      const container = scrollContainerRef.current;
+
+      if (actionElement && container) {
+        // Scroll with smooth behavior and center alignment
+        actionElement.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    }
+  }, [isReplaying, currentActionIndex]);
+
+  // Get action status based on replay progress
+  const getActionStatus = (index: number): "pending" | "active" | "completed" => {
+    if (!isReplaying) return "pending";
+    if (index < currentActionIndex) return "completed";
+    if (index === currentActionIndex) return "active";
+    return "pending";
+  };
+
+  // Get status icon for action
+  const getStatusIcon = (status: "pending" | "active" | "completed") => {
+    switch (status) {
+      case "completed":
+        return <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />;
+      case "active":
+        return <Loader2 className="h-3 w-3 text-blue-500 animate-spin flex-shrink-0" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm">
       <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
-        <h3 className="text-sm font-semibold">Test Actions ({actions.length})</h3>
-        <Button variant="destructive" size="sm" onClick={onClearAll} disabled={!isRecording || actions.length === 0}>
+        <h3 className="text-sm font-semibold">
+          {isReplaying ? (
+            <>
+              Replaying ({currentActionIndex + 1}/{totalActions})
+            </>
+          ) : (
+            <>Test Actions ({actions.length})</>
+          )}
+        </h3>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={onClearAll}
+          disabled={!isRecording || isReplaying || actions.length === 0}
+        >
           Clear All
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
         {actions.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">No actions recorded yet</div>
         ) : (
           <div className="flex flex-col gap-1 p-2">
-            {actions.map((action) => (
-              <div
-                key={action.id}
-                className={`flex items-center justify-between rounded border-l-4 ${getActionBorderColor(
-                  action.kind,
-                )} bg-muted/50 p-1.5 transition-colors hover:bg-muted`}
-                title={`${action.kind}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
-              >
-                <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
-                  {getActionDisplay(action)}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onRemoveAction(action)}
-                  disabled={!isRecording}
-                  className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
-                  title="Remove this action"
+            {actions.map((action, index) => {
+              const status = getActionStatus(index);
+              const isActive = status === "active";
+              const isCompleted = status === "completed";
+
+              return (
+                <div
+                  key={action.id}
+                  ref={(el) => {
+                    actionRefs.current[index] = el;
+                  }}
+                  className={`flex items-center gap-2 rounded border-l-4 ${getActionBorderColor(
+                    action.kind,
+                  )} p-1.5 transition-all duration-200 ${
+                    isActive
+                      ? "bg-blue-100 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-400 dark:ring-blue-600"
+                      : isCompleted
+                        ? "bg-green-50 dark:bg-green-900/20 opacity-70"
+                        : "bg-muted/50 hover:bg-muted"
+                  }`}
+                  title={`${action.kind}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
                 >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
+                  {isReplaying && getStatusIcon(status)}
+                  <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+                    {getActionDisplay(action)}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRemoveAction(action)}
+                    disabled={!isRecording || isReplaying}
+                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+                    title="Remove this action"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

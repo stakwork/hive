@@ -112,7 +112,7 @@ export function LearnChatArea({
           transition={{ duration: 0.3 }}
         >
           {messages.map((message) => (
-            <LearnChatMessage key={message.id} message={message} />
+            <LearnChatMessage key={message.id} message={message} workspaceSlug={workspaceSlug} />
           ))}
 
           {isLoading && (

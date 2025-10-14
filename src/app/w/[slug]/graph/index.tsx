@@ -146,7 +146,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
 // --- MAIN COMPONENT ---
 export const GraphComponent = () => {
   const { id: workspaceId } = useWorkspace();
-  const { theme, toggleTheme, mounted } = useTheme();
+  const { resolvedTheme, toggleTheme, mounted } = useTheme();
   const [nodes, setNodes] = useState<D3Node[]>([]);
   const [links, setLinks] = useState<D3Link[]>([]);
   const [schemas, setSchemas] = useState<SchemaNode[]>([]);
@@ -163,7 +163,7 @@ export const GraphComponent = () => {
     selectedNodeRef.current = selectedNode;
   }, [selectedNode]);
 
-  const isDarkMode = mounted && (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches));
+  const isDarkMode = mounted && resolvedTheme === 'dark';
   const nodeTypes = Array.from(new Set(nodes.map(n => n.type)));
 
   // --- load schemas ---

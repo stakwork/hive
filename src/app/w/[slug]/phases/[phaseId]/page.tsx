@@ -406,7 +406,7 @@ export default function PhaseDetailPage() {
                   onNodeClick={(ticketId) => {
                     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
                   }}
-                  emptyStateMessage="No tickets to display"
+                  emptyStateMessage="No tickets to display."
                   noDependenciesMessage={{
                     title: "No Dependencies Yet",
                     description: "Add dependencies between tickets to see them visualized here.",
