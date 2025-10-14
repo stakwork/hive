@@ -7,16 +7,14 @@ import { useToast } from "@/components/ui/use-toast";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
-import { Database, ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
+import { ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 export function RepositoryCard() {
-  const { workspace, slug, id: workspaceId } = useWorkspace();
+  const { workspace, slug } = useWorkspace();
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
   const { toast } = useToast();
   const [isInstalling, setIsInstalling] = useState(false);
-  const [isIngesting, setIsIngesting] = useState(false);
-
   // Handle GitHub App installation
   const handleGithubAppInstall = async () => {
     if (!slug) return;
@@ -54,53 +52,6 @@ export function RepositoryCard() {
         description: "An error occurred while trying to install the GitHub App",
         variant: "destructive",
       });
-    }
-  };
-
-  // Handle rerun ingest
-  const handleRerunIngest = async () => {
-    if (!workspace?.id) {
-      toast({
-        title: "Error",
-        description: "No swarm ID found for this workspace",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsIngesting(true);
-    try {
-      const response = await fetch("/api/swarm/stakgraph/ingest", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ workspaceId }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        toast({
-          title: "Ingest Started",
-          description: "Code ingestion has been started. This may take a few minutes.",
-        });
-      } else {
-        toast({
-          title: "Ingest Failed",
-          description: data.message || "Failed to start code ingestion",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Failed to start ingest:", error);
-      toast({
-        title: "Ingest Failed",
-        description: "An error occurred while trying to start code ingestion",
-        variant: "destructive",
-      });
-    } finally {
-      setIsIngesting(false);
     }
   };
 
@@ -278,18 +229,6 @@ export function RepositoryCard() {
               <RefreshCw className="w-3 h-3" />
               {formatRelativeTime(repository.updatedAt)}
             </div>
-          </div>
-          <div className="pt-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleRerunIngest}
-              disabled={isIngesting}
-              className="w-full text-xs flex items-center gap-2"
-            >
-              <Database className="w-3 h-3" />
-              {isIngesting ? "Ingesting..." : "Rerun Ingest"}
-            </Button>
           </div>
         </div>
       </CardContent>
