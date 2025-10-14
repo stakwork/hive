@@ -43,8 +43,8 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[600px] max-w-0 font-medium truncate">{feature.title}</TableCell>
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-[300px] font-medium truncate">{feature.title}</TableCell>
+      <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="feature"
           currentStatus={feature.status}
@@ -58,7 +58,7 @@ function FeatureRow({
           onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
         />
       </TableCell>
-      <TableCell className="text-right text-muted-foreground text-sm">
+      <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
       </TableCell>
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
@@ -324,26 +324,28 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <TableHeader className="bg-muted/50">
                 <TableRow>
                   <TableHead className="w-[300px]">Title</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
-                  <TableHead className="text-right">Created</TableHead>
+                  <TableHead className="w-[150px] text-right">Created</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <TableRow key={i}>
-                    <TableCell>
+                    <TableCell className="w-[300px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="w-[180px]">
                       <Skeleton className="h-6 w-32" />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="w-[150px] text-right">
                       <Skeleton className="h-4 w-24 ml-auto" />
                     </TableCell>
+                    <TableCell className="w-[50px]"></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -480,10 +482,10 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           <Table className="table-fixed">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="w-[600px]">Title</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="w-[300px]">Title</TableHead>
+                <TableHead className="w-[120px]">Status</TableHead>
                 <TableHead className="w-[180px]">Assigned</TableHead>
-                <TableHead className="text-right">Created</TableHead>
+                <TableHead className="w-[150px] text-right">Created</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
