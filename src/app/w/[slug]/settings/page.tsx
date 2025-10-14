@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
+import { RerunIngest } from "@/components/RerunIngest";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
 import { VMConfigSection } from "@/components/pool-status";
@@ -45,6 +46,11 @@ export default async function SettingsPage({
           <VMConfigSection />
 
           <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
+
+          <RerunIngest
+            workspaceId={workspace.id}
+            workspaceName={workspace.name}
+          />
 
           {workspace.userRole === "OWNER" && (
             <DeleteWorkspace
