@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
@@ -106,7 +106,6 @@ model User {
   @@map("users")
 }
 
-
 model GitHubAuth {
   id                String    @id @default(cuid())
   userId            String    @unique @map("user_id")
@@ -142,15 +141,15 @@ model GitHubAuth {
 // =============================================
 
 model SourceControlOrg {
-  id                   String                @id @default(cuid())
-  type                 SourceControlOrgType  @default(ORG)
-  githubLogin          String                @unique // e.g. "anthropic", "evanfeenstra"
-  githubInstallationId Int                   @unique @map("github_installation_id")
-  name                 String?               // Display name
-  avatarUrl            String?               @map("avatar_url")
+  id                   String               @id @default(cuid())
+  type                 SourceControlOrgType @default(ORG)
+  githubLogin          String               @unique // e.g. "anthropic", "evanfeenstra"
+  githubInstallationId Int                  @unique @map("github_installation_id")
+  name                 String? // Display name
+  avatarUrl            String?              @map("avatar_url")
   description          String?
-  createdAt            DateTime              @default(now()) @map("created_at")
-  updatedAt            DateTime              @updatedAt @map("updated_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
 
   // Relationships
   tokens     SourceControlToken[]
@@ -162,15 +161,15 @@ model SourceControlOrg {
 }
 
 model SourceControlToken {
-  id                  String           @id @default(cuid())
-  userId              String           @map("user_id")
-  sourceControlOrgId  String           @map("source_control_org_id")
-  token               String           // Encrypted app access token
-  refreshToken        String?          @map("refresh_token") // Encrypted refresh token
-  expiresAt           DateTime?        @map("expires_at")
-  scopes              String[]         @default([])
-  createdAt           DateTime         @default(now()) @map("created_at")
-  updatedAt           DateTime         @updatedAt @map("updated_at")
+  id                 String    @id @default(cuid())
+  userId             String    @map("user_id")
+  sourceControlOrgId String    @map("source_control_org_id")
+  token              String // Encrypted app access token
+  refreshToken       String?   @map("refresh_token") // Encrypted refresh token
+  expiresAt          DateTime? @map("expires_at")
+  scopes             String[]  @default([])
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   // Relationships
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -187,16 +186,16 @@ model SourceControlToken {
 // =============================================
 
 model Workspace {
-  id          String    @id @default(cuid())
-  name        String
-  description String?
-  mission     String?
-  slug        String    @unique
-  originalSlug String?  @map("original_slug") // Store original slug for recovery
-  deleted     Boolean   @default(false)
-  deletedAt   DateTime? @map("deleted_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  mission      String?
+  slug         String    @unique
+  originalSlug String?   @map("original_slug") // Store original slug for recovery
+  deleted      Boolean   @default(false)
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Owner of the workspace
   ownerId String @map("owner_id")
@@ -214,7 +213,7 @@ model Workspace {
   repositories Repository[]
 
   // Tasks
-  tasks    Task[]
+  tasks Task[]
 
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
@@ -277,7 +276,7 @@ model Swarm {
   services             Json      @default("[]")
 
   // ingestion status tracking
-  ingestRefId String?         @map("ingest_ref_id")
+  ingestRefId String? @map("ingest_ref_id")
 
   // Generated container files
   containerFiles Json? @map("container_files")
@@ -482,7 +481,7 @@ model JanitorConfig {
   securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
 
   // Task Coordinator automation
-  taskCoordinatorEnabled  Boolean @default(false) @map("task_coordinator_enabled")
+  taskCoordinatorEnabled Boolean @default(false) @map("task_coordinator_enabled")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -698,37 +697,37 @@ enum SystemAssigneeType {
 // =============================================
 
 model Feature {
-  id          String           @id @default(cuid())
-  title       String
-  brief       String?
+  id           String    @id @default(cuid())
+  title        String
+  brief        String?
   requirements String?
   architecture String?
-  personas    String[]         @default([])
-  workspaceId String           @map("workspace_id")
-  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personas     String[]  @default([])
+  workspaceId  String    @map("workspace_id")
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // Assignee/Lead
-  assigneeId  String?          @map("assignee_id")
-  assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
-  status      FeatureStatus    @default(BACKLOG)
-  priority    FeaturePriority  @default(NONE)
+  status   FeatureStatus   @default(BACKLOG)
+  priority FeaturePriority @default(NONE)
 
   // Audit fields
-  createdById String           @map("created_by_id")
-  createdBy   User             @relation("FeatureCreator", fields: [createdById], references: [id])
-  updatedById String           @map("updated_by_id")
-  updatedBy   User             @relation("FeatureUpdater", fields: [updatedById], references: [id])
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("FeatureCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("FeatureUpdater", fields: [updatedById], references: [id])
 
   // Relationships
   userStories UserStory[]
   phases      Phase[]
   tickets     Ticket[]
 
-  deleted     Boolean          @default(false)
-  deletedAt   DateTime?        @map("deleted_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -754,22 +753,22 @@ enum FeaturePriority {
 }
 
 model UserStory {
-  id          String   @id @default(cuid())
-  featureId   String   @map("feature_id")
-  feature     Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  featureId String  @map("feature_id")
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
 
-  title       String
-  order       Int      @default(0)
-  completed   Boolean  @default(false)
+  title     String
+  order     Int     @default(0)
+  completed Boolean @default(false)
 
   // Audit fields
-  createdById String   @map("created_by_id")
-  createdBy   User     @relation("UserStoryCreator", fields: [createdById], references: [id])
-  updatedById String   @map("updated_by_id")
-  updatedBy   User     @relation("UserStoryUpdater", fields: [updatedById], references: [id])
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("UserStoryCreator", fields: [createdById], references: [id])
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("UserStoryUpdater", fields: [updatedById], references: [id])
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([featureId])
   @@index([order])
@@ -801,7 +800,7 @@ model Phase {
 }
 
 model Ticket {
-  id          String       @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String
   description String?
 
@@ -819,9 +818,9 @@ model Ticket {
   order    Int          @default(0)
 
   // Assignment (mutually exclusive: either a real user OR a system assignee)
-  assigneeId         String?              @map("assignee_id")
-  assignee           User?                @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  systemAssigneeType SystemAssigneeType?  @map("system_assignee_type")
+  assigneeId         String?             @map("assignee_id")
+  assignee           User?               @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  systemAssigneeType SystemAssigneeType? @map("system_assignee_type")
 
   // Dependencies - array of ticket IDs this ticket depends on
   dependsOnTicketIds String[] @default([]) @map("depends_on_ticket_ids")
