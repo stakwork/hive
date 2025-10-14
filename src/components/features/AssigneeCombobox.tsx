@@ -72,7 +72,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
 
   const handleSelect = async (
     memberId: string | null,
-    memberData?: { id: string; name: string | null; email: string | null; image: string | null } | null
+    memberData?: { id: string; name: string | null; email: string | null; image: string | null; icon?: string | null } | null
   ) => {
     try {
       setUpdating(true);
