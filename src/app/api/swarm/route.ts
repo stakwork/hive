@@ -29,13 +29,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, name, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
+    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
 
-    if (!workspaceId || !name || !repositoryUrl) {
+    if (!workspaceId || !repositoryUrl) {
       return NextResponse.json(
         {
           success: false,
-          message: "Missing required fields: workspaceId, name, repositoryName, repositoryUrl",
+          message: "Missing required fields: workspaceId, repositoryUrl",
         },
         { status: 400 },
       );
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `${name}-Swarm was created successfully`,
+      message: `Swarm was created successfully`,
       data: { id: createdSwarm.id, swarmId: swarm_id },
     });
   } catch (error: unknown) {
