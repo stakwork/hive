@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { getJarvisUrl } from "@/lib/utils/swarm";
+import { EncryptionService } from "@/lib/encryption";
 import {
   CallRecording,
   CallsResponse,
@@ -41,6 +42,7 @@ export async function GET(
           select: {
             name: true,
             status: true,
+            swarmApiKey: true,
           },
         },
         members: {
@@ -80,6 +82,19 @@ export async function GET(
       );
     }
 
+    if (!workspace.swarm.swarmApiKey) {
+      return NextResponse.json(
+        { error: "Swarm API key not configured" },
+        { status: 400 },
+      );
+    }
+
+    const encryptionService = EncryptionService.getInstance();
+    const decryptedApiKey = encryptionService.decryptField(
+      "swarmApiKey",
+      workspace.swarm.swarmApiKey
+    );
+
     const jarvisUrl = getJarvisUrl(workspace.swarm.name);
     const searchRequest: JarvisSearchRequest = {
       node_type: ["Episode"],
@@ -92,6 +107,7 @@ export async function GET(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-token": decryptedApiKey,
       },
       body: JSON.stringify(searchRequest),
     });
@@ -101,7 +117,7 @@ export async function GET(
         `Jarvis API error: ${jarvisResponse.status} ${jarvisResponse.statusText}`,
       );
       return NextResponse.json(
-        { error: "Failed to fetch call recordings from Jarvis" },
+        { error: "Failed to fetch call recordings." },
         { status: 502 },
       );
     }
