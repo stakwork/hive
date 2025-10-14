@@ -239,7 +239,7 @@ export function CoverageInsights() {
           <div className="space-y-3">
             <div className="rounded-md border overflow-hidden">
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted/50">
                   <TableRow>
                     <SortableHeader
                       label="Name"

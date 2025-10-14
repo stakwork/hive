@@ -88,17 +88,17 @@ function SortableTableRow({
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </TableCell>
-      <TableCell className="w-[600px] max-w-0 font-medium truncate" onClick={onClick}>
+      <TableCell className="w-[300px] font-medium truncate" onClick={onClick}>
         {ticket.title}
       </TableCell>
-      <TableCell>
+      <TableCell className="w-[120px]">
         <StatusPopover
           statusType="ticket"
           currentStatus={ticket.status}
           onUpdate={onStatusUpdate}
         />
       </TableCell>
-      <TableCell>
+      <TableCell className="w-[120px]">
         <PriorityPopover
           currentPriority={ticket.priority}
           onUpdate={onPriorityUpdate}
@@ -112,7 +112,7 @@ function SortableTableRow({
           showSpecialAssignees={true}
         />
       </TableCell>
-      <TableCell>
+      <TableCell className="w-[200px]">
         <DependenciesCombobox
           currentTicketId={ticket.id}
           phaseId={phaseId}
@@ -202,9 +202,9 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead className="w-[600px]">Title</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Priority</TableHead>
+              <TableHead className="w-[300px]">Title</TableHead>
+              <TableHead className="w-[120px]">Status</TableHead>
+              <TableHead className="w-[120px]">Priority</TableHead>
               <TableHead className="w-[180px]">Assignee</TableHead>
               <TableHead className="w-[200px]">Dependencies</TableHead>
               <TableHead className="w-[50px]"></TableHead>

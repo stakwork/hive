@@ -237,7 +237,7 @@ export default function UserJourneys() {
               ) : e2eTests.length > 0 ? (
                 <div className="rounded-md border">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-muted/50">
                       <TableRow>
                         <TableHead>Test Name</TableHead>
                         <TableHead>File Path</TableHead>
