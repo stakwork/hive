@@ -1,205 +1,126 @@
 import { authOptions } from "@/lib/auth/nextauth";
+import { db } from "@/lib/db";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 /**
- * Check that the GitHub App token can actually fetch data from a specific repository
- * This validates both authentication and repository access permissions
+ * Check if the user has push permissions to a repository
+ * Returns true if user has a valid token and push access, false otherwise
  */
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({
-        canFetchData: false,
+        hasPushAccess: false,
         error: "Unauthorized"
       }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
-    const workspaceSlug = searchParams.get("workspaceSlug");
-    const repositoryUrl = searchParams.get("repositoryUrl");
-
-    if (!workspaceSlug) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Missing required parameter: workspaceSlug"
-      }, { status: 400 });
-    }
-
-    // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
-    if (!workspaceAccess.hasAccess) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Workspace not found or access denied"
-      }, { status: 403 });
-    }
-
-    // Get workspace
-    const { db } = await import("@/lib/db");
-    const workspace = await db.workspace.findUnique({
-      where: { slug: workspaceSlug },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({
-        canFetchData: false,
-        error: "Workspace not found"
-      }, { status: 404 });
-    }
-
-    // Use repositoryUrl parameter first, fall back to primary repository
-    let repoUrl: string | null = repositoryUrl;
-    if (!repoUrl) {
-      const { getPrimaryRepository } = await import("@/lib/helpers/repository");
-      const primaryRepo = await getPrimaryRepository(workspace.id);
-      repoUrl = primaryRepo?.repositoryUrl ?? null;
-    }
+    const repoUrl = searchParams.get("repositoryUrl");
 
     if (!repoUrl) {
       return NextResponse.json({
-        canFetchData: false,
-        error: "No repository URL provided in parameter or workspace configuration"
+        hasPushAccess: false,
+        error: "Missing required parameter: repositoryUrl"
       }, { status: 400 });
     }
 
-    console.log("[REPO CHECK] Starting repository data fetch check:", {
-      userId: session.user.id,
-      workspaceSlug,
-      repositoryUrl: repoUrl,
-      source: repositoryUrl ? "parameter" : "primary_repository",
-    });
+
 
     // Extract owner and repo name from repository URL
     const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
     if (!githubMatch) {
-      console.error("[REPO CHECK] Invalid GitHub repository URL:", repoUrl);
       return NextResponse.json({
-        canFetchData: false,
+        hasPushAccess: false,
         error: "Invalid GitHub repository URL"
       }, { status: 400 });
     }
 
     const [, owner, repo] = githubMatch;
-    console.log("[REPO CHECK] Parsed repository:", { owner, repo });
+
+    console.log('owner', owner)
+    console.log('repo', repo)
 
     // Get access token for the specific GitHub owner
     const tokens = await getUserAppTokens(session.user.id, owner);
+
+    console.log('tokens', tokens)
     if (!tokens?.accessToken) {
-      console.error("[REPO CHECK] No access token available for user:", session.user.id, "and owner:", owner);
       return NextResponse.json({
-        canFetchData: false,
+        hasPushAccess: false,
         error: "No GitHub App tokens found for this repository owner"
+      }, { status: 403 });
+    }
+
+    // First, get the installation ID for this owner
+    const sourceControlOrg = await db.sourceControlOrg.findUnique({
+      where: { githubLogin: owner },
+      select: { githubInstallationId: true }
+    });
+
+    if (!sourceControlOrg?.githubInstallationId) {
+      return NextResponse.json({
+        hasPushAccess: false,
+        error: "No GitHub App installation found for this repository owner"
       }, { status: 200 });
     }
 
-    console.log("[REPO CHECK] Successfully retrieved access token");
+    // Check installation-specific repository access
+    const installationId = sourceControlOrg.githubInstallationId;
+    const installationReposUrl = `https://api.github.com/user/installations/${installationId}/repositories`;
 
-    // Test actual repository data access by fetching repository info
-    const repoInfoUrl = `https://api.github.com/repos/${owner}/${repo}`;
-    console.log("[REPO CHECK] Testing repository access with:", repoInfoUrl);
-
-    const response = await fetch(repoInfoUrl, {
+    const response = await fetch(installationReposUrl, {
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${tokens.accessToken}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
     });
-
-    console.log("[REPO CHECK] GitHub API response status:", response.status);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[REPO CHECK] Failed to fetch repository data:", response.status, response.statusText);
-      console.error("[REPO CHECK] Error response body:", errorText);
-
-      let errorMessage = "Failed to fetch repository data";
-      if (response.status === 404) {
-        errorMessage = "Repository not found or no access";
-      } else if (response.status === 403) {
-        errorMessage = "Access forbidden - insufficient permissions";
-      } else if (response.status === 401) {
-        errorMessage = "Authentication failed - invalid token";
-      }
-
       return NextResponse.json({
-        canFetchData: false,
-        error: errorMessage,
-        httpStatus: response.status
+        hasPushAccess: false,
+        error: response.status === 404 ? "Installation not found or no access" : "Failed to access installation repositories"
       }, { status: 200 });
     }
 
-    const repoData = await response.json();
-    console.log("[REPO CHECK] Successfully fetched repository data:", {
-      name: repoData.name,
-      full_name: repoData.full_name,
-      private: repoData.private,
-      permissions: repoData.permissions,
-    });
+    const installationData = await response.json();
+    const targetRepoFullName = `${owner}/${repo}`.toLowerCase();
 
-    // Check push permissions
-    const hasPushAccess = !!(
-      repoData.permissions?.push ||
-      repoData.permissions?.admin ||
-      repoData.permissions?.maintain
+    // Check if the target repository is accessible through this installation
+    const repositoryAccess = installationData.repositories?.find(
+      (repository: { full_name: string; permissions?: any }) =>
+        repository.full_name.toLowerCase() === targetRepoFullName
     );
-    console.log("[REPO CHECK] Push access analysis:", {
-      push: repoData.permissions?.push,
-      admin: repoData.permissions?.admin,
-      maintain: repoData.permissions?.maintain,
-      hasPushAccess,
-    });
 
-    // Test fetching commits to ensure we can read repository content
-    const commitsUrl = `https://api.github.com/repos/${owner}/${repo}/commits`;
-    console.log("[REPO CHECK] Testing commits access with:", commitsUrl);
-
-    const commitsResponse = await fetch(`${commitsUrl}?per_page=1`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${tokens.accessToken}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-
-    console.log("[REPO CHECK] Commits API response status:", commitsResponse.status);
-
-    let canReadCommits = false;
-    if (commitsResponse.ok) {
-      const commitsData = await commitsResponse.json();
-      canReadCommits = Array.isArray(commitsData) && commitsData.length >= 0;
-      console.log("[REPO CHECK] Successfully fetched commits data, count:", commitsData.length);
-    } else {
-      console.error("[REPO CHECK] Failed to fetch commits:", commitsResponse.status, commitsResponse.statusText);
+    if (!repositoryAccess) {
+      return NextResponse.json({
+        hasPushAccess: false,
+        error: "Repository not accessible through GitHub App installation"
+      }, { status: 200 });
     }
 
-    console.log("[REPO CHECK] Final result: Repository data can be fetched successfully");
+    // Check push permissions on the installation-accessible repository
+    const hasPushAccess = !!(
+      repositoryAccess.permissions?.push ||
+      repositoryAccess.permissions?.admin ||
+      repositoryAccess.permissions?.maintain
+    );
 
     return NextResponse.json({
-      canFetchData: true,
-      hasPushAccess,
-      repositoryInfo: {
-        name: repoData.name,
-        full_name: repoData.full_name,
-        private: repoData.private,
-        default_branch: repoData.default_branch,
-        permissions: repoData.permissions,
-      },
-      canReadCommits,
-      message: "GitHub App can successfully fetch repository data"
+      hasPushAccess
     }, { status: 200 });
 
   } catch (error) {
-    console.error("[REPO CHECK] Error during repository data fetch check:", error);
+    console.error("[REPO CHECK] Error during repository check:", error);
     return NextResponse.json({
-      canFetchData: false,
-      error: "Internal server error during repository check"
+      hasPushAccess: false,
+      error: "Internal server error"
     }, { status: 500 });
   }
 }

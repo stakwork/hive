@@ -225,6 +225,9 @@ model Workspace {
   // Roadmap features
   features Feature[]
 
+  // Temporary storage for repository URL during setup
+  repositoryDraft String? @map("repository_draft")
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
