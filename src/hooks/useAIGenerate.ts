@@ -37,13 +37,21 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
       try {
         // The response is a series of JSON objects, we want the last complete one
         const lines = text.trim().split('\n').filter(line => line.trim());
-        const lastLine = lines[lines.length - 1];
 
+        if (lines.length === 0) {
+          throw new Error("Empty response from AI");
+        }
+
+        const lastLine = lines[lines.length - 1];
         const data = JSON.parse(lastLine);
 
-        // Handle structured output format: { stories: [...] }
+        // Handle structured output formats
         if (data.stories && Array.isArray(data.stories)) {
+          // User stories format: { stories: [...] }
           setSuggestions(data.stories);
+        } else if (data.phases && Array.isArray(data.phases)) {
+          // Phases and tickets format: { phases: [...] }
+          setSuggestions([data as T]);
         } else if (Array.isArray(data)) {
           // Fallback for simple array format
           setSuggestions(data);
@@ -54,8 +62,9 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
         } else {
           throw new Error("Unexpected response format");
         }
-      } catch {
+      } catch (parseError) {
         console.error("Failed to parse AI response:", text);
+        console.error("Parse error details:", parseError);
         throw new Error("Failed to parse AI response");
       }
     } catch (err) {

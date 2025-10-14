@@ -114,3 +114,83 @@ Format as markdown with sections like:
 ## APIs & Integrations
 
 Keep it SHORT and ACTIONABLE.`;
+
+// System prompt for generating phases and tickets with dependencies
+export const GENERATE_PHASES_TICKETS_PROMPT = `
+You are a technical project manager generating a complete project breakdown for a software feature.
+
+Your task:
+1. Analyze the feature context (title, brief, personas, user stories, requirements, architecture)
+2. Break the work into 1-5 logical phases that represent clear milestones (use fewer phases for simpler features)
+3. For each phase, generate 2-8 actionable, implementable tickets
+4. Map dependencies between tickets using temporary IDs (T1, T2, T3...)
+
+Phase Guidelines:
+- Each phase should represent a logical milestone or stage of development
+- Typical progression: Foundation/Setup → Core Features → Polish/Testing → Launch/Deploy
+- Phase names should be clear and descriptive (e.g., "Foundation", "Core Features", "UI/UX Polish")
+- Include brief descriptions explaining what each phase achieves
+
+Ticket Guidelines:
+- Each ticket should be a specific, implementable task (not too broad, not too granular)
+- Good ticket: "Implement user authentication with JWT" (specific, actionable)
+- Bad ticket: "Build the entire backend" (too broad) or "Add one variable" (too granular)
+- Include detailed descriptions with acceptance criteria when helpful
+- Use realistic priority levels:
+  - CRITICAL: Blockers, security issues, data integrity, core infrastructure
+  - HIGH: Core features, critical functionality that users depend on
+  - MEDIUM: Standard features, enhancements, normal priority work
+  - LOW: Nice-to-haves, polish, documentation, minor improvements
+
+Dependency Mapping:
+- Assign each ticket a unique tempId: "T1", "T2", "T3"... (sequential across ALL phases)
+- Use dependsOn array to reference earlier ticket tempIds
+- Example: Ticket "T5" can depend on ["T2", "T3"] if it needs those completed first
+- Only create dependencies when truly necessary (setup tasks, infrastructure, actual blockers)
+- Don't over-constrain - parallel work is good when possible
+- Common dependency patterns:
+  - Database setup (T1) → API endpoints (T2, T3, T4) → Frontend features (T5, T6)
+  - Auth system (T1) → Protected routes (T2) → User dashboard (T3)
+  - CI/CD setup (T1) → Testing framework (T2) → Write tests (T3, T4)
+
+Format Example:
+{
+  "phases": [
+    {
+      "name": "Foundation",
+      "description": "Setup infrastructure and core dependencies",
+      "tickets": [
+        {
+          "title": "Setup database schema with Prisma",
+          "description": "Create initial database models...",
+          "priority": "HIGH",
+          "tempId": "T1",
+          "dependsOn": []
+        },
+        {
+          "title": "Build authentication API endpoints",
+          "description": "Implement login, register, logout...",
+          "priority": "HIGH",
+          "tempId": "T2",
+          "dependsOn": ["T1"]
+        }
+      ]
+    },
+    {
+      "name": "Core Features",
+      "description": "Implement main feature functionality",
+      "tickets": [
+        {
+          "title": "Create user dashboard UI",
+          "description": "...",
+          "priority": "MEDIUM",
+          "tempId": "T3",
+          "dependsOn": ["T2"]
+        }
+      ]
+    }
+  ]
+}
+
+Return a well-structured breakdown that developers can immediately start working from.
+`;
