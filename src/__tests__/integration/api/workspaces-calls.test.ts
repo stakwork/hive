@@ -5,13 +5,11 @@ import {
   createTestWorkspaceScenario,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   createGetRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 
 // Mock Jarvis API response
@@ -54,8 +52,7 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
+      // Request without middleware auth headers
       const request = createGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
       );
@@ -74,10 +71,10 @@ describe("Calls API - Integration Tests", () => {
       });
 
       const nonMember = await createTestUser();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        nonMember,
       );
 
       const response = await GET(request, {
@@ -93,15 +90,14 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       (global.fetch as any).mockResolvedValue({
         ok: true,
         json: async () => mockJarvisResponse,
       });
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -119,15 +115,15 @@ describe("Calls API - Integration Tests", () => {
       });
 
       const member = members[0];
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
 
       (global.fetch as any).mockResolvedValue({
         ok: true,
         json: async () => mockJarvisResponse,
       });
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        member,
       );
 
       const response = await GET(request, {
@@ -142,10 +138,9 @@ describe("Calls API - Integration Tests", () => {
         withSwarm: false,
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -161,10 +156,9 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "PENDING", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -187,10 +181,9 @@ describe("Calls API - Integration Tests", () => {
         data: { name: "" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -206,16 +199,15 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => mockJarvisResponse,
       });
       global.fetch = mockFetch;
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       await GET(request, {
@@ -245,15 +237,14 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       (global.fetch as any).mockResolvedValue({
         ok: true,
         json: async () => mockJarvisResponse,
       });
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -283,16 +274,15 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       (global.fetch as any).mockResolvedValue({
         ok: false,
         status: 500,
         statusText: "Internal Server Error",
       });
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -312,16 +302,15 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ nodes: [], edges: [] }),
       });
       global.fetch = mockFetch;
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
         { limit: "20", skip: "10" },
       );
 
@@ -348,16 +337,15 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ nodes: [], edges: [] }),
       });
       global.fetch = mockFetch;
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       await GET(request, {
@@ -383,8 +371,6 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       // Mock response with exactly 10 items (hasMore should be true)
       const tenItems = Array.from({ length: 10 }, (_, i) => ({
         ref_id: `call-${i}`,
@@ -402,8 +388,9 @@ describe("Calls API - Integration Tests", () => {
         json: async () => ({ nodes: tenItems, edges: [] }),
       });
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
@@ -423,8 +410,6 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
       // Mock response with less than 10 items
       const fiveItems = Array.from({ length: 5 }, (_, i) => ({
         ref_id: `call-${i}`,
@@ -442,8 +427,9 @@ describe("Calls API - Integration Tests", () => {
         json: async () => ({ nodes: fiveItems, edges: [] }),
       });
 
-      const request = createGetRequest(
+      const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
       );
 
       const response = await GET(request, {
