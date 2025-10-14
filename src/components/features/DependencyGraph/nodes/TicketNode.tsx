@@ -1,7 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User as UserIcon } from "lucide-react";
+import { User as UserIcon, Bot } from "lucide-react";
 import type { TicketListItem } from "@/types/roadmap";
 import { PRIORITY_LABELS } from "@/types/roadmap";
 
@@ -61,8 +61,12 @@ export function TicketNode({ data }: TicketNodeProps) {
               <Avatar className="h-5 w-5">
                 <AvatarImage src={data.assignee.image || undefined} />
                 <AvatarFallback className="text-xs bg-gray-200 dark:bg-gray-700">
-                  {data.assignee.name?.charAt(0).toUpperCase() || (
-                    <UserIcon className="h-3 w-3" />
+                  {data.assignee.icon === "bot" ? (
+                    <Bot className="h-3 w-3" />
+                  ) : (
+                    data.assignee.name?.charAt(0).toUpperCase() || (
+                      <UserIcon className="h-3 w-3" />
+                    )
                   )}
                 </AvatarFallback>
               </Avatar>

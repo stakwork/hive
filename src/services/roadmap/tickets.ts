@@ -16,11 +16,13 @@ const SYSTEM_ASSIGNEE_CONFIG = {
     enumValue: SystemAssigneeType.TASK_COORDINATOR,
     name: "Task Coordinator",
     image: null,
+    icon: "bot",
   },
   "system:bounty-hunter": {
     enumValue: SystemAssigneeType.BOUNTY_HUNTER,
     name: "Bounty Hunter",
     image: "/sphinx_icon.png",
+    icon: null,
   },
 } as const;
 
@@ -49,6 +51,7 @@ function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
     name: config.name,
     email: null,
     image: config.image,
+    icon: config.icon,
   };
 }
 
@@ -111,24 +114,14 @@ export async function getTicket(
 
   // Convert system assignee type to virtual user object
   if (ticketDetail.systemAssigneeType) {
-    const systemAssignee = ticketDetail.systemAssigneeType === "TASK_COORDINATOR"
-      ? {
-          id: "system:task-coordinator",
-          name: "Task Coordinator",
-          email: null,
-          image: null,
-        }
-      : {
-          id: "system:bounty-hunter",
-          name: "Bounty Hunter",
-          email: null,
-          image: "/sphinx_icon.png",
-        };
+    const systemAssignee = getSystemAssigneeUser(ticketDetail.systemAssigneeType);
 
-    return {
-      ...ticketDetail,
-      assignee: systemAssignee,
-    };
+    if (systemAssignee) {
+      return {
+        ...ticketDetail,
+        assignee: systemAssignee,
+      };
+    }
   }
 
   return ticketDetail;
@@ -242,24 +235,14 @@ export async function createTicket(
 
   // Convert system assignee type to virtual user object
   if (ticket.systemAssigneeType) {
-    const systemAssignee = ticket.systemAssigneeType === "TASK_COORDINATOR"
-      ? {
-          id: "system:task-coordinator",
-          name: "Task Coordinator",
-          email: null,
-          image: null,
-        }
-      : {
-          id: "system:bounty-hunter",
-          name: "Bounty Hunter",
-          email: null,
-          image: "/sphinx_icon.png",
-        };
+    const systemAssignee = getSystemAssigneeUser(ticket.systemAssigneeType);
 
-    return {
-      ...ticket,
-      assignee: systemAssignee,
-    };
+    if (systemAssignee) {
+      return {
+        ...ticket,
+        assignee: systemAssignee,
+      };
+    }
   }
 
   return ticket;
@@ -437,24 +420,14 @@ export async function updateTicket(
 
   // Convert system assignee type to virtual user object
   if (updatedTicket.systemAssigneeType) {
-    const systemAssignee = updatedTicket.systemAssigneeType === "TASK_COORDINATOR"
-      ? {
-          id: "system:task-coordinator",
-          name: "Task Coordinator",
-          email: null,
-          image: null,
-        }
-      : {
-          id: "system:bounty-hunter",
-          name: "Bounty Hunter",
-          email: null,
-          image: "/sphinx_icon.png",
-        };
+    const systemAssignee = getSystemAssigneeUser(updatedTicket.systemAssigneeType);
 
-    return {
-      ...updatedTicket,
-      assignee: systemAssignee,
-    };
+    if (systemAssignee) {
+      return {
+        ...updatedTicket,
+        assignee: systemAssignee,
+      };
+    }
   }
 
   return updatedTicket;
@@ -550,24 +523,14 @@ export async function reorderTickets(
   // Convert system assignee types to virtual user objects
   return updatedTickets.map(ticket => {
     if (ticket.systemAssigneeType) {
-      const systemAssignee = ticket.systemAssigneeType === "TASK_COORDINATOR"
-        ? {
-            id: "system:task-coordinator",
-            name: "Task Coordinator",
-            email: null,
-            image: null,
-          }
-        : {
-            id: "system:bounty-hunter",
-            name: "Bounty Hunter",
-            email: null,
-            image: "/sphinx_icon.png",
-          };
+      const systemAssignee = getSystemAssigneeUser(ticket.systemAssigneeType);
 
-      return {
-        ...ticket,
-        assignee: systemAssignee,
-      };
+      if (systemAssignee) {
+        return {
+          ...ticket,
+          assignee: systemAssignee,
+        };
+      }
     }
     return ticket;
   });
