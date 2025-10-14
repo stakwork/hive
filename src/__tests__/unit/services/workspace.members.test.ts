@@ -130,6 +130,7 @@ describe("Workspace Member Management", () => {
             },
           },
         },
+        systemAssignees: expect.any(Array),
       });
     });
 
@@ -183,6 +184,7 @@ describe("Workspace Member Management", () => {
             github: null,
           },
         },
+        systemAssignees: expect.any(Array),
       });
     });
   });

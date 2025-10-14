@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TicketStatus, Priority } from "@prisma/client";
+import { TicketStatus, Priority, SystemAssigneeType } from "@prisma/client";
 import type {
   CreateTicketRequest,
   UpdateTicketRequest,
@@ -9,6 +9,51 @@ import type {
 import { validateFeatureAccess, validateTicketAccess, calculateNextOrder } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
+
+// System assignee configuration
+const SYSTEM_ASSIGNEE_CONFIG = {
+  "system:task-coordinator": {
+    enumValue: SystemAssigneeType.TASK_COORDINATOR,
+    name: "Task Coordinator",
+    image: null,
+    icon: "bot",
+  },
+  "system:bounty-hunter": {
+    enumValue: SystemAssigneeType.BOUNTY_HUNTER,
+    name: "Bounty Hunter",
+    image: "/sphinx_icon.png",
+    icon: null,
+  },
+} as const;
+
+type SystemAssigneeId = keyof typeof SYSTEM_ASSIGNEE_CONFIG;
+
+function isSystemAssigneeId(id: string | null | undefined): id is SystemAssigneeId {
+  if (!id) return false;
+  return id in SYSTEM_ASSIGNEE_CONFIG;
+}
+
+function getSystemAssigneeEnum(id: string): SystemAssigneeType | null {
+  if (!isSystemAssigneeId(id)) return null;
+  return SYSTEM_ASSIGNEE_CONFIG[id].enumValue;
+}
+
+function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
+  const entry = Object.entries(SYSTEM_ASSIGNEE_CONFIG).find(
+    ([_, config]) => config.enumValue === enumValue
+  );
+
+  if (!entry) return null;
+
+  const [id, config] = entry;
+  return {
+    id,
+    name: config.name,
+    email: null,
+    image: config.image,
+    icon: config.icon,
+  };
+}
 
 /**
  * Gets a ticket with full context (feature, phase, creator, updater)
@@ -36,6 +81,7 @@ export async function getTicket(
       dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
+      systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
       },
@@ -64,6 +110,18 @@ export async function getTicket(
 
   if (!ticketDetail) {
     throw new Error("Ticket not found");
+  }
+
+  // Convert system assignee type to virtual user object
+  if (ticketDetail.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(ticketDetail.systemAssigneeType);
+
+    if (systemAssignee) {
+      return {
+        ...ticketDetail,
+        assignee: systemAssignee,
+      };
+    }
   }
 
   return ticketDetail;
@@ -103,12 +161,15 @@ export async function createTicket(
   }
 
   if (data.assigneeId) {
-    const assignee = await db.user.findUnique({
-      where: { id: data.assigneeId },
-    });
+    // Skip validation for system assignees
+    if (!data.assigneeId.startsWith("system:")) {
+      const assignee = await db.user.findUnique({
+        where: { id: data.assigneeId },
+      });
 
-    if (!assignee) {
-      throw new Error("Assignee not found");
+      if (!assignee) {
+        throw new Error("Assignee not found");
+      }
     }
   }
 
@@ -125,6 +186,14 @@ export async function createTicket(
     phaseId: data.phaseId || null,
   });
 
+  // Determine if assignee is a system assignee
+  const isSystemAssignee = data.assigneeId?.startsWith("system:");
+  const systemAssigneeType = isSystemAssignee
+    ? data.assigneeId === "system:task-coordinator"
+      ? "TASK_COORDINATOR"
+      : "BOUNTY_HUNTER"
+    : null;
+
   const ticket = await db.ticket.create({
     data: {
       title: data.title.trim(),
@@ -134,7 +203,8 @@ export async function createTicket(
       status: data.status || TicketStatus.TODO,
       priority: data.priority || Priority.MEDIUM,
       order: nextOrder,
-      assigneeId: data.assigneeId || null,
+      assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
+      systemAssigneeType: systemAssigneeType,
       createdById: userId,
       updatedById: userId,
     },
@@ -150,6 +220,7 @@ export async function createTicket(
       dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
+      systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
       },
@@ -161,6 +232,18 @@ export async function createTicket(
       },
     },
   });
+
+  // Convert system assignee type to virtual user object
+  if (ticket.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(ticket.systemAssigneeType);
+
+    if (systemAssignee) {
+      return {
+        ...ticket,
+        assignee: systemAssignee,
+      };
+    }
+  }
 
   return ticket;
 }
@@ -221,15 +304,29 @@ export async function updateTicket(
 
   if (data.assigneeId !== undefined) {
     if (data.assigneeId !== null) {
-      const assignee = await db.user.findUnique({
-        where: { id: data.assigneeId },
-      });
+      // Skip validation for system assignees
+      if (!data.assigneeId.startsWith("system:")) {
+        const assignee = await db.user.findUnique({
+          where: { id: data.assigneeId },
+        });
 
-      if (!assignee) {
-        throw new Error("Assignee not found");
+        if (!assignee) {
+          throw new Error("Assignee not found");
+        }
       }
     }
-    updateData.assigneeId = data.assigneeId;
+
+    // Handle system assignees
+    const isSystemAssignee = data.assigneeId?.startsWith("system:");
+    if (isSystemAssignee) {
+      updateData.assigneeId = null;
+      updateData.systemAssigneeType = data.assigneeId === "system:task-coordinator"
+        ? "TASK_COORDINATOR"
+        : "BOUNTY_HUNTER";
+    } else {
+      updateData.assigneeId = data.assigneeId;
+      updateData.systemAssigneeType = null;
+    }
   }
 
   if (data.order !== undefined) {
@@ -308,6 +405,7 @@ export async function updateTicket(
       dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
+      systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
       },
@@ -319,6 +417,18 @@ export async function updateTicket(
       },
     },
   });
+
+  // Convert system assignee type to virtual user object
+  if (updatedTicket.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(updatedTicket.systemAssigneeType);
+
+    if (systemAssignee) {
+      return {
+        ...updatedTicket,
+        assignee: systemAssignee,
+      };
+    }
+  }
 
   return updatedTicket;
 }
@@ -396,6 +506,7 @@ export async function reorderTickets(
       dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
+      systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
       },
@@ -409,5 +520,18 @@ export async function reorderTickets(
     orderBy: { order: "asc" },
   });
 
-  return updatedTickets;
+  // Convert system assignee types to virtual user objects
+  return updatedTickets.map(ticket => {
+    if (ticket.systemAssigneeType) {
+      const systemAssignee = getSystemAssigneeUser(ticket.systemAssigneeType);
+
+      if (systemAssignee) {
+        return {
+          ...ticket,
+          assignee: systemAssignee,
+        };
+      }
+    }
+    return ticket;
+  });
 }

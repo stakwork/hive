@@ -401,8 +401,17 @@ export interface ReorderPhasesRequest {
   phases: { id: string; order: number }[];
 }
 
+// Helper type for assignee with optional icon field (for system assignees)
+type AssigneeWithIcon = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  image: string | null;
+  icon?: string | null;
+};
+
 // Ticket types
-export type TicketListItem = Prisma.TicketGetPayload<{
+type TicketListItemBase = Prisma.TicketGetPayload<{
   select: {
     id: true;
     title: true;
@@ -432,10 +441,14 @@ export type TicketListItem = Prisma.TicketGetPayload<{
   };
 }>;
 
+export type TicketListItem = Omit<TicketListItemBase, 'assignee'> & {
+  assignee: AssigneeWithIcon | null;
+};
+
 export type TicketWithDetails = TicketListItem;
 
 // Ticket detail with full context for detail page
-export type TicketDetail = Prisma.TicketGetPayload<{
+type TicketDetailBase = Prisma.TicketGetPayload<{
   select: {
     id: true;
     title: true;
@@ -488,6 +501,10 @@ export type TicketDetail = Prisma.TicketGetPayload<{
     };
   };
 }>;
+
+export type TicketDetail = Omit<TicketDetailBase, 'assignee'> & {
+  assignee: AssigneeWithIcon | null;
+};
 
 export interface CreateTicketRequest {
   title: string;

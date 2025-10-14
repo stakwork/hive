@@ -688,6 +688,11 @@ enum SourceControlOrgType {
   USER
 }
 
+enum SystemAssigneeType {
+  TASK_COORDINATOR
+  BOUNTY_HUNTER
+}
+
 // =============================================
 // ROADMAP FEATURES
 // =============================================
@@ -813,9 +818,10 @@ model Ticket {
   priority Priority     @default(MEDIUM)
   order    Int          @default(0)
 
-  // Assignment
-  assigneeId String? @map("assignee_id")
-  assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  // Assignment (mutually exclusive: either a real user OR a system assignee)
+  assigneeId         String?              @map("assignee_id")
+  assignee           User?                @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  systemAssigneeType SystemAssigneeType?  @map("system_assignee_type")
 
   // Dependencies - array of ticket IDs this ticket depends on
   dependsOnTicketIds String[] @default([]) @map("depends_on_ticket_ids")
@@ -834,6 +840,7 @@ model Ticket {
   @@index([featureId])
   @@index([phaseId])
   @@index([assigneeId])
+  @@index([systemAssigneeType])
   @@index([status])
   @@index([order])
   @@index([deleted])

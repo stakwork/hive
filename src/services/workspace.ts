@@ -867,9 +867,41 @@ export async function getWorkspaceMembers(workspaceId: string) {
     },
   };
 
+  // System assignees (always included for tickets)
+  const systemAssignees = [
+    {
+      id: "system:task-coordinator",
+      userId: "system:task-coordinator",
+      role: "SYSTEM" as const,
+      joinedAt: new Date().toISOString(),
+      user: {
+        id: "system:task-coordinator",
+        name: "Task Coordinator",
+        email: null,
+        image: null,
+      },
+      icon: "bot",
+      isSystem: true,
+    },
+    {
+      id: "system:bounty-hunter",
+      userId: "system:bounty-hunter",
+      role: "SYSTEM" as const,
+      joinedAt: new Date().toISOString(),
+      user: {
+        id: "system:bounty-hunter",
+        name: "Bounty Hunter",
+        email: null,
+        image: "/sphinx_icon.png",
+      },
+      isSystem: true,
+    },
+  ];
+
   return {
     members: mapWorkspaceMembers(members),
     owner,
+    systemAssignees,
   };
 }
 

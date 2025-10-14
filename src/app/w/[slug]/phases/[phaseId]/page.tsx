@@ -344,6 +344,7 @@ export default function PhaseDetailPage() {
                         setNewTicketAssigneeId(assigneeId);
                         setNewTicketAssigneeData(assigneeData || null);
                       }}
+                      showSpecialAssignees={true}
                     />
                   </div>
                   <div className="flex items-center justify-end gap-2">

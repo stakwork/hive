@@ -133,6 +133,7 @@ export function CreateTicketDialog({
               onSelect={async (assigneeId) =>
                 setFormData({ ...formData, assigneeId })
               }
+              showSpecialAssignees={true}
             />
           </div>
 
