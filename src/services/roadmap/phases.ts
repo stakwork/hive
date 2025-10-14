@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { SystemAssigneeType } from "@prisma/client";
 import type {
   CreatePhaseRequest,
   UpdatePhaseRequest,
@@ -54,6 +55,7 @@ export async function getPhase(
           dependsOnTicketIds: true,
           createdAt: true,
           updatedAt: true,
+          systemAssigneeType: true,
           assignee: {
             select: {
               id: true,
@@ -80,7 +82,35 @@ export async function getPhase(
     throw new Error("Phase not found");
   }
 
-  return phaseWithTickets;
+  // Convert system assignee types to virtual user objects
+  const ticketsWithConvertedAssignees = phaseWithTickets.tickets.map(ticket => {
+    if (ticket.systemAssigneeType) {
+      const systemAssignee = ticket.systemAssigneeType === "TASK_COORDINATOR"
+        ? {
+            id: "system:task-coordinator",
+            name: "Task Coordinator",
+            email: null,
+            image: null,
+          }
+        : {
+            id: "system:bounty-hunter",
+            name: "Bounty Hunter",
+            email: null,
+            image: "/sphinx_icon.png",
+          };
+
+      return {
+        ...ticket,
+        assignee: systemAssignee,
+      };
+    }
+    return ticket;
+  });
+
+  return {
+    ...phaseWithTickets,
+    tickets: ticketsWithConvertedAssignees,
+  };
 }
 
 /**

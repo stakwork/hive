@@ -104,11 +104,12 @@ function SortableTableRow({
           onUpdate={onPriorityUpdate}
         />
       </TableCell>
-      <TableCell>
+      <TableCell className="w-[180px]">
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
           currentAssignee={ticket.assignee}
           onSelect={onAssigneeUpdate}
+          showSpecialAssignees={true}
         />
       </TableCell>
       <TableCell>
@@ -204,7 +205,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
               <TableHead className="w-[35%]">Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
-              <TableHead>Assignee</TableHead>
+              <TableHead className="w-[180px]">Assignee</TableHead>
               <TableHead className="w-[200px]">Dependencies</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>

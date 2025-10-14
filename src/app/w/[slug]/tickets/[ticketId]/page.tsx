@@ -234,6 +234,7 @@ export default function TicketDetailPage() {
                 workspaceSlug={workspaceSlug}
                 currentAssignee={ticket.assignee}
                 onSelect={handleUpdateAssignee}
+                showSpecialAssignees={true}
               />
 
               {/* Actions Menu */}

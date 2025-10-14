@@ -51,7 +51,7 @@ function FeatureRow({
           onUpdate={(status) => onStatusUpdate(feature.id, status)}
         />
       </TableCell>
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
           currentAssignee={feature.assignee}
@@ -482,7 +482,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               <TableRow>
                 <TableHead className="w-[35%]">Title</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Assigned</TableHead>
+                <TableHead className="w-[180px]">Assigned</TableHead>
                 <TableHead className="text-right">Created</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
