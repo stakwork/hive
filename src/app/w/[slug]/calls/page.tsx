@@ -6,17 +6,15 @@ import { CallRecording, CallsResponse } from "@/types/calls";
 import { CallsTable } from "@/components/calls/CallsTable";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Pagination,
   PaginationContent,
   PaginationEllipsis,
   PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Loader2 } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 export default function CallsPage() {
   const { workspace, slug } = useWorkspace();
@@ -113,24 +111,28 @@ export default function CallsPage() {
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
-                    <PaginationPrevious
+                    <Button
+                      variant="ghost"
+                      size="default"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      className={
-                        page === 1
-                          ? "pointer-events-none opacity-50"
-                          : "cursor-pointer"
-                      }
-                    />
+                      disabled={page === 1}
+                      className="gap-1 pl-2.5"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span>Previous</span>
+                    </Button>
                   </PaginationItem>
 
                   {page > 1 && (
                     <PaginationItem>
-                      <PaginationLink
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => setPage(1)}
-                        className="cursor-pointer"
+                        className={buttonVariants({ variant: "ghost", size: "icon" })}
                       >
                         1
-                      </PaginationLink>
+                      </Button>
                     </PaginationItem>
                   )}
 
@@ -141,9 +143,14 @@ export default function CallsPage() {
                   )}
 
                   <PaginationItem>
-                    <PaginationLink isActive className="cursor-default">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className={buttonVariants({ variant: "outline", size: "icon" })}
+                      disabled
+                    >
                       {page}
-                    </PaginationLink>
+                    </Button>
                   </PaginationItem>
 
                   {hasMore && (
@@ -152,10 +159,15 @@ export default function CallsPage() {
                         <PaginationEllipsis />
                       </PaginationItem>
                       <PaginationItem>
-                        <PaginationNext
+                        <Button
+                          variant="ghost"
+                          size="default"
                           onClick={() => setPage((p) => p + 1)}
-                          className="cursor-pointer"
-                        />
+                          className="gap-1 pr-2.5"
+                        >
+                          <span>Next</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </PaginationItem>
                     </>
                   )}
