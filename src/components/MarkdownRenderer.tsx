@@ -17,6 +17,7 @@ interface MarkdownRendererProps {
   children: string;
   className?: string;
   variant?: "user" | "assistant";
+  size?: "default" | "compact";
 }
 
 const createStyles = (isUser: boolean) => ({
@@ -56,15 +57,44 @@ const baseStyles = {
   link: "underline underline-offset-4 hover:opacity-80 transition-colors",
 } as const;
 
+const compactStyles = {
+  heading: "font-semibold scroll-m-20",
+  h1: "text-xl lg:text-2xl mt-4 mb-2 border-b pb-1",
+  h2: "text-lg lg:text-xl mt-3 mb-2",
+  h3: "text-base lg:text-lg mt-3 mb-1.5",
+  h4: "text-sm lg:text-base mt-2 mb-1",
+  h5: "text-sm mt-2 mb-1",
+  h6: "text-xs lg:text-sm mt-1 mb-0.5",
+  paragraph: "leading-6 text-sm [&:not(:first-child)]:mt-2",
+  blockquote: "border-l-4 pl-3 py-1.5 my-2 rounded-r-md italic text-sm",
+  list: "my-2 ml-5 space-y-0.5 [&>li]:mt-0.5 text-sm",
+  listDisc: "list-disc",
+  listDecimal: "list-decimal",
+  listItem: "leading-6 text-sm",
+  codeInline: "relative rounded-xs px-0.75 py-0.5 text-xs font-mono",
+  codeBlock: "relative rounded-lg border overflow-x-auto text-sm",
+  table: "w-full border-collapse text-sm",
+  tableWrapper: "my-3 w-full overflow-y-auto rounded-lg border",
+  tableHeader: "border-b font-medium [&>tr]:border-b text-sm",
+  tableBody: "[&>tr:last-child]:border-0 text-sm",
+  tableRow: "border-b transition-colors hover:bg-muted/50",
+  tableCell: "px-3 py-1.5 text-left align-middle text-sm",
+  tableHeaderCell: "px-3 py-2 text-left font-semibold text-sm",
+  image: "max-w-full h-auto rounded-lg border my-2 shadow-sm",
+  hr: "my-4 border-t",
+  link: "underline underline-offset-4 hover:opacity-80 transition-colors text-sm",
+} as const;
+
 const createComponents = (
   styles: ReturnType<typeof createStyles>,
+  styleConfig: typeof baseStyles | typeof compactStyles,
   codeInlineClass: string,
 ): Components => ({
   h1: ({ children, ...props }) => (
     <h1
       className={cn(
-        baseStyles.heading,
-        baseStyles.h1,
+        styleConfig.heading,
+        styleConfig.h1,
         styles.text,
         styles.border,
       )}
@@ -75,7 +105,7 @@ const createComponents = (
   ),
   h2: ({ children, ...props }) => (
     <h2
-      className={cn(baseStyles.heading, baseStyles.h2, styles.text)}
+      className={cn(styleConfig.heading, styleConfig.h2, styles.text)}
       {...props}
     >
       {children}
@@ -83,7 +113,7 @@ const createComponents = (
   ),
   h3: ({ children, ...props }) => (
     <h3
-      className={cn(baseStyles.heading, baseStyles.h3, styles.text)}
+      className={cn(styleConfig.heading, styleConfig.h3, styles.text)}
       {...props}
     >
       {children}
@@ -91,7 +121,7 @@ const createComponents = (
   ),
   h4: ({ children, ...props }) => (
     <h4
-      className={cn(baseStyles.heading, baseStyles.h4, styles.text)}
+      className={cn(styleConfig.heading, styleConfig.h4, styles.text)}
       {...props}
     >
       {children}
@@ -99,7 +129,7 @@ const createComponents = (
   ),
   h5: ({ children, ...props }) => (
     <h5
-      className={cn(baseStyles.heading, baseStyles.h5, styles.text)}
+      className={cn(styleConfig.heading, styleConfig.h5, styles.text)}
       {...props}
     >
       {children}
@@ -107,7 +137,7 @@ const createComponents = (
   ),
   h6: ({ children, ...props }) => (
     <h6
-      className={cn(baseStyles.heading, baseStyles.h6, styles.muted)}
+      className={cn(styleConfig.heading, styleConfig.h6, styles.muted)}
       {...props}
     >
       {children}
@@ -115,7 +145,7 @@ const createComponents = (
   ),
 
   p: ({ children, ...props }) => (
-    <p className={cn(baseStyles.paragraph, styles.text)} {...props}>
+    <p className={cn(styleConfig.paragraph, styles.text)} {...props}>
       {children}
     </p>
   ),
@@ -132,7 +162,7 @@ const createComponents = (
   blockquote: ({ children, ...props }) => (
     <blockquote
       className={cn(
-        baseStyles.blockquote,
+        styleConfig.blockquote,
         styles.borderAccent,
         styles.bg,
         styles.muted,
@@ -144,46 +174,46 @@ const createComponents = (
   ),
 
   ul: ({ children, ...props }) => (
-    <ul className={cn(baseStyles.list, baseStyles.listDisc)} {...props}>
+    <ul className={cn(styleConfig.list, styleConfig.listDisc)} {...props}>
       {children}
     </ul>
   ),
   ol: ({ children, ...props }) => (
-    <ol className={cn(baseStyles.list, baseStyles.listDecimal)} {...props}>
+    <ol className={cn(styleConfig.list, styleConfig.listDecimal)} {...props}>
       {children}
     </ol>
   ),
   li: ({ children, ...props }) => (
-    <li className={cn(baseStyles.listItem, styles.text)} {...props}>
+    <li className={cn(styleConfig.listItem, styles.text)} {...props}>
       {children}
     </li>
   ),
 
   table: ({ children, ...props }) => (
-    <div className={cn(baseStyles.tableWrapper, styles.border)}>
-      <table className={baseStyles.table} {...props}>
+    <div className={cn(styleConfig.tableWrapper, styles.border)}>
+      <table className={styleConfig.table} {...props}>
         {children}
       </table>
     </div>
   ),
   thead: ({ children, ...props }) => (
-    <thead className={cn(baseStyles.tableHeader, styles.bg)} {...props}>
+    <thead className={cn(styleConfig.tableHeader, styles.bg)} {...props}>
       {children}
     </thead>
   ),
   tbody: ({ children, ...props }) => (
-    <tbody className={baseStyles.tableBody} {...props}>
+    <tbody className={styleConfig.tableBody} {...props}>
       {children}
     </tbody>
   ),
   tr: ({ children, ...props }) => (
-    <tr className={baseStyles.tableRow} {...props}>
+    <tr className={styleConfig.tableRow} {...props}>
       {children}
     </tr>
   ),
   th: ({ children, ...props }) => (
     <th
-      className={cn(baseStyles.tableHeaderCell, styles.text, styles.border)}
+      className={cn(styleConfig.tableHeaderCell, styles.text, styles.border)}
       {...props}
     >
       {children}
@@ -191,7 +221,7 @@ const createComponents = (
   ),
   td: ({ children, ...props }) => (
     <td
-      className={cn(baseStyles.tableCell, styles.text, styles.border)}
+      className={cn(styleConfig.tableCell, styles.text, styles.border)}
       {...props}
     >
       {children}
@@ -200,7 +230,7 @@ const createComponents = (
 
   a: ({ children, href, ...props }) => (
     <a
-      className={cn(baseStyles.link, styles.link)}
+      className={cn(styleConfig.link, styles.link)}
       href={href}
       target={href?.startsWith("http") ? "_blank" : undefined}
       rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
@@ -212,7 +242,7 @@ const createComponents = (
   img: ({ src, alt, ...props }) => (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      className={cn(`${(baseStyles.image, styles.border)} rounded-md`)}
+      className={cn(`${(styleConfig.image, styles.border)} rounded-md`)}
       src={src ?? ""}
       alt={alt || "Image"}
       loading="lazy"
@@ -220,14 +250,14 @@ const createComponents = (
     />
   ),
   hr: ({ ...props }) => (
-    <hr className={cn(baseStyles.hr, styles.border)} {...props} />
+    <hr className={cn(styleConfig.hr, styles.border)} {...props} />
   ),
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
 
     if (!match) {
       return (
-        <code className={cn(baseStyles.codeInline, codeInlineClass, className)}>
+        <code className={cn(styleConfig.codeInline, codeInlineClass, className)}>
           {children}
         </code>
       );
@@ -250,13 +280,15 @@ export function MarkdownRenderer({
   children,
   className,
   variant = "assistant",
+  size = "default",
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
   const styles = createStyles(isUser);
   const { resolvedTheme } = useTheme();
   const isDarkTheme = resolvedTheme === "dark";
   const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
-  const components = createComponents(styles, codeInlineClass);
+  const styleConfig = size === "compact" ? compactStyles : baseStyles;
+  const components = createComponents(styles, styleConfig, codeInlineClass);
 
   const processedContent =
     typeof children === "string"

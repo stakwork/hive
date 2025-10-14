@@ -4,7 +4,7 @@ interface UseAIGenerateResult<T> {
   generating: boolean;
   suggestions: T[];
   error: string | null;
-  generate: (params?: Record<string, any>) => Promise<void>;
+  generate: (params?: Record<string, unknown>) => Promise<void>;
   setSuggestions: React.Dispatch<React.SetStateAction<T[]>>;
   clearSuggestions: () => void;
 }
@@ -14,7 +14,7 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
   const [suggestions, setSuggestions] = useState<T[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function generate(params?: Record<string, any>) {
+  async function generate(params?: Record<string, unknown>) {
     setGenerating(true);
     setError(null);
 
@@ -47,10 +47,14 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
         } else if (Array.isArray(data)) {
           // Fallback for simple array format
           setSuggestions(data);
+        } else if (typeof data === 'object' && data !== null) {
+          // Handle single object response (e.g., { content: "..." })
+          // Wrap it in an array for consistent handling
+          setSuggestions([data as T]);
         } else {
           throw new Error("Unexpected response format");
         }
-      } catch (parseError) {
+      } catch {
         console.error("Failed to parse AI response:", text);
         throw new Error("Failed to parse AI response");
       }
