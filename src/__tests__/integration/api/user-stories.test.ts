@@ -19,6 +19,8 @@ import {
   createAuthenticatedPostRequest,
   createAuthenticatedPatchRequest,
   createAuthenticatedDeleteRequest,
+  getMockedSession,
+	createAuthenticatedSession,
 } from "@/__tests__/support/helpers";
 
 // Test helper functions
