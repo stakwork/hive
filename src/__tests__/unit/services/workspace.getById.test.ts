@@ -121,9 +121,12 @@ describe("getWorkspaceById - Unit Tests", () => {
           email: "owner@example.com",
         },
         ingestRefId: "ingest-123",
-          poolState: "COMPLETE",
+        poolState: "COMPLETE",
+        containerFilesSetup: null,
+        repositoryDraft: undefined,
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
+        swarmId: "swarm-123",
         repositories: [
           {
             id: "repo-123",
@@ -257,8 +260,11 @@ describe("getWorkspaceById - Unit Tests", () => {
         },
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
+        swarmId: "swarm-123",
         ingestRefId: "ingest-123",
-          poolState: "COMPLETE",
+        poolState: "COMPLETE",
+        containerFilesSetup: null,
+        repositoryDraft: undefined,
         repositories: [
           {
             id: "repo-123",
