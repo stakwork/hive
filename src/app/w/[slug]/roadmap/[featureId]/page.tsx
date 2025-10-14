@@ -15,6 +15,7 @@ import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { PhaseSection } from "@/components/features/PhaseSection";
+import { PersonasSection } from "@/components/features/PersonasSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -117,6 +118,33 @@ export default function FeatureDetailPage() {
       console.error("Failed to create user story:", error);
     } finally {
       setCreatingStory(false);
+    }
+  };
+
+  const handleUpdateUserStory = async (storyId: string, title: string) => {
+    try {
+      const response = await fetch(`/api/user-stories/${storyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update user story");
+      }
+
+      const result = await response.json();
+      if (result.success && feature) {
+        setFeature({
+          ...feature,
+          userStories: feature.userStories.map((story) =>
+            story.id === storyId ? { ...story, title } : story
+          ),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update user story:", error);
+      throw error;
     }
   };
 
@@ -281,6 +309,16 @@ export default function FeatureDetailPage() {
 
             <Separator />
 
+            {/* User Personas */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                User Personas
+              </Label>
+              <Skeleton className="h-20 w-full rounded-lg" />
+            </div>
+
+            <Separator />
+
             {/* User Stories */}
             <div className="space-y-4">
               <div>
@@ -431,6 +469,15 @@ export default function FeatureDetailPage() {
             onBlur={(value) => handleFieldBlur("brief", value)}
           />
 
+          <PersonasSection
+            personas={feature.personas || []}
+            savedField={savedField}
+            saving={saving}
+            saved={saved}
+            onChange={(value) => updateFeature({ personas: value })}
+            onBlur={(value) => handleFieldBlur("personas", value)}
+          />
+
           <UserStoriesSection
             featureId={featureId}
             userStories={feature.userStories}
@@ -439,6 +486,7 @@ export default function FeatureDetailPage() {
             onNewStoryTitleChange={setNewStoryTitle}
             onAddUserStory={handleAddUserStory}
             onDeleteUserStory={handleDeleteUserStory}
+            onUpdateUserStory={handleUpdateUserStory}
             onReorderUserStories={handleReorderUserStories}
             onAcceptGeneratedStory={handleAcceptGeneratedStory}
             shouldFocusRef={storyFocusRef}

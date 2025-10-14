@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Table as TableIcon, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TicketsTable } from "@/components/features/TicketsTable";
+import { DependencyGraph } from "@/components/features/DependencyGraph";
+import { TicketNode } from "@/components/features/DependencyGraph/nodes";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
@@ -60,6 +63,7 @@ export default function PhaseDetailPage() {
     email: string | null;
     image: string | null;
   } | null>(null);
+  const [activeView, setActiveView] = useState<"table" | "graph">("table");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const { createTicket, loading: creatingTicket } = useTicketMutations();
@@ -371,13 +375,45 @@ export default function PhaseDetailPage() {
               </div>
             )}
 
-            <TicketsTable
-              phaseId={phaseId}
-              workspaceSlug={workspaceSlug}
-              tickets={phase.tickets}
-              onTicketsReordered={handleTicketsReordered}
-              onTicketUpdate={handleTicketUpdate}
-            />
+            {/* View Toggle Tabs */}
+            <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
+              <TabsList>
+                <TabsTrigger value="table" className="gap-2">
+                  <TableIcon className="h-4 w-4" />
+                  Table
+                </TabsTrigger>
+                <TabsTrigger value="graph" className="gap-2">
+                  <Network className="h-4 w-4" />
+                  Graph
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="table" className="mt-4">
+                <TicketsTable
+                  phaseId={phaseId}
+                  workspaceSlug={workspaceSlug}
+                  tickets={phase.tickets}
+                  onTicketsReordered={handleTicketsReordered}
+                  onTicketUpdate={handleTicketUpdate}
+                />
+              </TabsContent>
+
+              <TabsContent value="graph" className="mt-4">
+                <DependencyGraph
+                  entities={phase.tickets}
+                  getDependencies={(ticket) => ticket.dependsOnTicketIds || []}
+                  renderNode={(ticket) => <TicketNode data={ticket} />}
+                  onNodeClick={(ticketId) => {
+                    router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
+                  }}
+                  emptyStateMessage="No tickets to display."
+                  noDependenciesMessage={{
+                    title: "No Dependencies Yet",
+                    description: "Add dependencies between tickets to see them visualized here.",
+                  }}
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         </CardContent>
       </Card>

@@ -132,6 +132,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     brief: true;
     requirements: true;
     architecture: true;
+    personas: true;
     status: true;
     priority: true;
     createdAt: true;
@@ -271,6 +272,7 @@ export interface CreateFeatureRequest {
   brief?: string;
   requirements?: string;
   architecture?: string;
+  personas?: string[];
   workspaceId: string;
   status?: FeatureStatus;
   priority?: FeaturePriority;
@@ -282,6 +284,7 @@ export interface UpdateFeatureRequest {
   brief?: string | null;
   requirements?: string | null;
   architecture?: string | null;
+  personas?: string[];
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string | null;
@@ -360,6 +363,7 @@ export type PhaseWithTickets = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
+        dependsOnTicketIds: true;
         createdAt: true;
         updatedAt: true;
         assignee: {
@@ -408,6 +412,7 @@ export type TicketListItem = Prisma.TicketGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    dependsOnTicketIds: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -440,6 +445,7 @@ export type TicketDetail = Prisma.TicketGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    dependsOnTicketIds: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -500,6 +506,7 @@ export interface UpdateTicketRequest {
   order?: number;
   phaseId?: string | null;
   assigneeId?: string | null;
+  dependsOnTicketIds?: string[];
 }
 
 export interface ReorderTicketsRequest {

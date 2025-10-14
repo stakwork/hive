@@ -22,6 +22,7 @@ interface UpdateTicketParams {
     status?: TicketStatus;
     priority?: Priority;
     assigneeId?: string | null;
+    dependsOnTicketIds?: string[];
   };
 }
 

@@ -51,6 +51,7 @@ export async function getPhase(
           order: true,
           featureId: true,
           phaseId: true,
+          dependsOnTicketIds: true,
           createdAt: true,
           updatedAt: true,
           assignee: {

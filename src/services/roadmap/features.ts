@@ -83,6 +83,7 @@ export async function createFeature(
     brief?: string;
     requirements?: string;
     architecture?: string;
+    personas?: string[];
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -124,6 +125,7 @@ export async function createFeature(
       brief: data.brief?.trim() || null,
       requirements: data.requirements?.trim() || null,
       architecture: data.architecture?.trim() || null,
+      personas: data.personas || [],
       workspaceId: data.workspaceId,
       status: data.status || FeatureStatus.BACKLOG,
       priority: data.priority || FeaturePriority.NONE,
@@ -170,6 +172,7 @@ export async function updateFeature(
     brief?: string | null;
     requirements?: string | null;
     architecture?: string | null;
+    personas?: string[];
   }
 ) {
   // Validates access and throws specific "Feature not found" or "Access denied" errors
@@ -209,6 +212,9 @@ export async function updateFeature(
   }
   if (data.architecture !== undefined) {
     updateData.architecture = data.architecture?.trim() || null;
+  }
+  if (data.personas !== undefined) {
+    updateData.personas = data.personas;
   }
   if (data.status !== undefined) {
     updateData.status = data.status;

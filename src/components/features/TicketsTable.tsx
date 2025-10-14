@@ -14,10 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
 import { useTicketMutations } from "@/hooks/useTicketMutations";
 import { useReorderTickets } from "@/hooks/useReorderTickets";
 import type { TicketListItem } from "@/types/roadmap";
@@ -34,18 +36,24 @@ interface TicketsTableProps {
 function SortableTableRow({
   ticket,
   workspaceSlug,
+  phaseId,
+  allTickets,
   onClick,
   onStatusUpdate,
   onPriorityUpdate,
   onAssigneeUpdate,
+  onDependenciesUpdate,
   onDelete,
 }: {
   ticket: TicketListItem;
   workspaceSlug: string;
+  phaseId: string;
+  allTickets: TicketListItem[];
   onClick: () => void;
   onStatusUpdate: (status: TicketStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
+  onDependenciesUpdate: (dependencyIds: string[]) => Promise<void>;
   onDelete: () => void;
 }) {
   const {
@@ -103,6 +111,15 @@ function SortableTableRow({
           onSelect={onAssigneeUpdate}
         />
       </TableCell>
+      <TableCell>
+        <DependenciesCombobox
+          currentTicketId={ticket.id}
+          phaseId={phaseId}
+          allTickets={allTickets}
+          selectedDependencyIds={ticket.dependsOnTicketIds}
+          onUpdate={onDependenciesUpdate}
+        />
+      </TableCell>
       <TableCell className="w-[50px]">
         <ActionMenu
           actions={[
@@ -137,7 +154,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
   };
 
-  const handleUpdateTicket = async (ticketId: string, updates: { status?: TicketStatus; priority?: Priority; assigneeId?: string | null }) => {
+  const handleUpdateTicket = async (ticketId: string, updates: { status?: TicketStatus; priority?: Priority; assigneeId?: string | null; dependsOnTicketIds?: string[] }) => {
     const updatedTicket = await updateTicket({ ticketId, updates });
     if (updatedTicket && onTicketUpdate) {
       onTicketUpdate(ticketId, updatedTicket);
@@ -165,9 +182,11 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
 
   if (tickets.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>No tickets in this phase yet.</p>
-      </div>
+      <Empty className="h-[500px]">
+        <EmptyHeader>
+          <EmptyDescription>No tickets in this phase yet.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -182,10 +201,11 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead className="w-[45%]">Title</TableHead>
+              <TableHead className="w-[35%]">Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Assignee</TableHead>
+              <TableHead className="w-[200px]">Dependencies</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -198,10 +218,13 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
                     key={ticket.id}
                     ticket={ticket}
                     workspaceSlug={workspaceSlug}
+                    phaseId={phaseId}
+                    allTickets={tickets}
                     onClick={() => handleRowClick(ticket.id)}
                     onStatusUpdate={async (status) => handleUpdateTicket(ticket.id, { status })}
                     onPriorityUpdate={async (priority) => handleUpdateTicket(ticket.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTicket(ticket.id, { assigneeId })}
+                    onDependenciesUpdate={async (dependsOnTicketIds) => handleUpdateTicket(ticket.id, { dependsOnTicketIds })}
                     onDelete={() => handleDeleteTicket(ticket.id)}
                   />
                 ))}

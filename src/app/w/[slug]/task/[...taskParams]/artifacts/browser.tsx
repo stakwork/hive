@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Monitor,
   RefreshCw,
@@ -81,7 +81,20 @@ export function BrowserArtifactPanel({
   );
 
   // Use playwright replay hook
-  const { isPlaywrightReplaying, startPlaywrightReplay, stopPlaywrightReplay } = usePlaywrightReplay(iframeRef);
+  const {
+    isPlaywrightReplaying,
+    playwrightProgress,
+    currentAction,
+    startPlaywrightReplay,
+    stopPlaywrightReplay,
+  } = usePlaywrightReplay(iframeRef);
+
+  // Auto-show actions list when replay starts
+  useEffect(() => {
+    if (isPlaywrightReplaying && !showActions && capturedActions.length > 0) {
+      toggleActionsView();
+    }
+  }, [isPlaywrightReplaying, showActions, capturedActions.length, toggleActionsView]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -182,29 +195,31 @@ export function BrowserArtifactPanel({
                     <span className="text-sm font-medium truncate">{tabUrl}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    {isSetup && isRecorderReady && isRecording && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={toggleActionsView}
-                              className={`h-8 w-8 p-0 ${
-                                showActions
-                                  ? "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                                  : "hover:bg-accent hover:text-accent-foreground"
-                              }`}
-                            >
-                              <List className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            {showActions ? "Hide" : "Show"} Actions ({capturedActions.length})
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    {isSetup &&
+                      isRecorderReady &&
+                      (isRecording || isPlaywrightReplaying || capturedActions.length > 0) && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={toggleActionsView}
+                                className={`h-8 w-8 p-0 ${
+                                  showActions
+                                    ? "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                    : "hover:bg-accent hover:text-accent-foreground"
+                                }`}
+                              >
+                                <List className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              {showActions ? "Hide" : "Show"} Actions ({capturedActions.length})
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     {isSetup && isRecorderReady && isRecording && (
                       <TooltipProvider>
                         <Tooltip>
@@ -346,6 +361,9 @@ export function BrowserArtifactPanel({
                     onRemoveAction={removeAction}
                     onClearAll={clearAllActions}
                     isRecording={isRecording}
+                    isReplaying={isPlaywrightReplaying}
+                    currentActionIndex={playwrightProgress.current - 1}
+                    totalActions={playwrightProgress.total}
                   />
                 </div>
               )}

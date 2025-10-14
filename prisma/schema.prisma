@@ -461,6 +461,7 @@ enum ArtifactType {
   STREAM
   LONGFORM
   BUG_REPORT
+  GRAPH
 }
 
 // =============================================
@@ -694,6 +695,7 @@ model Feature {
   brief       String?
   requirements String?
   architecture String?
+  personas    String[]         @default([])
   workspaceId String           @map("workspace_id")
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

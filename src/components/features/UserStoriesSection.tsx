@@ -20,15 +20,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { SortableUserStory } from "./SortableUserStory";
-import { GenerateStoriesButton, type GeneratedStory } from "./GenerateStoriesButton";
+import { AIButton } from "@/components/ui/ai-button";
 import type { FeatureDetail } from "@/types/roadmap";
+
+interface GeneratedStory {
+  title: string;
+}
 
 interface UserStoriesSectionProps {
   featureId: string;
@@ -38,6 +36,7 @@ interface UserStoriesSectionProps {
   onNewStoryTitleChange: (title: string) => void;
   onAddUserStory: () => void;
   onDeleteUserStory: (storyId: string) => void;
+  onUpdateUserStory: (storyId: string, title: string) => Promise<void>;
   onReorderUserStories: (stories: FeatureDetail["userStories"]) => void;
   onAcceptGeneratedStory: (title: string) => Promise<void>;
   shouldFocusRef: React.MutableRefObject<boolean>;
@@ -51,6 +50,7 @@ export function UserStoriesSection({
   onNewStoryTitleChange,
   onAddUserStory,
   onDeleteUserStory,
+  onUpdateUserStory,
   onReorderUserStories,
   onAcceptGeneratedStory,
   shouldFocusRef,
@@ -58,6 +58,8 @@ export function UserStoriesSection({
   const storyInputRef = useRef<HTMLInputElement>(null);
   const [aiSuggestions, setAiSuggestions] = useState<GeneratedStory[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedStoryId, setSavedStoryId] = useState<string | null>(null);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -123,31 +125,41 @@ export function UserStoriesSection({
     setAiSuggestions((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleUpdateStory = async (storyId: string, title: string) => {
+    setSaving(true);
+    setSavedStoryId(storyId);
+
+    try {
+      await onUpdateUserStory(storyId, title);
+      // Show saved indicator (matches useAutoSave pattern)
+      setTimeout(() => {
+        setSavedStoryId(null);
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to update user story:", error);
+      setSavedStoryId(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <Label className="text-sm font-medium">User Stories</Label>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <GenerateStoriesButton
-                    featureId={featureId}
-                    existingStories={[
-                      ...userStories.map((s) => s.title),
-                      ...aiSuggestions.map((s) => s.title),
-                    ]}
-                    onGenerated={handleAiGenerated}
-                    iconOnly
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Generate with AI</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <AIButton<GeneratedStory>
+            endpoint={`/api/features/${featureId}/generate-stories`}
+            params={{
+              existingStories: [
+                ...userStories.map((s) => s.title),
+                ...aiSuggestions.map((s) => s.title),
+              ],
+            }}
+            onGenerated={handleAiGenerated}
+            tooltip="Generate with AI"
+            iconOnly
+          />
         </div>
         <p className="text-sm text-muted-foreground mt-1">
           Define the user stories and acceptance criteria for this feature.
@@ -197,6 +209,9 @@ export function UserStoriesSection({
                       key={story.id}
                       story={story}
                       onDelete={onDeleteUserStory}
+                      onUpdate={handleUpdateStory}
+                      saving={saving && savedStoryId === story.id}
+                      saved={!saving && savedStoryId === story.id}
                     />
                   ))}
 

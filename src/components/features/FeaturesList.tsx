@@ -265,15 +265,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       const result = await response.json();
 
       if (result.success) {
-        // Prepend new feature to the list
-        setFeatures((prev) => [result.data, ...prev]);
-        setTotalCount((prev) => prev + 1);
-
-        // Reset state (keep form open for successive entries, focus handled by useEffect)
-        setNewFeatureTitle("");
-        setNewFeatureStatus("BACKLOG");
-        setNewFeatureAssigneeId(null);
-        setNewFeatureAssigneeDisplay(null);
+        // Navigate to the new feature detail page
+        router.push(`/w/${workspaceSlug}/roadmap/${result.data.id}`);
       }
     } catch (error) {
       console.error("Failed to create feature:", error);
