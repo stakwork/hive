@@ -264,7 +264,7 @@ describe("requireAuth", () => {
     if ('status' in result) {
       const json = await result.json();
       expect(json).toHaveProperty("error", "Unauthorized");
-      expect(json).toHaveProperty("kind");
+      expect(result.status).toBe(401);
     }
   });
 });

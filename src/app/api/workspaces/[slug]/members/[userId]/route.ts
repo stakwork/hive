@@ -7,18 +7,17 @@ import {
   validateWorkspaceAccess,
 } from "@/services/workspace";
 import { isAssignableMemberRole } from "@/lib/auth/roles";
+import { unauthorized, badRequest, notFound, forbidden } from "@/types/errors";
+import { handleApiError } from "@/lib/api/errors";
 
 export const runtime = "nodejs";
 
 // PATCH /api/workspaces/[slug]/members/[userId] - Update member role
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ slug: string; userId: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ slug: string; userId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw unauthorized("Unauthorized");
     }
 
     const { slug, userId: targetUserId } = await params;
@@ -28,49 +27,37 @@ export async function PATCH(
     const { role } = body;
 
     if (!role) {
-      return NextResponse.json({ error: "Role is required" }, { status: 400 });
+      throw badRequest("Role is required");
     }
 
     // Validate role
     if (!isAssignableMemberRole(role)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      throw badRequest("Invalid role");
     }
 
     // Check workspace access and admin permissions
     const access = await validateWorkspaceAccess(slug, requesterId);
     if (!access.hasAccess || !access.canAdmin) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      throw forbidden("Admin access required");
     }
 
     if (!access.workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      throw notFound("Workspace not found");
     }
 
     const updatedMember = await updateWorkspaceMemberRole(access.workspace.id, targetUserId, role);
     return NextResponse.json({ member: updatedMember });
   } catch (error: unknown) {
-    console.error("Error updating workspace member role:", error);
-    
-    if (error instanceof Error && error.message.includes("not found")) {
-      return NextResponse.json({ error: "Member not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      { error: "Failed to update member role" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 // DELETE /api/workspaces/[slug]/members/[userId] - Remove member from workspace
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ slug: string; userId: string }> }
-) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ slug: string; userId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw unauthorized("Unauthorized");
     }
 
     const { slug, userId: targetUserId } = await params;
@@ -79,33 +66,21 @@ export async function DELETE(
     // Check workspace access and admin permissions
     const access = await validateWorkspaceAccess(slug, requesterId);
     if (!access.hasAccess || !access.canAdmin) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      throw forbidden("Admin access required");
     }
 
     if (!access.workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      throw notFound("Workspace not found");
     }
 
     // Prevent removing workspace owner
     if (access.workspace.ownerId === targetUserId) {
-      return NextResponse.json(
-        { error: "Cannot remove workspace owner" },
-        { status: 400 }
-      );
+      throw badRequest("Cannot remove workspace owner");
     }
 
     await removeWorkspaceMember(access.workspace.id, targetUserId);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    console.error("Error removing workspace member:", error);
-    
-    if (error instanceof Error && error.message.includes("not found")) {
-      return NextResponse.json({ error: "Member not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      { error: "Failed to remove member" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

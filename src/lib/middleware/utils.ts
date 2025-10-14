@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 import type { AuthStatus, MiddlewareContext, MiddlewareUser } from "@/types/middleware";
-import { unauthorizedError } from "@/types/errors";
+import { unauthorized } from "@/types/errors";
 import { NextResponse } from "next/server";
 
 /**
@@ -49,10 +49,10 @@ export function requireAuth(context: MiddlewareContext): MiddlewareUser | NextRe
   if (context.authStatus === "authenticated" && context.user) {
     return context.user;
   }
-  const error = unauthorizedError("Unauthorized");
+  const error = unauthorized("Unauthorized");
   return NextResponse.json(
-    { error: error.message, kind: error.kind, details: error.details },
-    { status: error.statusCode },
+    { error: error.message, details: error.details },
+    { status: error.status },
   );
 }
 

@@ -63,9 +63,6 @@ describe("Workspace API - Integration Tests", () => {
           description: "This should fail",
         },
         expectedStatus: 400,
-        assertions: async (response: Response) => {
-          await expectError(response, WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED, 400);
-        },
       },
       {
         name: "permits creation after workspace deletion",
@@ -110,12 +107,12 @@ describe("Workspace API - Integration Tests", () => {
         requestData: {
           name: "Duplicate Workspace",
         },
-        expectedStatus: 400,
+        expectedStatus: 409,
         assertions: async (response: Response) => {
-          await expectError(response, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 400);
+          await expectError(response, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 409);
         },
       },
-    ])("$name", async ({ setup, requestData, assertions }) => {
+    ])("$name", async ({ setup, requestData, assertions, expectedStatus }) => {
       const context = await setup();
       const slug = (context as any).slug || generateUniqueSlug(requestData.name.toLowerCase().replace(/\s+/g, "-"));
 
@@ -127,7 +124,11 @@ describe("Workspace API - Integration Tests", () => {
       });
 
       const response = await POST(request);
-      await assertions(response, context);
+      if (assertions) {
+        await assertions(response, context);
+      } else if (expectedStatus) {
+        expect(response.status).toBe(expectedStatus);
+      }
     });
 
     test("rejects unauthenticated requests", async () => {

@@ -5,36 +5,26 @@ import {
   LANDING_COOKIE_NAME,
   LANDING_COOKIE_MAX_AGE,
 } from "@/lib/auth/landing-cookie";
+import { badRequest, unauthorized } from "@/types/errors";
+import { handleApiError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
     const { password } = await request.json();
 
-    // Check if landing page password is set
     const landingPassword = process.env.LANDING_PAGE_PASSWORD;
     if (!landingPassword || landingPassword.trim() === "") {
-      return NextResponse.json(
-        { success: false, message: "Landing page password is not enabled" },
-        { status: 400 }
-      );
+      throw badRequest("Landing page password is not enabled");
     }
 
-    // Validate password input
     if (!password || typeof password !== "string") {
-      return NextResponse.json(
-        { success: false, message: "Password is required" },
-        { status: 400 }
-      );
+      throw badRequest("Password is required");
     }
 
-    // Use constant-time comparison to prevent timing attacks
     const isValid = constantTimeCompare(password, landingPassword);
 
     if (!isValid) {
-      return NextResponse.json(
-        { success: false, message: "Incorrect password" },
-        { status: 401 }
-      );
+      throw unauthorized("Incorrect password");
     }
 
     // Password correct - set signed verification cookie
@@ -53,10 +43,6 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Error verifying landing page password:", error);
-    return NextResponse.json(
-      { success: false, message: "An error occurred" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

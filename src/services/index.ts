@@ -19,4 +19,5 @@ export * from "@/types";
 export { serviceConfigs, endpoints, getServiceConfig } from "@/config/services";
 
 // Export HTTP client types
-export type { HttpClientConfig, ApiError } from "@/lib/http-client";
+export type { HttpClientConfig, ServiceApiError } from "@/lib/http-client";
+export type { ApiError } from "@/types/errors";

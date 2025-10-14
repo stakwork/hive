@@ -44,15 +44,6 @@ export interface PaginatedApiResponse<T> {
   pagination: PaginationMeta;
 }
 
-// Common error types
-export interface ApiError {
-  message: string;
-  status: number;
-  service: string;
-  details?: object;
-  code?: string;
-}
-
 // Common service configuration
 export interface ServiceConfig {
   baseURL: string;
