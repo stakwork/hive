@@ -3,7 +3,6 @@ import { GET } from "@/app/api/github/app/check/route";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
-  expectSuccess,
   expectUnauthorized,
   getMockedSession,
   createGetRequest,
@@ -11,10 +10,8 @@ import {
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
   createTestUserWithGitHubTokens,
-  mockGitHubApiResponses,
   testRepositoryUrls,
 } from "@/__tests__/support/fixtures/github-repository-permissions";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 
 // Mock next-auth for session management
 vi.mock("next-auth/next");
@@ -40,15 +37,9 @@ describe("GitHub App Check API Integration Tests", () => {
 
   describe("GET /api/github/app/check", () => {
     describe("Success scenarios", () => {
-      test("should successfully check repository access with push permissions", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens({
+      test("should return hasPushAccess=true when user has push permissions", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
           githubOwner: "test-owner",
-        });
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          name: "Test Workspace",
-          slug: "test-workspace",
         });
 
         getMockedSession().mockResolvedValue(
@@ -59,71 +50,45 @@ describe("GitHub App Check API Integration Tests", () => {
           accessToken,
         });
 
-        // Mock successful repository data fetch
+        // Mock successful installation repositories fetch
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
           json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: true,
-              triage: false,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "test-owner/test-repo",
+                permissions: {
+                  push: true,
+                  admin: false,
+                  maintain: false,
+                },
+              },
+            ],
           }),
-        });
-
-        // Mock successful commits fetch
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => [{ sha: "abc123" }],
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
-        expect(data.canFetchData).toBe(true);
+        expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true);
-        expect(data.canReadCommits).toBe(true);
-        expect(data.repositoryInfo).toMatchObject({
-          name: "test-repo",
-          full_name: "test-owner/test-repo",
-          private: false,
-          default_branch: "main",
-        });
-        expect(data.message).toBe("GitHub App can successfully fetch repository data");
 
-        // Verify GitHub API was called correctly
+        // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/test-owner/test-repo",
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
-        );
-
-        expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/test-owner/test-repo/commits?per_page=1",
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              Authorization: `Bearer ${accessToken}`,
             }),
           })
         );
@@ -135,13 +100,8 @@ describe("GitHub App Check API Integration Tests", () => {
         );
       });
 
-      test("should calculate hasPushAccess=true with admin permission", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "admin-workspace",
-        });
+      test("should return hasPushAccess=true with admin permission", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -155,48 +115,47 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: true,
-              maintain: true,
-              push: true,
-              triage: true,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "test-owner/test-repo",
+                permissions: {
+                  admin: true,
+                  maintain: true,
+                  push: true,
+                },
+              },
+            ],
           }),
-        });
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => [],
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
+        expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true); // Admin grants push
-        expect(data.canReadCommits).toBe(true);
+
+        // Verify installation repositories API was called correctly
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
+        );
       });
 
-      test("should calculate hasPushAccess=true with maintain permission", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "maintain-workspace",
-        });
+      test("should return hasPushAccess=true with maintain permission", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -210,47 +169,47 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: true,
-              push: false,
-              triage: false,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "test-owner/test-repo",
+                permissions: {
+                  admin: false,
+                  maintain: true,
+                  push: false,
+                },
+              },
+            ],
           }),
-        });
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => [{ sha: "abc123" }],
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
+        expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true); // Maintain grants push
+
+        // Verify installation repositories API was called correctly
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
+        );
       });
 
-      test("should calculate hasPushAccess=false with only pull permission", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "pull-only-workspace",
-        });
+      test("should return hasPushAccess=false with only pull permission", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -264,50 +223,49 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: false,
-              triage: false,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "test-owner/test-repo",
+                permissions: {
+                  admin: false,
+                  maintain: false,
+                  push: false,
+                  pull: true,
+                },
+              },
+            ],
           }),
-        });
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => [{ sha: "abc123" }],
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
-        expect(data.canFetchData).toBe(true);
+        expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(false); // Only pull, no push
-        expect(data.canReadCommits).toBe(true);
+
+        // Verify installation repositories API was called correctly
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
+        );
       });
 
       test("should support SSH repository URL format", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens({
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
           githubOwner: "nodejs",
-        });
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "ssh-workspace",
         });
 
         getMockedSession().mockResolvedValue(
@@ -322,51 +280,39 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            name: "node",
-            full_name: "nodejs/node",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              admin: false,
-              maintain: false,
-              push: true,
-              triage: false,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "nodejs/node",
+                permissions: {
+                  push: true,
+                  admin: false,
+                  maintain: false,
+                },
+              },
+            ],
           }),
-        });
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => [{ sha: "def456" }],
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.ssh,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
-        expect(data.canFetchData).toBe(true);
+        expect(response.status).toBe(200);
+        expect(data.hasPushAccess).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/nodejs/node",
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.any(Object)
         );
       });
 
       test("should support repository URL with .git suffix", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "git-suffix-workspace",
-        });
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -380,44 +326,46 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              push: true,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "test-owner/test-repo",
+                permissions: {
+                  push: true,
+                  pull: true,
+                },
+              },
+            ],
           }),
-        });
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => [],
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.httpsWithGit,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
-        expect(data.canFetchData).toBe(true);
+        expect(response.status).toBe(200);
+        expect(data.hasPushAccess).toBe(true);
+
+        // Verify installation repositories API was called correctly
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
+        );
       });
 
-      test("should handle canReadCommits=false when commits fetch fails", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "no-commits-workspace",
-        });
+      test("should return hasPushAccess=false when repository not accessible through installation", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -427,43 +375,47 @@ describe("GitHub App Check API Integration Tests", () => {
           accessToken,
         });
 
-        // Mock successful repository fetch
+        // Mock installation repositories response without the target repository
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
           json: async () => ({
-            name: "test-repo",
-            full_name: "test-owner/test-repo",
-            private: false,
-            default_branch: "main",
-            permissions: {
-              push: true,
-              pull: true,
-            },
+            repositories: [
+              {
+                full_name: "test-owner/other-repo",
+                permissions: {
+                  push: true,
+                },
+              },
+            ],
           }),
-        });
-
-        // Mock failed commits fetch
-        mockFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 403,
-          statusText: "Forbidden",
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
 
         const response = await GET(request);
-        const data = await expectSuccess(response);
+        const data = await response.json();
 
-        expect(data.canFetchData).toBe(true);
-        expect(data.hasPushAccess).toBe(true);
-        expect(data.canReadCommits).toBe(false); // Commits fetch failed
+        expect(response.status).toBe(200);
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("Repository not accessible through GitHub App installation");
+
+        // Verify installation repositories API was called correctly
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
+        );
       });
     });
 
@@ -474,7 +426,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: "test-workspace",
             repositoryUrl: testRepositoryUrls.https,
           }
         );
@@ -493,7 +444,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: "test-workspace",
             repositoryUrl: testRepositoryUrls.https,
           }
         );
@@ -502,50 +452,13 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(401);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Unauthorized");
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
-      test("should return 403 when workspace access denied", async () => {
-        // Create user but no workspace access
-        const testUser = await createTestUser({ name: "No Access User" });
-
-        // Create workspace owned by different user
-        const otherUser = await createTestUser({ name: "Other User" });
-        const workspace = await createTestWorkspace({
-          ownerId: otherUser.id,
-          slug: "other-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/check",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
-
-        const response = await GET(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(403);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Workspace not found or access denied");
-        expect(mockFetch).not.toHaveBeenCalled();
-      });
-
-      test("should return 200 with canFetchData=false when no GitHub tokens found", async () => {
-        // Create user without tokens
+      test("should return 403 when no GitHub tokens found", async () => {
         const testUser = await createTestUser({ name: "User Without Tokens" });
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "no-tokens-workspace",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -556,7 +469,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
@@ -564,19 +476,14 @@ describe("GitHub App Check API Integration Tests", () => {
         const response = await GET(request);
         const data = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
+        expect(response.status).toBe(403);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("No GitHub App tokens found for this repository owner");
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
-      test("should return 200 with canFetchData=false when tokens exist but accessToken is missing", async () => {
+      test("should return 403 when tokens exist but accessToken is missing", async () => {
         const testUser = await createTestUser();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "missing-access-token",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -590,54 +497,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
-
-        const response = await GET(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("No GitHub App tokens found for this repository owner");
-      });
-    });
-
-    describe("Input validation scenarios", () => {
-      test("should return 400 for missing workspaceSlug", async () => {
-        const testUser = await createTestUser();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/check",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
-
-        const response = await GET(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(400);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Missing required parameter: workspaceSlug");
-      });
-
-      test("should return 404 for non-existent workspace", async () => {
-        const testUser = await createTestUser();
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/check",
-          {
-            workspaceSlug: "non-existent-workspace",
             repositoryUrl: testRepositoryUrls.https,
           }
         );
@@ -646,17 +505,14 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(403);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Workspace not found or access denied");
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("No GitHub App tokens found for this repository owner");
       });
+    });
 
-      test("should return 400 for missing repositoryUrl when workspace has no swarm", async () => {
+    describe("Input validation scenarios", () => {
+      test("should return 400 for missing repositoryUrl", async () => {
         const testUser = await createTestUser();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "no-swarm-workspace",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -664,27 +520,19 @@ describe("GitHub App Check API Integration Tests", () => {
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
-          {
-            workspaceSlug: workspace.slug,
-            // No repositoryUrl parameter
-          }
+          {}
         );
 
         const response = await GET(request);
         const data = await response.json();
 
         expect(response.status).toBe(400);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("No repository URL provided in parameter or workspace configuration");
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("Missing required parameter: repositoryUrl");
       });
 
       test("should return 400 for invalid repository URL format", async () => {
         const testUser = await createTestUser();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "invalid-url-workspace",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -693,7 +541,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.invalid,
           }
         );
@@ -702,17 +549,12 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(400);
-        expect(data.canFetchData).toBe(false);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Invalid GitHub repository URL");
       });
 
       test("should return 400 for malformed GitHub URL", async () => {
         const testUser = await createTestUser();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "malformed-url-workspace",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -721,7 +563,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.malformed,
           }
         );
@@ -730,18 +571,14 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(400);
+        expect(data.hasPushAccess).toBe(false);
         expect(data.error).toBe("Invalid GitHub repository URL");
       });
     });
 
     describe("GitHub API error scenarios", () => {
-      test("should handle GitHub API 404 (repository not found)", async () => {
+      test("should return 200 with hasPushAccess=false when no installation found", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "not-found-workspace",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -751,48 +588,10 @@ describe("GitHub App Check API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue(mockGitHubApiResponses.repositoryNotFound);
-
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/nonexistent-repo",
-          }
-        );
-
-        const response = await GET(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200); // Endpoint returns 200 with error in body
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Repository not found or no access");
-        expect(data.httpStatus).toBe(404);
-      });
-
-      test("should handle GitHub API 403 (access forbidden)", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "forbidden-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken,
-        });
-
-        mockFetch.mockResolvedValue(mockGitHubApiResponses.accessForbidden);
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/check",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/private-repo",
+            repositoryUrl: "https://github.com/unknown-owner/test-repo",
           }
         );
 
@@ -800,18 +599,12 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Access forbidden - insufficient permissions");
-        expect(data.httpStatus).toBe(403);
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("No GitHub App installation found for this repository owner");
       });
 
-      test("should handle GitHub API 401 (authentication failed)", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "auth-failed-workspace",
-        });
+      test("should handle GitHub API 404 (installation not found)", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -823,15 +616,13 @@ describe("GitHub App Check API Integration Tests", () => {
 
         mockFetch.mockResolvedValue({
           ok: false,
-          status: 401,
-          statusText: "Unauthorized",
-          text: async () => "Bad credentials",
+          status: 404,
+          statusText: "Not Found",
         });
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
@@ -840,88 +631,24 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Authentication failed - invalid token");
-        expect(data.httpStatus).toBe(401);
-      });
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("Installation not found or no access");
 
-      test("should handle GitHub API 500 (server error)", async () => {
-        const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "server-error-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
+        // Verify installation repositories API was called correctly
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
         );
-
-        vi.mocked(getUserAppTokens).mockResolvedValue({
-          accessToken,
-        });
-
-        mockFetch.mockResolvedValue(mockGitHubApiResponses.serverError);
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/check",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
-
-        const response = await GET(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Failed to fetch repository data");
-        expect(data.httpStatus).toBe(500);
-      });
-    });
-
-    describe("Error handling edge cases", () => {
-      test("should return 500 for unexpected errors", async () => {
-        const testUser = await createTestUser();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "error-workspace",
-        });
-
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
-
-        // Mock getUserAppTokens to throw an error
-        vi.mocked(getUserAppTokens).mockRejectedValue(
-          new Error("Database connection failed")
-        );
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/check",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
-
-        const response = await GET(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(500);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Internal server error during repository check");
       });
 
       test("should handle GitHub API network errors", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
-
-        const workspace = await createTestWorkspace({
-          ownerId: testUser.id,
-          slug: "network-error-workspace",
-        });
 
         getMockedSession().mockResolvedValue(
           createAuthenticatedSession(testUser)
@@ -936,7 +663,6 @@ describe("GitHub App Check API Integration Tests", () => {
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/check",
           {
-            workspaceSlug: workspace.slug,
             repositoryUrl: testRepositoryUrls.https,
           }
         );
@@ -945,8 +671,37 @@ describe("GitHub App Check API Integration Tests", () => {
         const data = await response.json();
 
         expect(response.status).toBe(500);
-        expect(data.canFetchData).toBe(false);
-        expect(data.error).toBe("Internal server error during repository check");
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("Internal server error");
+      });
+    });
+
+    describe("Error handling edge cases", () => {
+      test("should return 500 for unexpected errors", async () => {
+        const testUser = await createTestUser();
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(testUser)
+        );
+
+        // Mock getUserAppTokens to throw an error
+        vi.mocked(getUserAppTokens).mockRejectedValue(
+          new Error("Database connection failed")
+        );
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/check",
+          {
+            repositoryUrl: testRepositoryUrls.https,
+          }
+        );
+
+        const response = await GET(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(data.hasPushAccess).toBe(false);
+        expect(data.error).toBe("Internal server error");
       });
     });
   });
