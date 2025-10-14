@@ -10,7 +10,7 @@ type Provider = "anthropic" | "openai";
 const storiesSchema = z.object({
   stories: z.array(
     z.object({
-      title: z.string().describe("User journey flow describing the step-by-step interaction scenario from trigger to completion"),
+      title: z.string().describe("Brief user journey flow (1-2 sentences) showing sequence of actions and outcome"),
     })
   ),
 });
@@ -75,19 +75,19 @@ export async function POST(
       ? `\n\nTarget Personas:\n${feature.personas.map((p: string) => `- ${p}`).join('\n')}`
       : '';
 
-    const userPrompt = `Generate 3-5 user journey flows for this feature:
+    const userPrompt = `Generate 3-5 brief user journey flows for this feature:
 
 Title: ${feature.title}
 ${feature.brief ? `Brief: ${feature.brief}` : ''}${personasText}${existingStoriesText}
 
-Create realistic journey scenarios showing step-by-step how users will interact with this feature.
+Create brief user journey flows (1-2 sentences each) showing how users interact with the feature.
 Each journey should:
-- Start with user context and trigger
-- Detail the sequence of actions and system responses
-- Include specific touchpoints and interactions
-- End with a clear outcome or completion state
+- Be 1-2 sentences maximum (prefer 1 sentence)
+- Show a brief sequence: what they read/see, what they do, what outcome they achieve
+- Include 2-4 actions connected with "then" or commas
+- Example format: "[Persona] reviews [X], then does [Y] to achieve [Z]"
 
-${feature.personas && feature.personas.length > 0 ? 'Use the exact persona names listed above in your journey flows. Distribute journeys across different personas to show varied interaction patterns.' : ''}
+${feature.personas && feature.personas.length > 0 ? 'Use the exact persona names listed above. Distribute journeys across different personas to show varied interaction patterns.' : ''}
 Generate NEW journey flows that complement the existing ones (if any) but do not duplicate them.`;
 
     // Use anthropic provider (Claude)
