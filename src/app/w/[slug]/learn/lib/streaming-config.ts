@@ -5,10 +5,16 @@ import { cleanXMLTags, extractAnswer } from "@/lib/streaming/helpers";
 export const FINAL_ANSWER_ID = "final-answer";
 export const FINAL_ANSWER_TOOL = "final_answer";
 export const WEB_SEARCH_TOOL = "web_search";
+export const ASK_QUESTION_TOOL = "ask_question";
 
 export interface WebSearchResult {
   url: string;
   title?: string;
+}
+
+export interface AskQuestionResponse {
+  answer: string;
+  ref_id?: string;
 }
 
 /**
@@ -43,6 +49,14 @@ export const learnToolProcessors: ToolProcessorMap = {
       }));
     }
     return [];
+  },
+
+  [ASK_QUESTION_TOOL]: (output): AskQuestionResponse => {
+    // Preserve the full response including ref_id
+    if (typeof output === "object" && output !== null) {
+      return output as AskQuestionResponse;
+    }
+    return { answer: typeof output === "string" ? output : "" };
   },
 
   [FINAL_ANSWER_TOOL]: (output, context): string => {

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { LearnChatArea } from "./LearnChatArea";
 import { LearnSidebar } from "./LearnSidebar";
 import { useStreamProcessor } from "@/lib/streaming";
-import { learnToolProcessors } from "../lib/streaming-config";
+import { learnToolProcessors, ASK_QUESTION_TOOL, type AskQuestionResponse } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
 
 interface LearnChatProps {
@@ -12,7 +12,7 @@ interface LearnChatProps {
 }
 
 export function LearnChat({ workspaceSlug }: LearnChatProps) {
-  const [mode, setMode] = useState<"learn" | "chat" | "mic">("learn");
+  const [mode, setMode] = useState<"learn" | "chat" | "mic">("chat");
   const [messages, setMessages] = useState<LearnMessage[]>([
     {
       id: "1",
@@ -77,13 +77,33 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
             }
 
             setMessages((prev) => {
+              // Extract ref_id from ask_question tool call if present
+              let ref_id: string | undefined;
+
+              // Check if we already have ref_id from previous update
               const existingIndex = prev.findIndex((m) => m.id === messageId);
+              if (existingIndex >= 0 && prev[existingIndex].ref_id) {
+                ref_id = prev[existingIndex].ref_id;
+              }
+
+              // Extract from current message if not already set
+              if (!ref_id && updatedMessage.toolCalls) {
+                const askQuestionCall = updatedMessage.toolCalls.find(
+                  (call) => call.toolName === ASK_QUESTION_TOOL && call.status === "output-available"
+                );
+                if (askQuestionCall?.output && typeof askQuestionCall.output === "object") {
+                  const askResponse = askQuestionCall.output as AskQuestionResponse;
+                  ref_id = askResponse.ref_id;
+                }
+              }
+
+              const messageWithRefId = { ...updatedMessage, ref_id };
               if (existingIndex >= 0) {
                 const updated = [...prev];
-                updated[existingIndex] = updatedMessage;
+                updated[existingIndex] = messageWithRefId;
                 return updated;
               }
-              return [...prev, updatedMessage];
+              return [...prev, messageWithRefId];
             });
           },
           // Additional fields specific to LearnMessage
