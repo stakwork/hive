@@ -13,7 +13,7 @@ import { useAIGenerate } from "@/hooks/useAIGenerate";
 
 interface AIButtonProps<T> {
   endpoint: string;
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
   onGenerated: (results: T[]) => void;
   tooltip?: string;
   iconOnly?: boolean;
