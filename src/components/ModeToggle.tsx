@@ -20,17 +20,6 @@ export function ModeToggle({ mode, onModeChange, className, showMicMode = false 
       )}
     >
       <Toggle
-        pressed={mode === "learn"}
-        onPressedChange={() => onModeChange("learn")}
-        variant={mode === "learn" ? "outline" : "default"}
-        size="lg"
-        aria-label="Learn mode"
-        className={cn(mode === "learn" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground")}
-      >
-        <BookOpen className={cn("mr-1 w-4 h-4", mode === "learn" ? "text-foreground" : "text-muted-foreground")} />
-        Learn
-      </Toggle>
-      <Toggle
         pressed={mode === "chat"}
         onPressedChange={() => onModeChange("chat")}
         variant={mode === "chat" ? "outline" : "default"}
@@ -40,6 +29,17 @@ export function ModeToggle({ mode, onModeChange, className, showMicMode = false 
       >
         <MessageCircle className={cn("mr-1 w-4 h-4", mode === "chat" ? "text-foreground" : "text-muted-foreground")} />
         Chat
+      </Toggle>
+      <Toggle
+        pressed={mode === "learn"}
+        onPressedChange={() => onModeChange("learn")}
+        variant={mode === "learn" ? "outline" : "default"}
+        size="lg"
+        aria-label="Learn mode"
+        className={cn(mode === "learn" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground")}
+      >
+        <BookOpen className={cn("mr-1 w-4 h-4", mode === "learn" ? "text-foreground" : "text-muted-foreground")} />
+        Learn
       </Toggle>
       {showMicMode && (
         <Toggle

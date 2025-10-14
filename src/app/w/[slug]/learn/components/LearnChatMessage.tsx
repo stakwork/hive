@@ -16,6 +16,9 @@ interface LearnChatMessageProps {
 export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessageProps) {
   const isUser = message.role === "user";
 
+  // Check if final answer is present (for smoother UX)
+  const hasFinalAnswer = message.textParts?.some((part) => part.id === FINAL_ANSWER_ID);
+
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} gap-3`}>
       <motion.div
@@ -57,8 +60,8 @@ export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessagePro
         </div>
       </motion.div>
 
-      {/* Show graph if ref_id is present and it's an assistant message */}
-      {!isUser && message.ref_id && (
+      {/* Show graph if ref_id is present, final answer exists, and it's an assistant message */}
+      {!isUser && message.ref_id && hasFinalAnswer && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

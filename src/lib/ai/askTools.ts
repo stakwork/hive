@@ -23,7 +23,7 @@ async function askQuestion(swarmUrl: string, swarmApiKey: string, q: string) {
       "x-api-token": swarmApiKey,
     },
   });
-  return res.ok ? (await res.json()).answer : "";
+  return res.ok ? await res.json() : {};
 }
 
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string, pat: string, apiKey: string) {
