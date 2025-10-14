@@ -11,10 +11,11 @@ import {
   setupZoom,
   createNodeElements,
   createLinkElements,
+  addArrowMarker,
   updatePositions,
 } from "./graphUtils";
 
-interface GraphVisualizationProps {
+interface GraphVisualizationLayeredProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   width?: number;
@@ -24,7 +25,22 @@ interface GraphVisualizationProps {
   className?: string;
 }
 
-export function GraphVisualization({
+// Define layer order: top to bottom
+const LAYER_ORDER: Record<string, number> = {
+  Hint: 0,
+  Prompt: 0,
+  File: 1,
+  Datamodel: 2,
+  Function: 2,
+  Endpoint: 2,
+  Request: 2,
+};
+
+const getNodeLayer = (type: string): number => {
+  return LAYER_ORDER[type] ?? 3; // Default layer for unknown types
+};
+
+export function GraphVisualizationLayered({
   nodes,
   edges,
   width = 800,
@@ -32,9 +48,8 @@ export function GraphVisualization({
   colorMap,
   onNodeClick,
   className = "",
-}: GraphVisualizationProps) {
+}: GraphVisualizationLayeredProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
 
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
@@ -52,22 +67,50 @@ export function GraphVisualization({
     // Setup zoom and restore previous state
     setupZoom(svg, container, previousTransform);
 
-    // Convert to D3 nodes and filter valid links
-    const d3Nodes: D3Node[] = nodes.map(node => ({ ...node }));
+    // Add arrow marker for directed edges
+    addArrowMarker(svg);
+
+    // Convert to D3 nodes with layer assignment
+    const d3Nodes: D3Node[] = nodes.map(node => ({
+      ...node,
+      layer: getNodeLayer(node.type),
+    }));
+
     const d3Links: D3Link[] = edges.map(edge => ({ ...edge }));
     const nodeIds = new Set(d3Nodes.map(n => n.id));
     const validLinks = filterValidLinks(d3Links, nodeIds);
 
-    // Create force simulation
+    // Group nodes by layer
+    const nodesByLayer = d3.group(d3Nodes, d => d.layer ?? 0);
+    const layers = Array.from(nodesByLayer.keys()).sort((a, b) => (a ?? 0) - (b ?? 0));
+    const layerHeight = height / (layers.length + 1);
+
+    // Set initial positions for nodes based on layer
+    d3Nodes.forEach(node => {
+      const layer = node.layer ?? 0;
+      const nodesInLayer = nodesByLayer.get(layer) || [];
+      const indexInLayer = nodesInLayer.indexOf(node);
+      const layerWidth = width / (nodesInLayer.length + 1);
+
+      node.x = layerWidth * (indexInLayer + 1);
+      node.y = layerHeight * (layer + 1);
+    });
+
+    // Create force simulation with layered constraints
     const simulation = d3.forceSimulation<D3Node>(d3Nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(120))
-      .force("charge", d3.forceManyBody().strength(-300))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(30));
+      .force("link", d3.forceLink<D3Node, D3Link>(validLinks)
+        .id(d => d.id)
+        .distance(100)
+        .strength(0.5))
+      .force("charge", d3.forceManyBody().strength(-200))
+      .force("collision", d3.forceCollide().radius(40))
+      .force("y", d3.forceY<D3Node>(d => {
+        const layer = d.layer ?? 0;
+        return layerHeight * (layer + 1);
+      }).strength(0.8)) // Strong Y force to keep nodes in their layers
+      .force("x", d3.forceX<D3Node>(width / 2).strength(0.05)); // Weak X force for centering
 
-    simulationRef.current = simulation;
-
-    // Create drag behavior
+    // Create drag behavior (keeps nodes locked to layer)
     const dragBehavior = d3.drag<SVGGElement, D3Node>()
       .on("start", (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -76,7 +119,10 @@ export function GraphVisualization({
       })
       .on("drag", (event, d) => {
         d.fx = event.x;
-        d.fy = event.y;
+        // Keep locked to layer Y position
+        const layer = d.layer ?? 0;
+        const targetY = layerHeight * (layer + 1);
+        d.fy = targetY;
       })
       .on("end", (event, d) => {
         if (!event.active) simulation.alphaTarget(0);
@@ -85,7 +131,7 @@ export function GraphVisualization({
       });
 
     // Create links and nodes
-    const link = createLinkElements(container, validLinks);
+    const link = createLinkElements(container, validLinks, true);
     const node = createNodeElements(container, d3Nodes, colorMap, onNodeClick, dragBehavior);
 
     // Update positions on simulation tick
