@@ -94,4 +94,5 @@ jobs:
           STAKWORK_CUSTOMERS_EMAIL: ${{ secrets.STAKWORK_CUSTOMERS_EMAIL}}
           STAKWORK_CUSTOMERS_PASSWORD: ${{ secrets.STAKWORK_CUSTOMERS_PASSWORD}}
           SWARM_SUPER_ADMIN_URL: placeholder
+          LIVEKIT_CALL_BASE_URL: "https://call-link"
         run: npm run test:integration
