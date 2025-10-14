@@ -220,6 +220,7 @@ describe("Calls API - Integration Tests", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "x-api-token": "test-swarm-api-key",
           },
           body: JSON.stringify({
             node_type: ["Episode"],
@@ -291,7 +292,7 @@ describe("Calls API - Integration Tests", () => {
 
       await expectError(
         response,
-        "Failed to fetch call recordings from Jarvis",
+        "Failed to fetch call recordings.",
         502,
       );
     });
