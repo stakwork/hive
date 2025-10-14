@@ -14,7 +14,7 @@ import {
   PaginationItem,
 } from "@/components/ui/pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Phone } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -32,7 +32,32 @@ export default function CallsPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
   const limit = 10;
+
+  const handleStartCall = async () => {
+    if (!slug) return;
+
+    setGeneratingLink(true);
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/calls/generate-link`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate call link');
+      }
+
+      const data = await response.json();
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Error generating call link:', err);
+      alert(err instanceof Error ? err.message : 'Failed to start call');
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
 
   useEffect(() => {
     if (!slug || !workspace?.isCodeGraphSetup) {
@@ -93,6 +118,23 @@ export default function CallsPage() {
       <PageHeader
         title="Calls"
         description="View your call recordings"
+        actions={
+          workspace?.isCodeGraphSetup ? (
+            <Button onClick={handleStartCall} disabled={generatingLink}>
+              {generatingLink ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Phone className="h-4 w-4 mr-2" />
+                  Start Call
+                </>
+              )}
+            </Button>
+          ) : null
+        }
       />
 
       <Card>
