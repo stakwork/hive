@@ -9,7 +9,7 @@ import * as d3 from "d3";
 // Camera controller
 const CameraController = ({
   distance,
-  onUpdate
+  onUpdate,
 }: {
   distance: number;
   onUpdate?: (pos: THREE.Vector3, distance: number) => void;
@@ -18,11 +18,7 @@ const CameraController = ({
 
   useEffect(() => {
     // Straight-on view - camera positioned directly in front
-    const newPos = new THREE.Vector3(
-      0,
-      0,
-      distance
-    );
+    const newPos = new THREE.Vector3(0, 0, distance);
     camera.position.copy(newPos);
     camera.lookAt(0, 0, 0);
   }, [camera, distance]);
@@ -140,8 +136,6 @@ const NodeMesh = ({ node, color, onClick, isSelected, isConnected, isDimmed }: N
 
 // --- LINK LINE COMPONENT ---
 const LinkLine = ({ link, isDimmed }: { link: D3Link; isDimmed: boolean }) => {
-  const ref = useRef<THREE.Line>(null);
-
   const source = link.source as D3Node;
   const target = link.target as D3Node;
 
@@ -157,14 +151,24 @@ const LinkLine = ({ link, isDimmed }: { link: D3Link; isDimmed: boolean }) => {
   }, [points]);
 
   return (
-    <line ref={ref} geometry={lineGeometry}>
+    // @ts-ignore - Three.js primitive, not SVG element
+    <line geometry={lineGeometry}>
       <lineBasicMaterial color={isDimmed ? "#444444" : "#666666"} transparent opacity={isDimmed ? 0.1 : 0.4} />
     </line>
   );
 };
 
 // --- GRAPH SCENE COMPONENT ---
-const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeClick, showCameraControls, selectedNodeId }: Graph3DProps) => {
+const GraphScene = ({
+  nodes,
+  links,
+  nodeTypes,
+  colorPalette,
+  isDarkMode,
+  onNodeClick,
+  showCameraControls,
+  selectedNodeId,
+}: Graph3DProps) => {
   const [simulatedNodes, setSimulatedNodes] = useState<D3Node[]>([]);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
@@ -199,7 +203,7 @@ const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeC
           .forceLink<D3Node, D3Link>(validLinks)
           .id((d) => d.id)
           .distance(50)
-          .strength(0.5)
+          .strength(0.5),
       )
       .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
       .force("x", d3.forceX(0).strength(0.1))
@@ -245,8 +249,7 @@ const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeC
       {links.map((link, i) => {
         const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
         const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
-        const isConnectedToSelected =
-          selectedNode && (sourceId === selectedNode.id || targetId === selectedNode.id);
+        const isConnectedToSelected = selectedNode && (sourceId === selectedNode.id || targetId === selectedNode.id);
         return (
           <LinkLine
             key={`${sourceId}-${targetId}-${i}`}
@@ -274,18 +277,22 @@ const GraphScene = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeC
         );
       })}
 
-      <OrbitControls
-        enableDamping
-        dampingFactor={0.05}
-        zoomSpeed={0.3}
-        rotateSpeed={0.5}
-      />
+      <OrbitControls enableDamping dampingFactor={0.05} zoomSpeed={0.3} rotateSpeed={0.5} />
     </>
   );
 };
 
 // --- MAIN 3D GRAPH COMPONENT ---
-export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onNodeClick, showCameraControls = false, selectedNodeId }: Graph3DProps) => {
+export const Graph3D = ({
+  nodes,
+  links,
+  nodeTypes,
+  colorPalette,
+  isDarkMode,
+  onNodeClick,
+  showCameraControls = false,
+  selectedNodeId,
+}: Graph3DProps) => {
   const [cameraPos, setCameraPos] = useState({ x: 0, y: 0, z: 0, distance: 0 });
 
   // Use a reasonable fixed camera distance based on typical graph size
@@ -310,15 +317,15 @@ export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onN
   const optimalCameraDistance = useMemo(() => {
     if (nodes.length === 0) return 0;
 
-    const positions = nodes.map(n => ({
+    const positions = nodes.map((n) => ({
       x: n.x || 0,
       y: n.y || 0,
-      z: n.z || 0
+      z: n.z || 0,
     }));
 
-    const maxX = Math.max(...positions.map(p => Math.abs(p.x)), 1);
-    const maxY = Math.max(...positions.map(p => Math.abs(p.y)), 1);
-    const maxZ = Math.max(...positions.map(p => Math.abs(p.z)), 1);
+    const maxX = Math.max(...positions.map((p) => Math.abs(p.x)), 1);
+    const maxY = Math.max(...positions.map((p) => Math.abs(p.y)), 1);
+    const maxZ = Math.max(...positions.map((p) => Math.abs(p.z)), 1);
 
     const maxDimension = Math.max(maxX, maxY, maxZ);
 
@@ -330,30 +337,30 @@ export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onN
   if (nodes.length === 0) {
     return (
       <div className="flex h-[500px] items-center justify-center">
-        <div className={`text-lg ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
-          No nodes to visualize
-        </div>
+        <div className={`text-lg ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>No nodes to visualize</div>
       </div>
     );
   }
 
   // Calculate camera position - straight-on view
-  const initialCameraPos: [number, number, number] = [
-    0,
-    0,
-    cameraDistance
-  ];
+  const initialCameraPos: [number, number, number] = [0, 0, cameraDistance];
 
   return (
     <div className="w-full h-[500px] relative">
       {showCameraControls && (
-        <div className={`absolute top-2 left-2 z-10 p-3 rounded text-xs font-mono ${isDarkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700'} shadow-lg`}>
-          <div><strong>Camera Position:</strong></div>
+        <div
+          className={`absolute top-2 left-2 z-10 p-3 rounded text-xs font-mono ${isDarkMode ? "bg-gray-800 text-gray-300" : "bg-white text-gray-700"} shadow-lg`}
+        >
+          <div>
+            <strong>Camera Position:</strong>
+          </div>
           <div>x: {cameraPos.x.toFixed(1)}</div>
           <div>y: {cameraPos.y.toFixed(1)}</div>
           <div>z: {cameraPos.z.toFixed(1)}</div>
           <div>distance: {cameraPos.distance.toFixed(1)}</div>
-          <div className="mt-2"><strong>Optimal:</strong> {optimalCameraDistance.toFixed(1)}</div>
+          <div className="mt-2">
+            <strong>Optimal:</strong> {optimalCameraDistance.toFixed(1)}
+          </div>
           <div className="mt-2">
             <label className="block mb-1">Distance:</label>
             <input
@@ -372,7 +379,11 @@ export const Graph3D = ({ nodes, links, nodeTypes, colorPalette, isDarkMode, onN
         <color attach="background" args={[isDarkMode ? "#111827" : "#f9fafb"]} />
         <CameraController
           distance={cameraDistance}
-          onUpdate={showCameraControls ? (pos, dist) => setCameraPos({ x: pos.x, y: pos.y, z: pos.z, distance: dist }) : undefined}
+          onUpdate={
+            showCameraControls
+              ? (pos, dist) => setCameraPos({ x: pos.x, y: pos.y, z: pos.z, distance: dist })
+              : undefined
+          }
         />
         <GraphScene
           nodes={nodes}
