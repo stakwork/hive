@@ -16,8 +16,13 @@ interface LearnChatMessageProps {
 export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessageProps) {
   const isUser = message.role === "user";
 
-  // Check if final answer is present (for smoother UX)
+  // Check if this is a streaming message (Chat mode) or a regular message (Learn mode)
+  const isStreamingMessage = !!(message.textParts || message.toolCalls || message.reasoningParts);
   const hasFinalAnswer = message.textParts?.some((part) => part.id === FINAL_ANSWER_ID);
+
+  // Show graph for Learn mode (non-streaming, message is complete)
+  // OR Chat mode when final answer exists
+  const shouldShowGraph = !isUser && message.ref_id && (!isStreamingMessage || hasFinalAnswer);
 
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} gap-3`}>
@@ -60,8 +65,8 @@ export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessagePro
         </div>
       </motion.div>
 
-      {/* Show graph if ref_id is present, final answer exists, and it's an assistant message */}
-      {!isUser && message.ref_id && hasFinalAnswer && (
+      {/* Show graph if ref_id is present and message is complete */}
+      {shouldShowGraph && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -71,7 +76,7 @@ export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessagePro
           <Graph
             endpoint="/api/subgraph"
             params={{
-              ref_id: message.ref_id,
+              ref_id: message.ref_id!,
               workspace: workspaceSlug || "",
             }}
             height={400}

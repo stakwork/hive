@@ -46,7 +46,8 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       },
     }),
     ask_question: tool({
-      description: "Fetch a learning + answer from the knowledge base.",
+      description:
+        "Fetch a learning + answer from the knowledge base. Always use a hint if possible! Only use a prompt if there is no appropriate hint.",
       inputSchema: z.object({
         question: z.string().describe("The exact text of a Hint or Prompt from the get_learnings tool response."),
       }),
