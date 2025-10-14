@@ -149,8 +149,9 @@ export function UserStoriesSection({
         <div className="flex items-center gap-2">
           <Label className="text-sm font-medium">User Stories</Label>
           <AIButton<GeneratedStory>
-            endpoint={`/api/features/${featureId}/generate-stories`}
+            endpoint={`/api/features/${featureId}/generate`}
             params={{
+              type: "userStories",
               existingStories: [
                 ...userStories.map((s) => s.title),
                 ...aiSuggestions.map((s) => s.title),

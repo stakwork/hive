@@ -54,7 +54,7 @@ export function AIButton<T>({
       disabled={generating}
     >
       {generating ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
       ) : (
         <>
           <Sparkles className="h-4 w-4 text-purple-500" />
