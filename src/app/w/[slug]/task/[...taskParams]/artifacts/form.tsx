@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Artifact, FormContent, Option } from "@/lib/chat";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 
 // Artifact Components
 export function FormArtifact({
@@ -32,7 +33,9 @@ export function FormArtifact({
 
   return (
     <Card className="p-4 bg-card border rounded-lg">
-      <p className="text-sm font-medium mb-3">{content.actionText}</p>
+      <div className="text-sm font-medium mb-3">
+        <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
+      </div>
 
       {/* Only show buttons for actionType="button" options */}
       {buttonOptions.length > 0 && (
