@@ -24,8 +24,6 @@ export default function DashboardPage() {
 
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
 
-
-
   // Poll ingest status if we have an ingestRefId
   useEffect(() => {
     if (codeIsSynced || !ingestRefId || !workspaceId || ingestError) {
@@ -50,12 +48,9 @@ export default function DashboardPage() {
 
       isRequestPendingRef.current = true;
       try {
-        const res = await fetch(
-          `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
-        );
+        const res = await fetch(`/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`);
         const { apiResult } = await res.json();
         const { data } = apiResult;
-
 
         if (!apiResult.ok) {
           setIngestError(true);
@@ -89,7 +84,7 @@ export default function DashboardPage() {
           }
           return;
         } else if (data?.status === "Failed") {
-          console.log('Ingestion failed');
+          console.log("Ingestion failed");
           toast({
             title: "Code Ingestion Failed",
             description: "There was an error ingesting your codebase. Please try again.",
@@ -135,7 +130,7 @@ export default function DashboardPage() {
       if (githubMatch) {
         return {
           owner: githubMatch[1],
-          name: githubMatch[2]
+          name: githubMatch[2],
         };
       }
       return null;
@@ -160,7 +155,7 @@ export default function DashboardPage() {
       // Try to fetch repository info from GitHub API via our proxy
       const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
         headers: {
-          'Accept': 'application/vnd.github.v3+json',
+          Accept: "application/vnd.github.v3+json",
         },
       });
 
@@ -234,7 +229,7 @@ export default function DashboardPage() {
       }
 
       if (!swarm?.swarmId) {
-        console.log('Creating swarm with:', {
+        console.log("Creating swarm with:", {
           workspaceId: workspaceId,
           name: workspace.slug,
           repositoryName: repoInfo.name,
@@ -267,14 +262,16 @@ export default function DashboardPage() {
 
         // Immediately update workspace with repository data after swarm creation
         updateWorkspace({
-          repositories: [{
-            id: `repo-${Date.now()}`, // temporary ID
-            name: repoInfo.name,
-            repositoryUrl: repositoryUrl,
-            branch: defaultBranch,
-            status: "PENDING", // Initially pending, will become SYNCED after ingestion
-            updatedAt: new Date().toISOString(),
-          }],
+          repositories: [
+            {
+              id: `repo-${Date.now()}`, // temporary ID
+              name: repoInfo.name,
+              repositoryUrl: repositoryUrl,
+              branch: defaultBranch,
+              status: "PENDING", // Initially pending, will become SYNCED after ingestion
+              updatedAt: new Date().toISOString(),
+            },
+          ],
           swarmStatus: "ACTIVE",
         });
       }
@@ -312,14 +309,13 @@ export default function DashboardPage() {
       }
 
       const servicesData = await servicesRes.json();
-      console.log('services', servicesData);
+      console.log("services", servicesData);
 
       toast({
         title: "Workspace Setup Complete",
         description: "Your workspace is now being configured. Code ingestion has started.",
         variant: "default",
       });
-
     } catch (error) {
       console.error("Failed to complete swarm setup:", error);
       toast({
@@ -335,7 +331,7 @@ export default function DashboardPage() {
   // Handle GitHub App callback
   useEffect(() => {
     const setupAction = searchParams.get("github_setup_action");
-    console.log('setupAction', setupAction)
+    // console.log('setupAction', setupAction)
 
     if (setupAction && !processedCallback.current) {
       processedCallback.current = true;
@@ -397,27 +393,27 @@ export default function DashboardPage() {
   }, [searchParams, toast, completeSwarmSetup]);
 
   // Determine if swarm is ready - repositories exist (swarm is created and setup is complete)
-  const isSwarmReady = workspace &&
-    workspace.repositories &&
-    workspace.repositories.length > 0;
+  const isSwarmReady = workspace && workspace.repositories && workspace.repositories.length > 0;
 
   // Show full-page loading if workspace exists but swarm is not ready yet
-
 
   if (shouldShowSwarmLoader) {
     return (
       <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
         <div className="w-full h-full flex flex-col items-center justify-center">
           <PageHeader title="Welcome to your development workspace" />
-          {isSwarmReady ? <Gitsee /> : (
+          {isSwarmReady ? (
+            <Gitsee />
+          ) : (
             <Card className="max-w-2xl">
               <CardContent>
-                <div className="flex flex-col items-center justify-center space-y-4" style={{ width: "500px", height: "500px" }}>
+                <div
+                  className="flex flex-col items-center justify-center space-y-4"
+                  style={{ width: "500px", height: "500px" }}
+                >
                   <div className="w-16 h-16 bg-[#16a34a] rounded-full animate-pulse"></div>
                   {workspace?.repositories?.[0]?.name && (
-                    <p className="text-lg font-medium text-muted-foreground">
-                      {workspace.repositories[0].name}
-                    </p>
+                    <p className="text-lg font-medium text-muted-foreground">{workspace.repositories[0].name}</p>
                   )}
                 </div>
               </CardContent>
@@ -432,7 +428,6 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Welcome to your development workspace." />
 
-
       {/* Info Cards Grid - All horizontal */}
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
         <VMConfigSection />
@@ -440,7 +435,9 @@ export default function DashboardPage() {
         <TestCoverageCard />
       </div>
 
-      <div><GraphComponent /></div>
+      <div>
+        <GraphComponent />
+      </div>
     </div>
   );
 }

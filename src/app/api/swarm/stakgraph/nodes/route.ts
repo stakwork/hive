@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       apiKey,
     });
 
-    console.log("apiResult", apiResult);
+    // console.log("apiResult", apiResult);
 
     return NextResponse.json(
       {
