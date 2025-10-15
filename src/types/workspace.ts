@@ -37,6 +37,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   ingestRefId: string | null;
   poolState: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE" | null;
   swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
+  swarmUrl: string | null;
   repositories: Array<{
     id: string;
     name: string;

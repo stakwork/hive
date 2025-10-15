@@ -1,15 +1,15 @@
 "use client";
 
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { Iframe } from "@/components/s2b-iframe";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { getLanguageFromFile } from "@/lib/syntax-utils";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
-import { Graph3D } from "./Graph3D";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { getLanguageFromFile } from "@/lib/syntax-utils";
-import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { vs, vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Graph3D } from "./Graph3D";
 
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
@@ -23,7 +23,7 @@ interface ApiResponse {
   success: boolean;
   data?: {
     nodes?: GraphNode[];
-    edges?: { source: string; target: string; [key: string]: unknown }[];
+    edges?: { source: string; target: string;[key: string]: unknown }[];
   };
 }
 
@@ -222,9 +222,8 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
                 <button
                   key={connectedNode.id}
                   onClick={() => onNodeClick?.(connectedNode)}
-                  className={`flex items-center gap-2 text-sm w-full text-left px-2 py-1 rounded transition-colors ${
-                    isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center gap-2 text-sm w-full text-left px-2 py-1 rounded transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"
+                    }`}
                 >
                   <div
                     className="w-3 h-3 rounded-full flex-shrink-0"
@@ -250,7 +249,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
 
 // --- MAIN COMPONENT ---
 export const GraphComponent = () => {
-  const { id: workspaceId } = useWorkspace();
+  const { id: workspaceId, workspace } = useWorkspace();
   const { resolvedTheme, toggleTheme, mounted } = useTheme();
   const [nodes, setNodes] = useState<D3Node[]>([]);
   const [links, setLinks] = useState<D3Link[]>([]);
@@ -259,7 +258,7 @@ export const GraphComponent = () => {
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const selectedNodeRef = useRef<D3Node | null>(null);
-  const [is3DView, setIs3DView] = useState(false);
+  const [viewMode, setViewMode] = useState<'2D' | '3D' | '2B3D'>('2D');
   const [showCameraControls, setShowCameraControls] = useState(false);
 
   // keep selectedNodeRef in sync for use inside D3 handlers
@@ -581,36 +580,55 @@ export const GraphComponent = () => {
   // connected nodes for popup
   const connectedNodes = selectedNode
     ? (Array.from(getConnectedNodeIds(selectedNode.id, links))
-        .map((id) => nodes.find((node) => node.id === id))
-        .filter(Boolean) as D3Node[])
+      .map((id) => nodes.find((node) => node.id === id))
+      .filter(Boolean) as D3Node[])
     : [];
+
+
 
   return (
     <div className={`h-auto w-full border rounded-lg p-4 relative bg-card`}>
       <div className="flex justify-between items-center mb-4">
         <h3 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-900"}`}>Graph Visualization</h3>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIs3DView(!is3DView)}
-            className={`px-3 py-1 text-sm rounded transition-colors ${
-              isDarkMode ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-            title="Toggle 2D/3D view"
-          >
-            {is3DView ? "2D" : "3D"}
-          </button>
-          {is3DView && isLocalhost && (
+          <div className="flex rounded-lg border border-border/40 bg-background/50 backdrop-blur-sm p-1 shadow-sm">
+            {(['2D', '3D', '2B3D'] as const).map((mode, index) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`relative px-4 py-2 text-sm font-medium transition-all duration-200 ease-out ${
+                  index === 0 ? 'rounded-l-md' : index === 2 ? 'rounded-r-md' : ''
+                } ${
+                  viewMode === mode
+                    ? isDarkMode
+                      ? "bg-blue-600 text-white shadow-md scale-105 z-10"
+                      : "bg-blue-500 text-white shadow-md scale-105 z-10"
+                    : isDarkMode
+                      ? "text-gray-300 hover:text-white hover:bg-gray-700/50"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
+                }`}
+                title={`Switch to ${mode} view`}
+              >
+                <span className="relative z-10">{mode}</span>
+                {viewMode === mode && (
+                  <div className={`absolute inset-0 rounded-md ${
+                    isDarkMode ? 'bg-blue-600' : 'bg-blue-500'
+                  } transition-all duration-200 ease-out`} />
+                )}
+              </button>
+            ))}
+          </div>
+          {viewMode === '3D' && isLocalhost && (
             <button
               onClick={() => setShowCameraControls(!showCameraControls)}
-              className={`px-3 py-1 text-sm rounded transition-colors ${
-                showCameraControls
-                  ? isDarkMode
-                    ? "bg-blue-700 text-white"
-                    : "bg-blue-500 text-white"
-                  : isDarkMode
-                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
+              className={`px-3 py-1 text-sm rounded transition-colors ${showCameraControls
+                ? isDarkMode
+                  ? "bg-blue-700 text-white"
+                  : "bg-blue-500 text-white"
+                : isDarkMode
+                  ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
               title="Toggle camera debug controls"
             >
               🎥
@@ -618,9 +636,8 @@ export const GraphComponent = () => {
           )}
           <button
             onClick={toggleTheme}
-            className={`px-3 py-1 text-sm rounded transition-colors ${
-              isDarkMode ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
+            className={`px-3 py-1 text-sm rounded transition-colors ${isDarkMode ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
             title="Toggle theme"
           >
             {isDarkMode ? "☀️" : "🌙"}
@@ -656,7 +673,7 @@ export const GraphComponent = () => {
               No nodes found for selected schema
             </div>
           </div>
-        ) : is3DView ? (
+        ) : viewMode === '3D' ? (
           <Graph3D
             nodes={nodes}
             links={links}
@@ -669,47 +686,54 @@ export const GraphComponent = () => {
               setSelectedNode(node);
             }}
           />
+        ) : viewMode === '2B3D' ? (
+          workspace?.swarmUrl ? (
+            <Iframe
+              height={600}
+              src={workspace.swarmUrl.replace('/api', ':8000')}
+              className="min-h-[500px]"
+            />
+          ) : (
+            <div>This graph is not available</div>
+          )
         ) : (
-          <svg
-            ref={(el) => {
-              svgRef.current = el;
-            }}
-            className="w-full h-auto"
-          />
+          <svg ref={svgRef} className="w-full h-96" />
         )}
       </div>
 
-      {selectedNode && (
-        <NodePopup
-          node={selectedNode}
-          onClose={() => {
-            // Only release pinned node in 2D mode (3D manages its own simulation)
-            if (!is3DView && selectedNodeRef.current) {
-              selectedNodeRef.current.fx = null;
-              selectedNodeRef.current.fy = null;
-              simulationRef.current?.alpha(0.1).restart();
-            }
-            setSelectedNode(null);
-          }}
-          connectedNodes={connectedNodes}
-          isDarkMode={isDarkMode}
-          nodeTypes={nodeTypes}
-          onNodeClick={(clickedNode) => {
-            // In 2D mode, release the old pinned node first
-            if (!is3DView && selectedNodeRef.current) {
-              selectedNodeRef.current.fx = null;
-              selectedNodeRef.current.fy = null;
-            }
-            // Pin and select the new node
-            if (!is3DView) {
-              clickedNode.fx = clickedNode.x ?? clickedNode.fx;
-              clickedNode.fy = clickedNode.y ?? clickedNode.fy;
-              simulationRef.current?.alpha(0.1).restart();
-            }
-            setSelectedNode(clickedNode);
-          }}
-        />
-      )}
-    </div>
+      {
+        selectedNode && (
+          <NodePopup
+            node={selectedNode}
+            onClose={() => {
+              // Only release pinned node in 2D mode (3D and 2B3D manage their own state)
+              if (viewMode === '2D' && selectedNodeRef.current) {
+                selectedNodeRef.current.fx = null;
+                selectedNodeRef.current.fy = null;
+                simulationRef.current?.alpha(0.1).restart();
+              }
+              setSelectedNode(null);
+            }}
+            connectedNodes={connectedNodes}
+            isDarkMode={isDarkMode}
+            nodeTypes={nodeTypes}
+            onNodeClick={(clickedNode) => {
+              // In 2D mode, release the old pinned node first
+              if (viewMode === '2D' && selectedNodeRef.current) {
+                selectedNodeRef.current.fx = null;
+                selectedNodeRef.current.fy = null;
+              }
+              // Pin and select the new node
+              if (viewMode === '2D') {
+                clickedNode.fx = clickedNode.x ?? clickedNode.fx;
+                clickedNode.fy = clickedNode.y ?? clickedNode.fy;
+                simulationRef.current?.alpha(0.1).restart();
+              }
+              setSelectedNode(clickedNode);
+            }}
+          />
+        )
+      }
+    </div >
   );
 };
