@@ -176,23 +176,16 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
           break;
 
         case "staktrak-playwright-screenshot-captured":
-          console.log(
-            `[useStaktrakReplay] Received screenshot for actionIndex=${data.actionIndex}, filePath=${data.screenshotUrl}`,
-          );
-          setReplayScreenshots((prev) => {
-            const updated = [
-              ...prev,
-              {
-                id: data.id,
-                actionIndex: data.actionIndex,
-                filePath: data.screenshotUrl,
-                timestamp: data.timestamp,
-                url: data.url,
-              },
-            ];
-            console.log(`[useStaktrakReplay] Total screenshots now: ${updated.length}`);
-            return updated;
-          });
+          setReplayScreenshots((prev) => [
+            ...prev,
+            {
+              id: data.id,
+              actionIndex: data.actionIndex,
+              filePath: data.screenshotUrl,
+              timestamp: data.timestamp,
+              url: data.url,
+            },
+          ]);
           break;
 
         default:

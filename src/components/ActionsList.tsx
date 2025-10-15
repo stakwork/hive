@@ -294,7 +294,7 @@ export function ActionsList({
                   {isNavAction && !hasScreenshot && (
                     <div
                       className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted border border-border"
-                      title={`No screenshot for action ${index} (${screenshots.length} total screenshots available)`}
+                      title="No screenshot available"
                     >
                       <Camera className="h-4 w-4 text-muted-foreground" />
                     </div>

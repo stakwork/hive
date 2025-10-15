@@ -2722,7 +2722,6 @@ var userBehaviour = (() => {
 
       if (response.ok) {
         const result = await response.json();
-        console.log(`[Screenshot] Captured at actionIndex=${actionIndex}`);
 
         // Notify parent window that screenshot was captured and saved
         window.parent.postMessage(
@@ -2760,7 +2759,6 @@ var userBehaviour = (() => {
       return;
     }
     const action = state.actions[state.currentActionIndex];
-    console.log(`[Action] Index ${state.currentActionIndex}: type="${action.type}", value="${action.value || ''}", url="${action.url || ''}"`);
     try {
       window.parent.postMessage(
         {
