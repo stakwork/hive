@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
   BookOpen,
+  Brain,
   CheckSquare,
   LayoutDashboard,
   Map,
@@ -64,6 +65,7 @@ const baseNavigationItems = [
   { icon: BarChart3, label: "Insights", href: "/insights" },
   { icon: Users, label: "User Journeys", href: "/user-journeys" },
   { icon: BookOpen, label: "Learn", href: "/learn" },
+  { icon: Brain, label: "Graph", href: "/graph" },
   { icon: Phone, label: "Calls", href: "/calls" },
   // { icon: Settings, label: "Settings", href: "/settings" },
 ];

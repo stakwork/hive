@@ -112,6 +112,7 @@ export async function GET(request: NextRequest) {
         { status: error.statusCode },
       );
     }
+    console.error("Failed to process quick ask:", error);
     return NextResponse.json({ error: "Failed to process quick ask" }, { status: 500 });
   }
 }
