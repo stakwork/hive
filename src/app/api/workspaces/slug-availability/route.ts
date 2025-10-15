@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { unauthorized, badRequest } from "@/types/errors";
-import { handleApiError } from "@/lib/api/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -11,14 +9,20 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user || !(session.user as { id?: string }).id) {
-      throw unauthorized("Unauthorized");
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
     const slug = searchParams.get("slug");
 
     if (!slug) {
-      throw badRequest("Slug parameter is required");
+      return NextResponse.json(
+        { success: false, error: "Slug parameter is required" },
+        { status: 400 }
+      );
     }
 
     // Check if workspace with this slug already exists
@@ -34,10 +38,17 @@ export async function GET(request: NextRequest) {
       data: {
         slug,
         isAvailable,
-        message: isAvailable ? "Slug is available" : "A workspace with this slug already exists",
-      },
+        message: isAvailable
+          ? "Slug is available"
+          : "A workspace with this slug already exists"
+      }
     });
-  } catch (error) {
-    return handleApiError(error);
+
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to check slug availability";
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }

@@ -71,8 +71,8 @@ function redirectTo(
 
 function respondWithApiError(error: ApiError, requestId: string, authStatus: string) {
   return respondWithJson(
-    { error: error.message, details: error.details },
-    { status: error.status, requestId, authStatus },
+    { error: error.message, kind: error.kind, details: error.details },
+    { status: error.statusCode, requestId, authStatus },
   );
 }
 
@@ -128,7 +128,7 @@ export async function middleware(request: NextRequest) {
 
     return continueRequest(requestHeaders, "authenticated");
   } catch (error) {
-    if (isApiRoute && typeof error === "object" && error && "status" in error && "message" in error) {
+    if (isApiRoute && typeof error === "object" && error && "kind" in error && "statusCode" in error) {
       return respondWithApiError(error as ApiError, requestId, "error");
     }
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_ID);

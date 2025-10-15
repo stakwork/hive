@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { badRequest, notFound, serverError, forbidden } from "@/types/errors";
-import { handleApiError } from "@/lib/api/errors";
+import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -25,25 +24,25 @@ export async function GET(request: NextRequest) {
     const workspaceSlug = searchParams.get("workspace");
 
     if (!question) {
-      throw badRequest("Missing required parameter: question");
+      throw validationError("Missing required parameter: question");
     }
     if (!workspaceSlug) {
-      throw badRequest("Missing required parameter: workspace");
+      throw validationError("Missing required parameter: workspace");
     }
 
     const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
     if (!workspaceAccess.hasAccess) {
-      throw forbidden("Workspace not found or access denied");
+      throw forbiddenError("Workspace not found or access denied");
     }
 
     const swarm = await db.swarm.findFirst({
       where: { workspaceId: workspaceAccess.workspace?.id },
     });
     if (!swarm) {
-      throw notFound("Swarm not found for this workspace");
+      throw notFoundError("Swarm not found for this workspace");
     }
     if (!swarm.swarmUrl) {
-      throw notFound("Swarm URL not configured");
+      throw notFoundError("Swarm URL not configured");
     }
 
     const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -58,7 +57,7 @@ export async function GET(request: NextRequest) {
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repoUrl = primaryRepo?.repositoryUrl;
     if (!repoUrl) {
-      throw notFound("Repository URL not configured for this swarm");
+      throw notFoundError("Repository URL not configured for this swarm");
     }
 
     const workspace = await db.workspace.findUnique({
@@ -67,14 +66,14 @@ export async function GET(request: NextRequest) {
     });
 
     if (!workspace) {
-      throw notFound("Workspace not found");
+      throw notFoundError("Workspace not found");
     }
 
     const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
     const pat = githubProfile?.token;
 
     if (!pat) {
-      throw notFound("GitHub PAT not found for this user");
+      throw notFoundError("GitHub PAT not found for this user");
     }
 
     const provider: Provider = "anthropic";
@@ -107,7 +106,13 @@ export async function GET(request: NextRequest) {
       throw serverError("Failed to create stream");
     }
   } catch (error) {
-    return handleApiError(error);
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: error.message, kind: error.kind, details: error.details },
+        { status: error.statusCode },
+      );
+    }
+    return NextResponse.json({ error: "Failed to process quick ask" }, { status: 500 });
   }
 }
 

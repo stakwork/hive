@@ -130,8 +130,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(401);
-      expect(data.error).toBeDefined();
-      expect(data.error).toContain("password");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Incorrect password");
 
       // Verify no cookie was set
       const setCookieHeader = response.headers.get("set-cookie");
@@ -145,8 +145,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Password is required");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Password is required");
 
       const setCookieHeader = response.headers.get("set-cookie");
       expect(setCookieHeader).toBeNull();
@@ -161,8 +161,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Password is required");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Password is required");
     });
 
     test("should return 400 for non-string password value", async () => {
@@ -174,8 +174,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Password is required");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Password is required");
     });
 
     test("should return 400 for null password", async () => {
@@ -187,8 +187,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Password is required");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Password is required");
     });
   });
 
@@ -204,8 +204,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Landing page password is not enabled");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Landing page password is not enabled");
     });
 
     test("should return 400 when LANDING_PAGE_PASSWORD is empty string", async () => {
@@ -219,8 +219,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Landing page password is not enabled");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Landing page password is not enabled");
     });
 
     test("should return 400 when LANDING_PAGE_PASSWORD is whitespace only", async () => {
@@ -234,8 +234,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Landing page password is not enabled");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Landing page password is not enabled");
     });
   });
 
@@ -394,8 +394,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data1 = await response1.json();
       const data2 = await response2.json();
       
-      expect(data1.error).toBe("Incorrect password");
-      expect(data2.error).toBe("Incorrect password");
+      expect(data1.message).toBe("Incorrect password");
+      expect(data2.message).toBe("Incorrect password");
     });
   });
 
@@ -412,9 +412,9 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const response = await POST(request as any);
       const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error).toBeDefined();
-      expect(data.error).toContain("is not valid JSON");
+      expect(response.status).toBe(500);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("An error occurred");
     });
 
     test("should handle missing NEXTAUTH_SECRET gracefully during signCookie", async () => {
@@ -429,8 +429,8 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.error).toBeDefined();
-      expect(data.error).toBe("Internal server error");
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("An error occurred");
 
       process.env.NEXTAUTH_SECRET = originalSecret;
     });
@@ -490,7 +490,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const data = await response.json();
 
       expect(response.status).toBe(401);
-      expect(data.error).toBeDefined();
+      expect(data.success).toBe(false);
     });
 
     test("should validate password case-sensitively", async () => {

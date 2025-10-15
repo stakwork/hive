@@ -3,8 +3,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { unauthorized, notFound } from "@/types/errors";
-import { handleApiError } from "@/lib/api/errors";
 
 export const runtime = "nodejs";
 
@@ -15,7 +13,7 @@ export async function POST() {
     const session = await getServerSession(authOptions);
 
     if (!session?.user || !(session.user as { id?: string }).id) {
-      throw unauthorized("Unauthorized");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = (session.user as { id: string }).id;
@@ -29,28 +27,41 @@ export async function POST() {
     });
 
     if (!account) {
-      throw notFound("No GitHub account found");
+      return NextResponse.json(
+        { error: "No GitHub account found" },
+        { status: 404 },
+      );
     }
 
     // Revoke the GitHub OAuth access token
     if (account.access_token) {
       try {
-        const response = await fetch("https://api.github.com/applications/revoke", {
-          method: "DELETE",
-          headers: {
-            Accept: "application/vnd.github.v3+json",
-            "Content-Type": "application/json",
-            Authorization: `Basic ${Buffer.from(
-              `${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`,
-            ).toString("base64")}`,
+        const response = await fetch(
+          "https://api.github.com/applications/revoke",
+          {
+            method: "DELETE",
+            headers: {
+              Accept: "application/vnd.github.v3+json",
+              "Content-Type": "application/json",
+              Authorization: `Basic ${Buffer.from(
+                `${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`,
+              ).toString("base64")}`,
+            },
+            body: JSON.stringify({
+              access_token: encryptionService.decryptField(
+                "access_token",
+                account.access_token,
+              ),
+            }),
           },
-          body: JSON.stringify({
-            access_token: encryptionService.decryptField("access_token", account.access_token),
-          }),
-        });
+        );
 
         if (!response.ok) {
-          console.error("Failed to revoke GitHub token:", response.status, response.statusText);
+          console.error(
+            "Failed to revoke GitHub token:",
+            response.status,
+            response.statusText,
+          );
         }
       } catch (error) {
         console.error("Error revoking GitHub token:", error);
@@ -80,11 +91,18 @@ export async function POST() {
         },
       });
     } catch (error) {
-      console.error("Sessions already deleted or error deleting sessions:", error);
+      console.error(
+        "Sessions already deleted or error deleting sessions:",
+        error,
+      );
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return handleApiError(error);
+    console.error("Error revoking GitHub access:", error);
+    return NextResponse.json(
+      { error: "Failed to revoke GitHub access" },
+      { status: 500 },
+    );
   }
 }

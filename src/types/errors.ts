@@ -1,6 +1,15 @@
+export type ErrorKind =
+  | "validation"
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "unprocessable_entity"
+  | "server_error";
+
 export interface ApiError {
+  kind: ErrorKind;
   message: string;
-  status: 400 | 401 | 403 | 404 | 408 | 409 | 422 | 500 | 503;
+  statusCode: number;
   details?: unknown;
 }
 
@@ -8,61 +17,33 @@ export function isApiError(error: unknown): error is ApiError {
   return (
     typeof error === "object" &&
     error !== null &&
-    "status" in error &&
-    "message" in error &&
-    typeof (error as ApiError).status === "number"
+    "kind" in error &&
+    "statusCode" in error
   );
 }
-export const badRequest = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 400 as const,
-  details,
-});
 
-export const unauthorized = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 401 as const,
-  details,
-});
+export function validationError(message: string, details?: unknown): ApiError {
+  return { kind: "validation", message, statusCode: 400, details };
+}
+export function unauthorizedError(message: string, details?: unknown): ApiError {
+  return { kind: "forbidden", message, statusCode: 401, details };
+}
+export function forbiddenError(message: string, details?: unknown): ApiError {
+  return { kind: "forbidden", message, statusCode: 403, details };
+}
 
-export const forbidden = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 403 as const,
-  details,
-});
+export function notFoundError(message: string, details?: unknown): ApiError {
+  return { kind: "not_found", message, statusCode: 404, details };
+}
 
-export const notFound = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 404 as const,
-  details,
-});
+export function conflictError(message: string, details?: unknown): ApiError {
+  return { kind: "conflict", message, statusCode: 409, details };
+}
 
-export const timeout = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 408 as const,
-  details,
-});
+export function unprocessableEntityError(message: string, details?: unknown): ApiError {
+  return { kind: "unprocessable_entity", message, statusCode: 422, details };
+}
 
-export const conflict = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 409 as const,
-  details,
-});
-
-export const unprocessableEntity = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 422 as const,
-  details,
-});
-
-export const serverError = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 500 as const,
-  details,
-});
-
-export const serviceUnavailable = (message: string, details?: unknown): ApiError => ({
-  message,
-  status: 503 as const,
-  details,
-});
+export function serverError(message: string, details?: unknown): ApiError {
+  return { kind: "server_error", message, statusCode: 500, details };
+}

@@ -1,13 +1,14 @@
-import type { ApiError } from "@/types/errors";
-
 export interface HttpClientConfig {
   baseURL: string;
   defaultHeaders?: Record<string, string>;
   timeout?: number;
 }
 
-export interface ServiceApiError extends ApiError {
+export interface ApiError {
+  message: string;
+  status: number;
   service: string;
+  details?: any;
 }
 
 export class HttpClient {
@@ -52,10 +53,10 @@ export class HttpClient {
         throw {
           message:
             errorData.message || `HTTP error! status: ${response.status}`,
-          status: response.status as ApiError["status"],
+          status: response.status,
           service,
           details: errorData,
-        } as ServiceApiError;
+        } as ApiError;
       }
 
       const jsonResponse = await response.json();
@@ -70,25 +71,25 @@ export class HttpClient {
       if (error instanceof Error && error.name === "AbortError") {
         throw {
           message: "Request timeout",
-          status: 408 as const,
+          status: 408,
           service,
           details: { timeout: this.config.timeout },
-        } as ServiceApiError;
+        } as ApiError;
       }
 
       // Handle network errors
       if (error instanceof TypeError) {
         throw {
           message: "Network error - unable to reach the server",
-          status: 500 as const,
+          status: 0,
           service,
           details: { originalError: error.message },
-        } as ServiceApiError;
+        } as ApiError;
       }
 
-      // Re-throw ServiceApiError or ApiError
+      // Re-throw ApiError
       if (error && typeof error === "object" && "status" in error) {
-        throw error;
+        throw error as ApiError;
       }
 
       // Handle unknown errors
@@ -97,10 +98,10 @@ export class HttpClient {
           error instanceof Error
             ? error.message
             : "An unexpected error occurred",
-        status: 500 as const,
+        status: 500,
         service,
         details: { originalError: error },
-      } as ServiceApiError;
+      } as ApiError;
     }
   }
 
