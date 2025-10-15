@@ -10,6 +10,7 @@ export function useIngestStatus() {
   const [ingestError, setIngestError] = useState(false);
 
   const ingestRefId = workspace?.ingestRefId;
+  console.log(workspace?.repositories);
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
 
   useEffect(() => {
@@ -19,6 +20,11 @@ export function useIngestStatus() {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
+
+      console.log('codeIsSynced', codeIsSynced);
+      console.log('ingestRefId', ingestRefId);
+      console.log('workspaceId', workspaceId);
+      console.log('ingestError', ingestError);
       return;
     }
 
@@ -35,6 +41,7 @@ export function useIngestStatus() {
 
       isRequestPendingRef.current = true;
       try {
+        console.log('getting ingest status');
         const res = await fetch(
           `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
         );

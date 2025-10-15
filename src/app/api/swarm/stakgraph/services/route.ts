@@ -1,12 +1,10 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { parseEnv } from "@/lib/env-parser";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
-import { fetchStakgraphServices, pollAgentProgress } from "@/services/swarm/stakgraph-services";
-import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUtils";
+import { fetchStakgraphServices } from "@/services/swarm/stakgraph-services";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -74,6 +72,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Check if there's already an ongoing agent process
+    if (swarm.agentRequestId && swarm.agentStatus === 'PROCESSING') {
+      console.log("[stakgraph/services] Reusing existing agent request:", swarm.agentRequestId);
+      return NextResponse.json(
+        {
+          success: true,
+          status: 'processing',
+          data: {
+            request_id: swarm.agentRequestId
+          },
+        },
+        { status: 202 },
+      );
+    }
+
     // Only fetch GitHub profile if we need to make API calls
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
 
@@ -92,7 +105,7 @@ export async function GET(request: NextRequest) {
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repo_url = repo_url_param || primaryRepo?.repositoryUrl;
 
-    let responseData: { services: ServiceConfig[] };
+    let responseData: { services: ServiceConfig[] } | undefined;
     let environmentVariables: Array<{ name: string; value: string }> | undefined;
     let containerFiles: Record<string, string> | undefined;
     const cleanSwarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", "") : "";
@@ -143,85 +156,28 @@ export async function GET(request: NextRequest) {
           throw new Error("No request_id received from agent");
         }
 
-        // Poll for completion
-        console.log("[stakgraph/services] Starting to poll agent with request_id:", initData.request_id);
-        const agentResult = await pollAgentProgress(swarmUrl, initData.request_id, decryptedApiKey);
-        console.log("[stakgraph/services] Agent polling completed, result ok:", agentResult.ok);
-
-        if (!agentResult.ok) {
-          console.error("[stakgraph/services] Agent failed, full result:", JSON.stringify(agentResult, null, 2));
-          throw new Error("Agent failed to complete");
-        }
-
-        const agentFiles = agentResult.data as Record<string, string>;
-
-        // Parse pm2.config.js to extract services
-        const pm2Content = agentFiles["pm2.config.js"];
-        const services = parsePM2Content(pm2Content);
-
-        // Parse .env file if present from agent
-        let agentEnvVars: Record<string, string> = {};
-        const envContent = agentFiles[".env"];
-        if (envContent) {
-          try {
-            // Try to parse - could be plain text or base64
-            let envText = envContent;
-            try {
-              // Check if it's base64
-              const decoded = Buffer.from(envContent, "base64").toString("utf-8");
-              if (decoded.includes("=")) {
-                // Simple check if it looks like env format
-                envText = decoded;
-              }
-            } catch {
-              // Use as plain text
-            }
-
-            agentEnvVars = parseEnv(envText);
-          } catch (e) {
-            console.error("Failed to parse .env file from agent:", e);
-          }
-        }
-
-        // Now fetch from stakgraph to get any additional env vars
-        const stakgraphResult = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
-          clone: "true", // Always clone to ensure we get the latest code
-          ...(repo_url ? { repo_url } : {}),
-          ...(githubProfile?.username ? { username: githubProfile.username } : {}),
-          ...(githubProfile ? { pat: githubProfile.token } : {}),
+        // Store the agent request ID and status in database
+        await db.swarm.update({
+          where: { id: swarm.id },
+          data: {
+            agentRequestId: initData.request_id,
+            agentStatus: 'PROCESSING',
+          },
         });
 
-        // Hybrid approach: merge environment variables (agent takes precedence)
-        const mergedEnvVars: Record<string, string> = {};
+        // Return immediately with request_id for SSE streaming
+        console.log("[stakgraph/services] Agent initiated, returning request_id for SSE streaming:", initData.request_id);
 
-        // First add stakgraph env vars
-        if (stakgraphResult.environmentVariables) {
-          for (const env of stakgraphResult.environmentVariables) {
-            mergedEnvVars[env.name] = env.value;
-          }
-        }
-
-        // Then overwrite with agent env vars (agent takes precedence)
-        for (const [name, value] of Object.entries(agentEnvVars)) {
-          mergedEnvVars[name] = value;
-        }
-
-        // Convert merged env vars to array format
-        environmentVariables = Object.entries(mergedEnvVars).map(([name, value]) => ({
-          name,
-          value,
-        }));
-
-        // Prepare container files
-        const repoName = repo;
-        containerFiles = {
-          Dockerfile: Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString("base64"),
-          "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString("base64"),
-          "docker-compose.yml": Buffer.from(agentFiles["docker-compose.yml"] || "").toString("base64"),
-          "devcontainer.json": Buffer.from(devcontainerJsonContent(repoName)).toString("base64"),
-        };
-
-        responseData = { services };
+        return NextResponse.json(
+          {
+            success: true,
+            status: 'processing',
+            data: {
+              request_id: initData.request_id
+            },
+          },
+          { status: 202 },
+        );
       } catch (error) {
         console.error("[stakgraph/services] Agent mode failed, detailed error:", error);
         console.error("[stakgraph/services] Error stack:", error instanceof Error ? error.stack : "No stack trace");
@@ -256,21 +212,30 @@ export async function GET(request: NextRequest) {
       environmentVariables = result.environmentVariables;
     }
 
-    // Save services, environment variables, and container files to database
-    await saveOrUpdateSwarm({
-      workspaceId: swarm.workspaceId,
-      services: responseData.services,
-      ...(environmentVariables ? { environmentVariables } : {}),
-      ...(containerFiles ? { containerFiles } : {}),
-    });
+    // Only save and return data if we have it (fallback mode)
+    if (responseData) {
+      // Save services, environment variables, and container files to database
+      await saveOrUpdateSwarm({
+        workspaceId: swarm.workspaceId,
+        services: responseData.services,
+        ...(environmentVariables ? { environmentVariables } : {}),
+        ...(containerFiles ? { containerFiles } : {}),
+      });
 
+      return NextResponse.json(
+        {
+          success: true,
+          status: 200,
+          data: responseData,
+        },
+        { status: 200 },
+      );
+    }
+
+    // This should not happen if agent mode returns early
     return NextResponse.json(
-      {
-        success: true,
-        status: 200,
-        data: responseData,
-      },
-      { status: 200 },
+      { success: false, message: "No data to return" },
+      { status: 500 }
     );
   } catch (error) {
     console.error("[stakgraph/services] Unhandled error:", error);

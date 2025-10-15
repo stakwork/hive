@@ -3,7 +3,11 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { SwarmSetupOrchestrator } from "./SwarmSetupOrchestrator";
 
-export function SwarmSetupHandler() {
+interface SwarmSetupHandlerProps {
+  onServicesStarted?: (started: boolean) => void;
+}
+
+export function SwarmSetupHandler({ onServicesStarted }: SwarmSetupHandlerProps) {
   const { workspace } = useWorkspace();
 
   // Repository URL for current operations
@@ -12,5 +16,5 @@ export function SwarmSetupHandler() {
     return null;
   }
 
-  return <SwarmSetupOrchestrator repositoryUrl={repositoryUrl} />;
+  return <SwarmSetupOrchestrator repositoryUrl={repositoryUrl} onServicesStarted={onServicesStarted} />;
 }
