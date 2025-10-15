@@ -87,7 +87,7 @@ export async function validatePhaseAccess(phaseId: string, userId: string) {
  */
 export async function validateTicketAccess(ticketId: string, userId: string) {
   const ticket = await db.ticket.findUnique({
-    where: { id: ticketId },
+    where: { id: ticketId, deleted: false },
     select: {
       id: true,
       featureId: true,
