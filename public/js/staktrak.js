@@ -1728,36 +1728,6 @@ var userBehaviour = (() => {
     };
     return roleMap[role] || `[role="${role}"]`;
   }
-  async function captureScreenshot() {
-    try {
-      // Check if html2canvas is available
-      if (typeof html2canvas === 'undefined') {
-        // Load html2canvas dynamically if not available
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-        document.head.appendChild(script);
-        await new Promise((resolve, reject) => {
-          script.onload = resolve;
-          script.onerror = reject;
-        });
-      }
-
-      // Capture screenshot - page is already loaded at this point
-      const canvas = await html2canvas(document.body, {
-        allowTaint: true,
-        useCORS: true,
-        logging: false,
-        width: Math.min(window.innerWidth, 1920),
-        height: Math.min(window.innerHeight, 1080)
-      });
-
-      // Convert to data URL with compression
-      return canvas.toDataURL('image/jpeg', 0.7);
-    } catch (error) {
-      console.warn('Screenshot capture failed:', error);
-      return null;
-    }
-  }
   async function executePlaywrightAction(action) {
     var _a;
     try {
@@ -1771,29 +1741,6 @@ var userBehaviour = (() => {
               },
               "*"
             );
-
-            // Wait for page to load
-            if (document.readyState !== 'complete') {
-              await new Promise(resolve => {
-                window.addEventListener('load', resolve, { once: true });
-              });
-            }
-
-            // Capture screenshot after navigation completes
-            const screenshot = await captureScreenshot();
-            if (screenshot) {
-              const state = playwrightReplayRef.current;
-              window.parent.postMessage(
-                {
-                  type: "staktrak-playwright-replay-screenshot",
-                  actionIndex: state ? state.currentActionIndex : 0,
-                  screenshot: screenshot,
-                  timestamp: Date.now(),
-                  url: action.value
-                },
-                "*"
-              );
-            }
           }
           break;
         case "setViewportSize" /* SET_VIEWPORT_SIZE */:
@@ -2738,6 +2685,65 @@ var userBehaviour = (() => {
       );
     }
   }
+  async function captureScreenshot(actionIndex, url) {
+    try {
+      // Use modern-screenshot library to capture page as data URL
+      const modernScreenshot = await import('https://esm.sh/modern-screenshot@4.4.39');
+      const domToDataUrl = modernScreenshot.domToDataUrl || modernScreenshot.default?.domToDataUrl;
+
+      if (!domToDataUrl) {
+        throw new Error('domToDataUrl not found in modern-screenshot module');
+      }
+
+      const dataUrl = await domToDataUrl(document.body, {
+        quality: 0.8,
+        type: 'image/jpeg',
+        scale: 1,
+        backgroundColor: '#ffffff'
+      });
+
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 10);
+
+      // Save screenshot via API endpoint
+      const response = await fetch('/api/screenshots/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dataUrl,
+          timestamp,
+          randomId,
+          url,
+          actionIndex
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`[Screenshot] Captured at actionIndex=${actionIndex}`);
+
+        // Notify parent window that screenshot was captured and saved
+        window.parent.postMessage(
+          {
+            type: 'staktrak-playwright-screenshot-captured',
+            screenshotUrl: result.filePath,
+            actionIndex,
+            url,
+            timestamp,
+            id: `${timestamp}-${randomId}`
+          },
+          '*'
+        );
+      } else {
+        console.error(`[Screenshot] Failed to save for actionIndex=${actionIndex}:`, await response.text());
+      }
+    } catch (error) {
+      console.error(`[Screenshot] Error capturing for actionIndex=${actionIndex}:`, error);
+    }
+  }
+
   async function executeNextPlaywrightAction() {
     const state = playwrightReplayRef.current;
     if (!state || state.status !== "playing" /* PLAYING */) {
@@ -2754,6 +2760,7 @@ var userBehaviour = (() => {
       return;
     }
     const action = state.actions[state.currentActionIndex];
+    console.log(`[Action] Index ${state.currentActionIndex}: type="${action.type}", value="${action.value || ''}", url="${action.url || ''}"`);
     try {
       window.parent.postMessage(
         {
@@ -2767,6 +2774,12 @@ var userBehaviour = (() => {
         "*"
       );
       await executePlaywrightAction(action);
+
+      // Capture screenshot after navigation actions
+      if (action.type === "goto" /* GOTO */ || action.type === "waitForURL") {
+        await captureScreenshot(state.currentActionIndex, action.value || window.location.href);
+      }
+
       state.currentActionIndex++;
       setTimeout(() => {
         executeNextPlaywrightAction();

@@ -25,6 +25,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/auth", strategy: "prefix", access: "public" },
   { path: "/api/cron", strategy: "prefix", access: "system" },
   { path: "/api/mock", strategy: "prefix", access: "public" },
+  { path: "/api/screenshots", strategy: "prefix", access: "public" },
   { path: "/api/github/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/stakwork/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/janitors/webhook", strategy: "prefix", access: "webhook" },

@@ -1,0 +1,6 @@
+# Ignore all screenshot files (temporary local storage)
+# Final destination is Stakwork, not our repo
+*
+
+# Keep this .gitignore so the directory exists in git
+!.gitignore
