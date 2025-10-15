@@ -89,6 +89,8 @@ async function createUserJourneyTestSetup() {
         ),
         poolName: "test-pool",
         services: [],
+        agentRequestId: null,
+        agentStatus: null,
       },
     });
 

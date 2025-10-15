@@ -49,6 +49,8 @@ describe("GET /api/swarm/stakgraph/services", () => {
             enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY),
           ),
           services: [],
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 

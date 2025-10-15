@@ -69,6 +69,8 @@ export async function ensureMockWorkspaceForUser(
         ],
         workspaceId: workspace.id,
         swarmUrl: "http://localhost",
+        agentRequestId: null,
+        agentStatus: null,
       },
     });
 

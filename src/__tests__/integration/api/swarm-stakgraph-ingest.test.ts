@@ -134,6 +134,8 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
           status: "ACTIVE",
           swarmUrl: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 
@@ -527,6 +529,8 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
           swarmUrl: `https://test-swarm-${generateUniqueId()}.sphinx.chat/api`,
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
           ingestRefId: "ingest-req-123",
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 

@@ -22,6 +22,8 @@ export async function createTestSwarm(
     workspaceId: options.workspaceId,
     status: options.status || "ACTIVE",
     instanceType: options.instanceType || "XL",
+    agentRequestId: null,
+    agentStatus: null,
   };
 
   if (options.swarmApiKey) {
