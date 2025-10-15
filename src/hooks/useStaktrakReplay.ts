@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Screenshot } from "@/types";
+import { Screenshot } from "@/types/common";
 
 export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement | null>) {
   const [isPlaywrightReplaying, setIsPlaywrightReplaying] = useState(false);
