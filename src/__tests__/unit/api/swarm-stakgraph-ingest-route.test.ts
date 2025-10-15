@@ -101,6 +101,7 @@ const mockGetServerSession = getServerSession as Mock;
 const mockDbSwarmFindFirst = db.swarm.findFirst as Mock;
 const mockDbSwarmFindUnique = db.swarm.findUnique as Mock;
 const mockDbRepositoryUpsert = db.repository.upsert as Mock;
+const mockDbRepositoryUpdate = db.repository.update as Mock;
 const mockDbWorkspaceFindUnique = db.workspace.findUnique as Mock;
 const mockTriggerIngestAsync = triggerIngestAsync as Mock;
 const mockSwarmApiRequest = swarmApiRequest as Mock;
@@ -427,7 +428,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       const response = await POST(request);
 
       await TestHelpers.expectValidationError(response, 404, "Swarm not found");
-      expect(mockDbRepositoryUpsert).not.toHaveBeenCalled();
+      expect(mockDbRepositoryUpdate).not.toHaveBeenCalled();
     });
 
     test("should return 400 when swarm is missing swarmUrl", async () => {
@@ -530,21 +531,14 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       });
       await POST(request);
 
-      expect(mockDbRepositoryUpsert).toHaveBeenCalledWith({
+      expect(mockDbRepositoryUpdate).toHaveBeenCalledWith({
         where: {
           repositoryUrl_workspaceId: {
             repositoryUrl: "https://github.com/test/repo",
             workspaceId: "workspace-123",
           },
         },
-        update: { status: RepositoryStatus.PENDING },
-        create: {
-          name: "repo",
-          repositoryUrl: "https://github.com/test/repo",
-          workspaceId: "workspace-123",
-          status: RepositoryStatus.PENDING,
-          branch: "main",
-        },
+        data: { status: RepositoryStatus.PENDING },
       });
     });
 
@@ -558,7 +552,7 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
 
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
       mockGetPrimaryRepository.mockResolvedValue(repository);
-      mockDbRepositoryUpsert.mockResolvedValue(repository);
+      mockDbRepositoryUpdate.mockResolvedValue(repository);
       mockDbWorkspaceFindUnique.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockGetGithubUsernameAndPAT.mockResolvedValue(TestDataFactory.createGithubCredentials());
       mockTriggerIngestAsync.mockResolvedValue(TestDataFactory.createIngestResponse());
@@ -569,20 +563,22 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       });
       await POST(request);
 
-      expect(mockDbRepositoryUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: expect.objectContaining({
-            name: "my-awesome-repo",
-          }),
-        }),
-      );
+      expect(mockDbRepositoryUpdate).toHaveBeenCalledWith({
+        where: {
+          repositoryUrl_workspaceId: {
+            repositoryUrl: customRepoUrl,
+            workspaceId: "workspace-123",
+          },
+        },
+        data: { status: RepositoryStatus.PENDING },
+      });
     });
 
     test("should use branch from primary repository", async () => {
       const swarm = TestDataFactory.createValidSwarm();
       const repository = TestDataFactory.createValidRepository({ branch: "develop" });
       mockDbSwarmFindFirst.mockResolvedValue(swarm);
-      mockDbRepositoryUpsert.mockResolvedValue(repository);
+      mockDbRepositoryUpdate.mockResolvedValue(repository);
       mockDbWorkspaceFindUnique.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockGetGithubUsernameAndPAT.mockResolvedValue(TestDataFactory.createGithubCredentials());
       mockTriggerIngestAsync.mockResolvedValue(TestDataFactory.createIngestResponse());
@@ -594,13 +590,15 @@ describe("POST /api/swarm/stakgraph/ingest - Unit Tests", () => {
       });
       await POST(request);
 
-      expect(mockDbRepositoryUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: expect.objectContaining({
-            branch: "develop",
-          }),
-        }),
-      );
+      expect(mockDbRepositoryUpdate).toHaveBeenCalledWith({
+        where: {
+          repositoryUrl_workspaceId: {
+            repositoryUrl: repository.repositoryUrl,
+            workspaceId: "workspace-123",
+          },
+        },
+        data: { status: RepositoryStatus.PENDING },
+      });
     });
   });
 

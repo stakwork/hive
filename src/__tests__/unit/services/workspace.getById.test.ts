@@ -265,6 +265,9 @@ describe("getWorkspaceById - Unit Tests", () => {
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         swarmUrl: null,
+        swarmId: "swarm-123",
+        containerFilesSetUp: null,
+        repositoryDraft: null,
         ingestRefId: "ingest-123",
         poolState: "COMPLETE",
         repositories: [
