@@ -9,6 +9,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { getLanguageFromFile } from "@/lib/syntax-utils";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
@@ -98,9 +99,10 @@ interface NodePopupProps {
   connectedNodes: D3Node[];
   isDarkMode?: boolean;
   nodeTypes: string[];
+  onNodeClick?: (node: D3Node) => void;
 }
 
-const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes }: NodePopupProps) => {
+const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes, onNodeClick }: NodePopupProps) => {
   const properties = (node as any).properties || {};
   const dateAdded = (node as any).date_added_to_graph;
 
@@ -111,9 +113,17 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
   const interfaceText = properties.interface;
   const body = properties.body;
   const tokenCount = properties.token_count;
+  const lineStart = properties.start;
+  const lineEnd = properties.end;
 
-  // Determine if we should show code syntax highlighting
-  const showCode = file && body;
+  // Check if this is a Hint node (render body as markdown)
+  const isHintNode = node.type === "Hint";
+
+  // Determine if we should show code syntax highlighting (but not for Hint nodes)
+  const showCode = file && body && !isHintNode;
+
+  // Format line number range
+  const lineRange = lineStart !== undefined && lineEnd !== undefined ? `(${lineStart}-${lineEnd})` : "";
 
   return (
     <div
@@ -124,7 +134,9 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }} />
-            <span className={`text-xs font-medium uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+            <span
+              className={`text-xs font-medium uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}
+            >
               {node.type}
             </span>
           </div>
@@ -174,7 +186,12 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
 
         {showCode ? (
           <div className="text-sm">
-            <span className={`font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>Code:</span>
+            <div className="flex items-center gap-2">
+              <span className={`font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>Code:</span>
+              {lineRange && (
+                <span className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>{lineRange}</span>
+              )}
+            </div>
             <div className="mt-1 rounded overflow-hidden text-xs">
               <SyntaxHighlighter
                 language={getLanguageFromFile(file)}
@@ -185,22 +202,28 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
                   fontSize: "11px",
                   maxHeight: "300px",
                 }}
+                showLineNumbers={lineStart !== undefined}
+                startingLineNumber={lineStart || 1}
               >
                 {body}
               </SyntaxHighlighter>
             </div>
           </div>
-        ) : body && (
+        ) : isHintNode && body ? (
+          <div className="text-sm mt-3">
+            <div className={`${isDarkMode ? "prose-invert" : ""}`}>
+              <MarkdownRenderer size="compact">{body}</MarkdownRenderer>
+            </div>
+          </div>
+        ) : body ? (
           <div className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
             <span className="font-medium">Body:</span>
             <p className="mt-1 whitespace-pre-wrap">{body}</p>
           </div>
-        )}
+        ) : null}
 
         {tokenCount && (
-          <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
-            Token count: {tokenCount}
-          </div>
+          <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>Token count: {tokenCount}</div>
         )}
 
         {connectedNodes.length > 0 && (
@@ -210,16 +233,24 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
             </h5>
             <div className="space-y-1">
               {connectedNodes.slice(0, 5).map((connectedNode) => (
-                <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
+                <button
+                  key={connectedNode.id}
+                  onClick={() => onNodeClick?.(connectedNode)}
+                  className={`flex items-center gap-2 text-sm w-full text-left px-2 py-1 rounded transition-colors ${
+                    isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"
+                  }`}
+                >
                   <div
-                    className="w-3 h-3 rounded-full"
+                    className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }}
                   />
-                  <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>{connectedNode.name}</span>
-                </div>
+                  <span className={`truncate ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                    {connectedNode.name}
+                  </span>
+                </button>
               ))}
               {connectedNodes.length > 5 && (
-                <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                <div className={`text-xs px-2 ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
                   ... and {connectedNodes.length - 5} more
                 </div>
               )}
@@ -677,6 +708,20 @@ export const GraphComponent = () => {
           connectedNodes={connectedNodes}
           isDarkMode={isDarkMode}
           nodeTypes={nodeTypes}
+          onNodeClick={(clickedNode) => {
+            // In 2D mode, release the old pinned node first
+            if (!is3DView && selectedNodeRef.current) {
+              selectedNodeRef.current.fx = null;
+              selectedNodeRef.current.fy = null;
+            }
+            // Pin and select the new node
+            if (!is3DView) {
+              clickedNode.fx = clickedNode.x ?? clickedNode.fx;
+              clickedNode.fy = clickedNode.y ?? clickedNode.fy;
+              simulationRef.current?.alpha(0.1).restart();
+            }
+            setSelectedNode(clickedNode);
+          }}
         />
       )}
     </div>
