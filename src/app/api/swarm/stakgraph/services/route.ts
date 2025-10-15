@@ -2,6 +2,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { fetchStakgraphServices, pollAgentProgress } from "@/services/swarm/stakgraph-services";
@@ -9,13 +10,14 @@ import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUt
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {
+
+  console.log("Getting services");
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -26,6 +28,10 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const swarmId = searchParams.get("swarmId");
     const repo_url_param = searchParams.get("repo_url");
+
+    console.log("workspaceId", workspaceId);
+    console.log("swarmId", swarmId);
+    console.log("repo_url_param", repo_url_param);
 
     if (!workspaceId && !swarmId) {
       return NextResponse.json(
@@ -38,10 +44,14 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, string> = {};
-    if (swarmId) where.swarmId = swarmId;
+    if (swarmId) where.id = swarmId;
     else if (workspaceId) where.workspaceId = workspaceId;
 
+    console.log("where", where);
+
     const swarm = await db.swarm.findFirst({ where });
+
+    console.log("swarm", swarm);
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });

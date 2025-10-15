@@ -281,6 +281,8 @@ model Swarm {
 
   // Generated container files
   containerFiles Json? @map("container_files")
+  containerFilesSetUp Boolean @default(false) @map("container_files_set_up")
+  
 
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")
