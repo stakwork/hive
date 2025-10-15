@@ -113,12 +113,12 @@ const NetworkGraph3D = () => {
                 const pulseScale = 1 + Math.sin(time * 2 + i * 0.5) * 0.2;
                 node.glow.scale.set(pulseScale, pulseScale, pulseScale);
 
-                node.sphere.material.color.setHSL((0.5 + time * 0.1 + i * 0.01) % 1, 1, 0.6);
-                node.glow.material.color.setHSL((0.5 + time * 0.1 + i * 0.01) % 1, 1, 0.8);
+                (node.sphere.material as THREE.MeshBasicMaterial).color.setHSL((0.5 + time * 0.1 + i * 0.01) % 1, 1, 0.6);
+                (node.glow.material as THREE.MeshBasicMaterial).color.setHSL((0.5 + time * 0.1 + i * 0.01) % 1, 1, 0.8);
             });
 
             connections.forEach((line, i) => {
-                line.material.opacity = 0.2 + Math.sin(time * 2 + i * 0.1) * 0.2;
+                (line.material as THREE.LineBasicMaterial).opacity = 0.2 + Math.sin(time * 2 + i * 0.1) * 0.2;
             });
 
             renderer.render(scene, camera);

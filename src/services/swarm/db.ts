@@ -67,6 +67,8 @@ export const select = {
   environmentVariables: true,
   containerFiles: true,
   containerFilesSetUp: true,
+  agentRequestId: true,
+  agentStatus: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
