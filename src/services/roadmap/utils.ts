@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
  */
 export async function validateFeatureAccess(featureId: string, userId: string) {
   const feature = await db.feature.findUnique({
-    where: { id: featureId },
+    where: { id: featureId, deleted: false },
     select: {
       id: true,
       workspaceId: true,

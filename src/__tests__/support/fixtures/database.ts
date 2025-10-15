@@ -69,6 +69,8 @@ export const cleanup = {
 
 export async function resetDatabase() {
   try {
+    // Delete in order to respect foreign key constraints
+    // Start with leaf nodes (entities that don't have other entities depending on them)
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
@@ -76,15 +78,23 @@ export async function resetDatabase() {
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
+    // Roadmap tables - delete child entities before parents
+    await db.ticket.deleteMany();
+    await db.phase.deleteMany();
+    await db.userStory.deleteMany();
+    await db.feature.deleteMany();
+    // Continue with workspace-related tables
     await db.repository.deleteMany();
     await db.swarm.deleteMany();
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
+    // Auth-related tables
     await db.session.deleteMany();
     await db.account.deleteMany();
     await db.gitHubAuth.deleteMany();
     await db.sourceControlToken.deleteMany();
     await db.sourceControlOrg.deleteMany();
+    // Finally delete users (many entities reference users)
     await db.user.deleteMany();
   } catch (error) {
     await aggressiveReset();
@@ -103,6 +113,11 @@ async function aggressiveReset() {
       "janitor_recommendations",
       "janitor_runs",
       "janitor_configs",
+      // Roadmap tables
+      "tickets",
+      "phases",
+      "user_stories",
+      "features",
       "repositories",
       "swarms",
       "workspace_members",

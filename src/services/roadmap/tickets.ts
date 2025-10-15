@@ -220,6 +220,8 @@ export async function createTicket(
       dependsOnTicketIds: true,
       createdAt: true,
       updatedAt: true,
+      createdById: true,
+      updatedById: true,
       systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
