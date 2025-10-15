@@ -174,7 +174,8 @@ describe("useStreamProcessor", () => {
       expect(onUpdate).toHaveBeenCalled();
       const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
       expect(finalMessage.textParts).toHaveLength(1);
-      expect(finalMessage.textParts![0].id).toBe("text-1");
+      // ID is now prefixed with sequence number to handle duplicate IDs from stream
+      expect(finalMessage.textParts![0].id).toMatch(/^text-1-\d+$/);
       expect(finalMessage.isStreaming).toBe(false);
     });
 
