@@ -109,7 +109,7 @@ export function handleApiError(error: unknown): NextResponse {
         error: error.message,
         details: error.details,
       },
-      { status: error.status }
+      { status: error.statusCode }
     );
   }
 
@@ -171,8 +171,9 @@ export function handleApiError(error: unknown): NextResponse {
 
 export function createError(
   message: string,
-  status: ApiError["status"],
+  statusCode: ApiError["statusCode"],
+  kind: ApiError["kind"],
   details?: unknown
 ): ApiError {
-  return { message, status, details };
+  return { message, statusCode, kind, details };
 }
