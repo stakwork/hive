@@ -49,6 +49,8 @@ describe("getWorkspaceById - Unit Tests", () => {
     deletedAt: null,
     createdAt: new Date("2024-01-01T00:00:00.000Z"),
     updatedAt: new Date("2024-01-01T00:00:00.000Z"),
+    containerFilesSetUp: null,
+    repositoryDraft: null,
     owner: {
       id: "owner-123",
       name: "Workspace Owner",
@@ -126,6 +128,9 @@ describe("getWorkspaceById - Unit Tests", () => {
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         swarmUrl: null,
+        swarmId: "swarm-123",
+        containerFilesSetUp: null,
+        repositoryDraft: null,
         repositories: [
           {
             id: "repo-123",
