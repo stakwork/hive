@@ -17,8 +17,14 @@ const CameraController = ({
   const { camera } = useThree();
 
   useEffect(() => {
-    // Straight-on view - camera positioned directly in front
-    const newPos = new THREE.Vector3(0, 0, distance);
+    // Angled view to better see layer depth
+    // Position camera at a steeper angle to see the z-axis layers more clearly
+    const angle = Math.PI / 4; // 45 degrees (increased from 30)
+    const x = distance * Math.sin(angle);
+    const y = distance * 0.4; // More elevated
+    const z = distance * Math.cos(angle);
+
+    const newPos = new THREE.Vector3(x, y, z);
     camera.position.copy(newPos);
     camera.lookAt(0, 0, 0);
   }, [camera, distance]);
@@ -75,6 +81,104 @@ interface NodeMeshProps {
 }
 
 // --- HELPERS ---
+
+// Node type priority mapping (higher priority = lower layer number)
+const NODE_TYPE_PRIORITIES: Record<string, number> = {
+  Repository: 1,
+  Language: 2,
+  Prompt: 3,
+  Hint: 4,
+  Package: 5,
+  Directory: 6,
+  File: 7,
+  Import: 8,
+  Page: 9,
+  Class: 10,
+  Trait: 11,
+  Function: 12,
+  Endpoint: 13,
+  Request: 14,
+  Var: 15,
+  Datamodel: 16,
+  Unittest: 17,
+  E2etest: 18,
+  Integrationtest: 19,
+};
+
+// Assign nodes to 3 balanced layers based on their type priorities
+const assignNodesToLayers = (nodes: D3Node[]): Map<string, number> => {
+  // Count nodes by type
+  const typeCounts = new Map<string, number>();
+  nodes.forEach((node) => {
+    typeCounts.set(node.type, (typeCounts.get(node.type) || 0) + 1);
+  });
+
+  // Sort types by priority (highest priority first)
+  const sortedTypes = Array.from(typeCounts.keys()).sort((a, b) => {
+    const priorityA = NODE_TYPE_PRIORITIES[a] || 999;
+    const priorityB = NODE_TYPE_PRIORITIES[b] || 999;
+    return priorityA - priorityB;
+  });
+
+  const typeToLayer = new Map<string, number>();
+
+  // Special case: only 1 type
+  if (sortedTypes.length === 1) {
+    typeToLayer.set(sortedTypes[0], 1); // middle layer
+  }
+  // Special case: only 2 types
+  else if (sortedTypes.length === 2) {
+    typeToLayer.set(sortedTypes[0], 0); // back layer
+    typeToLayer.set(sortedTypes[1], 2); // front layer
+  }
+  // 3 or more types: ALWAYS create 3 layers
+  else {
+    const totalNodes = nodes.length;
+    const targetPerLayer = totalNodes / 3;
+
+    // Greedily assign types to layers to balance node counts
+    // while respecting priority order
+    const layers: string[][] = [[], [], []];
+    const layerCounts = [0, 0, 0];
+
+    sortedTypes.forEach((type) => {
+      const count = typeCounts.get(type) || 0;
+
+      // Find which layer should get this type
+      // Strategy: assign to the layer with fewest nodes, but ensure all layers get at least one type
+      let targetLayer = 0;
+
+      // If any layer is empty, prioritize filling it
+      if (layers[0].length === 0) {
+        targetLayer = 0;
+      } else if (layers[1].length === 0) {
+        targetLayer = 1;
+      } else if (layers[2].length === 0) {
+        targetLayer = 2;
+      } else {
+        // All layers have at least one type, assign to layer with fewest nodes
+        // But prefer earlier layers (higher priority) when counts are similar
+        const minCount = Math.min(...layerCounts);
+        targetLayer = layerCounts.findIndex(c => c === minCount);
+      }
+
+      layers[targetLayer].push(type);
+      layerCounts[targetLayer] += count;
+      typeToLayer.set(type, targetLayer);
+    });
+
+  }
+
+  // Map node IDs to their layer
+  const nodeToLayer = new Map<string, number>();
+  nodes.forEach((node) => {
+    const layer = typeToLayer.get(node.type) ?? 1;
+    nodeToLayer.set(node.id, layer);
+  });
+
+  return nodeToLayer;
+};
+
 const getNodeColor = (type: string, nodeTypes: string[], colorPalette: string[]): string => {
   const index = nodeTypes.indexOf(type);
   if (index !== -1) {
@@ -151,7 +255,7 @@ const LinkLine = ({ link, isDimmed }: { link: D3Link; isDimmed: boolean }) => {
   }, [points]);
 
   return (
-    // @ts-ignore - Three.js primitive, not SVG element
+    // @ts-expect-error - Three.js primitive, not SVG element
     <line geometry={lineGeometry}>
       <lineBasicMaterial color={isDimmed ? "#444444" : "#666666"} transparent opacity={isDimmed ? 0.1 : 0.4} />
     </line>
@@ -166,7 +270,6 @@ const GraphScene = ({
   colorPalette,
   isDarkMode,
   onNodeClick,
-  showCameraControls,
   selectedNodeId,
 }: Graph3DProps) => {
   const [simulatedNodes, setSimulatedNodes] = useState<D3Node[]>([]);
@@ -188,11 +291,22 @@ const GraphScene = ({
       return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
 
-    // Initialize z positions with tighter spread
+    // Assign nodes to layers based on their types
+    const nodeToLayer = assignNodesToLayers(nodes);
+
+    // Layer z-positions (spread across z-axis)
+    const LAYER_SPACING = 250; // Distance between layers (increased for more dramatic separation)
+    const layerZPositions = [
+      -LAYER_SPACING, // Layer 0 (back): highest priority types
+      0,              // Layer 1 (middle)
+      LAYER_SPACING,  // Layer 2 (front): lowest priority types
+    ];
+
+    // Initialize z positions based on layers
     nodes.forEach((node) => {
-      if (node.z === undefined) {
-        node.z = (Math.random() - 0.5) * 50; // Reduced from 100 to 50
-      }
+      const layer = nodeToLayer.get(node.id) ?? 1; // Use ?? instead of || to handle 0 correctly
+      node.z = layerZPositions[layer] + (Math.random() - 0.5) * 20; // Small random variation within layer
+      node.layer = layer; // Store layer info on node
     });
 
     const simulation = d3
@@ -208,11 +322,32 @@ const GraphScene = ({
       .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
       .force("x", d3.forceX(0).strength(0.1))
       .force("y", d3.forceY(0).strength(0.1))
-      .force("collision", d3.forceCollide().radius(15).strength(0.7));
+      .force("collision", d3.forceCollide().radius(15).strength(0.7))
+      // Add custom force to maintain z-layer separation
+      .force("z", () => {
+        const zStrength = 0.3;
+        nodes.forEach((node) => {
+          if (node.z !== undefined) {
+            const layer = nodeToLayer.get(node.id) ?? 1; // Use ?? instead of || to handle 0 correctly
+            const targetZ = layerZPositions[layer];
+            const dz = targetZ - node.z;
+            node.vz = (node.vz || 0) + dz * zStrength;
+          }
+        });
+      });
 
     simulationRef.current = simulation;
 
     simulation.on("tick", () => {
+      // Constrain z positions to stay roughly in their layers
+      nodes.forEach((node) => {
+        if (node.z !== undefined) {
+          const layer = nodeToLayer.get(node.id) ?? 1; // Use ?? instead of || to handle 0 correctly
+          const targetZ = layerZPositions[layer];
+          const maxDeviation = 40; // Allow some deviation from exact layer position
+          node.z = Math.max(targetZ - maxDeviation, Math.min(targetZ + maxDeviation, node.z));
+        }
+      });
       setSimulatedNodes([...nodes]);
     });
 
@@ -342,8 +477,13 @@ export const Graph3D = ({
     );
   }
 
-  // Calculate camera position - straight-on view
-  const initialCameraPos: [number, number, number] = [0, 0, cameraDistance];
+  // Calculate camera position - angled view to see layers
+  const angle = Math.PI / 4; // 45 degrees (increased from 30)
+  const initialCameraPos: [number, number, number] = [
+    cameraDistance * Math.sin(angle),
+    cameraDistance * 0.4,
+    cameraDistance * Math.cos(angle),
+  ];
 
   return (
     <div className="w-full h-[500px] relative">
@@ -392,7 +532,6 @@ export const Graph3D = ({
           colorPalette={colorPalette}
           isDarkMode={isDarkMode}
           onNodeClick={onNodeClick}
-          showCameraControls={showCameraControls}
           selectedNodeId={selectedNodeId}
         />
       </Canvas>
