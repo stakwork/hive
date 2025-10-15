@@ -83,23 +83,33 @@ interface NodeMeshProps {
 // --- HELPERS ---
 
 // Node type priority mapping (higher priority = lower layer number)
+// Grouped by semantic level: Structure → Organization → Implementation → Tests
 const NODE_TYPE_PRIORITIES: Record<string, number> = {
+  // High-level structure (Layer 0 - back)
   Repository: 1,
   Language: 2,
-  Prompt: 3,
-  Hint: 4,
-  Package: 5,
-  Directory: 6,
-  File: 7,
-  Import: 8,
-  Page: 9,
+  Package: 3,
+  Directory: 4,
+
+  // Organization & documentation (Layer 0/1 - back/middle)
+  Prompt: 5,
+  Hint: 6,
+  Page: 7,
+  File: 8,
+
+  // Code structure (Layer 1 - middle)
+  Import: 9,
   Class: 10,
   Trait: 11,
-  Function: 12,
-  Endpoint: 13,
-  Request: 14,
-  Var: 15,
-  Datamodel: 16,
+  Datamodel: 12,
+
+  // Implementation details (Layer 1/2 - middle/front)
+  Function: 13,
+  Endpoint: 14,
+  Request: 15,
+  Var: 16,
+
+  // Tests (Layer 2 - front)
   Unittest: 17,
   E2etest: 18,
   Integrationtest: 19,
