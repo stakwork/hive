@@ -1,23 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@/lib/chat";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
@@ -29,39 +20,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        deleted: false,
-      },
-      select: {
-        id: true,
-        ownerId: true,
-        members: {
-          where: {
-            userId: userId,
-          },
-          select: {
-            role: true,
-          },
-        },
-      },
-    });
-
-    if (!workspace) {
+    // Validate workspace access
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userOrResponse.id);
+    if (!workspaceAccess.hasAccess) {
       return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
+        { error: "Workspace not found or access denied" },
+        { status: 403 },
       );
-    }
-
-    // Check if user is workspace owner or member
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Get task statistics
