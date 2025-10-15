@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 const NetworkGraph3D = () => {
-    const containerRef = useRef(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -20,6 +20,8 @@ const NetworkGraph3D = () => {
         // Create "HIVE" text in the center
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
+        if (!context) return;
+
         canvas.width = 512;
         canvas.height = 256;
 
@@ -41,8 +43,8 @@ const NetworkGraph3D = () => {
 
         // Create nodes
         const nodeCount = 40;
-        const nodes = [];
-        const nodeMeshes = [];
+        const nodes: THREE.Vector3[] = [];
+        const nodeMeshes: { sphere: THREE.Mesh; glow: THREE.Mesh }[] = [];
         const radius = 2;
 
         for (let i = 0; i < nodeCount; i++) {
@@ -77,7 +79,7 @@ const NetworkGraph3D = () => {
         }
 
         // Create connections
-        const connections = [];
+        const connections: THREE.Line[] = [];
         for (let i = 0; i < nodeCount; i++) {
             for (let j = i + 1; j < nodeCount; j++) {
                 const distance = nodes[i].distanceTo(nodes[j]);
