@@ -12,6 +12,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     { message: string; actionIndex: number; action: string; timestamp: string }[]
   >([]);
   const [replayScreenshots, setReplayScreenshots] = useState<Screenshot[]>([]);
+  const [replayActions, setReplayActions] = useState<any[]>([]);
 
   const startPlaywrightReplay = (testCode: string) => {
     if (!iframeRef?.current?.contentWindow) {
@@ -32,6 +33,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     setReplayErrors([]);
     setCurrentAction(null);
     setReplayScreenshots([]);
+    setReplayActions([]);
 
     try {
       const container = document.querySelector(".iframe-container");
@@ -113,6 +115,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
       switch (data.type) {
         case "staktrak-playwright-replay-started":
           setPlaywrightProgress({ current: 0, total: data.totalActions || 0 });
+          setReplayActions(data.actions || []);
           break;
 
         case "staktrak-playwright-replay-progress":
@@ -172,17 +175,24 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
           }
           break;
 
-        case "staktrak-playwright-replay-screenshot":
-          setReplayScreenshots((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}-${data.actionIndex}`,
-              actionIndex: data.actionIndex,
-              dataUrl: data.screenshot,
-              timestamp: data.timestamp,
-              url: data.url,
-            },
-          ]);
+        case "staktrak-playwright-screenshot-captured":
+          console.log(
+            `[useStaktrakReplay] Received screenshot for actionIndex=${data.actionIndex}, filePath=${data.screenshotUrl}`,
+          );
+          setReplayScreenshots((prev) => {
+            const updated = [
+              ...prev,
+              {
+                id: data.id,
+                actionIndex: data.actionIndex,
+                filePath: data.screenshotUrl,
+                timestamp: data.timestamp,
+                url: data.url,
+              },
+            ];
+            console.log(`[useStaktrakReplay] Total screenshots now: ${updated.length}`);
+            return updated;
+          });
           break;
 
         default:
@@ -202,6 +212,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     currentAction,
     replayErrors,
     replayScreenshots,
+    replayActions,
     startPlaywrightReplay,
     pausePlaywrightReplay,
     resumePlaywrightReplay,

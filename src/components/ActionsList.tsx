@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { X, CheckCircle2, Loader2, Camera } from "lucide-react";
 import { useRef, useEffect, useState } from "react";
-import { Screenshot } from "@/types";
+import { Screenshot } from "@/types/common";
+import { ScreenshotModal } from "@/components/ScreenshotModal";
 
 interface Action {
   id: string;
@@ -63,11 +64,15 @@ function getElementDescription(action: Action): string {
 }
 
 function getActionDisplay(action: Action): React.ReactNode {
-  switch (action.kind) {
+  // Support both 'kind' (recorded actions) and 'type' (replayed actions)
+  const actionType = (action as any).kind || (action as any).type;
+
+  switch (actionType) {
     case "nav":
+    case "goto":
       return (
         <>
-          Navigate to <span className="text-primary">{action.url || "/"}</span>
+          Navigate to <span className="text-primary">{action.url || action.value || "/"}</span>
         </>
       );
     case "click":
@@ -130,13 +135,14 @@ function getActionDisplay(action: Action): React.ReactNode {
         </>
       );
     case "waitForUrl":
+    case "waitForURL":
       return (
         <>
-          Wait for <span className="text-primary">{action.expectedUrl || "navigation"}</span>
+          Wait for <span className="text-primary">{action.expectedUrl || action.value || "navigation"}</span>
         </>
       );
     default:
-      return <span className="text-primary">{action.kind}</span>;
+      return <span className="text-primary">{actionType}</span>;
   }
 }
 
@@ -144,6 +150,7 @@ function getActionDisplay(action: Action): React.ReactNode {
 function getActionBorderColor(kind: string): string {
   switch (kind) {
     case "nav":
+    case "goto":
       return "border-l-blue-500";
     case "click":
       return "border-l-green-500";
@@ -154,6 +161,7 @@ function getActionBorderColor(kind: string): string {
     case "assertion":
       return "border-l-red-500";
     case "waitForUrl":
+    case "waitForURL":
       return "border-l-muted-foreground";
     default:
       return "border-l-border";
@@ -247,17 +255,23 @@ export function ActionsList({
               const isActive = status === "active";
               const isCompleted = status === "completed";
               const screenshot = getScreenshotForAction(index);
-              const isNavAction = action.kind === "nav";
-              const hasScreenshot = isNavAction && screenshot;
+              // Support both 'kind' (recorded actions) and 'type' (replayed actions)
+              const actionType = (action as any).kind || (action as any).type;
+              const isNavAction =
+                actionType === "nav" ||
+                actionType === "goto" ||
+                actionType === "waitForUrl" ||
+                actionType === "waitForURL";
+              const hasScreenshot = isNavAction && !!screenshot;
 
               return (
                 <div
-                  key={action.id}
+                  key={action.id || `action-${index}`}
                   ref={(el) => {
                     actionRefs.current[index] = el;
                   }}
                   className={`flex items-center gap-2 rounded border-l-4 ${getActionBorderColor(
-                    action.kind,
+                    actionType,
                   )} p-1.5 transition-all duration-200 ${
                     isActive
                       ? "bg-blue-100 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-400 dark:ring-blue-600"
@@ -274,11 +288,14 @@ export function ActionsList({
                       className="flex-shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:border-primary transition-colors"
                       title="Click to view screenshot"
                     >
-                      <img src={screenshot.dataUrl} alt="Screenshot" className="w-full h-full object-cover" />
+                      <img src={screenshot.filePath} alt="Screenshot" className="w-full h-full object-cover" />
                     </button>
                   )}
                   {isNavAction && !hasScreenshot && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted border border-border">
+                    <div
+                      className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted border border-border"
+                      title={`No screenshot for action ${index} (${screenshots.length} total screenshots available)`}
+                    >
                       <Camera className="h-4 w-4 text-muted-foreground" />
                     </div>
                   )}
@@ -302,31 +319,13 @@ export function ActionsList({
         )}
       </div>
 
-      {/* Screenshot Modal - TODO: Extract to separate component */}
-      {selectedScreenshot && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setSelectedScreenshot(null)}
-        >
-          <div
-            className="max-w-6xl max-h-[90vh] bg-background rounded-lg overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Screenshot</h3>
-                <p className="text-sm text-muted-foreground">{selectedScreenshot.url}</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedScreenshot(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
-              <img src={selectedScreenshot.dataUrl} alt="Screenshot" className="w-full h-auto" />
-            </div>
-          </div>
-        </div>
-      )}
+      <ScreenshotModal
+        screenshot={selectedScreenshot}
+        allScreenshots={screenshots}
+        isOpen={!!selectedScreenshot}
+        onClose={() => setSelectedScreenshot(null)}
+        onNavigate={setSelectedScreenshot}
+      />
     </div>
   );
 }
