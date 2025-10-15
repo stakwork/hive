@@ -41,6 +41,7 @@ interface SchemaNode {
 interface D3Node extends d3.SimulationNodeDatum {
   id: string;
   name: string;
+  uuid?: string;
   type: string;
   fx?: number | null;
   fy?: number | null;
@@ -104,7 +105,6 @@ interface NodePopupProps {
 
 const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes, onNodeClick }: NodePopupProps) => {
   const properties = (node as any).properties || {};
-  const dateAdded = (node as any).date_added_to_graph;
 
   // Extract specific properties
   const file = properties.file;
@@ -115,6 +115,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
   const tokenCount = properties.token_count;
   const lineStart = properties.start;
   const lineEnd = properties.end;
+  const content = properties.content;
 
   // Check if this is a Hint node (render body as markdown)
   const isHintNode = node.type === "Hint";
@@ -125,10 +126,20 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
   // Format line number range
   const lineRange = lineStart !== undefined && lineEnd !== undefined ? `(${lineStart}-${lineEnd})` : "";
 
+  // Build array of fields to display
+  const fields: Array<{ label: string; value: string }> = [];
+
+  if (file) fields.push({ label: "File", value: file });
+  if (text) fields.push({ label: "Text", value: text });
+  if (content) fields.push({ label: "Content", value: content });
+  if (question) fields.push({ label: "Question", value: question });
+  if (interfaceText) fields.push({ label: "Interface", value: interfaceText });
+  if (tokenCount) fields.push({ label: "Token count", value: String(tokenCount) });
+
   return (
     <div
-      className={`absolute top-4 right-4 z-50 border rounded-lg shadow-lg p-4 w-96 ${isDarkMode ? "bg-gray-800 border-gray-600" : "bg-white border-gray-300"}`}
-      style={{ maxHeight: "600px", overflowY: "auto" }}
+      className={`absolute right-4 z-50 border rounded-lg shadow-lg p-4 w-96 ${isDarkMode ? "bg-gray-800 border-gray-600" : "bg-white border-gray-300"}`}
+      style={{ top: "90px", maxHeight: "calc(100vh - 280px)", overflowY: "auto" }}
     >
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1">
@@ -151,38 +162,13 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
       </div>
 
       <div className="space-y-3">
-        {dateAdded && (
-          <div className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
-            <span className="font-medium">Date:</span> {new Date(dateAdded).toLocaleDateString()}
+        {/* Render data-driven fields */}
+        {fields.map((field) => (
+          <div key={field.label} className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+            <span className="font-medium">{field.label}:</span>{" "}
+            {field.value.length > 100 ? <p className="mt-1 whitespace-pre-wrap">{field.value}</p> : field.value}
           </div>
-        )}
-
-        {file && (
-          <div className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
-            <span className="font-medium">File:</span> {file}
-          </div>
-        )}
-
-        {text && (
-          <div className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-            <span className="font-medium">Text:</span>
-            <p className="mt-1 whitespace-pre-wrap">{text}</p>
-          </div>
-        )}
-
-        {question && (
-          <div className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-            <span className="font-medium">Question:</span>
-            <p className="mt-1 whitespace-pre-wrap">{question}</p>
-          </div>
-        )}
-
-        {interfaceText && (
-          <div className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-            <span className="font-medium">Interface:</span>
-            <p className="mt-1 whitespace-pre-wrap">{interfaceText}</p>
-          </div>
-        )}
+        ))}
 
         {showCode ? (
           <div className="text-sm">
@@ -245,7 +231,7 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
                     style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }}
                   />
                   <span className={`truncate ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
-                    {connectedNode.name}
+                    {connectedNode.name || connectedNode.uuid || connectedNode.id}
                   </span>
                 </button>
               ))}
@@ -551,7 +537,7 @@ export const GraphComponent = () => {
         .style("opacity", (d: any) => {
           if (d.id === selectedNode.id) return 1;
           if (connectedIds.has(d.id)) return 1;
-          return 0.5;
+          return 0.4;
         });
 
       linkElements
@@ -577,7 +563,7 @@ export const GraphComponent = () => {
           if (sourceId === selectedNode.id || targetId === selectedNode.id) {
             return 1;
           }
-          return 0.3;
+          return 0.2;
         });
     } else {
       circles

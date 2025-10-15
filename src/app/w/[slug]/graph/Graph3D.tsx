@@ -202,8 +202,8 @@ const NodeMesh = ({ node, color, onClick, isSelected, isConnected, isDimmed }: N
     document.body.style.cursor = hovered ? "pointer" : "auto";
   }, [hovered]);
 
-  const scale = isSelected ? 1.5 : isConnected ? 1.2 : 1;
-  const opacity = isDimmed ? 0.3 : 1;
+  const scale = isSelected ? 1.1 : isConnected ? 1.05 : 1;
+  const opacity = isDimmed ? 0.7 : 1;
 
   return (
     <group position={[node.x || 0, node.y || 0, node.z || 0]}>
@@ -263,7 +263,7 @@ const LinkLine = ({ link, isDimmed }: { link: D3Link; isDimmed: boolean }) => {
   return (
     // @ts-expect-error - Three.js primitive, not SVG element
     <line geometry={lineGeometry}>
-      <lineBasicMaterial color={isDimmed ? "#444444" : "#666666"} transparent opacity={isDimmed ? 0.1 : 0.4} />
+      <lineBasicMaterial color={isDimmed ? "#444444" : "#666666"} transparent opacity={isDimmed ? 0.3 : 0.4} />
     </line>
   );
 };
@@ -294,7 +294,7 @@ const GraphScene = ({
   useEffect(() => {
     const animate = () => {
       if (groupRef.current) {
-        groupRef.current.rotation.y += 0.001; // Slow horizontal rotation
+        groupRef.current.rotation.y += 0.0001; // Slow horizontal rotation
       }
       requestAnimationFrame(animate);
     };
