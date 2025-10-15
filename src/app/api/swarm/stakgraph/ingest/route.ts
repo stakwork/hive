@@ -1,9 +1,8 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getUserAppTokens } from "@/lib/githubApp";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
@@ -63,22 +62,24 @@ export async function POST(request: NextRequest) {
       data: { status: RepositoryStatus.PENDING },
     });
 
-    // Extract GitHub owner from repository URL for GitHub App credentials
-    const repoMatch = finalRepo.match(/github\.com\/([^\/]+)/);
-    const githubOwner = repoMatch?.[1];
+    // Get workspace info to get the slug
+    const workspace = await db.workspace.findUnique({
+      where: { id: repoWorkspaceId },
+      select: { slug: true },
+    });
 
-    if (!githubOwner) {
-      return NextResponse.json({ success: false, message: "Could not extract GitHub owner from repository URL" }, { status: 400 });
+    if (!workspace) {
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
-    // Get GitHub App credentials instead of user PAT
-    const appTokens = await getUserAppTokens(session.user.id, githubOwner);
-    if (!appTokens?.accessToken) {
-      return NextResponse.json({ success: false, message: "No GitHub App access token found for this repository" }, { status: 400 });
+    // Get GitHub credentials using the standard function
+    const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
+    if (!githubProfile?.username || !githubProfile?.token) {
+      return NextResponse.json({ success: false, message: "No GitHub credentials found for this workspace" }, { status: 400 });
     }
 
-    const username = githubOwner;
-    const pat = appTokens.accessToken;
+    const username = githubProfile.username;
+    const pat = githubProfile.token;
 
     const use_lsp = useLsp === "true" || useLsp === true;
     const apiResult = await triggerIngestAsync(

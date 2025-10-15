@@ -29,6 +29,7 @@ vi.mock("@/lib/db", () => ({
     },
     repository: {
       upsert: vi.fn(),
+      update: vi.fn(),
     },
     workspace: {
       findUnique: vi.fn(),
