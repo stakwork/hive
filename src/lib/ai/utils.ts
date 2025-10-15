@@ -1,3 +1,6 @@
+import { streamObject } from "ai";
+import { z } from "zod";
+
 export function parseOwnerRepo(repoUrl: string): { owner: string; repo: string } {
   // Handle different GitHub URL formats
   // https://github.com/owner/repo
@@ -26,4 +29,80 @@ export function parseOwnerRepo(repoUrl: string): { owner: string; repo: string }
   }
 
   throw new Error(`Invalid repository URL format: ${repoUrl}`);
+}
+
+type FeatureData = {
+  id: string;
+  title: string;
+  brief: string | null;
+  personas: string[];
+  requirements: string | null;
+  architecture: string | null;
+  userStories: { title: string }[];
+  workspace: {
+    description: string | null;
+  };
+};
+
+export type FeatureContext = {
+  title: string;
+  brief: string | null;
+  workspaceDesc: string;
+  personasText: string;
+  userStoriesText: string;
+  requirementsText: string;
+  architectureText: string;
+};
+
+export function buildFeatureContext(feature: FeatureData): FeatureContext {
+  const workspaceDesc = feature.workspace.description
+    ? `\n\nWorkspace Context: ${feature.workspace.description}`
+    : '';
+
+  const personasText = feature.personas && feature.personas.length > 0
+    ? `\n\nTarget Personas:\n${feature.personas.map((p: string) => `- ${p}`).join('\n')}`
+    : '';
+
+  const userStoriesText = feature.userStories && feature.userStories.length > 0
+    ? `\n\nUser Stories:\n${feature.userStories.map((s) => `- ${s.title}`).join('\n')}`
+    : '';
+
+  const requirementsText = feature.requirements || '';
+  const architectureText = feature.architecture || '';
+
+  return {
+    title: feature.title,
+    brief: feature.brief,
+    workspaceDesc,
+    personasText,
+    userStoriesText,
+    requirementsText,
+    architectureText,
+  };
+}
+
+export async function generateWithStreaming<T extends z.ZodTypeAny>(
+  model: Parameters<typeof streamObject>[0]['model'],
+  schema: T,
+  prompt: string,
+  systemPrompt: string,
+  featureId: string,
+  featureTitle: string,
+  generationType: string
+) {
+  console.log(`🤖 Generating ${generationType} with:`, {
+    model: (model as { modelId?: string })?.modelId,
+    featureId,
+    featureTitle,
+  });
+
+  const result = streamObject({
+    model,
+    schema,
+    prompt,
+    system: systemPrompt,
+    temperature: 0.7,
+  });
+
+  return result.toTextStreamResponse();
 }
