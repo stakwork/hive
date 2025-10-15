@@ -1,0 +1,326 @@
+import { describe, test, expect, beforeEach } from 'vitest';
+import { DELETE } from '@/app/api/tickets/[ticketId]/route';
+import { db } from '@/lib/db';
+import { 
+  createTestUser, 
+  createTestWorkspace 
+} from '@/__tests__/support/fixtures';
+import { 
+  createDeleteRequest,
+  getMockedSession,
+  createAuthenticatedSession,
+  expectSuccess,
+  expectNotFound,
+  expectUnauthorized,
+  expectError
+} from '@/__tests__/support/helpers';
+import { 
+  expectTicketDeleted,
+  expectNoDependencyReferences
+} from '@/__tests__/support/helpers/database-assertions';
+
+describe('DELETE /api/tickets/[ticketId]', () => {
+  let user: any;
+  let workspace: any;
+  let feature: any;
+  let ticket: any;
+
+  beforeEach(async () => {
+    // Create test user and workspace
+    user = await createTestUser();
+    workspace = await createTestWorkspace({ ownerId: user.id });
+    
+    // Create feature (required parent for tickets)
+    feature = await db.feature.create({
+      data: { 
+        title: 'Test Feature',
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id
+      }
+    });
+    
+    // Create test ticket
+    ticket = await db.ticket.create({
+      data: { 
+        title: 'Test Ticket',
+        description: 'Ticket to be deleted',
+        featureId: feature.id,
+        createdById: user.id,
+        updatedById: user.id
+      }
+    });
+  });
+
+  describe('Success Scenarios', () => {
+    test('should soft-delete ticket successfully', async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      const response = await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      await expectSuccess(response);
+      
+      // Verify soft-delete in database
+      await expectTicketDeleted(ticket.id);
+    });
+
+    test('should set deletedAt timestamp when deleting', async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const beforeDelete = new Date();
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request, { params: { ticketId: ticket.id }});
+      const afterDelete = new Date();
+      
+      const deletedTicket = await db.ticket.findUnique({ where: { id: ticket.id }});
+      expect(deletedTicket?.deletedAt).toBeTruthy();
+      expect(deletedTicket?.deletedAt?.getTime()).toBeGreaterThanOrEqual(beforeDelete.getTime());
+      expect(deletedTicket?.deletedAt?.getTime()).toBeLessThanOrEqual(afterDelete.getTime());
+    });
+
+    test('should preserve ticket data after soft-delete', async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      // Verify ticket still exists with original data
+      const deletedTicket = await db.ticket.findUnique({ where: { id: ticket.id }});
+      expect(deletedTicket).toBeTruthy();
+      expect(deletedTicket?.title).toBe('Test Ticket');
+      expect(deletedTicket?.featureId).toBe(feature.id);
+      expect(deletedTicket?.deleted).toBe(true);
+    });
+  });
+
+  describe('Authorization', () => {
+    test('should return 401 if user is not authenticated', async () => {
+      getMockedSession().mockResolvedValue(null);
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      const response = await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      await expectUnauthorized(response);
+      
+      // Verify ticket was NOT deleted
+      const unchangedTicket = await db.ticket.findUnique({ where: { id: ticket.id }});
+      expect(unchangedTicket?.deleted).toBe(false);
+      expect(unchangedTicket?.deletedAt).toBeNull();
+    });
+
+    test('should return 403 if user is not a workspace member', async () => {
+      const otherUser = await createTestUser({ email: 'other@test.com' });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(otherUser));
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      const response = await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      await expectError(response, 403);
+      
+      // Verify ticket was NOT deleted
+      const unchangedTicket = await db.ticket.findUnique({ where: { id: ticket.id }});
+      expect(unchangedTicket?.deleted).toBe(false);
+    });
+
+    test('should allow deletion if user is workspace admin', async () => {
+      const adminUser = await createTestUser({ email: 'admin@test.com' });
+      await db.workspaceMember.create({
+        data: {
+          userId: adminUser.id,
+          workspaceId: workspace.id,
+          role: 'ADMIN'
+        }
+      });
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      const response = await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      await expectSuccess(response);
+      await expectTicketDeleted(ticket.id);
+    });
+  });
+
+  describe('Error Handling', () => {
+    test('should return 404 for non-existent ticket', async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const request = createDeleteRequest('/api/tickets/non-existent-id');
+      const response = await DELETE(request, { params: { ticketId: 'non-existent-id' }});
+      
+      await expectNotFound(response);
+    });
+
+    test('should return 404 for already deleted ticket', async () => {
+      // First deletion
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      const request1 = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request1, { params: { ticketId: ticket.id }});
+      
+      // Attempt second deletion
+      const request2 = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      const response = await DELETE(request2, { params: { ticketId: ticket.id }});
+      
+      await expectNotFound(response);
+    });
+
+    test('should handle malformed ticket ID gracefully', async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const invalidId = 'invalid-uuid-format';
+      const request = createDeleteRequest(`/api/tickets/${invalidId}`);
+      const response = await DELETE(request, { params: { ticketId: invalidId }});
+      
+      // Should return 404 or 500 depending on validation
+      const json = await response.json();
+      expect([404, 500]).toContain(response.status);
+      expect(json.error).toBeTruthy();
+    });
+  });
+
+  describe('Data Integrity - Orphaned Dependencies', () => {
+    test('should NOT clean up orphaned dependencies (current behavior)', async () => {
+      // Create dependent ticket that depends on the ticket to be deleted
+      const dependentTicket = await db.ticket.create({
+        data: {
+          title: 'Dependent Ticket',
+          description: 'This ticket depends on another',
+          featureId: feature.id,
+          createdById: user.id,
+          updatedById: user.id,
+          dependsOnTicketIds: [ticket.id]  // Dependency on ticket to be deleted
+        }
+      });
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      // Delete the parent ticket
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      // Verify parent ticket is deleted
+      await expectTicketDeleted(ticket.id);
+      
+      // 🔴 DOCUMENTS DATA INTEGRITY ISSUE:
+      // The dependent ticket still references the deleted ticket in dependsOnTicketIds
+      const updatedDependent = await db.ticket.findUnique({ 
+        where: { id: dependentTicket.id }
+      });
+      expect(updatedDependent?.dependsOnTicketIds).toContain(ticket.id);
+      
+      // This test documents the current behavior where orphaned references are NOT cleaned up
+      // Future enhancement: Should implement cleanup logic to remove deleted ticket from dependsOnTicketIds
+    });
+
+    test('should NOT clean up multiple orphaned dependencies', async () => {
+      // Create multiple tickets depending on the one to be deleted
+      const dependent1 = await db.ticket.create({
+        data: {
+          title: 'Dependent 1',
+          featureId: feature.id,
+          createdById: user.id,
+          updatedById: user.id,
+          dependsOnTicketIds: [ticket.id]
+        }
+      });
+      
+      const dependent2 = await db.ticket.create({
+        data: {
+          title: 'Dependent 2',
+          featureId: feature.id,
+          createdById: user.id,
+          updatedById: user.id,
+          dependsOnTicketIds: [ticket.id]
+        }
+      });
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      // Verify both dependent tickets still have orphaned references
+      const updated1 = await db.ticket.findUnique({ where: { id: dependent1.id }});
+      const updated2 = await db.ticket.findUnique({ where: { id: dependent2.id }});
+      
+      expect(updated1?.dependsOnTicketIds).toContain(ticket.id);
+      expect(updated2?.dependsOnTicketIds).toContain(ticket.id);
+    });
+
+    test('should NOT clean up mixed dependencies', async () => {
+      // Create another ticket to establish multiple dependencies
+      const anotherTicket = await db.ticket.create({
+        data: {
+          title: 'Another Ticket',
+          featureId: feature.id,
+          createdById: user.id,
+          updatedById: user.id
+        }
+      });
+      
+      // Create dependent with mixed dependencies (one deleted, one not)
+      const dependentTicket = await db.ticket.create({
+        data: {
+          title: 'Mixed Dependencies',
+          featureId: feature.id,
+          createdById: user.id,
+          updatedById: user.id,
+          dependsOnTicketIds: [ticket.id, anotherTicket.id]
+        }
+      });
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      // Delete the first ticket
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      // Verify dependent still has both references (one orphaned, one valid)
+      const updated = await db.ticket.findUnique({ where: { id: dependentTicket.id }});
+      expect(updated?.dependsOnTicketIds).toContain(ticket.id);  // Orphaned
+      expect(updated?.dependsOnTicketIds).toContain(anotherTicket.id);  // Valid
+      expect(updated?.dependsOnTicketIds).toHaveLength(2);
+    });
+  });
+
+  describe('Cascade Behavior', () => {
+    test('should NOT affect related feature when ticket is deleted', async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      
+      const request = createDeleteRequest(`/api/tickets/${ticket.id}`);
+      await DELETE(request, { params: { ticketId: ticket.id }});
+      
+      // Verify feature still exists
+      const existingFeature = await db.feature.findUnique({ where: { id: feature.id }});
+      expect(existingFeature).toBeTruthy();
+      expect(existingFeature?.deleted).toBe(false);
+    });
+
+    test('should preserve ticket when related phase is deleted', async () => {
+      // Create phase and assign ticket to it
+      const phase = await db.phase.create({
+        data: {
+          name: 'Test Phase',
+          workspaceId: workspace.id,
+          createdById: user.id
+        }
+      });
+      
+      await db.ticket.update({
+        where: { id: ticket.id },
+        data: { phaseId: phase.id }
+      });
+      
+      // Delete the phase (should set phaseId to null via onDelete: SetNull)
+      await db.phase.delete({ where: { id: phase.id }});
+      
+      // Verify ticket still exists with null phaseId
+      const updatedTicket = await db.ticket.findUnique({ where: { id: ticket.id }});
+      expect(updatedTicket).toBeTruthy();
+      expect(updatedTicket?.phaseId).toBeNull();
+      expect(updatedTicket?.deleted).toBe(false);
+    });
+  });
+});
