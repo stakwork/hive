@@ -8,7 +8,7 @@ import { vi } from "vitest";
  */
 
 const mockEnv = {
-  STAKWORK_API_KEY: "test-stakwork-key",
+  STAKWORK_API_KEY: "test-api-key",
   POOL_MANAGER_API_KEY: "test-pool-key",
   POOL_MANAGER_API_USERNAME: "test-user",
   POOL_MANAGER_API_PASSWORD: "test-pass",
@@ -23,7 +23,7 @@ const mockConfig = {
   STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
   STAKWORK_WORKFLOW_ID: "test-workflow-id",
   STAKWORK_JANITOR_WORKFLOW_ID: "test-janitor-workflow-id",
-  STAKWORK_USER_JOURNEY_WORKFLOW_ID: "test-user-journey-workflow-id",
+  STAKWORK_USER_JOURNEY_WORKFLOW_ID: "999",
   POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
   API_TIMEOUT: 10000,
   GITHUB_APP_SLUG: "test-github-app",
