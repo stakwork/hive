@@ -143,9 +143,6 @@ const assignNodesToLayers = (nodes: D3Node[]): Map<string, number> => {
   }
   // 3 or more types: ALWAYS create 3 layers
   else {
-    const totalNodes = nodes.length;
-    const targetPerLayer = totalNodes / 3;
-
     // Greedily assign types to layers to balance node counts
     // while respecting priority order
     const layers: string[][] = [[], [], []];
@@ -169,14 +166,13 @@ const assignNodesToLayers = (nodes: D3Node[]): Map<string, number> => {
         // All layers have at least one type, assign to layer with fewest nodes
         // But prefer earlier layers (higher priority) when counts are similar
         const minCount = Math.min(...layerCounts);
-        targetLayer = layerCounts.findIndex(c => c === minCount);
+        targetLayer = layerCounts.findIndex((c) => c === minCount);
       }
 
       layers[targetLayer].push(type);
       layerCounts[targetLayer] += count;
       typeToLayer.set(type, targetLayer);
     });
-
   }
 
   // Map node IDs to their layer
@@ -285,6 +281,7 @@ const GraphScene = ({
   const [simulatedNodes, setSimulatedNodes] = useState<D3Node[]>([]);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
+  const groupRef = useRef<THREE.Group>(null);
 
   // Sync internal selection with parent
   useEffect(() => {
@@ -292,6 +289,18 @@ const GraphScene = ({
       setSelectedNode(null);
     }
   }, [selectedNodeId]);
+
+  // Auto-rotate animation
+  useEffect(() => {
+    const animate = () => {
+      if (groupRef.current) {
+        groupRef.current.rotation.y += 0.001; // Slow horizontal rotation
+      }
+      requestAnimationFrame(animate);
+    };
+    const animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, []);
 
   useEffect(() => {
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -308,8 +317,8 @@ const GraphScene = ({
     const LAYER_SPACING = 250; // Distance between layers (increased for more dramatic separation)
     const layerZPositions = [
       -LAYER_SPACING, // Layer 0 (back): highest priority types
-      0,              // Layer 1 (middle)
-      LAYER_SPACING,  // Layer 2 (front): lowest priority types
+      0, // Layer 1 (middle)
+      LAYER_SPACING, // Layer 2 (front): lowest priority types
     ];
 
     // Initialize z positions based on layers
@@ -391,36 +400,38 @@ const GraphScene = ({
       <directionalLight position={[10, 10, 5]} intensity={isDarkMode ? 0.5 : 1} />
       <pointLight position={[-10, -10, -5]} intensity={isDarkMode ? 0.3 : 0.5} />
 
-      {links.map((link, i) => {
-        const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
-        const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
-        const isConnectedToSelected = selectedNode && (sourceId === selectedNode.id || targetId === selectedNode.id);
-        return (
-          <LinkLine
-            key={`${sourceId}-${targetId}-${i}`}
-            link={link}
-            isDimmed={selectedNode !== null && !isConnectedToSelected}
-          />
-        );
-      })}
+      <group ref={groupRef}>
+        {links.map((link, i) => {
+          const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
+          const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
+          const isConnectedToSelected = selectedNode && (sourceId === selectedNode.id || targetId === selectedNode.id);
+          return (
+            <LinkLine
+              key={`${sourceId}-${targetId}-${i}`}
+              link={link}
+              isDimmed={selectedNode !== null && !isConnectedToSelected}
+            />
+          );
+        })}
 
-      {simulatedNodes.map((node) => {
-        const isSelected = selectedNode?.id === node.id;
-        const isConnected = selectedNode !== null && connectedNodeIds.has(node.id);
-        const isDimmed = selectedNode !== null && !isSelected && !isConnected;
+        {simulatedNodes.map((node) => {
+          const isSelected = selectedNode?.id === node.id;
+          const isConnected = selectedNode !== null && connectedNodeIds.has(node.id);
+          const isDimmed = selectedNode !== null && !isSelected && !isConnected;
 
-        return (
-          <NodeMesh
-            key={node.id}
-            node={node}
-            color={getNodeColor(node.type, nodeTypes, colorPalette)}
-            onClick={() => handleNodeClick(node)}
-            isSelected={isSelected}
-            isConnected={isConnected}
-            isDimmed={isDimmed}
-          />
-        );
-      })}
+          return (
+            <NodeMesh
+              key={node.id}
+              node={node}
+              color={getNodeColor(node.type, nodeTypes, colorPalette)}
+              onClick={() => handleNodeClick(node)}
+              isSelected={isSelected}
+              isConnected={isConnected}
+              isDimmed={isDimmed}
+            />
+          );
+        })}
+      </group>
 
       <OrbitControls enableDamping dampingFactor={0.05} zoomSpeed={0.3} rotateSpeed={0.5} />
     </>
