@@ -1,16 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 
-// Mock the config module before importing the function
-vi.mock("@/lib/env", () => ({
-  config: {
-    STAKWORK_API_KEY: "test-api-key",
-    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
-    STAKWORK_USER_JOURNEY_WORKFLOW_ID: "999",
-  },
-}));
-
-// Import after mocking
+// Use shared environment mock
+import "@/__tests__/support/mocks/env";
 import { config } from "@/lib/env";
 
 /**
