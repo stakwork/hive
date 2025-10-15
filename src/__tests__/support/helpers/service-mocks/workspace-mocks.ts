@@ -27,6 +27,7 @@ export interface MockSwarmOptions {
   status?: string;
   ingestRefId?: string;
   poolState?: string;
+  swarmUrl?: string | null;
 }
 
 export const workspaceMocks = {
@@ -59,6 +60,7 @@ export const workspaceMocks = {
       status: overrides.status || "ACTIVE",
       ingestRefId: overrides.ingestRefId || "ingest-123",
       poolState: overrides.poolState || "STARTED",
+      swarmUrl: overrides.swarmUrl === undefined ? null : overrides.swarmUrl,
     };
   },
 
