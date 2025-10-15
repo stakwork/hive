@@ -6,8 +6,7 @@ import { ScreenshotModal } from "@/components/ScreenshotModal";
 
 interface Action {
   id: string;
-  kind?: string; // For recorded actions
-  type?: string; // For replayed actions
+  type: string;
   timestamp: number;
   locator?: {
     primary: string;
@@ -65,8 +64,7 @@ function getElementDescription(action: Action): string {
 }
 
 function getActionDisplay(action: Action): React.ReactNode {
-  // Support both 'kind' (recorded actions) and 'type' (replayed actions)
-  const actionType = action.kind ?? action.type;
+  const actionType = action.type;
 
   switch (actionType) {
     case "nav":
@@ -256,8 +254,7 @@ export function ActionsList({
               const isActive = status === "active";
               const isCompleted = status === "completed";
               const screenshot = getScreenshotForAction(index);
-              // Support both 'kind' (recorded actions) and 'type' (replayed actions)
-              const actionType = action.kind ?? action.type;
+              const actionType = action.type;
               const isNavAction =
                 actionType === "nav" ||
                 actionType === "goto" ||
