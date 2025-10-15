@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Loader2, FolderPlus } from "lucide-react";
+import { Loader2, FolderPlus, Sparkles, Check, X, ChevronDown, ChevronRight } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -21,7 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhaseItem } from "@/components/features/PhaseItem";
-import type { PhaseListItem } from "@/types/roadmap";
+import { AIButton } from "@/components/ui/ai-button";
+import type { PhaseListItem, GeneratedPhasesAndTickets } from "@/types/roadmap";
 import type { PhaseStatus } from "@prisma/client";
 
 interface PhaseSectionProps {
@@ -36,6 +37,11 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
   const [creatingPhase, setCreatingPhase] = useState(false);
   const phaseInputRef = useRef<HTMLInputElement>(null);
   const shouldFocusRef = useRef(false);
+
+  // AI generation state
+  const [aiSuggestion, setAiSuggestion] = useState<GeneratedPhasesAndTickets | null>(null);
+  const [accepting, setAccepting] = useState(false);
+  const [expandedPhases, setExpandedPhases] = useState<Set<number>>(new Set());
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -176,80 +182,243 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
     }
   };
 
+  const handleAiGenerated = (results: GeneratedPhasesAndTickets[]) => {
+    if (results.length > 0) {
+      setAiSuggestion(results[0]);
+      // Expand all phases by default
+      setExpandedPhases(new Set(results[0].phases.map((_, i) => i)));
+    }
+  };
+
+  const handleAcceptAi = async () => {
+    if (!aiSuggestion) return;
+
+    try {
+      setAccepting(true);
+      const response = await fetch(`/api/features/${featureId}/phases/batch-create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phases: aiSuggestion.phases }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create phases and tickets");
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        // Extract the phases from the result and update the parent
+        const newPhases = result.data.map((item: any) => item.phase);
+        onUpdate([...phases, ...newPhases]);
+        setAiSuggestion(null);
+      }
+    } catch (error) {
+      console.error("Failed to accept AI suggestion:", error);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleRejectAi = () => {
+    setAiSuggestion(null);
+    setExpandedPhases(new Set());
+  };
+
+  const togglePhaseExpansion = (index: number) => {
+    setExpandedPhases((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div>
-        <Label className="text-sm font-medium">Phases</Label>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">Phases</Label>
+          <AIButton<GeneratedPhasesAndTickets>
+            endpoint={`/api/features/${featureId}/generate`}
+            params={{ type: "phasesTickets" }}
+            onGenerated={handleAiGenerated}
+            tooltip="Generate with AI"
+            iconOnly
+          />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">
           Organize work into phases with specific tickets.
         </p>
       </div>
 
-      <div className="rounded-lg border bg-muted/30">
-        {/* Add Phase Input */}
-        <div className="flex gap-2 p-4">
-          <Input
-            ref={phaseInputRef}
-            placeholder="Enter phase name..."
-            value={newPhaseName}
-            onChange={(e) => setNewPhaseName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !creatingPhase) {
-                handleAddPhase();
-              }
-            }}
-            disabled={creatingPhase}
-            className="flex-1"
-          />
-          <Button
-            size="sm"
-            onClick={handleAddPhase}
-            disabled={creatingPhase || !newPhaseName.trim()}
-          >
-            {creatingPhase ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <FolderPlus className="h-4 w-4 mr-2" />
-                Add Phase
-              </>
-            )}
-          </Button>
-        </div>
+      {/* AI Suggestion Preview */}
+      {aiSuggestion && (
+        <div className="rounded-md border border-border bg-muted/50 p-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-start gap-3">
+            <Sparkles className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-3">
+              <p className="text-sm font-medium">Phase breakdown</p>
 
-        {/* Phases List */}
-        {phases.length > 0 ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
-              <div className="px-4 pb-4 flex flex-col gap-2 overflow-hidden">
-                {phases
-                  .sort((a, b) => a.order - b.order)
-                  .map((phase) => (
-                    <PhaseItem
-                      key={phase.id}
-                      phase={phase}
-                      featureId={featureId}
-                      workspaceSlug={workspaceSlug}
-                      onUpdate={handleUpdatePhase}
-                      onDelete={handleDeletePhase}
-                    />
-                  ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        ) : (
-          <div className="px-4 pb-4">
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              <FolderPlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No phases yet. Add a phase to get started.</p>
+              {aiSuggestion.phases.map((phase, phaseIndex) => {
+                const isExpanded = expandedPhases.has(phaseIndex);
+                return (
+                  <div key={phaseIndex} className="border border-border/50 rounded-lg bg-background/50 overflow-hidden">
+                    <button
+                      onClick={() => togglePhaseExpansion(phaseIndex)}
+                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{phase.name}</p>
+                        {phase.description && (
+                          <p className="text-xs text-muted-foreground">{phase.description}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {phase.tickets.length} ticket{phase.tickets.length !== 1 ? 's' : ''}
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-3 pb-3 space-y-2">
+                        {phase.tickets.map((ticket, ticketIndex) => (
+                          <div key={ticketIndex} className="pl-6 py-2 border-l-2 border-border/30">
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs text-muted-foreground mt-0.5">{ticket.tempId}</span>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{ticket.title}</p>
+                                {ticket.description && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{ticket.description}</p>
+                                )}
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                    ticket.priority === "CRITICAL" ? "bg-red-100 text-red-700" :
+                                    ticket.priority === "HIGH" ? "bg-orange-100 text-orange-700" :
+                                    ticket.priority === "MEDIUM" ? "bg-blue-100 text-blue-700" :
+                                    "bg-gray-100 text-gray-700"
+                                  }`}>
+                                    {ticket.priority}
+                                  </span>
+                                  {ticket.dependsOn && ticket.dependsOn.length > 0 && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Depends on: {ticket.dependsOn.join(", ")}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="flex gap-2 justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleAcceptAi}
+              disabled={accepting}
+            >
+              {accepting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4 mr-2 text-green-600" />
+              )}
+              Accept All
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleRejectAi}
+              disabled={accepting}
+            >
+              <X className="h-4 w-4 mr-2 text-red-600" />
+              Reject
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Only show Add Phase section when no AI suggestion is active */}
+      {!aiSuggestion && (
+        <div className="rounded-lg border bg-muted/30">
+          {/* Add Phase Input */}
+          <div className="flex gap-2 p-4">
+            <Input
+              ref={phaseInputRef}
+              placeholder="Enter phase name..."
+              value={newPhaseName}
+              onChange={(e) => setNewPhaseName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !creatingPhase) {
+                  handleAddPhase();
+                }
+              }}
+              disabled={creatingPhase}
+              className="flex-1"
+            />
+            <Button
+              size="sm"
+              onClick={handleAddPhase}
+              disabled={creatingPhase || !newPhaseName.trim()}
+            >
+              {creatingPhase ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <FolderPlus className="h-4 w-4 mr-2" />
+                  Add Phase
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Phases List */}
+          {phases.length > 0 ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
+                <div className="px-4 pb-4 flex flex-col gap-2 overflow-hidden">
+                  {phases
+                    .sort((a, b) => a.order - b.order)
+                    .map((phase) => (
+                      <PhaseItem
+                        key={phase.id}
+                        phase={phase}
+                        featureId={featureId}
+                        workspaceSlug={workspaceSlug}
+                        onUpdate={handleUpdatePhase}
+                        onDelete={handleDeletePhase}
+                      />
+                    ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="px-4 pb-4">
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <FolderPlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No phases yet. Add a phase to get started.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

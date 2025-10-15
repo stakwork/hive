@@ -145,7 +145,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -186,6 +186,7 @@ export async function getWorkspaceById(
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
+      swarmUrl: workspace.swarm?.swarmUrl || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -225,6 +226,7 @@ export async function getWorkspaceById(
     swarmStatus: workspace.swarm?.status || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
+    swarmUrl: workspace.swarm?.swarmUrl || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -250,7 +252,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -290,6 +292,7 @@ export async function getWorkspaceBySlug(
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
+      swarmUrl: workspace.swarm?.swarmUrl || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -329,6 +332,7 @@ export async function getWorkspaceBySlug(
     swarmStatus: workspace.swarm?.status || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
+    swarmUrl: workspace.swarm?.swarmUrl || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),

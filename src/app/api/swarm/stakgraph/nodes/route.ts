@@ -10,48 +10,40 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
     const nodeType = searchParams.get("node_type");
 
-    console.log('workspaceId', workspaceId, nodeType)
+    console.log("workspaceId", workspaceId, nodeType);
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
 
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL or API key not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
+    let stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:8444`;
+    let apiKey = swarm.swarmApiKey;
+    if (process.env.CUSTOM_SWARM_URL) stakgraphUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
+    if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
-
-    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:8444`;
-
-
+    console.log("stakgraphUrl", stakgraphUrl);
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: `graph/search/latest`,
       method: "GET",
-      apiKey: swarm.swarmApiKey,
+      apiKey,
     });
 
-    console.log('apiResult', apiResult)
+    // console.log("apiResult", apiResult);
 
     return NextResponse.json(
       {
@@ -63,9 +55,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Nodes fetch error:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to get nodes" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to get nodes" }, { status: 500 });
   }
 }

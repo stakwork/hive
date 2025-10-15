@@ -1,9 +1,15 @@
 "use client";
 
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { Iframe } from "@/components/s2b-iframe";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { getLanguageFromFile } from "@/lib/syntax-utils";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vs, vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Graph3D } from "./Graph3D";
 
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
@@ -35,6 +41,7 @@ interface SchemaNode {
 interface D3Node extends d3.SimulationNodeDatum {
   id: string;
   name: string;
+  uuid?: string;
   type: string;
   fx?: number | null;
   fy?: number | null;
@@ -49,9 +56,21 @@ interface D3Link extends d3.SimulationLinkDatum<D3Node> {
 
 // --- COLOR PALETTE ---
 const COLOR_PALETTE = [
-  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444",
-  "#06b6d4", "#6366f1", "#ec4899", "#f97316", "#84cc16",
-  "#64748b", "#0ea5e9", "#22c55e", "#a855f7", "#eab308"
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#8b5cf6",
+  "#ef4444",
+  "#06b6d4",
+  "#6366f1",
+  "#ec4899",
+  "#f97316",
+  "#84cc16",
+  "#64748b",
+  "#0ea5e9",
+  "#22c55e",
+  "#a855f7",
+  "#eab308",
 ];
 
 // --- HELPERS ---
@@ -65,9 +84,9 @@ const getNodeColor = (type: string, nodeTypes: string[]): string => {
 
 const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
   const connectedIds = new Set<string>();
-  links.forEach(link => {
-    const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
-    const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
+  links.forEach((link) => {
+    const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
+    const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
     if (sourceId === nodeId) connectedIds.add(targetId);
     else if (targetId === nodeId) connectedIds.add(sourceId);
   });
@@ -81,57 +100,142 @@ interface NodePopupProps {
   connectedNodes: D3Node[];
   isDarkMode?: boolean;
   nodeTypes: string[];
+  onNodeClick?: (node: D3Node) => void;
 }
 
-const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes }: NodePopupProps) => {
+const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeTypes, onNodeClick }: NodePopupProps) => {
+  const properties = (node as any).properties || {};
+
+  // Extract specific properties
+  const file = properties.file;
+  const text = properties.text;
+  const question = properties.question;
+  const interfaceText = properties.interface;
+  const body = properties.body;
+  const tokenCount = properties.token_count;
+  const lineStart = properties.start;
+  const lineEnd = properties.end;
+  const content = properties.content;
+
+  // Check if this is a Hint node (render body as markdown)
+  const isHintNode = node.type === "Hint";
+
+  // Determine if we should show code syntax highlighting (but not for Hint nodes)
+  const showCode = file && body && !isHintNode;
+
+  // Format line number range
+  const lineRange = lineStart !== undefined && lineEnd !== undefined ? `(${lineStart}-${lineEnd})` : "";
+
+  // Build array of fields to display
+  const fields: Array<{ label: string; value: string }> = [];
+
+  if (file) fields.push({ label: "File", value: file });
+  if (text) fields.push({ label: "Text", value: text });
+  if (content) fields.push({ label: "Content", value: content });
+  if (question) fields.push({ label: "Question", value: question });
+  if (interfaceText) fields.push({ label: "Interface", value: interfaceText });
+  if (tokenCount) fields.push({ label: "Token count", value: String(tokenCount) });
+
   return (
     <div
-      className={`absolute top-4 right-4 z-50 border rounded-lg shadow-lg p-4 w-80 ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
-      style={{ maxHeight: '400px', overflowY: 'auto' }}
+      className={`absolute right-4 z-50 border rounded-lg shadow-lg p-4 w-96 ${isDarkMode ? "bg-gray-800 border-gray-600" : "bg-white border-gray-300"}`}
+      style={{ top: "90px", maxHeight: "calc(100vh - 280px)", overflowY: "auto" }}
     >
-      <div className="flex justify-between items-start mb-3">
-        <h4 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{node.name}</h4>
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }} />
+            <span
+              className={`text-xs font-medium uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}
+            >
+              {node.type}
+            </span>
+          </div>
+          <h4 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-900"}`}>{node.name}</h4>
+        </div>
         <button
           onClick={onClose}
-          className={`text-xl leading-none ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
+          className={`text-2xl leading-none ml-2 ${isDarkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
         >
           ×
         </button>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(node.type, nodeTypes) }} />
-          <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type: {node.type}</span>
-        </div>
+      <div className="space-y-3">
+        {/* Render data-driven fields */}
+        {fields.map((field) => (
+          <div key={field.label} className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+            <span className="font-medium">{field.label}:</span>{" "}
+            {field.value.length > 100 ? <p className="mt-1 whitespace-pre-wrap">{field.value}</p> : field.value}
+          </div>
+        ))}
 
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          <strong>ID:</strong> {node.id}
-        </div>
-
-        {Object.entries(node).map(([key, value]) => {
-          if (['id', 'name', 'type', 'x', 'y', 'fx', 'fy', 'index', 'vx', 'vy'].includes(key)) return null;
-          return (
-            <div key={key} className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+        {showCode ? (
+          <div className="text-sm">
+            <div className="flex items-center gap-2">
+              <span className={`font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>Code:</span>
+              {lineRange && (
+                <span className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>{lineRange}</span>
+              )}
             </div>
-          );
-        })}
+            <div className="mt-1 rounded overflow-hidden text-xs">
+              <SyntaxHighlighter
+                language={getLanguageFromFile(file)}
+                style={isDarkMode ? vscDarkPlus : vs}
+                customStyle={{
+                  margin: 0,
+                  padding: "12px",
+                  fontSize: "11px",
+                  maxHeight: "300px",
+                }}
+                showLineNumbers={lineStart !== undefined}
+                startingLineNumber={lineStart || 1}
+              >
+                {body}
+              </SyntaxHighlighter>
+            </div>
+          </div>
+        ) : isHintNode && body ? (
+          <div className="text-sm mt-3">
+            <div className={`${isDarkMode ? "prose-invert" : ""}`}>
+              <MarkdownRenderer size="compact">{body}</MarkdownRenderer>
+            </div>
+          </div>
+        ) : body ? (
+          <div className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+            <span className="font-medium">Body:</span>
+            <p className="mt-1 whitespace-pre-wrap">{body}</p>
+          </div>
+        ) : null}
+
+        {tokenCount && (
+          <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>Token count: {tokenCount}</div>
+        )}
 
         {connectedNodes.length > 0 && (
-          <div className="mt-3 pt-3 border-t">
-            <h5 className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <div className={`mt-4 pt-3 ${isDarkMode ? "border-gray-700" : "border-gray-200"} border-t`}>
+            <h5 className={`text-sm font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
               Connected Nodes ({connectedNodes.length})
             </h5>
             <div className="space-y-1">
-              {connectedNodes.slice(0, 5).map(connectedNode => (
-                <div key={connectedNode.id} className="flex items-center gap-2 text-sm">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }} />
-                  <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{connectedNode.name}</span>
-                </div>
+              {connectedNodes.slice(0, 5).map((connectedNode) => (
+                <button
+                  key={connectedNode.id}
+                  onClick={() => onNodeClick?.(connectedNode)}
+                  className={`flex items-center gap-2 text-sm w-full text-left px-2 py-1 rounded transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"
+                    }`}
+                >
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: getNodeColor(connectedNode.type, nodeTypes) }}
+                  />
+                  <span className={`truncate ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                    {connectedNode.name || connectedNode.uuid || connectedNode.id}
+                  </span>
+                </button>
               ))}
               {connectedNodes.length > 5 && (
-                <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                <div className={`text-xs px-2 ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
                   ... and {connectedNodes.length - 5} more
                 </div>
               )}
@@ -145,73 +249,53 @@ const NodePopup = ({ node, onClose, connectedNodes, isDarkMode = false, nodeType
 
 // --- MAIN COMPONENT ---
 export const GraphComponent = () => {
-  const { id: workspaceId } = useWorkspace();
+  const { id: workspaceId, workspace } = useWorkspace();
   const { resolvedTheme, toggleTheme, mounted } = useTheme();
   const [nodes, setNodes] = useState<D3Node[]>([]);
   const [links, setLinks] = useState<D3Link[]>([]);
-  const [schemas, setSchemas] = useState<SchemaNode[]>([]);
-  const [loading, setLoading] = useState(true);
   const [nodesLoading, setNodesLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
   const [selectedNode, setSelectedNode] = useState<D3Node | null>(null);
   const selectedNodeRef = useRef<D3Node | null>(null);
+  const [viewMode, setViewMode] = useState<'2D' | '3D' | '2B3D'>('2D');
+  const [showCameraControls, setShowCameraControls] = useState(false);
 
   // keep selectedNodeRef in sync for use inside D3 handlers
   useEffect(() => {
     selectedNodeRef.current = selectedNode;
   }, [selectedNode]);
 
-  const isDarkMode = mounted && resolvedTheme === 'dark';
-  const nodeTypes = Array.from(new Set(nodes.map(n => n.type)));
-
-  // --- load schemas ---
-  useEffect(() => {
-    const fetchSchemas = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/swarm/stakgraph/schema?id=${workspaceId}`);
-        const data: SchemaResponse = await response.json();
-        // Schemas are optional - don't error if not available
-        if (data.success && data.data && data.data.length > 0) {
-          setSchemas(data.data);
-        }
-      } catch (err) {
-        console.error("Schema fetch failed (optional):", err);
-        // Don't set error state since schemas are optional
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (workspaceId) fetchSchemas();
-  }, [workspaceId]);
+  const isDarkMode = mounted && resolvedTheme === "dark";
+  const nodeTypes = Array.from(new Set(nodes.map((n) => n.type)));
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   // --- load nodes ---
   useEffect(() => {
     const fetchNodes = async () => {
       setNodesLoading(true);
-      setError(null);
       try {
         const response = await fetch(`/api/swarm/stakgraph/nodes?id=${workspaceId}`);
         const data: ApiResponse = await response.json();
         if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
-          setNodes(data.data.nodes.map(node => ({
-            ...node,
-            id: (node as any).ref_id || '',
-            type: (node as any).node_type as string || '',
-            name: (node as any)?.properties?.name as string || ''
-          })) as D3Node[]);
-          setLinks(data.data.edges as D3Link[] || []);
+          setNodes(
+            data.data.nodes.map((node) => ({
+              ...node,
+              id: (node as any).ref_id || "",
+              type: ((node as any).node_type as string) || "",
+              name: ((node as any)?.properties?.name as string) || "",
+            })) as D3Node[],
+          );
+          setLinks((data.data.edges as D3Link[]) || []);
         } else {
           setNodes([]);
           setLinks([]);
         }
       } catch (err) {
-        console.error(err);
-        setError("Failed to load nodes");
+        console.error("Failed to load nodes:", err);
         setNodes([]);
         setLinks([]);
       } finally {
@@ -241,7 +325,8 @@ export const GraphComponent = () => {
     const container = svg.append("g").attr("class", "graph-container");
 
     // zoom behaviour
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 10])
       .on("zoom", (event) => {
         container.attr("transform", (event as any).transform);
@@ -272,15 +357,23 @@ export const GraphComponent = () => {
     });
 
     // valid links only
-    const nodeIds = new Set(nodes.map(n => n.id));
-    const validLinks = links.filter(link => {
-      const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
-      const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const validLinks = links.filter((link) => {
+      const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
+      const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
       return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
 
-    const simulation = d3.forceSimulation<D3Node>(nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(validLinks).id(d => d.id).distance(100).strength(0.5))
+    const simulation = d3
+      .forceSimulation<D3Node>(nodes)
+      .force(
+        "link",
+        d3
+          .forceLink<D3Node, D3Link>(validLinks)
+          .id((d) => d.id)
+          .distance(100)
+          .strength(0.5),
+      )
       .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("collision", d3.forceCollide().radius(40).strength(0.7));
@@ -288,49 +381,73 @@ export const GraphComponent = () => {
     simulationRef.current = simulation;
 
     // markers
-    svg.append("defs").selectAll("marker")
-      .data(["arrow"]).enter().append("marker")
+    svg
+      .append("defs")
+      .selectAll("marker")
+      .data(["arrow"])
+      .enter()
+      .append("marker")
       .attr("id", "arrow")
       .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 25).attr("refY", 0)
-      .attr("markerWidth", 6).attr("markerHeight", 6)
+      .attr("refX", 25)
+      .attr("refY", 0)
+      .attr("markerWidth", 6)
+      .attr("markerHeight", 6)
       .attr("orient", "auto")
-      .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", isDarkMode ? "#6b7280" : "#999");
+      .append("path")
+      .attr("d", "M0,-5L10,0L0,5")
+      .attr("fill", isDarkMode ? "#6b7280" : "#999");
 
     // links
-    const link = container.append("g").attr("class", "links")
-      .selectAll("line").data(validLinks).enter().append("line")
-      .attr("stroke", isDarkMode ? "#6b7280" : "#999").attr("stroke-opacity", 0.6)
-      .attr("stroke-width", 2).attr("marker-end", "url(#arrow)");
+    const link = container
+      .append("g")
+      .attr("class", "links")
+      .selectAll("line")
+      .data(validLinks)
+      .enter()
+      .append("line")
+      .attr("stroke", isDarkMode ? "#6b7280" : "#999")
+      .attr("stroke-opacity", 0.6)
+      .attr("stroke-width", 2)
+      .attr("marker-end", "url(#arrow)");
 
     // nodes
-    const nodeGroup = container.append("g").attr("class", "nodes")
-      .selectAll("g").data(nodes).enter().append("g")
-      .attr("class", "node").style("cursor", "pointer")
-      .call(d3.drag<SVGGElement, D3Node>()
-        .on("start", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.2).restart();
-          d.fx = d.x ?? 0;
-          d.fy = d.y ?? 0;
-        })
-        .on("drag", (event, d) => {
-          // Use svg zoom transform to map screen pointer to graph coordinates
-          const transform = d3.zoomTransform(svg.node() as Element);
-          const [px, py] = d3.pointer(event.sourceEvent as Event, svg.node() as Element);
-          const [gx, gy] = transform.invert([px, py]);
-          d.fx = gx;
-          d.fy = gy;
-        })
-        .on("end", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0);
-          if (!selectedNodeRef.current || selectedNodeRef.current.id !== d.id) {
-            d.fx = null;
-            d.fy = null;
-          } else {
-            d.fx = d.x ?? d.fx;
-            d.fy = d.y ?? d.fy;
-          }
-        }))
+    const nodeGroup = container
+      .append("g")
+      .attr("class", "nodes")
+      .selectAll("g")
+      .data(nodes)
+      .enter()
+      .append("g")
+      .attr("class", "node")
+      .style("cursor", "pointer")
+      .call(
+        d3
+          .drag<SVGGElement, D3Node>()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.2).restart();
+            d.fx = d.x ?? 0;
+            d.fy = d.y ?? 0;
+          })
+          .on("drag", (event, d) => {
+            // Use svg zoom transform to map screen pointer to graph coordinates
+            const transform = d3.zoomTransform(svg.node() as Element);
+            const [px, py] = d3.pointer(event.sourceEvent as Event, svg.node() as Element);
+            const [gx, gy] = transform.invert([px, py]);
+            d.fx = gx;
+            d.fy = gy;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            if (!selectedNodeRef.current || selectedNodeRef.current.id !== d.id) {
+              d.fx = null;
+              d.fy = null;
+            } else {
+              d.fx = d.x ?? d.fx;
+              d.fy = d.y ?? d.fy;
+            }
+          }),
+      )
       .on("click", (event, d) => {
         event.stopPropagation();
         // pin node
@@ -340,27 +457,45 @@ export const GraphComponent = () => {
         setSelectedNode(d);
       });
 
-    nodeGroup.append("circle").attr("r", 20)
-      .attr("fill", d => getNodeColor(d.type, nodeTypes))
-      .attr("stroke", isDarkMode ? "#374151" : "#fff").attr("stroke-width", 2)
-      .style("filter", isDarkMode ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.3))" : "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))");
+    nodeGroup
+      .append("circle")
+      .attr("r", 20)
+      .attr("fill", (d) => getNodeColor(d.type, nodeTypes))
+      .attr("stroke", isDarkMode ? "#374151" : "#fff")
+      .attr("stroke-width", 2)
+      .style(
+        "filter",
+        isDarkMode ? "drop-shadow(2px 2px 4px rgba(0,0,0,0.3))" : "drop-shadow(2px 2px 4px rgba(0,0,0,0.1))",
+      );
 
-    nodeGroup.append("text")
-      .text(d => d.name.length > 10 ? `${d.name.slice(0, 10)}...` : d.name)
-      .attr("x", 0).attr("y", -25).attr("text-anchor", "middle")
-      .attr("font-size", "12px").attr("font-weight", "500")
-      .attr("fill", isDarkMode ? "#f9fafb" : "#333").style("pointer-events", "none");
+    nodeGroup
+      .append("text")
+      .text((d) => (d.name.length > 10 ? `${d.name.slice(0, 10)}...` : d.name))
+      .attr("x", 0)
+      .attr("y", -25)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "12px")
+      .attr("font-weight", "500")
+      .attr("fill", isDarkMode ? "#f9fafb" : "#333")
+      .style("pointer-events", "none");
 
-    nodeGroup.append("text").text(d => d.type)
-      .attr("x", 0).attr("y", 35).attr("text-anchor", "middle")
-      .attr("font-size", "10px").attr("fill", isDarkMode ? "#d1d5db" : "#666")
+    nodeGroup
+      .append("text")
+      .text((d) => d.type)
+      .attr("x", 0)
+      .attr("y", 35)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "10px")
+      .attr("fill", isDarkMode ? "#d1d5db" : "#666")
       .style("pointer-events", "none");
 
     simulation.on("tick", () => {
       link
-        .attr("x1", d => (d.source as D3Node).x!).attr("y1", d => (d.source as D3Node).y!)
-        .attr("x2", d => (d.target as D3Node).x!).attr("y2", d => (d.target as D3Node).y!);
-      nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
+        .attr("x1", (d) => (d.source as D3Node).x!)
+        .attr("y1", (d) => (d.source as D3Node).y!)
+        .attr("x2", (d) => (d.target as D3Node).x!)
+        .attr("y2", (d) => (d.target as D3Node).y!);
+      nodeGroup.attr("transform", (d) => `translate(${d.x},${d.y})`);
     });
 
     // store zoom behaviour on svg node if needed elsewhere
@@ -382,17 +517,17 @@ export const GraphComponent = () => {
     const linkElements = svg.selectAll("line");
 
     if (selectedNode) {
-      const nodeIds = new Set(nodes.map(node => node.id));
-      const validLinks = links.filter(link => {
-        const sourceId = typeof link.source === 'string' ? link.source : (link.source as D3Node).id;
-        const targetId = typeof link.target === 'string' ? link.target : (link.target as D3Node).id;
+      const nodeIds = new Set(nodes.map((node) => node.id));
+      const validLinks = links.filter((link) => {
+        const sourceId = typeof link.source === "string" ? link.source : (link.source as D3Node).id;
+        const targetId = typeof link.target === "string" ? link.target : (link.target as D3Node).id;
         return nodeIds.has(sourceId) && nodeIds.has(targetId);
       });
 
       const connectedIds = getConnectedNodeIds(selectedNode.id, validLinks);
 
       circles
-        .attr("stroke-width", (d: any) => d.id === selectedNode.id ? 4 : 2)
+        .attr("stroke-width", (d: any) => (d.id === selectedNode.id ? 4 : 2))
         .attr("stroke", (d: any) => {
           if (d.id === selectedNode.id) return "#3b82f6";
           if (connectedIds.has(d.id)) return "#10b981";
@@ -401,33 +536,33 @@ export const GraphComponent = () => {
         .style("opacity", (d: any) => {
           if (d.id === selectedNode.id) return 1;
           if (connectedIds.has(d.id)) return 1;
-          return 0.5;
+          return 0.4;
         });
 
       linkElements
         .attr("stroke", (d: any) => {
-          const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
-          const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
-          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+          const sourceId = typeof d.source === "string" ? d.source : (d.source as D3Node).id;
+          const targetId = typeof d.target === "string" ? d.target : (d.target as D3Node).id;
+          if (sourceId === selectedNode.id || targetId === selectedNode.id) {
             return "#3b82f6";
           }
           return isDarkMode ? "#6b7280" : "#999";
         })
         .attr("stroke-width", (d: any) => {
-          const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
-          const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
-          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+          const sourceId = typeof d.source === "string" ? d.source : (d.source as D3Node).id;
+          const targetId = typeof d.target === "string" ? d.target : (d.target as D3Node).id;
+          if (sourceId === selectedNode.id || targetId === selectedNode.id) {
             return 3;
           }
           return 2;
         })
         .style("opacity", (d: any) => {
-          const sourceId = typeof d.source === 'string' ? d.source : (d.source as D3Node).id;
-          const targetId = typeof d.target === 'string' ? d.target : (d.target as D3Node).id;
-          if ((sourceId === selectedNode.id) || (targetId === selectedNode.id)) {
+          const sourceId = typeof d.source === "string" ? d.source : (d.source as D3Node).id;
+          const targetId = typeof d.target === "string" ? d.target : (d.target as D3Node).id;
+          if (sourceId === selectedNode.id || targetId === selectedNode.id) {
             return 1;
           }
-          return 0.3;
+          return 0.2;
         });
     } else {
       circles
@@ -444,28 +579,71 @@ export const GraphComponent = () => {
 
   // connected nodes for popup
   const connectedNodes = selectedNode
-    ? Array.from(getConnectedNodeIds(selectedNode.id, links))
-      .map(id => nodes.find(node => node.id === id))
-      .filter(Boolean) as D3Node[]
+    ? (Array.from(getConnectedNodeIds(selectedNode.id, links))
+      .map((id) => nodes.find((node) => node.id === id))
+      .filter(Boolean) as D3Node[])
     : [];
+
+
 
   return (
     <div className={`h-auto w-full border rounded-lg p-4 relative bg-card`}>
       <div className="flex justify-between items-center mb-4">
-        <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Graph Visualization</h3>
+        <h3 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-900"}`}>Graph Visualization</h3>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border/40 bg-background/50 backdrop-blur-sm p-1 shadow-sm">
+            {(['2D', '3D', '2B3D'] as const).map((mode, index) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`relative px-4 py-2 text-sm font-medium transition-all duration-200 ease-out ${
+                  index === 0 ? 'rounded-l-md' : index === 2 ? 'rounded-r-md' : ''
+                } ${
+                  viewMode === mode
+                    ? isDarkMode
+                      ? "bg-blue-600 text-white shadow-md scale-105 z-10"
+                      : "bg-blue-500 text-white shadow-md scale-105 z-10"
+                    : isDarkMode
+                      ? "text-gray-300 hover:text-white hover:bg-gray-700/50"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
+                }`}
+                title={`Switch to ${mode} view`}
+              >
+                <span className="relative z-10">{mode}</span>
+                {viewMode === mode && (
+                  <div className={`absolute inset-0 rounded-md ${
+                    isDarkMode ? 'bg-blue-600' : 'bg-blue-500'
+                  } transition-all duration-200 ease-out`} />
+                )}
+              </button>
+            ))}
+          </div>
+          {viewMode === '3D' && isLocalhost && (
+            <button
+              onClick={() => setShowCameraControls(!showCameraControls)}
+              className={`px-3 py-1 text-sm rounded transition-colors ${showCameraControls
+                ? isDarkMode
+                  ? "bg-blue-700 text-white"
+                  : "bg-blue-500 text-white"
+                : isDarkMode
+                  ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              title="Toggle camera debug controls"
+            >
+              🎥
+            </button>
+          )}
           <button
             onClick={toggleTheme}
-            className={`px-3 py-1 text-sm rounded transition-colors ${isDarkMode
-              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            className={`px-3 py-1 text-sm rounded transition-colors ${isDarkMode ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             title="Toggle theme"
           >
-            {isDarkMode ? '☀️' : '🌙'}
+            {isDarkMode ? "☀️" : "🌙"}
           </button>
           {nodes.length > 0 && (
-            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
               {nodes.length} nodes • {links.length} connections
             </div>
           )}
@@ -474,11 +652,11 @@ export const GraphComponent = () => {
 
       {nodeTypes.length > 1 && (
         <div className="mb-4 flex flex-wrap gap-4 text-sm">
-          <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Types:</span>
-          {nodeTypes.map(type => (
+          <span className={`font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>Types:</span>
+          {nodeTypes.map((type) => (
             <div key={type} className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getNodeColor(type, nodeTypes) }} />
-              <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>{type}</span>
+              <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>{type}</span>
             </div>
           ))}
         </div>
@@ -487,40 +665,75 @@ export const GraphComponent = () => {
       <div className={`border rounded overflow-hidden bg-card`}>
         {nodesLoading ? (
           <div className="flex h-96 items-center justify-center">
-            <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading nodes...</div>
+            <div className={`text-lg ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>Loading nodes...</div>
           </div>
         ) : nodes.length === 0 ? (
           <div className="flex h-96 items-center justify-center">
-            <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>No nodes found for selected schema</div>
+            <div className={`text-lg ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
+              No nodes found for selected schema
+            </div>
           </div>
+        ) : viewMode === '3D' ? (
+          <Graph3D
+            nodes={nodes}
+            links={links}
+            nodeTypes={nodeTypes}
+            colorPalette={COLOR_PALETTE}
+            isDarkMode={isDarkMode}
+            showCameraControls={showCameraControls}
+            selectedNodeId={selectedNode?.id || null}
+            onNodeClick={(node) => {
+              setSelectedNode(node);
+            }}
+          />
+        ) : viewMode === '2B3D' ? (
+          workspace?.swarmUrl ? (
+            <Iframe
+              height={600}
+              src={workspace.swarmUrl.replace('/api', ':8000')}
+              className="min-h-[500px]"
+            />
+          ) : (
+            <div>This graph is not available</div>
+          )
         ) : (
-          <svg ref={el => { svgRef.current = el; }} className="w-full h-auto" />
+          <svg ref={svgRef} className="w-full h-96" />
         )}
       </div>
 
-      {nodes.length > 0 && (
-        <div className={`mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          <p><strong>Instructions:</strong> Drag nodes to reposition them. Use mouse wheel to zoom, drag canvas to pan, or use the zoom controls above. Click on a node to see details.</p>
-        </div>
-      )}
-
-      {selectedNode && (
-        <NodePopup
-          node={selectedNode}
-          onClose={() => {
-            // release fx/fy on selected node
-            if (selectedNodeRef.current) {
-              selectedNodeRef.current.fx = null;
-              selectedNodeRef.current.fy = null;
-              simulationRef.current?.alpha(0.1).restart();
-            }
-            setSelectedNode(null);
-          }}
-          connectedNodes={connectedNodes}
-          isDarkMode={isDarkMode}
-          nodeTypes={nodeTypes}
-        />
-      )}
-    </div>
+      {
+        selectedNode && (
+          <NodePopup
+            node={selectedNode}
+            onClose={() => {
+              // Only release pinned node in 2D mode (3D and 2B3D manage their own state)
+              if (viewMode === '2D' && selectedNodeRef.current) {
+                selectedNodeRef.current.fx = null;
+                selectedNodeRef.current.fy = null;
+                simulationRef.current?.alpha(0.1).restart();
+              }
+              setSelectedNode(null);
+            }}
+            connectedNodes={connectedNodes}
+            isDarkMode={isDarkMode}
+            nodeTypes={nodeTypes}
+            onNodeClick={(clickedNode) => {
+              // In 2D mode, release the old pinned node first
+              if (viewMode === '2D' && selectedNodeRef.current) {
+                selectedNodeRef.current.fx = null;
+                selectedNodeRef.current.fy = null;
+              }
+              // Pin and select the new node
+              if (viewMode === '2D') {
+                clickedNode.fx = clickedNode.x ?? clickedNode.fx;
+                clickedNode.fy = clickedNode.y ?? clickedNode.fy;
+                simulationRef.current?.alpha(0.1).restart();
+              }
+              setSelectedNode(clickedNode);
+            }}
+          />
+        )
+      }
+    </div >
   );
 };

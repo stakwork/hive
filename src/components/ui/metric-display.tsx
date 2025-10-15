@@ -16,10 +16,26 @@ export function MetricDisplay({ label, percent, covered, total, icon }: MetricDi
     return "text-red-600 border-red-200 bg-red-50";
   };
 
-  const getProgressColor = (percent: number) => {
-    if (percent >= 70) return "bg-green-500";
-    if (percent >= 15) return "bg-yellow-500";
-    return "bg-red-500";
+  const getGradientColor = (percent: number): string => {
+    const clampedPercent = Math.min(Math.max(percent, 0), 100);
+
+    let hue: number;
+    let saturation: number;
+    let lightness: number;
+
+    if (clampedPercent <= 50) {
+      const ratio = clampedPercent / 50;
+      hue = 0 + ratio * 45;
+      saturation = 70 + ratio * 20;
+      lightness = 50;
+    } else {
+      const ratio = (clampedPercent - 50) / 50;
+      hue = 45 + ratio * 75;
+      saturation = 90 - ratio * 30;
+      lightness = 50 - ratio * 5;
+    }
+
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
 
   return (
@@ -36,9 +52,10 @@ export function MetricDisplay({ label, percent, covered, total, icon }: MetricDi
 
       <div className="w-full bg-gray-200 rounded-full h-2">
         <div
-          className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(percent)}`}
+          className="h-2 rounded-full transition-all duration-300"
           style={{
             width: `${Math.min(percent, 100)}%`,
+            backgroundColor: getGradientColor(percent),
           }}
         />
       </div>

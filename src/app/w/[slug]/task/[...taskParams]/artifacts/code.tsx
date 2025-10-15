@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useRef, useEffect, useState } from "react";
 import { Code, Copy, Check, FileText, GitBranch } from "lucide-react";
 import { Artifact, CodeContent } from "@/lib/chat";
+import { getLanguageFromFile } from "@/lib/syntax-utils";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-typescript";
@@ -38,24 +39,6 @@ function SyntaxHighlighter({
     </pre>
   );
 }
-
-// Get language from file extension
-const getLanguageFromFile = (filename: string): string => {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const mapping: Record<string, string> = {
-    js: "javascript",
-    jsx: "jsx",
-    ts: "typescript",
-    tsx: "tsx",
-    py: "python",
-    rb: "ruby",
-    css: "css",
-    html: "html",
-    json: "json",
-    md: "markdown",
-  };
-  return mapping[ext || ""] || "text";
-};
 
 export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
   const [copied, setCopied] = useState<string | null>(null);

@@ -37,7 +37,7 @@ export function CallsTable({ calls }: CallsTableProps) {
   return (
     <div className="rounded-md border">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-muted/50">
           <TableRow>
             <TableHead>Title</TableHead>
             <TableHead>Date Added</TableHead>

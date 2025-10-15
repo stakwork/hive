@@ -14,6 +14,7 @@ import { ActionMenu } from "@/components/ui/action-menu";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
+import { AITextareaSection } from "@/components/features/AITextareaSection";
 import { PhaseSection } from "@/components/features/PhaseSection";
 import { PersonasSection } from "@/components/features/PersonasSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -492,13 +493,13 @@ export default function FeatureDetailPage() {
             shouldFocusRef={storyFocusRef}
           />
 
-          <AutoSaveTextarea
+          <AITextareaSection
             id="requirements"
             label="Requirements"
             description="Functional and technical specifications for implementation."
+            type="requirements"
+            featureId={featureId}
             value={feature.requirements}
-            rows={8}
-            className="font-mono text-sm min-h-[200px]"
             savedField={savedField}
             saving={saving}
             saved={saved}
@@ -506,13 +507,13 @@ export default function FeatureDetailPage() {
             onBlur={(value) => handleFieldBlur("requirements", value)}
           />
 
-          <AutoSaveTextarea
+          <AITextareaSection
             id="architecture"
             label="Architecture"
             description="Technical design decisions and implementation approach."
+            type="architecture"
+            featureId={featureId}
             value={feature.architecture}
-            rows={8}
-            className="font-mono text-sm min-h-[200px]"
             savedField={savedField}
             saving={saving}
             saved={saved}

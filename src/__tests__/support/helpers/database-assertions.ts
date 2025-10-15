@@ -161,3 +161,16 @@ export async function expectRepositoryStatus(
   expect(repository).toBeTruthy();
   expect(repository?.status).toBe(expectedStatus);
 }
+
+/**
+ * Assert that a ticket is soft-deleted
+ * @param ticketId - Ticket ID to check
+ */
+export async function expectTicketDeleted(ticketId: string): Promise<void> {
+  const ticket = await db.ticket.findUnique({
+    where: { id: ticketId },
+  });
+  expect(ticket).toBeTruthy();
+  expect(ticket?.deleted).toBe(true);
+  expect(ticket?.deletedAt).toBeTruthy();
+}

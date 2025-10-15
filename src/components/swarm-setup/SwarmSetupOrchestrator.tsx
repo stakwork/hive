@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useState } from "react";
 import { GitHubAccessManager } from "./GitHubAccessManager";
 import { WorkspaceSetup } from "./WorkspaceSetup";
 
