@@ -16,6 +16,8 @@ import type { WorkspaceWithRole } from "@/types/workspace";
 import { Building2, ChevronsUpDown, Plus, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
+import Image from "next/image";
+import { useState, useEffect } from "react";
 
 interface WorkspaceSwitcherProps {
   // Legacy props for backward compatibility
@@ -23,6 +25,66 @@ interface WorkspaceSwitcherProps {
   activeWorkspace?: never; // Mark as deprecated
   onWorkspaceChange?: (workspace: WorkspaceWithRole) => void; // Optional callback
   refreshTrigger?: number; // Still useful for external refresh triggers
+}
+
+function WorkspaceAvatar({ workspaceSlug, size = "md" }: { workspaceSlug: string; size?: "sm" | "md" | "lg" }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadImage = async () => {
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceSlug}/image`);
+        if (response.ok) {
+          const data = await response.json();
+          setImageUrl(data.imageUrl);
+        }
+      } catch (error) {
+        console.error("Error loading workspace image:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadImage();
+  }, [workspaceSlug]);
+
+  const sizeClasses = {
+    sm: "w-6 h-6",
+    md: "w-8 h-8",
+    lg: "w-10 h-10"
+  };
+
+  const iconSizes = {
+    sm: "w-3.5 h-3.5",
+    md: "w-4 h-4",
+    lg: "w-5 h-5"
+  };
+
+  if (isLoading) {
+    return (
+      <div className={`${sizeClasses[size]} rounded-lg bg-muted animate-pulse`} />
+    );
+  }
+
+  if (imageUrl) {
+    return (
+      <div className={`${sizeClasses[size]} rounded-lg overflow-hidden relative`}>
+        <Image
+          src={imageUrl}
+          alt="Workspace"
+          fill
+          className="object-cover"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex items-center justify-center ${sizeClasses[size]} rounded-lg bg-primary text-primary-foreground`}>
+      <Building2 className={iconSizes[size]} />
+    </div>
+  );
 }
 
 export function WorkspaceSwitcher({
@@ -112,13 +174,13 @@ export function WorkspaceSwitcher({
             disabled={loading}
           >
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground">
-                {loading ? (
+              {loading ? (
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Building2 className="w-4 h-4" />
-                )}
-              </div>
+                </div>
+              ) : (
+                <WorkspaceAvatar workspaceSlug={activeWorkspace.slug} size="md" />
+              )}
               <div className="text-left">
                 <div className="font-medium text-sm">
                   {activeWorkspace.name}
@@ -141,9 +203,7 @@ export function WorkspaceSwitcher({
 
           {/* Current Workspace */}
           <DropdownMenuItem className="flex items-center gap-2 p-2 bg-accent/50">
-            <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary text-primary-foreground">
-              <Building2 className="w-3.5 h-3.5" />
-            </div>
+            <WorkspaceAvatar workspaceSlug={activeWorkspace.slug} size="sm" />
             <div className="flex-1">
               <div className="font-medium text-sm">{activeWorkspace.name}</div>
             </div>
@@ -163,9 +223,7 @@ export function WorkspaceSwitcher({
                       onClick={() => handleWorkspaceSelect(workspace)}
                       className="flex items-center gap-2 p-2"
                     >
-                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
-                        <Building2 className="w-3.5 h-3.5" />
-                      </div>
+                      <WorkspaceAvatar workspaceSlug={workspace.slug} size="sm" />
                       <div className="flex-1">
                         <div className="font-medium text-sm">
                           {workspace.name}
