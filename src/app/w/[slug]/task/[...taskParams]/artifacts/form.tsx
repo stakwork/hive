@@ -34,7 +34,7 @@ export function FormArtifact({
   return (
     <Card className="p-4 bg-card border rounded-lg">
       <div className="text-sm font-medium mb-3">
-        <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
+        <MarkdownRenderer size="compact">{content.actionText}</MarkdownRenderer>
       </div>
 
       {/* Only show buttons for actionType="button" options */}

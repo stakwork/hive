@@ -48,7 +48,7 @@ export function LongformArtifactPanel({
                   <span className="line-clamp-2">{content.title}</span>
                 </div>
               )}
-              <MarkdownRenderer>{content.text}</MarkdownRenderer>
+              <MarkdownRenderer size="compact">{content.text}</MarkdownRenderer>
             </div>
           );
         })}
