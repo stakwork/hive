@@ -188,6 +188,11 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
           ]);
           break;
 
+        case "staktrak-playwright-screenshot-error":
+          console.warn(`Screenshot failed for action ${data.actionIndex}:`, data.error);
+          // Error is logged but doesn't interrupt replay
+          break;
+
         default:
           break;
       }

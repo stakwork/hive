@@ -2686,6 +2686,15 @@ var userBehaviour = (() => {
       );
     } catch (error) {
       console.error(`[Screenshot] Error capturing for actionIndex=${actionIndex}:`, error);
+      window.parent.postMessage(
+        {
+          type: "staktrak-playwright-screenshot-error",
+          actionIndex,
+          url,
+          error: error instanceof Error ? error.message : "Screenshot capture failed"
+        },
+        "*"
+      );
     }
   }
   async function startPlaywrightReplay(testCode) {
