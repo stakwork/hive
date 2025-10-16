@@ -215,7 +215,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=10&offset=0",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -313,7 +313,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=20&offset=10",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=21&skip=10",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -345,7 +345,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=10&offset=0",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -361,8 +361,8 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      // Mock response with exactly 10 items (hasMore should be true)
-      const tenItems = Array.from({ length: 10 }, (_, i) => ({
+      // Mock response with 11 items (limit+1), hasMore should be true and only 10 returned
+      const elevenItems = Array.from({ length: 11 }, (_, i) => ({
         ref_id: `call-${i}`,
         node_type: "Episode",
         date_added_to_graph: 1750694095 + i,
@@ -375,7 +375,7 @@ describe("Calls API - Integration Tests", () => {
 
       (global.fetch as any).mockResolvedValue({
         ok: true,
-        json: async () => ({ nodes: tenItems, edges: [] }),
+        json: async () => ({ nodes: elevenItems, edges: [] }),
       });
 
       const request = createAuthenticatedGetRequest(
@@ -430,6 +430,45 @@ describe("Calls API - Integration Tests", () => {
 
       expect(data.calls).toHaveLength(5);
       expect(data.total).toBe(5);
+      expect(data.hasMore).toBe(false);
+    });
+
+    test("returns hasMore=false when exactly limit items returned", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        swarm: { status: "ACTIVE", name: "swarm38" },
+      });
+
+      // Mock response with exactly 10 items (not limit+1), hasMore should be false
+      const tenItems = Array.from({ length: 10 }, (_, i) => ({
+        ref_id: `call-${i}`,
+        node_type: "Episode",
+        date_added_to_graph: 1750694095 + i,
+        properties: {
+          episode_title: `Meeting ${i}`,
+          media_url: `https://example.com/${i}.mp4`,
+          source_link: `https://example.com/${i}.mp4`,
+        },
+      }));
+
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({ nodes: tenItems, edges: [] }),
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
+        owner,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      const data = await expectSuccess(response, 200);
+
+      expect(data.calls).toHaveLength(10);
+      expect(data.total).toBe(10);
       expect(data.hasMore).toBe(false);
     });
   });
