@@ -1,11 +1,13 @@
 "use strict";
 var userBehaviour = (() => {
+  var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __defProps = Object.defineProperties;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __propIsEnum = Object.prototype.propertyIsEnumerable;
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
@@ -21,6 +23,13 @@ var userBehaviour = (() => {
     return a;
   };
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+  var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+    get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+  }) : x)(function(x) {
+    if (typeof require !== "undefined")
+      return require.apply(this, arguments);
+    throw Error('Dynamic require of "' + x + '" is not supported');
+  });
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
@@ -33,6 +42,14 @@ var userBehaviour = (() => {
     }
     return to;
   };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
   // src/index.ts
@@ -1733,8 +1750,6 @@ var userBehaviour = (() => {
     try {
       switch (action.type) {
         case "goto" /* GOTO */:
-          // Skip goto during replay - already on the page, initial screenshot captured at start
-          console.log(`[Replay] Skipping goto action: ${action.value}`);
           break;
         case "setViewportSize" /* SET_VIEWPORT_SIZE */:
           if (action.options) {
@@ -1748,12 +1763,6 @@ var userBehaviour = (() => {
           }
           break;
         case "waitForLoadState" /* WAIT_FOR_LOAD_STATE */:
-          // Wait for page load to complete
-          if (document.readyState !== 'complete') {
-            await new Promise(resolve => {
-              window.addEventListener('load', resolve, { once: true });
-            });
-          }
           break;
         case "waitForSelector" /* WAIT_FOR_SELECTOR */:
           if (action.selector) {
@@ -2645,6 +2654,55 @@ var userBehaviour = (() => {
   var playwrightReplayRef = {
     current: null
   };
+  async function captureScreenshot(actionIndex, url) {
+    var _a;
+    try {
+      const modernScreenshot = await import("https://esm.sh/modern-screenshot@4.4.39");
+      const domToDataUrl = modernScreenshot.domToDataUrl || ((_a = modernScreenshot.default) == null ? void 0 : _a.domToDataUrl);
+      if (!domToDataUrl) {
+        throw new Error("domToDataUrl not found in modern-screenshot module");
+      }
+      const dataUrl = await domToDataUrl(document.body, {
+        quality: 0.8,
+        type: "image/jpeg",
+        scale: 1,
+        backgroundColor: "#ffffff"
+      });
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 10);
+      const response = await fetch("/api/screenshots/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          dataUrl,
+          timestamp,
+          randomId,
+          url,
+          actionIndex
+        })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        window.parent.postMessage(
+          {
+            type: "staktrak-playwright-screenshot-captured",
+            screenshotUrl: result.filePath,
+            actionIndex,
+            url,
+            timestamp,
+            id: `${timestamp}-${randomId}`
+          },
+          "*"
+        );
+      } else {
+        console.error(`[Screenshot] Failed to save for actionIndex=${actionIndex}:`, await response.text());
+      }
+    } catch (error) {
+      console.error(`[Screenshot] Error capturing for actionIndex=${actionIndex}:`, error);
+    }
+  }
   async function startPlaywrightReplay(testCode) {
     try {
       const actions = parsePlaywrightTest(testCode);
@@ -2678,64 +2736,6 @@ var userBehaviour = (() => {
       );
     }
   }
-  async function captureScreenshot(actionIndex, url) {
-    try {
-      // Use modern-screenshot library to capture page as data URL
-      const modernScreenshot = await import('https://esm.sh/modern-screenshot@4.4.39');
-      const domToDataUrl = modernScreenshot.domToDataUrl || modernScreenshot.default?.domToDataUrl;
-
-      if (!domToDataUrl) {
-        throw new Error('domToDataUrl not found in modern-screenshot module');
-      }
-
-      const dataUrl = await domToDataUrl(document.body, {
-        quality: 0.8,
-        type: 'image/jpeg',
-        scale: 1,
-        backgroundColor: '#ffffff'
-      });
-
-      const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substring(2, 10);
-
-      // Save screenshot via API endpoint
-      const response = await fetch('/api/screenshots/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dataUrl,
-          timestamp,
-          randomId,
-          url,
-          actionIndex
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-
-        // Notify parent window that screenshot was captured and saved
-        window.parent.postMessage(
-          {
-            type: 'staktrak-playwright-screenshot-captured',
-            screenshotUrl: result.filePath,
-            actionIndex,
-            url,
-            timestamp,
-            id: `${timestamp}-${randomId}`
-          },
-          '*'
-        );
-      } else {
-        console.error(`[Screenshot] Failed to save for actionIndex=${actionIndex}:`, await response.text());
-      }
-    } catch (error) {
-      console.error(`[Screenshot] Error capturing for actionIndex=${actionIndex}:`, error);
-    }
-  }
-
   async function executeNextPlaywrightAction() {
     const state = playwrightReplayRef.current;
     if (!state || state.status !== "playing" /* PLAYING */) {
@@ -2765,13 +2765,9 @@ var userBehaviour = (() => {
         "*"
       );
       await executePlaywrightAction(action);
-
-      // Capture screenshot after waitForURL actions (meaningful page changes after clicks)
       if (action.type === "waitForURL") {
-        console.log(`[Screenshot] Capturing for actionIndex=${state.currentActionIndex}, url=${window.location.href}`);
         await captureScreenshot(state.currentActionIndex, window.location.href);
       }
-
       state.currentActionIndex++;
       setTimeout(() => {
         executeNextPlaywrightAction();
@@ -3041,7 +3037,7 @@ var userBehaviour = (() => {
         continue;
       a.locator.primary = validated[0];
       a.locator.fallbacks = validated.slice(1);
-      const key = a.locator.primary + "::" + a.kind;
+      const key = a.locator.primary + "::" + a.type;
       if (seen.has(key) && a.locator.fallbacks.length > 0) {
         a.locator.primary = a.locator.fallbacks[0];
         a.locator.fallbacks = a.locator.fallbacks.slice(1);
@@ -3215,14 +3211,14 @@ var userBehaviour = (() => {
     }
     removeFromTrackingData(action) {
       const timestamp = action.timestamp;
-      switch (action.kind) {
+      switch (action.type) {
         case "click":
           this.trackingData.clicks.clickDetails = this.trackingData.clicks.clickDetails.filter(
             (c) => c.timestamp !== timestamp
           );
           this.trackingData.clicks.clickCount = this.trackingData.clicks.clickDetails.length;
           break;
-        case "nav":
+        case "goto":
           this.trackingData.pageNavigation = this.trackingData.pageNavigation.filter(
             (n) => n.timestamp !== timestamp
           );
@@ -3308,15 +3304,15 @@ var userBehaviour = (() => {
   }
   function generatePlaywrightTestFromActions(actions, options = {}) {
     const { baseUrl = "" } = options;
-    const needsInitialGoto = baseUrl && (actions.length === 0 || actions[0].kind !== "nav");
+    const needsInitialGoto = baseUrl && (actions.length === 0 || actions[0].type !== "goto");
     const initialGoto = needsInitialGoto ? `  await page.goto('${baseUrl}');
 ` : "";
     const body = actions.map((action) => {
       var _a, _b, _c, _d, _e;
-      switch (action.kind) {
-        case "nav":
+      switch (action.type) {
+        case "goto":
           return `  await page.goto('${action.url || baseUrl}');`;
-        case "waitForUrl":
+        case "waitForURL":
           if (action.normalizedUrl) {
             return `  await page.waitForURL('${action.normalizedUrl}');`;
           }
@@ -3566,7 +3562,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                 type: "staktrak-action-added",
                 action: {
                   id: clickDetail.timestamp + "_click",
-                  type: "click",
+                  kind: "click",
                   timestamp: clickDetail.timestamp,
                   locator: {
                     primary: clickDetail.selectors.primary,
@@ -3682,7 +3678,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                     type: "staktrak-action-added",
                     action: {
                       id: formChange.timestamp + "_form",
-                      type: "form",
+                      kind: "form",
                       timestamp: formChange.timestamp,
                       formType: formChange.type,
                       value: formChange.text
@@ -3711,7 +3707,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                     type: "staktrak-action-added",
                     action: {
                       id: formChange.timestamp + "_form",
-                      type: "form",
+                      kind: "form",
                       timestamp: formChange.timestamp,
                       formType: formChange.type,
                       checked: formChange.checked,
@@ -3749,7 +3745,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                     type: "staktrak-action-added",
                     action: {
                       id: inputAction2.timestamp + "_input",
-                      type: "input",
+                      kind: "input",
                       timestamp: inputAction2.timestamp,
                       value: inputAction2.value,
                       locator: { primary: selector, fallbacks: [] }
@@ -3772,7 +3768,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                   type: "staktrak-action-added",
                   action: {
                     id: inputAction.timestamp + "_input",
-                    type: "input",
+                    kind: "input",
                     timestamp: inputAction.timestamp,
                     value: inputAction.value
                   }
@@ -3810,7 +3806,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                       type: "staktrak-action-added",
                       action: {
                         id: inputAction.timestamp + "_input",
-                        type: "input",
+                        kind: "input",
                         timestamp: inputAction.timestamp,
                         value: inputAction.value
                       }
@@ -3864,7 +3860,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
             type: "staktrak-action-added",
             action: {
               id: navAction.timestamp + "_nav",
-              type: "goto",
+              kind: "nav",
               timestamp: navAction.timestamp,
               url: navAction.url
             }
@@ -3910,7 +3906,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                 type: "staktrak-action-added",
                 action: {
                   id: navAction.timestamp + "_nav",
-                  type: "goto",
+                  kind: "nav",
                   timestamp: navAction.timestamp,
                   url: navAction.url
                 }
