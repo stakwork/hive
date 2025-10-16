@@ -123,6 +123,15 @@ export interface StreamToolCall {
   errorText?: string;
 }
 
+// Timeline item types for interleaved rendering
+export type StreamTimelineItemType = "text" | "reasoning" | "toolCall";
+
+export interface StreamTimelineItem {
+  type: StreamTimelineItemType;
+  id: string;
+  data: StreamTextPart | StreamReasoningPart | StreamToolCall;
+}
+
 export interface BaseStreamingMessage {
   id: string;
   content: string;
@@ -131,6 +140,7 @@ export interface BaseStreamingMessage {
   textParts?: StreamTextPart[];
   reasoningParts?: StreamReasoningPart[];
   toolCalls?: StreamToolCall[];
+  timeline?: StreamTimelineItem[]; // Interleaved timeline of all events
   error?: string;
 }
 

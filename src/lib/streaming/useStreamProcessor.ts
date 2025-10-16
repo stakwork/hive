@@ -58,10 +58,18 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       }
 
       const textParts = new Map<string, string>();
+      const textPartsOrder: string[] = []; // Track insertion order
       const reasoningParts = new Map<string, string>();
+      const reasoningPartsOrder: string[] = []; // Track insertion order
       const toolCalls = new Map<string, InternalToolCall>();
+      const toolCallsOrder: string[] = []; // Track insertion order
       const hiddenToolCallIds = new Map<string, string>(); // callId -> toolName
+      const timeline: Array<{ type: "text" | "reasoning" | "toolCall"; id: string }> = []; // Unified timeline
       let error: string | undefined;
+
+      // Track text part sequence to generate unique IDs when stream reuses IDs
+      let textPartSequence = 0;
+      const streamIdToUniqueId = new Map<string, string>(); // Map stream ID to our unique ID
 
       // Context for tool processors (can be used to pass state between processors)
       const processorContext: Record<string, unknown> = {};
@@ -70,25 +78,46 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       let debounceTimer: NodeJS.Timeout | null = null;
 
       const buildMessage = (isStreaming: boolean): T => {
-        const allTextParts = Array.from(textParts.entries()).map(([id, content]) => ({
+        // Use the tracked order to build arrays in insertion order
+        const allTextParts = textPartsOrder.map((id) => ({
           id,
-          content,
+          content: textParts.get(id) || "",
         }));
+
+        const allReasoningParts = reasoningPartsOrder.map((id) => ({
+          id,
+          content: reasoningParts.get(id) || "",
+        }));
+
+        const allToolCalls = toolCallsOrder.map((id) => {
+          const call = toolCalls.get(id);
+          return call ? { id, ...call } : null;
+        }).filter((call): call is NonNullable<typeof call> => call !== null);
+
+        // Build timeline in insertion order
+        const timelineItems = timeline.map(item => {
+          if (item.type === "text") {
+            const textPart = allTextParts.find(p => p.id === item.id);
+            return textPart ? { type: "text" as const, id: item.id, data: textPart } : null;
+          } else if (item.type === "reasoning") {
+            const reasoningPart = allReasoningParts.find(p => p.id === item.id);
+            return reasoningPart ? { type: "reasoning" as const, id: item.id, data: reasoningPart } : null;
+          } else if (item.type === "toolCall") {
+            const toolCall = allToolCalls.find(t => t.id === item.id);
+            return toolCall ? { type: "toolCall" as const, id: item.id, data: toolCall } : null;
+          }
+          return null;
+        }).filter((item): item is NonNullable<typeof item> => item !== null);
 
         return {
           id: messageId,
-          content: Array.from(textParts.values()).join(""),
+          content: textPartsOrder.map((id) => textParts.get(id) || "").join(""),
           isStreaming,
           isError: !!error,
           textParts: allTextParts,
-          reasoningParts: Array.from(reasoningParts.entries()).map(([id, content]) => ({
-            id,
-            content,
-          })),
-          toolCalls: Array.from(toolCalls.entries()).map(([id, call]) => ({
-            id,
-            ...call,
-          })),
+          reasoningParts: allReasoningParts,
+          toolCalls: allToolCalls,
+          timeline: timelineItems,
           error,
           ...additionalFields,
         } as T;
@@ -120,11 +149,29 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
             const data = JSON.parse(jsonStr) as StreamEvent;
 
             if (data.type === "text-start") {
-              textParts.set(data.id, "");
+              // Generate unique ID by combining stream ID with sequence number
+              // This handles cases where AI SDK reuses the same ID for multiple text blocks
+              const uniqueId = `${data.id}-${textPartSequence}`;
+              textPartSequence++;
+
+              // Map this stream ID to our unique ID
+              streamIdToUniqueId.set(data.id, uniqueId);
+
+              textParts.set(uniqueId, "");
+              textPartsOrder.push(uniqueId);
+              timeline.push({ type: "text", id: uniqueId });
             } else if (data.type === "text-delta") {
-              textParts.set(data.id, (textParts.get(data.id) || "") + data.delta);
+              // Use the mapped unique ID for this stream ID
+              const uniqueId = streamIdToUniqueId.get(data.id);
+              if (uniqueId) {
+                textParts.set(uniqueId, (textParts.get(uniqueId) || "") + data.delta);
+              }
             } else if (data.type === "reasoning-start") {
               reasoningParts.set(data.id, "");
+              if (!reasoningPartsOrder.includes(data.id)) {
+                reasoningPartsOrder.push(data.id);
+                timeline.push({ type: "reasoning", id: data.id });
+              }
             } else if (data.type === "reasoning-delta") {
               reasoningParts.set(data.id, (reasoningParts.get(data.id) || "") + data.delta);
             } else if (data.type === "tool-input-start") {
@@ -136,6 +183,10 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                   toolName: data.toolName,
                   status: "input-start",
                 });
+                if (!toolCallsOrder.includes(data.toolCallId)) {
+                  toolCallsOrder.push(data.toolCallId);
+                  timeline.push({ type: "toolCall", id: data.toolCallId });
+                }
               }
             } else if (data.type === "tool-input-delta") {
               const existing = toolCalls.get(data.toolCallId);
@@ -186,6 +237,10 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                 const textId = hiddenToolTextIds[hiddenToolName] || `${hiddenToolName}-output`;
                 if (typeof processedOutput === "string") {
                   textParts.set(textId, processedOutput);
+                  if (!textPartsOrder.includes(textId)) {
+                    textPartsOrder.push(textId);
+                    timeline.push({ type: "text", id: textId });
+                  }
                 }
               } else {
                 // Regular tool call
@@ -247,7 +302,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       // Finalize
       onUpdate(buildMessage(false));
     },
-    [debounceMs, toolProcessors]
+    [debounceMs, toolProcessors, hiddenTools, hiddenToolTextIds]
   );
 
   return { processStream };

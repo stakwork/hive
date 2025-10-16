@@ -174,7 +174,7 @@ export default function CallsPage() {
             </div>
           )}
 
-          {!loading && !error && <CallsTable calls={calls} />}
+          {!loading && !error && <CallsTable calls={calls} workspaceSlug={slug} />}
 
           {!loading && !error && calls.length > 0 && (
             <div className="mt-6">
