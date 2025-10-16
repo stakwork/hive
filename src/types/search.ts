@@ -1,4 +1,4 @@
-import type { TaskStatus, Priority, FeatureStatus, TicketStatus, PhaseStatus } from "@prisma/client";
+import type { TaskStatus, Priority, FeaturePriority, FeatureStatus, TicketStatus, PhaseStatus } from "@prisma/client";
 
 export type SearchEntityType = "task" | "feature" | "ticket" | "phase";
 
@@ -13,7 +13,7 @@ export interface SearchResult {
 
 export interface SearchResultMetadata {
   status?: TaskStatus | FeatureStatus | TicketStatus | PhaseStatus;
-  priority?: Priority;
+  priority?: Priority | FeaturePriority;
   assignee?: {
     id: string;
     name: string | null;
