@@ -1733,15 +1733,8 @@ var userBehaviour = (() => {
     try {
       switch (action.type) {
         case "goto" /* GOTO */:
-          if (action.value && typeof action.value === "string") {
-            window.parent.postMessage(
-              {
-                type: "staktrak-iframe-navigate",
-                url: action.value
-              },
-              "*"
-            );
-          }
+          // Skip goto during replay - already on the page, initial screenshot captured at start
+          console.log(`[Replay] Skipping goto action: ${action.value}`);
           break;
         case "setViewportSize" /* SET_VIEWPORT_SIZE */:
           if (action.options) {
@@ -2652,7 +2645,7 @@ var userBehaviour = (() => {
   var playwrightReplayRef = {
     current: null
   };
-  function startPlaywrightReplay(testCode) {
+  async function startPlaywrightReplay(testCode) {
     try {
       const actions = parsePlaywrightTest(testCode);
       if (actions.length === 0) {
@@ -2773,9 +2766,10 @@ var userBehaviour = (() => {
       );
       await executePlaywrightAction(action);
 
-      // Capture screenshot after navigation actions
-      if (action.type === "goto" /* GOTO */ || action.type === "waitForURL") {
-        await captureScreenshot(state.currentActionIndex, action.value || window.location.href);
+      // Capture screenshot after waitForURL actions (meaningful page changes after clicks)
+      if (action.type === "waitForURL") {
+        console.log(`[Screenshot] Capturing for actionIndex=${state.currentActionIndex}, url=${window.location.href}`);
+        await captureScreenshot(state.currentActionIndex, window.location.href);
       }
 
       state.currentActionIndex++;

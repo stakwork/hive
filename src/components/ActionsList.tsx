@@ -255,9 +255,8 @@ export function ActionsList({
               const isCompleted = status === "completed";
               const screenshot = getScreenshotForAction(index);
               const actionType = action.type;
+              // Only waitForURL actions get screenshots (goto is skipped)
               const isNavAction =
-                actionType === "nav" ||
-                actionType === "goto" ||
                 actionType === "waitForUrl" ||
                 actionType === "waitForURL";
               const hasScreenshot = isNavAction && !!screenshot;
