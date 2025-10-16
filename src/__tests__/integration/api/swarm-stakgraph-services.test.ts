@@ -58,7 +58,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
     });
 
     workspaceId = testData.workspace.id;
-    swarmId = testData.swarm.swarmId!;
+    swarmId = testData.swarm.id;
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
