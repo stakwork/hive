@@ -133,7 +133,6 @@ function getActionDisplay(action: Action): React.ReactNode {
           {assertDesc !== "element" && <span className="text-muted-foreground"> in {assertDesc}</span>}
         </>
       );
-    case "waitForUrl":
     case "waitForURL":
       return (
         <>
@@ -159,7 +158,6 @@ function getActionBorderColor(kind: string): string {
       return "border-l-purple-500";
     case "assertion":
       return "border-l-red-500";
-    case "waitForUrl":
     case "waitForURL":
       return "border-l-muted-foreground";
     default:
@@ -256,9 +254,7 @@ export function ActionsList({
               const screenshot = getScreenshotForAction(index);
               const actionType = action.type;
               // Only waitForURL actions get screenshots (goto is skipped)
-              const isNavAction =
-                actionType === "waitForUrl" ||
-                actionType === "waitForURL";
+              const isNavAction = actionType === "waitForURL";
               const hasScreenshot = isNavAction && !!screenshot;
 
               return (
