@@ -17,6 +17,7 @@ vi.mock("@/lib/db", () => ({
     },
     chatMessage: {
       create: vi.fn(),
+      findMany: vi.fn(),
     },
     workspace: {
       findUnique: vi.fn(),
@@ -107,9 +108,10 @@ describe("POST /api/chat/message", () => {
     mockDb.task.findFirst.mockResolvedValue(mockTask as any);
     mockDb.user.findUnique.mockResolvedValue(mockUser as any);
     mockDb.chatMessage.create.mockResolvedValue(mockChatMessage as any);
+    mockDb.chatMessage.findMany.mockResolvedValue([]);
     mockDb.task.update.mockResolvedValue({} as any);
     mockDb.workspace.findUnique.mockResolvedValue({ slug: 'test-workspace' } as any);
-    
+
     mockGetGithubUsernameAndPAT.mockResolvedValue({
       username: "testuser",
       token: "token123",
