@@ -1,7 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from '@/__tests__/e2e/support/fixtures/test-hooks';
 import { AuthPage, WorkspaceSettingsPage } from '@/__tests__/e2e/support/page-objects';
-import { createStandardWorkspaceScenario } from '@/__tests__/e2e/support/fixtures/e2e-scenarios';
 import { selectors } from '@/__tests__/e2e/support/fixtures/selectors';
 
 test.describe('Workspace Settings Edit', () => {
@@ -10,17 +9,18 @@ test.describe('Workspace Settings Edit', () => {
     const authPage = new AuthPage(page);
     await authPage.signInWithMock();
 
-    // Create a standard workspace scenario for testing
-    const { workspace } = await createStandardWorkspaceScenario();
+    // Get the workspace slug from the current URL (mock auth creates a workspace automatically)
+    const workspaceSlug = authPage.getCurrentWorkspaceSlug();
 
     // Navigate to workspace settings
     const settingsPage = new WorkspaceSettingsPage(page);
-    await settingsPage.goto(workspace.slug);
+    await settingsPage.goto(workspaceSlug);
 
     // Act - Update workspace settings
-    const updatedName = 'Mock Workspace 123';
-    const updatedSlug = 'mock-stakgraph-123';
-    const updatedDescription = 'Development workspace (mock) 123.';
+    const timestamp = Date.now();
+    const updatedName = `Updated Workspace ${timestamp}`;
+    const updatedSlug = `updated-workspace-${timestamp}`;
+    const updatedDescription = `Updated description ${timestamp}.`;
 
     await settingsPage.updateWorkspaceSettings({
       name: updatedName,
