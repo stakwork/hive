@@ -71,6 +71,7 @@ export async function ensureMockWorkspaceForUser(
         swarmUrl: "http://localhost",
         agentRequestId: null,
         agentStatus: null,
+        containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
       },
     });
 
