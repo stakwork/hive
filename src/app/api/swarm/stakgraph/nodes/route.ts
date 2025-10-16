@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
-    const nodeType = searchParams.get("node_type");
+    // const nodeType = searchParams.get("node_type");
 
-    console.log("workspaceId", workspaceId, nodeType);
+    // console.log("workspaceId", workspaceId, nodeType);
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     if (process.env.CUSTOM_SWARM_URL) stakgraphUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
     if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
-    console.log("stakgraphUrl", stakgraphUrl);
+    // console.log("stakgraphUrl", stakgraphUrl);
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: `graph/search/latest`,
