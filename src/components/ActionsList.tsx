@@ -221,7 +221,7 @@ export function ActionsList({
   };
 
   return (
-    <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm">
+    <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm" data-testid="actions-list">
       <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
         <h3 className="text-sm font-semibold">
           {isReplaying ? (
@@ -273,6 +273,7 @@ export function ActionsList({
                         : "bg-muted/50 hover:bg-muted"
                   }`}
                   title={`${actionType}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
+                  data-testid={`action-item-${index}`}
                 >
                   {isReplaying && getStatusIcon(status)}
                   {hasScreenshot && (
@@ -281,6 +282,7 @@ export function ActionsList({
                       className="flex-shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:border-primary transition-colors"
                       title="Click to view screenshot"
                       aria-label={`View screenshot of ${screenshot.url} at action ${index + 1}`}
+                      data-testid={`screenshot-thumbnail-${index}`}
                     >
                       <img
                         src={screenshot.dataUrl}
@@ -295,6 +297,7 @@ export function ActionsList({
                       title="No screenshot available"
                       role="img"
                       aria-label="No screenshot available for this action"
+                      data-testid={`screenshot-placeholder-${index}`}
                     >
                       <Camera className="h-4 w-4 text-muted-foreground" />
                     </div>

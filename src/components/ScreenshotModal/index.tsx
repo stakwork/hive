@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { Screenshot } from "@/types/common";
 import {
   Dialog,
@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import Image from "next/image";
 
 interface ScreenshotModalProps {
   screenshot: Screenshot | null;
@@ -65,7 +64,7 @@ export function ScreenshotModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto" data-testid="screenshot-modal">
         <DialogHeader>
           <DialogTitle className="flex flex-col gap-1">
             <span>Screenshot - Action {screenshot.actionIndex + 1}</span>
@@ -77,13 +76,11 @@ export function ScreenshotModal({
 
         <div className="relative w-full">
           <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-            <Image
+            <img
               src={screenshot.dataUrl}
               alt={`Screenshot of ${screenshot.url}`}
-              width={1200}
-              height={800}
               className="w-full h-auto"
-              unoptimized
+              data-testid="screenshot-image"
             />
           </div>
 
@@ -95,11 +92,12 @@ export function ScreenshotModal({
                 size="sm"
                 disabled={!hasPrevious}
                 onClick={handlePrevious}
+                data-testid="screenshot-prev"
               >
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Previous
               </Button>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground" data-testid="screenshot-position">
                 {currentIndex + 1} of {allScreenshots.length}
               </span>
               <Button
@@ -107,6 +105,7 @@ export function ScreenshotModal({
                 size="sm"
                 disabled={!hasNext}
                 onClick={handleNext}
+                data-testid="screenshot-next"
               >
                 Next
                 <ChevronRight className="h-4 w-4 ml-1" />
