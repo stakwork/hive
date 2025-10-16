@@ -39,8 +39,8 @@ const DEFAULT_TRANSFORM = (data: any): GraphData => {
     return {
       nodes: data.nodes.map((node: any) => ({
         id: node.ref_id || node.id,
-        name: node.properties?.name || node.name || "Unnamed",
-        type: node.labels?.find((l: string) => l !== "Data_Bank") || node.type || "Unknown",
+        name: node.properties?.name || node.properties?.title || node.name || "Unnamed",
+        type: node.node_type || node.labels?.find((l: string) => l !== "Data_Bank") || node.type || "Unknown",
         ...node,
       })),
       edges: data.edges.map((edge: any) => ({
