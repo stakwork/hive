@@ -285,7 +285,7 @@ export function ActionsList({
                       className="flex-shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:border-primary transition-colors"
                       title="Click to view screenshot"
                     >
-                      <img src={screenshot.filePath} alt="Screenshot" className="w-full h-full object-cover" />
+                      <img src={screenshot.dataUrl} alt="Screenshot" className="w-full h-full object-cover" />
                     </button>
                   )}
                   {isNavAction && !hasScreenshot && (

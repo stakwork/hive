@@ -181,7 +181,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
             {
               id: data.id,
               actionIndex: data.actionIndex,
-              filePath: data.screenshotUrl,
+              dataUrl: data.screenshot,
               timestamp: data.timestamp,
               url: data.url,
             },

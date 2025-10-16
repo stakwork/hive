@@ -59,7 +59,7 @@ export function ScreenshotModal({
         <div className="relative w-full">
           <div className="relative w-full bg-muted rounded-lg overflow-hidden">
             <Image
-              src={screenshot.filePath}
+              src={screenshot.dataUrl}
               alt={`Screenshot of ${screenshot.url}`}
               width={1200}
               height={800}

@@ -77,7 +77,7 @@ export interface SwarmService {
 export interface Screenshot {
   id: string;
   actionIndex: number;
-  filePath: string; // Path to saved screenshot file (e.g., /screenshots/1234567890-a3f9d2.jpg)
+  dataUrl: string; // Base64-encoded screenshot data URL
   timestamp: number;
   url: string; // Page URL when screenshot was taken
 }
