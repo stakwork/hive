@@ -88,7 +88,6 @@
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.3",
     "lucide-react": "^0.525.0",
-    "modern-screenshot": "^4.6.6",
     "next": "^15.4.1",
     "next-auth": "^4.24.11",
     "postcss": "^8.5.6",
