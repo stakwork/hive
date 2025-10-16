@@ -66,6 +66,8 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
           environmentVariables: [],
           services: [],
           workspaceId: testWorkspace.id,
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 

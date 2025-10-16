@@ -1,13 +1,13 @@
-import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
-import { NextRequest } from "next/server";
 import { POST } from "@/app/api/swarm/route";
-import { getServerSession } from "next-auth/next";
-import { generateSecurePassword } from "@/lib/utils/password";
-import { validateWorkspaceAccessById } from "@/services/workspace";
-import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { SwarmService } from "@/services/swarm";
 import { getServiceConfig } from "@/config/services";
+import { generateSecurePassword } from "@/lib/utils/password";
+import { SwarmService } from "@/services/swarm";
+import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { SwarmStatus } from "@prisma/client";
+import { getServerSession } from "next-auth/next";
+import { NextRequest } from "next/server";
+import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
 
 // Mock external dependencies
 vi.mock("next-auth/next", () => ({
@@ -57,13 +57,13 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Setup SwarmService mock instance
     mockSwarmServiceInstance = {
       createSwarm: vi.fn(),
     };
     mockSwarmService.mockImplementation(() => mockSwarmServiceInstance);
-    
+
     // Default mocks
     mockGetServiceConfig.mockReturnValue({
       baseURL: "https://swarm.example.com",
@@ -71,7 +71,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       timeout: 30000,
       headers: { "Content-Type": "application/json" },
     });
-    
+
     mockGenerateSecurePassword.mockReturnValue("secure-test-password-123");
   });
 
@@ -105,7 +105,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         success: false,
         message: "Unauthorized",
       });
-      
+
       // Verify no sensitive operations were attempted
       expect(mockValidateWorkspaceAccessById).not.toHaveBeenCalled();
       expect(mockGenerateSecurePassword).not.toHaveBeenCalled();
@@ -116,7 +116,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: false,
         canAdmin: false,
@@ -131,7 +131,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         success: false,
         message: "Workspace not found or access denied",
       });
-      
+
       // Verify sensitive operations were blocked
       expect(mockGenerateSecurePassword).not.toHaveBeenCalled();
       expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled();
@@ -141,7 +141,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: false,
@@ -156,7 +156,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         success: false,
         message: "Only workspace owners and admins can create swarms",
       });
-      
+
       // Verify sensitive operations were blocked
       expect(mockGenerateSecurePassword).not.toHaveBeenCalled();
       expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled();
@@ -166,7 +166,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: true,
@@ -208,24 +208,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, name, repositoryName, repositoryUrl");
-    });
-
-    test("should reject requests with missing name", async () => {
-      mockGetServerSession.mockResolvedValue({
-        user: { id: "user-123" },
-      });
-
-      const invalidData = { ...validSwarmData };
-      delete (invalidData as any).name;
-
-      const request = createMockRequest(invalidData);
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, name, repositoryName, repositoryUrl");
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
 
     test("should reject requests with missing repository fields", async () => {
@@ -244,7 +227,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Missing required fields: workspaceId, name, repositoryName, repositoryUrl");
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
   });
 
@@ -253,7 +236,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockGetServerSession.mockResolvedValue({
         user: { id: "user-123" },
       });
-      
+
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: true,
@@ -275,7 +258,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       await POST(request);
 
       expect(mockGenerateSecurePassword).toHaveBeenCalledWith(20);
-      
+
       // Verify password was used in swarm creation
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith({
         instance_type: "m6i.xlarge",
@@ -285,7 +268,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
     test("should handle API key securely", async () => {
       const sensitiveApiKey = "very-sensitive-api-key-123";
-      
+
       mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
@@ -302,7 +285,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
-      
+
       // Verify API key is not exposed in response
       expect(JSON.stringify(data)).not.toContain(sensitiveApiKey);
       expect(data.data).toEqual({
@@ -521,7 +504,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(200);
       expect(data).toEqual({
         success: true,
-        message: "test-swarm-Swarm was created successfully",
+        message: "Swarm was created successfully",
         data: {
           id: "final-swarm",
           swarmId: "swarm-456",

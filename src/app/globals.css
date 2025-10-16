@@ -118,6 +118,14 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Ensure all interactive elements have pointer cursor */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a:not([aria-disabled="true"]),
+  [draggable="true"] {
+    cursor: pointer;
+  }
 }
 
 /* React Flow Controls Styling */

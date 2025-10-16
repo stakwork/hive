@@ -6,10 +6,12 @@ const encryptionService = EncryptionService.getInstance();
 
 export interface CreateTestSwarmOptions {
   name?: string;
+  swarmId?: string;
   workspaceId: string;
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
   swarmApiKey?: string;
+  containerFilesSetUp?: boolean;
 }
 
 export async function createTestSwarm(
@@ -17,18 +19,24 @@ export async function createTestSwarm(
 ): Promise<Swarm> {
   const timestamp = Date.now();
 
-  const data: any = {
+  const baseData = {
     name: options.name || `test-swarm-${timestamp}`,
     workspaceId: options.workspaceId,
     status: options.status || "ACTIVE",
     instanceType: options.instanceType || "XL",
+    agentRequestId: null,
+    agentStatus: null,
+    containerFilesSetUp: options.containerFilesSetUp ?? true, // Default to true for E2E tests
   };
 
-  if (options.swarmApiKey) {
-    data.swarmApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", options.swarmApiKey)
-    );
-  }
+  const createData = options.swarmApiKey
+    ? {
+        ...baseData,
+        swarmApiKey: JSON.stringify(
+          encryptionService.encryptField("swarmApiKey", options.swarmApiKey)
+        ),
+      }
+    : baseData;
 
-  return db.swarm.create({ data });
+  return db.swarm.create({ data: createData });
 }

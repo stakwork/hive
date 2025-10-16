@@ -74,6 +74,8 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
           swarmUrl: "https://sync-swarm.sphinx.chat/api",
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
           services: [],
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 

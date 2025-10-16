@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   }
   const userId = (session.user as { id: string }).id;
   const body = await request.json();
-  const { name, description, slug } = body;
+  const { name, description, slug, repositoryUrl } = body;
   if (!name || !slug) {
     return NextResponse.json(
       { error: "Missing required fields" },
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       description,
       slug,
       ownerId: userId,
+      repositoryUrl,
     });
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {

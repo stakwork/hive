@@ -2,6 +2,7 @@ export interface CallRecording {
   ref_id: string;
   episode_title: string;
   date_added_to_graph: number;
+  description?: string;
 }
 
 export interface CallsResponse {
@@ -18,6 +19,7 @@ export interface JarvisNode {
     episode_title: string;
     media_url: string;
     source_link: string;
+    description?: string;
   };
 }
 

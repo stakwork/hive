@@ -1,16 +1,16 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { TEST_DATE_ISO, workspaceMocks, workspaceMockSetup } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
+import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
+import { db } from "@/lib/db";
 import {
   createWorkspace,
-  getWorkspacesByUserId,
-  getWorkspaceBySlug,
-  getUserWorkspaces,
-  getDefaultWorkspaceForUser,
   deleteWorkspaceBySlug,
+  getDefaultWorkspaceForUser,
+  getUserWorkspaces,
+  getWorkspaceBySlug,
+  getWorkspacesByUserId,
   updateWorkspace
 } from "@/services/workspace";
-import { db } from "@/lib/db";
-import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
-import { workspaceMocks, workspaceMockSetup, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockedDb = vi.mocked(db);
 
@@ -153,7 +153,7 @@ describe("Workspace CRUD Operations", () => {
         where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
-          swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true, swarmUrl: true } },
+          swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true } },
           repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
         },
       });
@@ -161,6 +161,9 @@ describe("Workspace CRUD Operations", () => {
         id: "ws1",
         name: "Test Workspace",
         description: "A test workspace",
+        containerFilesSetUp: null,
+        repositoryDraft: null,
+        swarmId: "swarm1",
         slug: "test-workspace",
         ownerId: "owner1",
         hasKey: true,

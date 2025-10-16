@@ -5,6 +5,7 @@ export interface CreateWorkspaceRequest {
   description?: string;
   slug: string;
   ownerId: string;
+  repositoryUrl?: string;
 }
 
 export interface WorkspaceResponse {
@@ -37,6 +38,9 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   ingestRefId: string | null;
   poolState: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE" | null;
   swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
+  swarmId: string | null;
+  containerFilesSetUp: boolean | null;
+  repositoryDraft: string | null;
   swarmUrl: string | null;
   repositories: Array<{
     id: string;

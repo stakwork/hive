@@ -97,7 +97,7 @@ export async function GET(
     const jarvisUrl = getJarvisUrl(workspace.swarm.name);
 
     const jarvisResponse = await fetch(
-      `${jarvisUrl}/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=${limit}&offset=${skip}`,
+      `${jarvisUrl}/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=${limit + 1}&skip=${skip}`,
       {
         method: "GET",
         headers: {
@@ -118,14 +118,16 @@ export async function GET(
 
     const jarvisData: JarvisSearchResponse = await jarvisResponse.json();
 
-    const calls: CallRecording[] = jarvisData.nodes.map((node) => ({
+    const allCalls: CallRecording[] = jarvisData.nodes.map((node) => ({
       ref_id: node.ref_id,
       episode_title: node.properties.episode_title,
       date_added_to_graph: node.date_added_to_graph,
+      description: node.properties.description,
     }));
 
+    const hasMore = allCalls.length > limit;
+    const calls = hasMore ? allCalls.slice(0, limit) : allCalls;
     const total = calls.length;
-    const hasMore = calls.length === limit;
 
     const response: CallsResponse = {
       calls,

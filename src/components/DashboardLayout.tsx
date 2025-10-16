@@ -5,6 +5,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
+import { GlobalSearch } from "./GlobalSearch";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -70,6 +71,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Sidebar user={user} />
+      <GlobalSearch />
 
       {/* Main content */}
       <div className={`${isTaskPage ? "md:pl-0" : "md:pl-80"}`}>
