@@ -299,16 +299,18 @@ export function ActionsList({
                   <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                     {getActionDisplay(action)}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRemoveAction(action)}
-                    disabled={!isRecording || isReplaying}
-                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
-                    title="Remove this action"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
+                  {isRecording && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRemoveAction(action)}
+                      disabled={!isRecording || isReplaying}
+                      className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
+                      title="Remove this action"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               );
             })}
