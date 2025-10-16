@@ -104,15 +104,11 @@ export async function swarmApiRequest({
   try {
     const url = `${swarmUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-    console.log("swarmhRequestStart");
-
     const headers: Record<string, string> = {
       Authorization: `Bearer ${encryptionService.decryptField("swarmApiKey", apiKey).toString()}`,
       "x-api-token": `${encryptionService.decryptField("swarmApiKey", apiKey)}`,
       "Content-Type": "application/json",
     };
-
-    console.log(url, headers, data, method, apiKey);
 
     const response = await fetch(url, {
       method,
@@ -120,14 +116,11 @@ export async function swarmApiRequest({
       ...(data ? { body: JSON.stringify(data) } : {}),
     });
 
-    console.log("swarmhRequestEnd", response);
-
     let responseData: unknown = undefined;
     // Get the text first, then try to parse as JSON
     const responseText = await response.text();
     try {
       responseData = JSON.parse(responseText);
-      console.log("API Response:", responseData);
     } catch (error) {
       console.error("swarmApiRequest JSON error", responseText, error);
       responseData = undefined;
@@ -162,12 +155,12 @@ export async function swarmApiRequestAuth({
     // build query string if params provided
     const queryString = params
       ? "?" +
-      new URLSearchParams(
-        Object.entries(params).reduce(
-          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-          {} as Record<string, string>,
-        ),
-      ).toString()
+        new URLSearchParams(
+          Object.entries(params).reduce(
+            (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
+            {} as Record<string, string>,
+          ),
+        ).toString()
       : "";
 
     const url =

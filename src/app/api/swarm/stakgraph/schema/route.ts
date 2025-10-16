@@ -10,10 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -24,16 +21,10 @@ export async function GET(request: NextRequest) {
 
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL or API key not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
     const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:3355`;
@@ -46,7 +37,7 @@ export async function GET(request: NextRequest) {
       apiKey: swarm.swarmApiKey,
     });
 
-    console.log('apiResult', apiResult)
+    // console.log('apiResult', apiResult)
 
     return NextResponse.json(
       {
@@ -58,9 +49,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Schema fetch error:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to get schemas" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to get schemas" }, { status: 500 });
   }
 }
