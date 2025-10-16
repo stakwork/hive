@@ -163,7 +163,7 @@ describe("Workspace CRUD Operations", () => {
         description: "A test workspace",
         containerFilesSetUp: null,
         repositoryDraft: null,
-        swarmId: "swarm-123",
+        swarmId: "swarm1",
         slug: "test-workspace",
         ownerId: "owner1",
         hasKey: true,
