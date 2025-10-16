@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { CallRecording } from "@/types/calls";
 import {
   Table,
@@ -12,9 +13,12 @@ import {
 
 interface CallsTableProps {
   calls: CallRecording[];
+  workspaceSlug: string;
 }
 
-export function CallsTable({ calls }: CallsTableProps) {
+export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
+  const router = useRouter();
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     return new Intl.DateTimeFormat("en-US", {
@@ -24,6 +28,10 @@ export function CallsTable({ calls }: CallsTableProps) {
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
+  };
+
+  const handleRowClick = (refId: string) => {
+    router.push(`/w/${workspaceSlug}/calls/${refId}`);
   };
 
   if (calls.length === 0) {
@@ -45,7 +53,11 @@ export function CallsTable({ calls }: CallsTableProps) {
         </TableHeader>
         <TableBody>
           {calls.map((call) => (
-            <TableRow key={call.ref_id}>
+            <TableRow
+              key={call.ref_id}
+              onClick={() => handleRowClick(call.ref_id)}
+              className="cursor-pointer hover:bg-muted/50"
+            >
               <TableCell className="font-medium">
                 {call.episode_title}
               </TableCell>
