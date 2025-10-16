@@ -17,6 +17,7 @@ import { TicketsTable } from "@/components/features/TicketsTable";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
 import { TicketNode } from "@/components/features/DependencyGraph/nodes";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useTicketMutations } from "@/hooks/useTicketMutations";
@@ -54,6 +55,7 @@ export default function PhaseDetailPage() {
   // Ticket creation state
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
   const [newTicketTitle, setNewTicketTitle] = useState("");
+  const [newTicketDescription, setNewTicketDescription] = useState("");
   const [newTicketStatus, setNewTicketStatus] = useState<TicketStatus>("TODO");
   const [newTicketPriority, setNewTicketPriority] = useState<Priority>("MEDIUM");
   const [newTicketAssigneeId, setNewTicketAssigneeId] = useState<string | null>(null);
@@ -117,6 +119,7 @@ export default function PhaseDetailPage() {
       featureId: phase.feature.id,
       phaseId,
       title: newTicketTitle,
+      description: newTicketDescription || undefined,
       status: newTicketStatus,
       priority: newTicketPriority,
       assigneeId: newTicketAssigneeId,
@@ -131,6 +134,7 @@ export default function PhaseDetailPage() {
 
       // Reset form (focus handled by useEffect)
       setNewTicketTitle("");
+      setNewTicketDescription("");
       setNewTicketStatus("TODO");
       setNewTicketPriority("MEDIUM");
       setNewTicketAssigneeId(null);
@@ -140,6 +144,7 @@ export default function PhaseDetailPage() {
 
   const handleCancelCreateTicket = () => {
     setNewTicketTitle("");
+    setNewTicketDescription("");
     setNewTicketStatus("TODO");
     setNewTicketPriority("MEDIUM");
     setNewTicketAssigneeId(null);
@@ -327,6 +332,18 @@ export default function PhaseDetailPage() {
                       disabled={creatingTicket}
                     />
                   </div>
+                  <AutoSaveTextarea
+                    id="new-ticket-description"
+                    label="Description"
+                    placeholder="Describe this ticket (optional)"
+                    value={newTicketDescription}
+                    onChange={(value) => setNewTicketDescription(value)}
+                    onBlur={() => {}} // No-op for inline form
+                    savedField={null}
+                    saving={false}
+                    saved={false}
+                    rows={3}
+                  />
                   <div className="flex items-center gap-4">
                     <StatusPopover
                       statusType="ticket"
