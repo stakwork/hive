@@ -108,6 +108,8 @@ describe("POST /api/chat/message Integration Tests", () => {
           environmentVariables: [],
           services: [],
           workspaceId: testWorkspace.id,
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 

@@ -49,6 +49,8 @@ describe("GET /api/swarm/stakgraph/services", () => {
             enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY),
           ),
           services: [],
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 
@@ -56,7 +58,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
     });
 
     workspaceId = testData.workspace.id;
-    swarmId = testData.swarm.swarmId!;
+    swarmId = testData.swarm.id;
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });

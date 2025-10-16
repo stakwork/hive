@@ -46,6 +46,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
           status: "ACTIVE",
           environmentVariables: encryptEnvVars(PLAINTEXT_ENV as any) as any,
           services: [],
+          agentRequestId: null,
+          agentStatus: null,
         },
       });
 

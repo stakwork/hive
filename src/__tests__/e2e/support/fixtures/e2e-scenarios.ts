@@ -33,6 +33,10 @@ export async function createStandardWorkspaceScenario(): Promise<TestWorkspaceSc
       slug: `e2e-test-${Date.now()}`,
       description: "Workspace for E2E testing",
     },
+    withSwarm: true,
+    swarm: {
+      containerFilesSetUp: true,
+    },
   });
 }
 
@@ -96,6 +100,10 @@ export async function createWorkspaceWithMembersScenario() {
       { role: "DEVELOPER", withGitHubAuth: true, githubUsername: "e2e-dev" },
       { role: "VIEWER", withGitHubAuth: true, githubUsername: "e2e-viewer" },
     ],
+    withSwarm: true,
+    swarm: {
+      containerFilesSetUp: true,
+    },
   });
 }
 

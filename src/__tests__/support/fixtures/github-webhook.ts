@@ -63,6 +63,8 @@ export async function createTestRepository(options?: CreateTestRepositoryOptions
         name: "test-swarm",
         swarmUrl: "https://test-swarm.sphinx.chat",
         swarmApiKey: JSON.stringify(encryptionService.encryptField("swarmApiKey", "sk_test_swarm_123")),
+        agentRequestId: null,
+        agentStatus: null,
       },
     });
 

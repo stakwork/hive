@@ -1,3 +1,4 @@
+import { getServiceConfig } from "@/config/services";
 import {
   RESERVED_WORKSPACE_SLUGS,
   WORKSPACE_ERRORS,
@@ -19,6 +20,7 @@ import {
   updateMemberRole,
 } from "@/lib/helpers/workspace-member-queries";
 import { mapWorkspaceMember, mapWorkspaceMembers } from "@/lib/mappers/workspace-member";
+import { SwarmService } from "@/services/swarm";
 import {
   CreateWorkspaceRequest,
   UpdateWorkspaceRequest,
@@ -28,8 +30,6 @@ import {
   WorkspaceWithRole,
 } from "@/types/workspace";
 import { WorkspaceRole } from "@prisma/client";
-import { getServiceConfig } from "@/config/services";
-import { SwarmService } from "@/services/swarm";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -86,6 +86,7 @@ export async function createWorkspace(
         description: data.description,
         slug: data.slug,
         ownerId: data.ownerId,
+        repositoryDraft: data.repositoryUrl,
       },
     });
     return {
@@ -144,7 +145,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, swarmUrl: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -177,6 +178,9 @@ export async function getWorkspaceById(
       updatedAt: workspace.updatedAt.toISOString(),
       userRole: "OWNER",
       owner: workspace.owner,
+      containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+      repositoryDraft: workspace.repositoryDraft || null,
+      swarmId: workspace.swarm?.id || null,
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
@@ -212,6 +216,9 @@ export async function getWorkspaceById(
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
     userRole: membership.role as WorkspaceRole,
+    containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    repositoryDraft: workspace.repositoryDraft || null,
+    swarmId: workspace.swarm?.id || null,
     owner: workspace.owner,
     hasKey: hasValidApiKey(workspace.stakworkApiKey),
     isCodeGraphSetup:
@@ -245,7 +252,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, swarmUrl: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -277,6 +284,9 @@ export async function getWorkspaceBySlug(
       updatedAt: workspace.updatedAt.toISOString(),
       userRole: "OWNER",
       owner: workspace.owner,
+      containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+      repositoryDraft: workspace.repositoryDraft || null,
+      swarmId: workspace.swarm?.id || null,
       isCodeGraphSetup:
         workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
@@ -314,6 +324,9 @@ export async function getWorkspaceBySlug(
     userRole: membership.role as WorkspaceRole,
     owner: workspace.owner,
     hasKey: hasValidApiKey(workspace.stakworkApiKey),
+    containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    repositoryDraft: workspace.repositoryDraft || null,
+    swarmId: workspace.swarm?.id || null,
     isCodeGraphSetup:
       workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
