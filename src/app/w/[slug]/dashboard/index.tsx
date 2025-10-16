@@ -1,6 +1,5 @@
-import { RepositoryCard } from "@/components/dashboard";
+import { RepositoryCard, TestCoverageCard } from "@/components/dashboard";
 import { RecentTasksCard } from "@/components/dashboard/recent-tasks-card";
-import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { VMConfigSection } from "@/components/pool-status";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
