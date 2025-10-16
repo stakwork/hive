@@ -1,16 +1,16 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { TEST_DATE_ISO, workspaceMocks, workspaceMockSetup } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
+import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
+import { db } from "@/lib/db";
 import {
   createWorkspace,
-  getWorkspacesByUserId,
-  getWorkspaceBySlug,
-  getUserWorkspaces,
-  getDefaultWorkspaceForUser,
   deleteWorkspaceBySlug,
+  getDefaultWorkspaceForUser,
+  getUserWorkspaces,
+  getWorkspaceBySlug,
+  getWorkspacesByUserId,
   updateWorkspace
 } from "@/services/workspace";
-import { db } from "@/lib/db";
-import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
-import { workspaceMocks, workspaceMockSetup, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockedDb = vi.mocked(db);
 
@@ -161,6 +161,9 @@ describe("Workspace CRUD Operations", () => {
         id: "ws1",
         name: "Test Workspace",
         description: "A test workspace",
+        containerFilesSetUp: null,
+        repositoryDraft: null,
+        swarmId: "swarm-123",
         slug: "test-workspace",
         ownerId: "owner1",
         hasKey: true,
