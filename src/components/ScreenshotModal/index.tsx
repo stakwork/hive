@@ -64,7 +64,7 @@ export function ScreenshotModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto" data-testid="screenshot-modal">
+      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-[80vw] max-h-[90vh] overflow-auto p-4 sm:p-6" data-testid="screenshot-modal">
         <DialogHeader>
           <DialogTitle className="flex flex-col gap-1">
             <span>Screenshot - Action {screenshot.actionIndex + 1}</span>
@@ -75,11 +75,11 @@ export function ScreenshotModal({
         </DialogHeader>
 
         <div className="relative w-full">
-          <div className="relative w-full bg-muted rounded-lg overflow-hidden">
+          <div className="relative w-full bg-muted rounded-lg overflow-hidden flex items-center justify-center max-h-[calc(90vh-12rem)]">
             <img
               src={screenshot.dataUrl}
               alt={`Screenshot of ${screenshot.url}`}
-              className="w-full h-auto"
+              className="w-full h-auto max-h-[calc(90vh-12rem)] object-contain"
               data-testid="screenshot-image"
             />
           </div>
