@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Screenshot } from "@/types/common";
 import {
   Dialog,
@@ -43,6 +44,24 @@ export function ScreenshotModal({
       onNavigate(allScreenshots[currentIndex + 1]);
     }
   };
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" && hasPrevious) {
+        event.preventDefault();
+        onNavigate(allScreenshots[currentIndex - 1]);
+      } else if (event.key === "ArrowRight" && hasNext) {
+        event.preventDefault();
+        onNavigate(allScreenshots[currentIndex + 1]);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, hasPrevious, hasNext, currentIndex, allScreenshots, onNavigate]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

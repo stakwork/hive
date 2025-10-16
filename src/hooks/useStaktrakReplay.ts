@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Screenshot } from "@/types/common";
 
-export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement | null>) {
+export function usePlaywrightReplay(
+  iframeRef: React.RefObject<HTMLIFrameElement | null>,
+  onScreenshotError?: (message: string) => void,
+) {
   const [isPlaywrightReplaying, setIsPlaywrightReplaying] = useState(false);
   const [isPlaywrightPaused, setIsPlaywrightPaused] = useState(false);
   const [playwrightProgress, setPlaywrightProgress] = useState({ current: 0, total: 0 });
@@ -190,6 +193,9 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
 
         case "staktrak-playwright-screenshot-error":
           console.warn(`Screenshot failed for action ${data.actionIndex}:`, data.error);
+          if (onScreenshotError) {
+            onScreenshotError(`Screenshot capture failed for action ${data.actionIndex}`);
+          }
           // Error is logged but doesn't interrupt replay
           break;
 
@@ -200,7 +206,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [onScreenshotError]);
 
   return {
     isPlaywrightReplaying,

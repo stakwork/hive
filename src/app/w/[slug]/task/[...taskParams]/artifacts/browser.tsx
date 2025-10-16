@@ -89,14 +89,16 @@ export function BrowserArtifactPanel({
     stopPlaywrightReplay,
     replayScreenshots,
     replayActions,
-  } = usePlaywrightReplay(iframeRef);
+  } = usePlaywrightReplay(iframeRef, (message) => {
+    showActionToast("Screenshot Error", message);
+  });
 
   // Auto-show actions list when replay starts
   useEffect(() => {
-    if (isPlaywrightReplaying && !showActions && capturedActions.length > 0) {
+    if (isPlaywrightReplaying && !showActions && (replayActions.length > 0 || capturedActions.length > 0)) {
       toggleActionsView();
     }
-  }, [isPlaywrightReplaying, showActions, capturedActions.length, toggleActionsView]);
+  }, [isPlaywrightReplaying, showActions, toggleActionsView]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {

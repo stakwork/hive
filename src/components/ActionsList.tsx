@@ -280,14 +280,21 @@ export function ActionsList({
                       onClick={() => setSelectedScreenshot(screenshot)}
                       className="flex-shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:border-primary transition-colors"
                       title="Click to view screenshot"
+                      aria-label={`View screenshot of ${screenshot.url} at action ${index + 1}`}
                     >
-                      <img src={screenshot.dataUrl} alt="Screenshot" className="w-full h-full object-cover" />
+                      <img
+                        src={screenshot.dataUrl}
+                        alt={`Screenshot of ${screenshot.url} at action ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
                     </button>
                   )}
                   {isNavAction && !hasScreenshot && (
                     <div
                       className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted border border-border"
                       title="No screenshot available"
+                      role="img"
+                      aria-label="No screenshot available for this action"
                     >
                       <Camera className="h-4 w-4 text-muted-foreground" />
                     </div>
@@ -300,7 +307,7 @@ export function ActionsList({
                       variant="ghost"
                       size="sm"
                       onClick={() => onRemoveAction(action)}
-                      disabled={!isRecording || isReplaying}
+                      disabled={isReplaying}
                       className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
                       title="Remove this action"
                     >
