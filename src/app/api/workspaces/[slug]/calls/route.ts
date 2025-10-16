@@ -122,6 +122,7 @@ export async function GET(
       ref_id: node.ref_id,
       episode_title: node.properties.episode_title,
       date_added_to_graph: node.date_added_to_graph,
+      description: node.properties.description,
     }));
 
     const total = calls.length;

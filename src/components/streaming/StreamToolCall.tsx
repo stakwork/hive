@@ -1,12 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { Wrench } from "lucide-react";
 import type { StreamToolCall as StreamToolCallType } from "@/types/streaming";
 
 interface StreamToolCallProps {
   toolCall: StreamToolCallType;
 }
+
+const WrenchIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="shrink-0"
+  >
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
+  </svg>
+);
 
 export function StreamToolCall({ toolCall }: StreamToolCallProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -21,7 +37,7 @@ export function StreamToolCall({ toolCall }: StreamToolCallProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-xs font-medium cursor-pointer"
       >
-        <Wrench className="w-3 h-3" />
+        <WrenchIcon />
         <span>{toolCall.toolName}</span>
         {isRunning && <span className="text-muted-foreground animate-pulse">...</span>}
         {isComplete && <span className="text-muted-foreground">Complete</span>}

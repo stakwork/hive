@@ -58,7 +58,6 @@ export function PersonasSection({
       onChange(newPersonas);
       onBlur(newPersonas);
       setInputValue("");
-      setIsOpen(false);
     }
   };
 
