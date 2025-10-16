@@ -28,13 +28,16 @@ interface GraphVisualizationLayeredProps {
 
 // Define layer order: top to bottom
 const LAYER_ORDER: Record<string, number> = {
+  Episode: 0,
   Hint: 0,
   Prompt: 0,
+  Video: 1,
   File: 1,
   Datamodel: 2,
   Function: 2,
   Endpoint: 2,
   Request: 2,
+  Topic: 3
 };
 
 const getNodeLayer = (type: string): number => {

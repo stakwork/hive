@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { Graph } from "@/components/graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CallRecording } from "@/types/calls";
 
@@ -154,6 +155,23 @@ export default function CallPage() {
               No description available for this call recording.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Episode Knowledge Graph */}
+      <Card>
+        <CardContent className="pt-6">
+          <Graph
+            endpoint="/api/subgraph"
+            params={{
+              workspace: slug,
+              ref_id: call.ref_id,
+            }}
+            height={600}
+            title="Graph View"
+            showStats={true}
+            layout="layered"
+          />
         </CardContent>
       </Card>
     </div>
