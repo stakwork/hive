@@ -30,7 +30,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         <Script id="staktrak-config" strategy="beforeInteractive">
-          {`window.STAKTRAK_CONFIG = { maxTraversalDepth: 10 };`}
+          {`window.STAKTRAK_CONFIG = {
+            maxTraversalDepth: 10,
+            parentOrigin: window.location.origin,
+            screenshot: {
+              quality: 0.8,
+              type: 'image/jpeg',
+              backgroundColor: '#ffffff'
+            }
+          };`}
         </Script>
         <Script src="/js/staktrak.js" />
         <Script src="/js/playwright-generator.js" />
