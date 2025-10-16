@@ -159,7 +159,7 @@ export async function createTestWorkspaceScenario(
       name: swarmOverrides.name,
       status: swarmOverrides.status,
       instanceType: swarmOverrides.instanceType,
-      swarmApiKey: swarmOverrides.swarmApiKey, // Don't provide default to avoid encryption requirement
+      swarmApiKey: swarmOverrides.swarmApiKey ?? (process.env.TOKEN_ENCRYPTION_KEY ? "test-swarm-api-key" : undefined),
       containerFilesSetUp: swarmOverrides.containerFilesSetUp,
     });
   }
