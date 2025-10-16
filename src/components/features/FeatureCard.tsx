@@ -28,12 +28,12 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
       className="p-3 border rounded-lg hover:bg-muted cursor-pointer transition-colors"
       onClick={handleClick}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <h4 className="text-sm font-medium line-clamp-1">{feature.title}</h4>
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <h4 className="text-sm font-medium line-clamp-1 min-w-0">{feature.title}</h4>
         </div>
         {!hideStatus && (
-          <Badge className={FEATURE_STATUS_COLORS[feature.status]}>
+          <Badge className={`${FEATURE_STATUS_COLORS[feature.status]} flex-shrink-0`}>
             {FEATURE_STATUS_LABELS[feature.status]}
           </Badge>
         )}
