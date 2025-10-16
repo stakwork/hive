@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 
 interface ScreenshotModalProps {
@@ -48,16 +48,11 @@ export function ScreenshotModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <div className="flex flex-col gap-1">
-              <span>Screenshot - Action {screenshot.actionIndex + 1}</span>
-              <span className="text-sm font-normal text-muted-foreground">
-                {screenshot.url}
-              </span>
-            </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
+          <DialogTitle className="flex flex-col gap-1">
+            <span>Screenshot - Action {screenshot.actionIndex + 1}</span>
+            <span className="text-sm font-normal text-muted-foreground">
+              {screenshot.url}
+            </span>
           </DialogTitle>
         </DialogHeader>
 
