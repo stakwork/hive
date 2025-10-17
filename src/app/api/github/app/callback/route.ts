@@ -267,8 +267,13 @@ export async function GET(request: NextRequest) {
 
         if (workspace) {
 
-          // TODO: getting primary repository url from repositories, until it is created is incorrect
-          const repoUrl = workspace.repositoryDraft;
+          // Check repositoryDraft first, then fall back to primary repository
+          let repoUrl = workspace.repositoryDraft;
+          if (!repoUrl) {
+            const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+            const primaryRepo = await getPrimaryRepository(workspace.id);
+            repoUrl = primaryRepo?.repositoryUrl ?? null;
+          }
 
           if (repoUrl) {
             const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
@@ -435,8 +440,14 @@ export async function GET(request: NextRequest) {
       let targetRepositoryUrl: string | undefined;
 
       if (workspace) {
-        const primaryRepo = await getPrimaryRepository(workspace.id);
-        targetRepositoryUrl = primaryRepo?.repositoryUrl;
+
+        // Check repositoryDraft first, then fall back to primary repository
+        targetRepositoryUrl = workspace.repositoryDraft ?? undefined;
+        if (!targetRepositoryUrl) {
+          const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+          const primaryRepo = await getPrimaryRepository(workspace.id);
+          targetRepositoryUrl = primaryRepo?.repositoryUrl ?? undefined;
+        }
       }
 
       // If no swarm yet, try to reconstruct from the state data
@@ -452,7 +463,12 @@ export async function GET(request: NextRequest) {
 
       if (targetRepositoryUrl) {
         try {
+
+          console.log('checking repository access for', targetRepositoryUrl)
           const repositoryAccess = await checkRepositoryAccess(userAccessToken, targetRepositoryUrl);
+
+
+          console.log('repositoryAccess', repositoryAccess)
 
           if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
             console.log(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);

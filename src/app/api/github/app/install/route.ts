@@ -62,8 +62,12 @@ export async function POST(request: NextRequest) {
     let repoUrl = repositoryUrl;
     if (!repoUrl) {
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
-      const primaryRepo = await getPrimaryRepository(workspace.id);
-      repoUrl = primaryRepo?.repositoryUrl;
+      // Check repositoryDraft first, then fall back to primary repository
+      repoUrl = workspace.repositoryDraft;
+      if (!repoUrl) {
+        const primaryRepo = await getPrimaryRepository(workspace.id);
+        repoUrl = primaryRepo?.repositoryUrl ?? null;
+      }
     }
 
     if (!repoUrl) {

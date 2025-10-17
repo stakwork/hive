@@ -1,9 +1,9 @@
 import { authOptions } from "@/lib/auth/nextauth";
-import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
+import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
@@ -57,8 +57,12 @@ export async function GET(request: Request) {
         // Get repository URL
         let repoUrl: string | null = repositoryUrl;
         if (!repoUrl) {
-          const primaryRepo = await getPrimaryRepository(workspace.id);
-          repoUrl = primaryRepo?.repositoryUrl ?? null;
+          // Check repositoryDraft first, then fall back to primary repository
+          repoUrl = workspace.repositoryDraft;
+          if (!repoUrl) {
+            const primaryRepo = await getPrimaryRepository(workspace.id);
+            repoUrl = primaryRepo?.repositoryUrl ?? null;
+          }
         }
 
         // Check repository access if we have tokens and a repository URL
@@ -87,8 +91,12 @@ export async function GET(request: Request) {
         // Workspace not linked yet - extract GitHub org from repo URL and check
         let repoUrl: string | null = repositoryUrl;
         if (!repoUrl && workspace) {
-          const primaryRepo = await getPrimaryRepository(workspace.id);
-          repoUrl = primaryRepo?.repositoryUrl ?? null;
+          // Check repositoryDraft first, then fall back to primary repository
+          repoUrl = workspace.repositoryDraft;
+          if (!repoUrl) {
+            const primaryRepo = await getPrimaryRepository(workspace.id);
+            repoUrl = primaryRepo?.repositoryUrl ?? null;
+          }
         }
 
         if (!repoUrl) {
