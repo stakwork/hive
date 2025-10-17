@@ -121,6 +121,22 @@ const TestDataFactory = {
     success: false,
     error,
   }),
+
+  createCallStakworkAPIParams: (overrides = {}) => ({
+    taskId: "test-task-id",
+    message: "Test message",
+    contextTags: [],
+    userName: "testuser",
+    accessToken: "test-github-token",
+    swarmUrl: "https://test-swarm.example.com:8444/api",
+    swarmSecretAlias: "{{TEST_SECRET}}",
+    poolName: "test-pool",
+    repo2GraphUrl: "https://test-swarm.example.com:3355",
+    attachments: [],
+    mode: "default",
+    taskSource: "USER",
+    ...overrides,
+  }),
 };
 
 // Test Helpers - Reusable assertion and setup functions
@@ -243,6 +259,30 @@ const TestHelpers = {
     Object.entries(expectedVars).forEach(([key, value]) => {
       expect(vars[key]).toEqual(value);
     });
+  },
+
+  expectCallStakworkAPIPayload: (expectedPayload: {
+    workflow_id?: number;
+    webhook_url?: string;
+    vars?: Record<string, unknown>;
+  }) => {
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1]?.body as string);
+
+    if (expectedPayload.workflow_id !== undefined) {
+      expect(payload.workflow_id).toBe(expectedPayload.workflow_id);
+    }
+
+    if (expectedPayload.webhook_url !== undefined) {
+      expect(payload.webhook_url).toBe(expectedPayload.webhook_url);
+    }
+
+    if (expectedPayload.vars) {
+      const vars = payload.workflow_params.set_var.attributes.vars;
+      Object.entries(expectedPayload.vars).forEach(([key, value]) => {
+        expect(vars[key]).toEqual(value);
+      });
+    }
   },
 };
 
@@ -1207,5 +1247,848 @@ describe("Stakwork Configuration Validation", () => {
 
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockDb.task.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("callStakworkAPI - Direct Unit Tests", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("Payload Construction", () => {
+    test("should construct correct webhook URLs", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        taskId: "task-123",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        webhook_url: "http://localhost:3000/api/stakwork/webhook?task_id=task-123",
+        vars: {
+          webhookUrl: "http://localhost:3000/api/chat/response",
+        },
+      });
+    });
+
+    test("should construct vars object with all required fields", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        taskId: "task-456",
+        message: "Custom message",
+        contextTags: [{ type: "file", value: "test.ts" }],
+        userName: "johndoe",
+        accessToken: "token-abc",
+        swarmUrl: "https://custom-swarm.com:8444/api",
+        swarmSecretAlias: "{{CUSTOM_SECRET}}",
+        poolName: "custom-pool",
+        repo2GraphUrl: "https://custom-swarm.com:3355",
+        attachments: ["/uploads/file1.pdf"],
+        mode: "live",
+        taskSource: "JANITOR",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          taskId: "task-456",
+          message: "Custom message",
+          contextTags: [{ type: "file", value: "test.ts" }],
+          alias: "johndoe",
+          username: "johndoe",
+          accessToken: "token-abc",
+          swarmUrl: "https://custom-swarm.com:8444/api",
+          swarmSecretAlias: "{{CUSTOM_SECRET}}",
+          poolName: "custom-pool",
+          repo2graph_url: "https://custom-swarm.com:3355",
+          attachments: ["/uploads/file1.pdf"],
+          taskMode: "live",
+          taskSource: "janitor",
+        },
+      });
+    });
+
+    test("should set payload name to 'hive_autogen'", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      expect(payload.name).toBe("hive_autogen");
+    });
+
+    test("should normalize taskSource to lowercase", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        taskSource: "JANITOR",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          taskSource: "janitor",
+        },
+      });
+    });
+  });
+
+  describe("Workflow Mode Selection", () => {
+    test("should use workflow ID at index 0 for 'live' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "live",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 123, // First ID in "123,456,789"
+      });
+    });
+
+    test("should use workflow ID at index 1 for 'default' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "default",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 456, // Second ID in "123,456,789"
+      });
+    });
+
+    test("should use workflow ID at index 1 for 'test' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "test",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 456, // Second ID in "123,456,789"
+      });
+    });
+
+    test("should use workflow ID at index 2 for 'unit' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "unit",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 789, // Third ID in "123,456,789"
+      });
+    });
+
+    test("should use workflow ID at index 2 for 'integration' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "integration",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 789, // Third ID in "123,456,789"
+      });
+    });
+
+    test("should fallback to workflow ID at index 1 for unknown mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "unknown-mode",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 456, // Second ID as fallback
+      });
+    });
+  });
+
+  describe("HTTP Request Configuration", () => {
+    test("should send POST request to correct endpoint", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-stakwork.com/projects",
+        expect.objectContaining({
+          method: "POST",
+        })
+      );
+    });
+
+    test("should include correct authorization header", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: {
+            Authorization: "Token token=test-api-key",
+            "Content-Type": "application/json",
+          },
+        })
+      );
+    });
+
+    test("should send JSON payload in request body", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = fetchCall[1]?.body as string;
+      
+      expect(() => JSON.parse(body)).not.toThrow();
+      const payload = JSON.parse(body);
+      expect(payload).toHaveProperty("workflow_id");
+      expect(payload).toHaveProperty("workflow_params");
+    });
+  });
+
+  describe("Successful API Responses", () => {
+    test("should return success: true with project_id on successful response", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(12345),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: true,
+        data: { project_id: 12345 },
+      });
+    });
+
+    test("should return success: true without project_id", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: true,
+        data: {},
+      });
+    });
+
+    test("should parse JSON response correctly", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            project_id: 999,
+            additional_field: "extra_data",
+          },
+        }),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        project_id: 999,
+        additional_field: "extra_data",
+      });
+    });
+  });
+
+  describe("Error Handling - HTTP Errors", () => {
+    test("should return error on 400 Bad Request", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: "Bad Request",
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Bad Request",
+      });
+    });
+
+    test("should return error on 401 Unauthorized", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: "Unauthorized",
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Unauthorized",
+      });
+    });
+
+    test("should return error on 404 Not Found", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: "Not Found",
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Not Found",
+      });
+    });
+
+    test("should return error on 500 Internal Server Error", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: "Internal Server Error",
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Internal Server Error",
+      });
+    });
+
+    test("should log error message to console on HTTP error", async () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: "Service Unavailable",
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Failed to send message to Stakwork: Service Unavailable"
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe("Error Handling - Network Errors", () => {
+    test("should handle fetch network error", async () => {
+      mockFetch.mockRejectedValue(new Error("Network connection failed"));
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Network connection failed");
+    });
+
+    test("should handle fetch timeout error", async () => {
+      mockFetch.mockRejectedValue(new Error("Request timeout"));
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Request timeout");
+    });
+
+    test("should handle JSON parsing error", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error("Invalid JSON");
+        },
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Invalid JSON");
+    });
+  });
+
+  describe("Configuration Validation", () => {
+    test("should throw error when STAKWORK_API_KEY is missing", async () => {
+      vi.mocked(mockConfig).STAKWORK_API_KEY = "";
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
+    });
+
+    test("should throw error when STAKWORK_API_KEY is undefined", async () => {
+      vi.mocked(mockConfig).STAKWORK_API_KEY = undefined as any;
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
+    });
+
+    test("should throw error when STAKWORK_WORKFLOW_ID is missing", async () => {
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "";
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
+    });
+
+    test("should throw error when STAKWORK_WORKFLOW_ID is undefined", async () => {
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = undefined as any;
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
+    });
+
+    test("should not throw when all required config is present", async () => {
+      vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
+      vi.mocked(mockConfig).STAKWORK_BASE_URL = "https://test-stakwork.com";
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "123,456,789";
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams();
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      
+      await expect(callStakworkAPI(params)).resolves.toBeDefined();
+    });
+  });
+
+  describe("GitHub Credentials Handling", () => {
+    test("should include GitHub credentials when provided", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        userName: "githubuser",
+        accessToken: "github_pat_token123",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          alias: "githubuser",
+          username: "githubuser",
+          accessToken: "github_pat_token123",
+        },
+      });
+    });
+
+    test("should handle null userName", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        userName: null,
+        accessToken: "token123",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          alias: null,
+          username: null,
+          accessToken: "token123",
+        },
+      });
+    });
+
+    test("should handle null accessToken", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        userName: "githubuser",
+        accessToken: null,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          alias: "githubuser",
+          username: "githubuser",
+          accessToken: null,
+        },
+      });
+    });
+
+    test("should handle both null userName and accessToken", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        userName: null,
+        accessToken: null,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          alias: null,
+          username: null,
+          accessToken: null,
+        },
+      });
+    });
+  });
+
+  describe("Edge Cases", () => {
+    test("should handle empty contextTags array", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        contextTags: [],
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          contextTags: [],
+        },
+      });
+    });
+
+    test("should handle empty attachments array", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        attachments: [],
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          attachments: [],
+        },
+      });
+    });
+
+    test("should handle very long message content", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const longMessage = "a".repeat(10000);
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        message: longMessage,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          message: longMessage,
+        },
+      });
+    });
+
+    test("should handle special characters in message", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const specialMessage = "Test with 🚀 emojis and special chars: àáâäåæçèéêë & <html> tags";
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        message: specialMessage,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          message: specialMessage,
+        },
+      });
+    });
+
+    test("should handle empty swarmUrl", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        swarmUrl: "",
+        repo2GraphUrl: "",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          swarmUrl: "",
+          repo2graph_url: "",
+        },
+      });
+    });
+
+    test("should handle multiple attachments", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const attachments = [
+        "/uploads/file1.pdf",
+        "/uploads/file2.jpg",
+        "/uploads/file3.doc",
+      ];
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        attachments,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          attachments,
+        },
+      });
+    });
+
+    test("should handle complex contextTags structure", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const contextTags = [
+        { type: "file", value: "src/app.ts" },
+        { type: "folder", value: "src/" },
+        { type: "feature", value: "authentication" },
+      ];
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        contextTags,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        vars: {
+          contextTags,
+        },
+      });
+    });
+  });
+
+  describe("Workflow ID Parsing", () => {
+    test("should parse comma-separated workflow IDs correctly", async () => {
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "111,222,333";
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "live",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 111,
+      });
+    });
+
+    test("should handle workflow ID string with spaces", async () => {
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = " 111 , 222 , 333 ";
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "unit",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 333,
+      });
+    });
+
+    test("should fallback to first ID when only one workflow ID provided", async () => {
+      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "999";
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "default",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 999,
+      });
+    });
   });
 });
