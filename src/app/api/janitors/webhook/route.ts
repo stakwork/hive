@@ -12,7 +12,7 @@ const stakworkWebhookSchema = z.object({
       description: z.string(),
       priority: z.string(),
       impact: z.string().optional(),
-      metadata: z.record(z.any()).optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
     }))
   }).optional(),
   error: z.string().optional(),
