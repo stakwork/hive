@@ -230,6 +230,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   const ref = useRef<any>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const hasAutoClickedRef = useRef<boolean>(false);
+  const hasInitialFitViewRef = useRef<boolean>(false);
 
   const requestQueue = useRef<RequestQueue>(new RequestQueue());
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
@@ -538,6 +539,21 @@ export default function App(workflowApp: WorkflowAppProps) {
       }
     }
   }, [useAssistantDimensions]);
+
+  // Auto-fit view for project workflows on initial load
+  useEffect(() => {
+    if (projectId && reactFlowInstance && nodes.length > 0 && !hasInitialFitViewRef.current) {
+      hasInitialFitViewRef.current = true;
+
+      // Small delay to ensure nodes are rendered
+      setTimeout(() => {
+        reactFlowInstance.fitView({
+          padding: 0.2,
+          duration: 300
+        });
+      }, 100);
+    }
+  }, [projectId, reactFlowInstance, nodes.length]);
 
   const onConnect = useCallback((connection: Connection) => {
       const node = nodes.find((node) => node.id === connection.source);
