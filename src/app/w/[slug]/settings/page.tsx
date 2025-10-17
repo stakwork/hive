@@ -4,6 +4,7 @@ import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { RerunIngest } from "@/components/RerunIngest";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
+import { WorkspaceImageUpload } from "@/components/workspace/WorkspaceImageUpload";
 import { VMConfigSection } from "@/components/pool-status";
 import { PageHeader } from "@/components/ui/page-header";
 import { getWorkspaceBySlug } from "@/services/workspace";
@@ -41,6 +42,8 @@ export default async function SettingsPage({
 
       <div className="max-w-2xl">
         <div className="space-y-6">
+          <WorkspaceImageUpload />
+
           <WorkspaceSettings />
 
           <VMConfigSection />

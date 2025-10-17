@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 export class S3Service {
@@ -65,6 +65,39 @@ export class S3Service {
 
   validateFileSize(size: number): boolean {
     const maxSize = 10 * 1024 * 1024 // 10MB
+    return size <= maxSize
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const command = new DeleteObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    })
+
+    await this.client.send(command)
+  }
+
+  generateWorkspaceImagePath(workspaceId: string, filename: string): string {
+    const timestamp = Date.now()
+    const ext = filename.split('.').pop()?.toLowerCase() || 'png'
+    const sanitizedExt = ext.replace(/[^a-z0-9]/g, '')
+
+    return `workspaces/${workspaceId}/${timestamp}.${sanitizedExt}`
+  }
+
+  validateWorkspaceImageType(mimeType: string): boolean {
+    const allowedTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ]
+    return allowedTypes.includes(mimeType.toLowerCase())
+  }
+
+  validateWorkspaceImageSize(size: number): boolean {
+    const maxSize = 5 * 1024 * 1024 // 5MB for workspace images
     return size <= maxSize
   }
 }

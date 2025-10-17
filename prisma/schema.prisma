@@ -228,6 +228,9 @@ model Workspace {
   // Temporary storage for repository URL during setup
   repositoryDraft String? @map("repository_draft")
 
+  // Workspace image stored in S3
+  imageS3Key String? @map("image_s3_key")
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
