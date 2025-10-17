@@ -60,7 +60,11 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
             </div>
           ) : isStreamingMessage ? (
             <StreamErrorBoundary>
-              <StreamingMessage message={message} finalTextPartId={FINAL_ANSWER_ID} />
+              <StreamingMessage
+                message={message}
+                finalTextPartId={FINAL_ANSWER_ID}
+                toolCallsExpectOutput={false}
+              />
             </StreamErrorBoundary>
           ) : (
             <MarkdownRenderer variant="assistant">{message.content}</MarkdownRenderer>

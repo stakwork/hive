@@ -30,14 +30,12 @@ export function extractAnswer(output: unknown): string {
  */
 export function parseSSELine(line: string): string | null {
   const trimmed = line.trim();
-  console.log("[PARSE SSE] Raw line:", trimmed.substring(0, 150));
 
   if (!trimmed.startsWith("data:")) {
     // AI SDK v3+ uses "0:" prefix format instead of "data:"
     if (trimmed.match(/^\d+:/)) {
       const jsonStr = trimmed.replace(/^\d+:/, "").trim();
       if (!jsonStr || jsonStr === "[DONE]") return null;
-      console.log("[PARSE SSE] Extracted (numeric prefix):", jsonStr.substring(0, 150));
       return jsonStr;
     }
     return null;
@@ -46,6 +44,5 @@ export function parseSSELine(line: string): string | null {
   const jsonStr = trimmed.replace(/^data:\s*/, "").trim();
   if (!jsonStr || jsonStr === "[DONE]") return null;
 
-  console.log("[PARSE SSE] Extracted (data prefix):", jsonStr.substring(0, 150));
   return jsonStr;
 }

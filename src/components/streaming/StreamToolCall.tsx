@@ -5,6 +5,12 @@ import type { StreamToolCall as StreamToolCallType } from "@/types/streaming";
 
 interface StreamToolCallProps {
   toolCall: StreamToolCallType;
+  /**
+   * Whether tool outputs are expected to be streamed.
+   * If false, tool calls are considered complete once input is available.
+   * @default true
+   */
+  expectsOutput?: boolean;
 }
 
 const WrenchIcon = () => (
@@ -24,10 +30,13 @@ const WrenchIcon = () => (
   </svg>
 );
 
-export function StreamToolCall({ toolCall }: StreamToolCallProps) {
+export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCallProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const isComplete = toolCall.status === "output-available";
+  // If outputs aren't expected, consider tool complete once input is available
+  const isComplete = expectsOutput
+    ? toolCall.status === "output-available"
+    : toolCall.status === "output-available" || toolCall.status === "input-available";
   const isError = toolCall.status === "input-error" || toolCall.status === "output-error";
   const isRunning = !isComplete && !isError;
 

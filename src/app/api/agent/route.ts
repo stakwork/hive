@@ -61,8 +61,6 @@ export async function POST(request: NextRequest) {
         sendEvent({ type: "start-step" });
 
         for await (const chunk of result.fullStream) {
-          console.log("[GOOSE->UI]", chunk.type, chunk);
-
           switch (chunk.type) {
             case "text-start":
               sendEvent({
@@ -87,7 +85,10 @@ export async function POST(request: NextRequest) {
               break;
 
             case "tool-call":
-              console.log("TOOL CALL (STREAMING):", chunk.toolName);
+              // Skip if invalid - tool-error event will handle it
+              if (chunk.invalid) {
+                break;
+              }
               // Send tool-input-start
               sendEvent({
                 type: "tool-input-start",
@@ -105,7 +106,6 @@ export async function POST(request: NextRequest) {
               break;
 
             case "tool-result":
-              console.log("TOOL RESULT (STREAMING):", chunk.toolName);
               // Send tool-output-available
               sendEvent({
                 type: "tool-output-available",
@@ -115,13 +115,23 @@ export async function POST(request: NextRequest) {
               break;
 
             case "tool-error":
-              console.log("TOOL ERROR:", chunk.toolName, chunk.error);
-              // Tool errors don't have results, skip them for now
-              // The AI SDK handles these internally
+              // Even though it's an error from AI SDK perspective (no tool registered),
+              // Goose is still executing the tool, so treat it as a successful call
+              // Send tool-input-start and tool-input-available so UI can show the tool call
+              sendEvent({
+                type: "tool-input-start",
+                toolCallId: chunk.toolCallId,
+                toolName: chunk.toolName,
+              });
+              sendEvent({
+                type: "tool-input-available",
+                toolCallId: chunk.toolCallId,
+                toolName: chunk.toolName,
+                input: chunk.input,
+              });
               break;
 
             case "error":
-              console.log("ERROR:", chunk);
               sendEvent({
                 type: "error",
                 error: chunk.error,

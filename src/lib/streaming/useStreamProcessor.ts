@@ -147,7 +147,6 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
 
           try {
             const data = JSON.parse(jsonStr) as StreamEvent;
-            console.log("[STREAM PROCESSOR] Received event:", data.type, data);
 
             if (data.type === "text-start") {
               // Generate unique ID by combining stream ID with sequence number
@@ -206,6 +205,9 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                 toolCalls.set(data.toolCallId, {
                   ...existing,
                   input: data.input,
+                  inputText: typeof data.input === "string"
+                    ? data.input
+                    : JSON.stringify(data.input, null, 2),
                   status: "input-available",
                 });
                 // Update immediately when tool input is ready
