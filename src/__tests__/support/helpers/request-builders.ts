@@ -190,6 +190,29 @@ export function createAuthenticatedPatchRequest(
 }
 
 /**
+ * Creates a PUT request with middleware auth headers
+ */
+export function createAuthenticatedPutRequest(
+  url: string,
+  body: object,
+  user: { id: string; email: string; name: string }
+): NextRequest {
+  // Ensure absolute URL
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost:3000${url.startsWith('/') ? '' : '/'}${url}`;
+
+  const baseRequest = new NextRequest(absoluteUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
  * Creates a DELETE request with middleware auth headers
  */
 export function createAuthenticatedDeleteRequest(

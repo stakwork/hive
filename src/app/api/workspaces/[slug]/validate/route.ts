@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateUserWorkspaceAccess } from "@/lib/auth/workspace-resolver";
 
 // Prevent caching of user-specific data
@@ -11,8 +10,9 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user || !(session.user as { id?: string }).id) {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) {
       return NextResponse.json(
         {
           hasAccess: false,
@@ -26,6 +26,10 @@ export async function GET(
     }
 
     const { slug } = await params;
+    const session = { 
+      user: { id: userOrResponse.id, email: userOrResponse.email, name: userOrResponse.name },
+      expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    };
 
     const resolvedSlug = await validateUserWorkspaceAccess(session, slug);
 

@@ -1,9 +1,8 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceBySlug } from "@/services/workspace";
-import { getServerSession } from "next-auth/next";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -15,23 +14,11 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
     const { slug } = await params;
-
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, message: "Invalid user session" },
-        { status: 401 },
-      );
-    }
 
     // Get workspace and verify user has access
     const workspace = await getWorkspaceBySlug(slug, userId);

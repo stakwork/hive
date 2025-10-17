@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
+import { NextRequest } from "next/server";
 import { POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
@@ -7,15 +8,11 @@ import { db } from "@/lib/db";
 import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   expectError,
   expectUnauthorized,
   expectForbidden,
-  generateUniqueId,
-  createPostRequest,
-  createPatchRequest,
-  getMockedSession,
+  createAuthenticatedPostRequest,
+  createAuthenticatedPatchRequest,
 } from "@/__tests__/support/helpers";
 
 // Mock GitHub API calls for addWorkspaceMember (external service)
@@ -58,13 +55,14 @@ describe("Workspace Member Role API Integration Tests", () => {
       for (const role of AssignableMemberRoles) {
         const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
         
-        // Mock session with real admin user
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
-        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          githubUsername: "testuser",
-          role: role,
-        });
+        const request = createAuthenticatedPostRequest(
+          `/api/workspaces/${workspace.slug}/members`,
+          {
+            githubUsername: "testuser",
+            role: role,
+          },
+          { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+        );
 
         const response = await POST(request, { 
           params: Promise.resolve({ slug: workspace.slug })
@@ -87,13 +85,15 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     test("should reject OWNER role with real validation logic", async () => {
       const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "testuser",
-        role: WorkspaceRole.OWNER,
-      });
+      const request = createAuthenticatedPostRequest(
+        `/api/workspaces/${workspace.slug}/members`,
+        {
+          githubUsername: "testuser",
+          role: WorkspaceRole.OWNER,
+        },
+        { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+      );
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: workspace.slug })
@@ -110,13 +110,15 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     test("should reject STAKEHOLDER role with real validation logic", async () => {
       const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "testuser",
-        role: WorkspaceRole.STAKEHOLDER,
-      });
+      const request = createAuthenticatedPostRequest(
+        `/api/workspaces/${workspace.slug}/members`,
+        {
+          githubUsername: "testuser",
+          role: WorkspaceRole.STAKEHOLDER,
+        },
+        { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+      );
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: workspace.slug })
@@ -136,13 +138,15 @@ describe("Workspace Member Role API Integration Tests", () => {
       
       for (const role of invalidRoles) {
         const { adminUser, workspace } = await createTestWorkspaceWithAdminUser();
-        
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-        const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-          githubUsername: "testuser",
-          role: role,
-        });
+        const request = createAuthenticatedPostRequest(
+          `/api/workspaces/${workspace.slug}/members`,
+          {
+            githubUsername: "testuser",
+            role: role,
+          },
+          { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+        );
 
         const response = await POST(request, { 
           params: Promise.resolve({ slug: workspace.slug })
@@ -160,14 +164,17 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     test("should require authentication with real session validation", async () => {
       const { workspace } = await createTestWorkspaceWithAdminUser();
-      
-      // Mock no session
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest(`http://localhost/api/workspaces/${workspace.slug}/members`, {
-        githubUsername: "testuser",
-        role: WorkspaceRole.DEVELOPER,
-      });
+      const request = new NextRequest(
+        `http://localhost/api/workspaces/${workspace.slug}/members`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            githubUsername: "testuser",
+            role: WorkspaceRole.DEVELOPER,
+          }),
+        }
+      );
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: workspace.slug })
@@ -178,13 +185,15 @@ describe("Workspace Member Role API Integration Tests", () => {
 
     test("should require valid workspace access with real database lookup", async () => {
       const { adminUser } = await createTestWorkspaceWithAdminUser();
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
 
-      const request = createPostRequest("http://localhost/api/workspaces/nonexistent/members", {
-        githubUsername: "testuser",
-        role: WorkspaceRole.DEVELOPER,
-      });
+      const request = createAuthenticatedPostRequest(
+        "/api/workspaces/nonexistent/members",
+        {
+          githubUsername: "testuser",
+          role: WorkspaceRole.DEVELOPER,
+        },
+        { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+      );
 
       const response = await POST(request, { 
         params: Promise.resolve({ slug: "nonexistent" })
@@ -208,11 +217,11 @@ describe("Workspace Member Role API Integration Tests", () => {
           },
         });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
-        const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-          role,
-        });
+        const request = createAuthenticatedPatchRequest(
+          `/api/workspaces/${workspace.slug}/members/${targetUser.id}`,
+          { role },
+          { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+        );
 
         const response = await PATCH(request, { 
           params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
@@ -244,11 +253,11 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
-      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        role: WorkspaceRole.OWNER,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/workspaces/${workspace.slug}/members/${targetUser.id}`,
+        { role: WorkspaceRole.OWNER },
+        { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+      );
 
       const response = await PATCH(request, { 
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
@@ -275,11 +284,11 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
-      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        role: WorkspaceRole.STAKEHOLDER,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/workspaces/${workspace.slug}/members/${targetUser.id}`,
+        { role: WorkspaceRole.STAKEHOLDER },
+        { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+      );
 
       const response = await PATCH(request, { 
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
@@ -309,11 +318,11 @@ describe("Workspace Member Role API Integration Tests", () => {
           },
         });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
-
-        const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-          role,
-        });
+        const request = createAuthenticatedPatchRequest(
+          `/api/workspaces/${workspace.slug}/members/${targetUser.id}`,
+          { role },
+          { id: adminUser.id, email: adminUser.email || "", name: adminUser.name || "" }
+        );
 
         const response = await PATCH(request, { 
           params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
@@ -344,12 +353,11 @@ describe("Workspace Member Role API Integration Tests", () => {
         },
       });
 
-      // Mock session with non-admin user
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
-
-      const request = createPatchRequest(`http://localhost/api/workspaces/${workspace.slug}/members/${targetUser.id}`, {
-        role: WorkspaceRole.PM,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/workspaces/${workspace.slug}/members/${targetUser.id}`,
+        { role: WorkspaceRole.PM },
+        { id: nonAdminUser.id, email: nonAdminUser.email || "", name: nonAdminUser.name || "" }
+      );
 
       const response = await PATCH(request, { 
         params: Promise.resolve({ slug: workspace.slug, userId: targetUser.id })
