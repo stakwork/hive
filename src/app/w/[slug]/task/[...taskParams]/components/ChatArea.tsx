@@ -182,6 +182,7 @@ export function ChatArea({
       {/* Input Bar */}
       <ChatInput
         logs={logs}
+        messages={messages}
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}
