@@ -28,7 +28,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
   const { workflowData, isLoading, error } = useWorkflowPolling(
     projectId || null,
     isActive,
-    2000
+    1000
   );
 
   useEffect(() => {
