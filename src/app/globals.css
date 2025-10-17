@@ -177,20 +177,3 @@
     fill: #d1d5db !important;
   }
 }
-
-/* FORM Artifact Border Animation - Rotating Orb */
-@keyframes rotate-orb {
-  0% {
-    offset-distance: 0%;
-  }
-  100% {
-    offset-distance: 100%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .form-artifact-orb {
-    animation: none !important;
-    display: none !important;
-  }
-}
