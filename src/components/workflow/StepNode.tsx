@@ -40,15 +40,15 @@ export default function StepNode({ data: rawData }: NodeProps) {
     isSourceConnectable = false;
   }
 
-  let dragHandleClass = data.project_view ? 'drag-handle__custom_small' : 'drag-handle__custom';
+  let dragHandleClass = data.project_view ? 'workflow-drag-handle__custom_small' : 'workflow-drag-handle__custom';
 
   return (
-    <div className={`nowheel ${data.project_view ? 'flow-project-view' : ''}`}>
+    <div className={`nowheel ${data.project_view ? 'workflow-flow-project-view' : ''}`}>
       { (data.id !== 'start') &&
         <Handle
           type="target"
           position={Position.Left}
-          className={data.stepType !== 'IfCondition' ? dragHandleClass : 'drag-handle__custom if-condition-left-handle'}
+          className={data.stepType !== 'IfCondition' ? dragHandleClass : 'workflow-drag-handle__custom workflow-if-condition-left-handle'}
           isConnectable={!data.project_view && isTargetConnectable}
         />
       }
@@ -76,7 +76,7 @@ export default function StepNode({ data: rawData }: NodeProps) {
         <Handle
           type="source"
           position={Position.Right}
-          className={data.stepType !== 'IfCondition' ? dragHandleClass : 'if-condition-handle'}
+          className={data.stepType !== 'IfCondition' ? dragHandleClass : 'workflow-if-condition-handle'}
           isConnectable={data.stepType !== 'IfCondition' ? (!data.project_view && isSourceConnectable) : false}
         />
       }

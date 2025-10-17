@@ -315,15 +315,15 @@ class Nodes {
     if (show_only === 'false') {
        questionFill = icon;
     } else {
-      questionFill = `<a href="${newPath}" class="fill-div" data-turbo-stream=true></a>${icon}`;
+      questionFill = `<a href="${newPath}" class="workflow-fill-div" data-turbo-stream=true></a>${icon}`;
     }
     if(status){
       questionFill = questionFill.replace('fill="#444851"', 'fill="#FFFFFF"');
     }
     if(show_only === false || show_only === 'false'){
-      dataElem = `<div class="ifcon-inner"><span class="ifcon-icon"><img>${questionFill}</span>IfCondition<div class="ifconText">${data}</div><div class="ifcon-edit step-menu-edit" data-unique-id="${uniqueId}" data-wizard-step="true"><i class="material-icons">edit</i></div></div>`;
+      dataElem = `<div class="workflow-ifcon-inner"><span class="workflow-ifcon-icon"><img>${questionFill}</span>IfCondition<div class="workflow-ifconText">${data}</div><div class="workflow-ifcon-edit step-menu-edit" data-unique-id="${uniqueId}" data-wizard-step="true"><i class="material-icons">edit</i></div></div>`;
     }else{
-      dataElem = `<div class="ifcon-inner"><span class="ifcon-icon">${questionFill}</span>IfCondition<div class="ifconText">${data}</div></div>`;
+      dataElem = `<div class="workflow-ifcon-inner"><span class="workflow-ifcon-icon">${questionFill}</span>IfCondition<div class="workflow-ifconText">${data}</div></div>`;
     }
     const ifNode = new Nodes(
       id,
@@ -369,7 +369,7 @@ class Nodes {
     const newNode = new Nodes(
       'start',
       { x: position.x, y: position.y - 15 },
-      { html: '<p class="start-text">Start</p>' },
+      { html: '<p class="workflow-start-text">Start</p>' },
       135,
       80,
       '#67C083',
@@ -406,7 +406,7 @@ class Nodes {
     const endNode = new Nodes(
       'system.succeed',
       { x: position.x, y: position.y - 15},
-      { html: '<p class="start-text">End</p>' },
+      { html: '<p class="workflow-start-text">End</p>' },
       135,
       80,
       '#444851',
@@ -457,7 +457,7 @@ class Nodes {
     const newNode = new Nodes(
       id,
       position,
-      { html: '<p class="start-text">Halt</p>' },
+      { html: '<p class="workflow-start-text">Halt</p>' },
       135,
       80,
       '#8F979D',

@@ -877,7 +877,7 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   const onWorkflowUpdate = (data: any) => {
     const project_id = data.project_id;
-    axios.get(`/admin/projects/${project_id}.json`).then((response) => {
+    axios.get(`/api/v1/projects/${project_id}.json`).then((response) => {
       const project_progress = response.data.response;
 
       updateDiagram(project_progress)
@@ -1348,7 +1348,10 @@ export default function App(workflowApp: WorkflowAppProps) {
   }, [nodes, reactFlowInstance]); // Add showStep as dependency
 
   return (
-    <div style={{ width: windowWidth, height: windowHeight }}>
+    <div style={{
+      width: projectId ? '100%' : windowWidth,
+      height: projectId ? '100%' : windowHeight
+    }}>
       {renderPendingIndicator()}
       <ReactFlow
         onInit={onInit}
@@ -1373,10 +1376,10 @@ export default function App(workflowApp: WorkflowAppProps) {
       >
         {!useAssistantDimensions &&
           <div>
-            <Controls position={'top-left'} orientation={'vertical'} showInteractive={false}>
+            {/* <Controls position={'top-left'} orientation={'vertical'} showInteractive={false}>
               <SearchButton workflowId={workflowId} />
-            </Controls>
-            <MiniMap position={'bottom-left'} pannable zoomable/>
+            </Controls> */}
+            {/* <MiniMap position={'bottom-left'} pannable zoomable/> */}
             {!projectId &&
               <SmartLayoutButton onNodesChange={onCustomNodesChanged}/>
             }
