@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
-import { X, CheckCircle2, Loader2 } from "lucide-react";
-import { useRef, useEffect } from "react";
+import { X, CheckCircle2, Loader2, Camera } from "lucide-react";
+import { useRef, useEffect, useState } from "react";
+import { Screenshot } from "@/types/common";
+import { ScreenshotModal } from "@/components/ScreenshotModal";
 
 interface Action {
   id: string;
-  kind: string;
+  type: string;
   timestamp: number;
   locator?: {
     primary: string;
@@ -25,6 +27,7 @@ interface ActionsListProps {
   isReplaying?: boolean;
   currentActionIndex?: number;
   totalActions?: number;
+  screenshots?: Screenshot[];
 }
 
 // Helper function to extract the most descriptive element identifier
@@ -61,11 +64,14 @@ function getElementDescription(action: Action): string {
 }
 
 function getActionDisplay(action: Action): React.ReactNode {
-  switch (action.kind) {
+  const actionType = action.type;
+
+  switch (actionType) {
     case "nav":
+    case "goto":
       return (
         <>
-          Navigate to <span className="text-primary">{action.url || "/"}</span>
+          Navigate to <span className="text-primary">{action.url || action.value || "/"}</span>
         </>
       );
     case "click":
@@ -127,14 +133,14 @@ function getActionDisplay(action: Action): React.ReactNode {
           {assertDesc !== "element" && <span className="text-muted-foreground"> in {assertDesc}</span>}
         </>
       );
-    case "waitForUrl":
+    case "waitForURL":
       return (
         <>
-          Wait for <span className="text-primary">{action.expectedUrl || "navigation"}</span>
+          Wait for <span className="text-primary">{action.expectedUrl || action.value || "navigation"}</span>
         </>
       );
     default:
-      return <span className="text-primary">{action.kind}</span>;
+      return <span className="text-primary">{actionType}</span>;
   }
 }
 
@@ -142,6 +148,7 @@ function getActionDisplay(action: Action): React.ReactNode {
 function getActionBorderColor(kind: string): string {
   switch (kind) {
     case "nav":
+    case "goto":
       return "border-l-blue-500";
     case "click":
       return "border-l-green-500";
@@ -151,7 +158,7 @@ function getActionBorderColor(kind: string): string {
       return "border-l-purple-500";
     case "assertion":
       return "border-l-red-500";
-    case "waitForUrl":
+    case "waitForURL":
       return "border-l-muted-foreground";
     default:
       return "border-l-border";
@@ -166,9 +173,11 @@ export function ActionsList({
   isReplaying = false,
   currentActionIndex = -1,
   totalActions = 0,
+  screenshots = [],
 }: ActionsListProps) {
   const actionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<Screenshot | null>(null);
 
   // Auto-scroll to current action during replay
   useEffect(() => {
@@ -206,8 +215,13 @@ export function ActionsList({
     }
   };
 
+  // Find screenshot for a given action index
+  const getScreenshotForAction = (index: number): Screenshot | undefined => {
+    return screenshots.find((s) => s.actionIndex === index);
+  };
+
   return (
-    <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm">
+    <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm" data-testid="actions-list">
       <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
         <h3 className="text-sm font-semibold">
           {isReplaying ? (
@@ -237,15 +251,20 @@ export function ActionsList({
               const status = getActionStatus(index);
               const isActive = status === "active";
               const isCompleted = status === "completed";
+              const screenshot = getScreenshotForAction(index);
+              const actionType = action.type;
+              // Only waitForURL actions get screenshots (goto is skipped)
+              const isNavAction = actionType === "waitForURL";
+              const hasScreenshot = isNavAction && !!screenshot;
 
               return (
                 <div
-                  key={action.id}
+                  key={action.id || `action-${index}`}
                   ref={(el) => {
                     actionRefs.current[index] = el;
                   }}
                   className={`flex items-center gap-2 rounded border-l-4 ${getActionBorderColor(
-                    action.kind,
+                    actionType,
                   )} p-1.5 transition-all duration-200 ${
                     isActive
                       ? "bg-blue-100 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-400 dark:ring-blue-600"
@@ -253,28 +272,65 @@ export function ActionsList({
                         ? "bg-green-50 dark:bg-green-900/20 opacity-70"
                         : "bg-muted/50 hover:bg-muted"
                   }`}
-                  title={`${action.kind}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
+                  title={`${actionType}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
+                  data-testid={`action-item-${index}`}
                 >
                   {isReplaying && getStatusIcon(status)}
+                  {hasScreenshot && (
+                    <button
+                      onClick={() => setSelectedScreenshot(screenshot)}
+                      className="flex-shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:border-primary transition-colors"
+                      title="Click to view screenshot"
+                      aria-label={`View screenshot of ${screenshot.url} at action ${index + 1}`}
+                      data-testid={`screenshot-thumbnail-${index}`}
+                    >
+                      <img
+                        src={screenshot.dataUrl}
+                        alt={`Screenshot of ${screenshot.url} at action ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  )}
+                  {isNavAction && !hasScreenshot && (
+                    <div
+                      className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-muted border border-border"
+                      title="No screenshot available"
+                      role="img"
+                      aria-label="No screenshot available for this action"
+                      data-testid={`screenshot-placeholder-${index}`}
+                    >
+                      <Camera className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
                     {getActionDisplay(action)}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRemoveAction(action)}
-                    disabled={!isRecording || isReplaying}
-                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
-                    title="Remove this action"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
+                  {isRecording && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRemoveAction(action)}
+                      disabled={isReplaying}
+                      className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
+                      title="Remove this action"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      <ScreenshotModal
+        screenshot={selectedScreenshot}
+        allScreenshots={screenshots}
+        isOpen={!!selectedScreenshot}
+        onClose={() => setSelectedScreenshot(null)}
+        onNavigate={setSelectedScreenshot}
+      />
     </div>
   );
 }

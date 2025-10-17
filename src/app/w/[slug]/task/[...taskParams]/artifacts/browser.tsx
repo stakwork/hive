@@ -87,14 +87,18 @@ export function BrowserArtifactPanel({
     currentAction,
     startPlaywrightReplay,
     stopPlaywrightReplay,
-  } = usePlaywrightReplay(iframeRef);
+    replayScreenshots,
+    replayActions,
+  } = usePlaywrightReplay(iframeRef, (message) => {
+    showActionToast("Screenshot Error", message);
+  });
 
   // Auto-show actions list when replay starts
   useEffect(() => {
-    if (isPlaywrightReplaying && !showActions && capturedActions.length > 0) {
+    if (isPlaywrightReplaying && !showActions && (replayActions.length > 0 || capturedActions.length > 0)) {
       toggleActionsView();
     }
-  }, [isPlaywrightReplaying, showActions, capturedActions.length, toggleActionsView]);
+  }, [isPlaywrightReplaying, showActions, toggleActionsView]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -357,13 +361,14 @@ export function BrowserArtifactPanel({
               {showActions && (
                 <div className="fixed top-0 left-0 bottom-0 z-40 w-80 transition-all duration-300 ease-in-out">
                   <ActionsList
-                    actions={capturedActions}
+                    actions={replayActions.length > 0 ? replayActions : capturedActions}
                     onRemoveAction={removeAction}
                     onClearAll={clearAllActions}
                     isRecording={isRecording}
                     isReplaying={isPlaywrightReplaying}
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
+                    screenshots={replayScreenshots}
                   />
                 </div>
               )}
