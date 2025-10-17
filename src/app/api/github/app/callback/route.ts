@@ -2,9 +2,9 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export const runtime = "nodejs";
 
@@ -266,8 +266,9 @@ export async function GET(request: NextRequest) {
         });
 
         if (workspace) {
-          const primaryRepo = await getPrimaryRepository(workspace.id);
-          const repoUrl = primaryRepo?.repositoryUrl;
+
+          // TODO: getting primary repository url from repositories, until it is created is incorrect
+          const repoUrl = workspace.repositoryDraft;
 
           if (repoUrl) {
             const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
