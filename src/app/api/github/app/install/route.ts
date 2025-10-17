@@ -1,7 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
-import { getUserAppTokens } from "@/lib/githubApp";
+import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
     let installed = false;
     let installationId: number | undefined;
     let ownerType: "user" | "org" | undefined;
+    let hasRepositoryAccess = false;
 
     // First, check if we have a SourceControlOrg record for this GitHub owner
     // This tells us if ANY user has installed the app for this org/user
@@ -106,6 +107,45 @@ export async function POST(request: NextRequest) {
       installationId = existingSourceControlOrg.githubInstallationId;
       ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
       console.log(`✅ App already installed on ${githubOwner}! Installation ID: ${installationId} (from database)`);
+      
+      // Check if the installation has access to the specific repository
+      // We need tokens to check this, try to get them for this user
+      const appTokens = await getUserAppTokens(session.user.id, githubOwner);
+      if (appTokens?.accessToken) {
+        // Extract owner/repo from URL for API call
+        const repoMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+        if (repoMatch) {
+          const [, repoOwner, repoName] = repoMatch;
+          try {
+            // Check installation repositories to see if this specific repo is included
+            const installationReposResponse = await fetch(
+              `https://api.github.com/user/installations/${installationId}/repositories`, 
+              {
+                headers: {
+                  Authorization: `Bearer ${appTokens.accessToken}`,
+                  Accept: "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                },
+              }
+            );
+            
+            if (installationReposResponse.ok) {
+              const reposData = await installationReposResponse.json();
+              const targetRepoFullName = `${repoOwner}/${repoName}`.toLowerCase();
+              hasRepositoryAccess = reposData.repositories?.some(
+                (repo: { full_name: string }) => repo.full_name.toLowerCase() === targetRepoFullName
+              );
+              console.log(`🔍 Repository access check for ${targetRepoFullName}: ${hasRepositoryAccess ? 'GRANTED' : 'DENIED'}`);
+            } else {
+              console.log(`❌ Failed to check repository access (status: ${installationReposResponse.status})`);
+            }
+          } catch (error) {
+            console.error('Error checking repository access:', error);
+          }
+        }
+      } else {
+        console.log(`⚠️ No tokens available for ${githubOwner}, cannot verify repository access`);
+      }
     } else {
       // No installation record found, try to check via API if this user has tokens
       const appTokens = await getUserAppTokens(session.user.id, githubOwner);
@@ -148,6 +188,39 @@ export async function POST(request: NextRequest) {
               installed = true;
               installationId = installationData.id;
               console.log(`✅ App installed on ${githubOwner}! Installation ID: ${installationId} (from API)`);
+              
+              // Check if the installation has access to the specific repository
+              // Extract owner/repo from URL for API call
+              const repoMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+              if (repoMatch) {
+                const [, repoOwner, repoName] = repoMatch;
+                try {
+                  // Check installation repositories to see if this specific repo is included
+                  const installationReposResponse = await fetch(
+                    `https://api.github.com/user/installations/${installationId}/repositories`, 
+                    {
+                      headers: {
+                        Authorization: `Bearer ${appTokens.accessToken}`,
+                        Accept: "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                    }
+                  );
+                  
+                  if (installationReposResponse.ok) {
+                    const reposData = await installationReposResponse.json();
+                    const targetRepoFullName = `${repoOwner}/${repoName}`.toLowerCase();
+                    hasRepositoryAccess = reposData.repositories?.some(
+                      (repo: { full_name: string }) => repo.full_name.toLowerCase() === targetRepoFullName
+                    );
+                    console.log(`🔍 Repository access check for ${targetRepoFullName}: ${hasRepositoryAccess ? 'GRANTED' : 'DENIED'}`);
+                  } else {
+                    console.log(`❌ Failed to check repository access (status: ${installationReposResponse.status})`);
+                  }
+                } catch (error) {
+                  console.error('Error checking repository access:', error);
+                }
+              }
             } else {
               console.log(`❌ App not installed on ${githubOwner} (status: ${installationResponse?.status})`);
             }
@@ -165,10 +238,14 @@ export async function POST(request: NextRequest) {
     let authUrl: string;
     let flowType: string;
 
-    if (installed) {
-      // App already installed - just need user authorization
+    if (installed && hasRepositoryAccess) {
+      // App installed and has repository access - just need user authorization
       authUrl = `https://github.com/login/oauth/authorize?client_id=${config.GITHUB_APP_CLIENT_ID}&state=${state}`;
       flowType = "user_authorization";
+    } else if (installed && !hasRepositoryAccess) {
+      // App installed but repository not granted access - send to installation settings
+      authUrl = `https://github.com/settings/installations/${installationId}`;
+      flowType = "repository_access";
     } else {
       console.log(`👤 App not installed for ${githubOwner}`);
       // App not installed - need full installation flow
@@ -192,6 +269,7 @@ export async function POST(request: NextRequest) {
           state,
           flowType, // So frontend knows what's happening
           appInstalled: installed,
+          hasRepositoryAccess, // Whether the specific repository has been granted access
           githubOwner, // Which org/user we're connecting to
           ownerType, // 'user' or 'org'
           installationId, // Installation ID if already installed
