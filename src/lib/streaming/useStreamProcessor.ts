@@ -187,6 +187,8 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                   toolCallsOrder.push(data.toolCallId);
                   timeline.push({ type: "toolCall", id: data.toolCallId });
                 }
+                // Update immediately for tool starts (no debounce)
+                updateMessage();
               }
             } else if (data.type === "tool-input-delta") {
               const existing = toolCalls.get(data.toolCallId);
@@ -203,8 +205,13 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                 toolCalls.set(data.toolCallId, {
                   ...existing,
                   input: data.input,
+                  inputText: typeof data.input === "string"
+                    ? data.input
+                    : JSON.stringify(data.input, null, 2),
                   status: "input-available",
                 });
+                // Update immediately when tool input is ready
+                updateMessage();
               }
             } else if (data.type === "tool-input-error") {
               const existing = toolCalls.get(data.toolCallId);
@@ -264,6 +271,8 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                     output: processedOutput,
                     status: "output-available",
                   });
+                  // Update immediately when tool output is ready
+                  updateMessage();
                 }
               }
             } else if (data.type === "tool-output-error") {

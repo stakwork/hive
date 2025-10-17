@@ -30,7 +30,16 @@ export function extractAnswer(output: unknown): string {
  */
 export function parseSSELine(line: string): string | null {
   const trimmed = line.trim();
-  if (!trimmed.startsWith("data:")) return null;
+
+  if (!trimmed.startsWith("data:")) {
+    // AI SDK v3+ uses "0:" prefix format instead of "data:"
+    if (trimmed.match(/^\d+:/)) {
+      const jsonStr = trimmed.replace(/^\d+:/, "").trim();
+      if (!jsonStr || jsonStr === "[DONE]") return null;
+      return jsonStr;
+    }
+    return null;
+  }
 
   const jsonStr = trimmed.replace(/^data:\s*/, "").trim();
   if (!jsonStr || jsonStr === "[DONE]") return null;

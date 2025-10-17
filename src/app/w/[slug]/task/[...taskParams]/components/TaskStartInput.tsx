@@ -102,6 +102,20 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
               />
               <span className="text-sm text-foreground">Artifact Test</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="mode"
+                value="agent"
+                style={{
+                  accentColor: "var(--color-green-500)",
+                }}
+                checked={taskMode === "agent"}
+                onChange={() => onModeChange("agent")}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Agent</span>
+            </label>
           </fieldset>
         </div>
       )}

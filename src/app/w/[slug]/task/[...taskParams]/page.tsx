@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
@@ -10,8 +10,11 @@ import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from 
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
-import { TaskStartInput, ChatArea, ArtifactsPanel } from "./components";
+import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel } from "./components";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { useStreamProcessor } from "@/lib/streaming";
+import { agentToolProcessors } from "./lib/streaming-config";
+import type { AgentStreamingMessage } from "@/types/agent";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -34,6 +37,7 @@ export default function TaskChatPage() {
 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [agentMessages, setAgentMessages] = useState<AgentStreamingMessage[]>([]);
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
@@ -47,6 +51,33 @@ export default function TaskChatPage() {
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+
+  // Streaming processor for agent mode
+  const { processStream } = useStreamProcessor<AgentStreamingMessage>({
+    toolProcessors: agentToolProcessors,
+    hiddenTools: ["final_answer"],
+    hiddenToolTextIds: { final_answer: "final-answer" },
+  });
+  const hasReceivedContentRef = useRef(false);
+
+  // Save agent message to backend after streaming completes
+  const saveAgentMessageToBackend = useCallback(async (message: AgentStreamingMessage, taskId: string, role: "user" | "assistant") => {
+    try {
+      // Create a proper chat message record in the database
+      await fetch(`/api/tasks/${taskId}/messages/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: message.content,
+          role: role === "user" ? "USER" : "ASSISTANT",
+        }),
+      });
+    } catch (error) {
+      console.error("Error saving agent message:", error);
+    }
+  }, []);
 
   // Handle incoming SSE messages
   const handleSSEMessage = useCallback((message: ChatMessage) => {
@@ -230,10 +261,90 @@ export default function TaskChatPage() {
 
     setMessages((msgs) => [...msgs, newMessage]);
     setIsLoading(true);
-
-    // console.log("Sending message:", messageText, options);
+    hasReceivedContentRef.current = false;
 
     try {
+      // Use agent mode streaming
+      if (taskMode === "agent") {
+        // Add user message to agent messages
+        const userAgentMessage: AgentStreamingMessage = {
+          id: newMessage.id,
+          content: messageText,
+          role: "user",
+          timestamp: new Date(),
+        };
+        setAgentMessages((prev) => [...prev, userAgentMessage]);
+
+        // Mark user message as sent in regular messages too
+        setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)));
+
+        // Prepare history for agent mode from agentMessages
+        const history = agentMessages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        }));
+
+        const response = await fetch("/api/agent", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            taskId: options?.taskId || currentTaskId,
+            message: messageText,
+            workspaceSlug: slug,
+            history,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to send message: ${response.statusText}`);
+        }
+
+        // Process the streaming response
+        const assistantMessageId = generateUniqueId();
+        let finalAssistantMessage: AgentStreamingMessage | undefined = undefined;
+
+        await processStream(
+          response,
+          assistantMessageId,
+          (updatedMessage) => {
+            // Turn off loading as soon as we get the first content
+            if (!hasReceivedContentRef.current) {
+              hasReceivedContentRef.current = true;
+              setIsLoading(false);
+            }
+
+            // Store the final message
+            finalAssistantMessage = updatedMessage;
+
+            setAgentMessages((prev) => {
+              const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
+              if (existingIndex >= 0) {
+                const updated = [...prev];
+                updated[existingIndex] = updatedMessage;
+                return updated;
+              }
+              return [...prev, updatedMessage];
+            });
+          },
+          // Additional fields specific to AgentStreamingMessage
+          {
+            role: "assistant" as const,
+            timestamp: new Date(),
+          }
+        );
+
+        // After streaming completes, save both messages to backend
+        if (finalAssistantMessage) {
+          await saveAgentMessageToBackend(userAgentMessage, options?.taskId || currentTaskId || "", "user");
+          await saveAgentMessageToBackend(finalAssistantMessage, options?.taskId || currentTaskId || "", "assistant");
+        }
+
+        return;
+      }
+
+      // Regular stakwork mode
       const body: { [k: string]: unknown } = {
         taskId: options?.taskId || currentTaskId,
         message: messageText,
@@ -346,7 +457,22 @@ export default function TaskChatPage() {
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
           className="h-[92vh] md:h-[97vh] flex"
         >
-          {hasNonFormArtifacts ? (
+          {taskMode === "agent" ? (
+            <div className="flex-1 min-w-0">
+              <AgentChatArea
+                messages={agentMessages}
+                onSend={handleSend}
+                inputDisabled={inputDisabled}
+                isLoading={isLoading}
+                logs={logs}
+                pendingDebugAttachment={pendingDebugAttachment}
+                onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                workflowStatus={workflowStatus}
+                taskTitle={taskTitle}
+                workspaceSlug={slug}
+              />
+            </div>
+          ) : hasNonFormArtifacts ? (
             <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0 min-h-0 gap-2">
               <ResizablePanel defaultSize={40} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
