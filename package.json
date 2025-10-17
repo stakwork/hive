@@ -30,6 +30,7 @@
     "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts"
   },
   "dependencies": {
+    "@anycable/web": "^1.1.0",
     "@auth/prisma-adapter": "^2.10.0",
     "@aws-sdk/client-s3": "^3.864.0",
     "@aws-sdk/s3-request-presigner": "^3.864.0",
@@ -84,11 +85,13 @@
     "crypto-js": "^4.2.0",
     "d3": "^7.9.0",
     "ecpair": "^3.0.0",
+    "elkjs": "^0.11.0",
     "framer-motion": "^12.23.0",
     "gitsee": "^1.0.13",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.3",
     "lucide-react": "^0.525.0",
+    "moment": "^2.30.1",
     "next": "^15.4.1",
     "next-auth": "^4.24.11",
     "postcss": "^8.5.6",
