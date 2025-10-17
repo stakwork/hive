@@ -147,6 +147,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
 
           try {
             const data = JSON.parse(jsonStr) as StreamEvent;
+            console.log("[STREAM PROCESSOR] Received event:", data.type, data);
 
             if (data.type === "text-start") {
               // Generate unique ID by combining stream ID with sequence number

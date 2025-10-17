@@ -303,6 +303,8 @@ export default function TaskChatPage() {
 
         // Process the streaming response
         const assistantMessageId = generateUniqueId();
+        let finalAssistantMessage: AgentStreamingMessage | null = null;
+
         await processStream(
           response,
           assistantMessageId,
@@ -312,6 +314,9 @@ export default function TaskChatPage() {
               hasReceivedContentRef.current = true;
               setIsLoading(false);
             }
+
+            // Store the final message
+            finalAssistantMessage = updatedMessage;
 
             setAgentMessages((prev) => {
               const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
@@ -331,7 +336,6 @@ export default function TaskChatPage() {
         );
 
         // After streaming completes, save both messages to backend
-        const finalAssistantMessage = agentMessages.find(m => m.id === assistantMessageId);
         if (finalAssistantMessage && !finalAssistantMessage.isStreaming) {
           await saveAgentMessageToBackend(userAgentMessage, options?.taskId || currentTaskId || "", "user");
           await saveAgentMessageToBackend(finalAssistantMessage, options?.taskId || currentTaskId || "", "assistant");

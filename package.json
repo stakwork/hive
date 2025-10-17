@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -71,6 +71,7 @@
     "@types/three": "^0.180.0",
     "@xyflow/react": "^12.8.6",
     "ai": "^5.0.50",
+    "ai-sdk-provider-goose-web": "file:../../evanf/ai-sdk-provider-goose-web",
     "aieo": "^0.1.25",
     "autoprefixer": "^10.4.21",
     "axios": "^1.10.0",

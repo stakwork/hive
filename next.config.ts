@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  transpilePackages: ["ai-sdk-provider-goose-web"],
   images: {
     remotePatterns: [
       {
