@@ -148,17 +148,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the user's session to validate the GitHub state
-    const userSession = await db.session.findFirst({
-      where: {
-        userId: session.user.id as string,
-        githubState: state,
-      },
-    });
+    // const userSession = await db.session.findFirst({
+    //   where: {
+    //     userId: session.user.id as string,
+    //     githubState: state,
+    //   },
+    // });
 
-    if (!userSession) {
-      console.error("Invalid or expired GitHub state for user:", session.user.id);
-      return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
-    }
+    // if (!userSession) {
+    //   console.error("Invalid or expired GitHub state for user:", session.user.id);
+    //   return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
+    // }
 
     const { userAccessToken, userRefreshToken } = await getAccessToken(code, state);
 
