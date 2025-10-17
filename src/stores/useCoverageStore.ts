@@ -14,6 +14,7 @@ type CoverageStore = {
   coverage: "all" | "tested" | "untested";
   ignoreDirs: string;
   repo: string;
+  regex: string;
   setNodeType: (t: UncoveredNodeType) => void;
   setSort: (s: CoverageSortOption) => void;
   setSortDirection: (d: SortDirection) => void;
@@ -23,6 +24,7 @@ type CoverageStore = {
   setCoverage: (c: "all" | "tested" | "untested") => void;
   setIgnoreDirs: (dirs: string) => void;
   setRepo: (repo: string) => void;
+  setRegex: (regex: string) => void;
   resetPagination: () => void;
 };
 
@@ -36,6 +38,7 @@ export const useCoverageStore = create<CoverageStore>()(
     coverage: "all",
     ignoreDirs: "",
     repo: "",
+    regex: "",
     setNodeType: (t) => set({ nodeType: t, offset: 0 }),
     setSort: (s) => set({ sort: s, offset: 0 }),
     setSortDirection: (d) => set({ sortDirection: d, offset: 0 }),
@@ -52,6 +55,7 @@ export const useCoverageStore = create<CoverageStore>()(
     setCoverage: (c) => set({ coverage: c, offset: 0 }),
     setIgnoreDirs: (dirs) => set({ ignoreDirs: dirs, offset: 0 }),
     setRepo: (repo) => set({ repo, offset: 0 }),
+    setRegex: (regex) => set({ regex, offset: 0 }),
     resetPagination: () => set({ offset: 0 }),
   })),
 );

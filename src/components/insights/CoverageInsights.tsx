@@ -69,10 +69,11 @@ export function CoverageInsights() {
     prefetchPrev,
   } = useCoverageNodes();
 
-  const { ignoreDirs, setIgnoreDirs, repo, setRepo } = useCoverageNodes();
+  const { ignoreDirs, setIgnoreDirs, repo, setRepo, regex, setRegex } = useCoverageNodes();
 
   const [inputValue, setInputValue] = useState(ignoreDirs);
   const [repoInputValue, setRepoInputValue] = useState(repo);
+  const [regexInputValue, setRegexInputValue] = useState(regex);
 
   useEffect(() => {
     setInputValue(ignoreDirs);
@@ -81,6 +82,10 @@ export function CoverageInsights() {
   useEffect(() => {
     setRepoInputValue(repo);
   }, [repo]);
+
+  useEffect(() => {
+    setRegexInputValue(regex);
+  }, [regex]);
 
   const handleApplyFilter = () => {
     const cleaned = inputValue
@@ -106,6 +111,14 @@ export function CoverageInsights() {
     }
   };
 
+  const handleApplyRegexFilter = () => {
+    const cleaned = regexInputValue.trim();
+
+    if (cleaned !== regex) {
+      setRegex(cleaned);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleApplyFilter();
@@ -116,6 +129,13 @@ export function CoverageInsights() {
   const handleRepoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleApplyRepoFilter();
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleRegexKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleApplyRegexFilter();
       e.currentTarget.blur();
     }
   };
@@ -215,6 +235,19 @@ export function CoverageInsights() {
                 onBlur={handleApplyRepoFilter}
                 onKeyDown={handleRepoKeyDown}
                 className="h-8 w-[280px] text-xs"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Regex:</span>
+              <Input
+                type="text"
+                placeholder="e.g. ^src/.*\.ts$"
+                value={regexInputValue}
+                onChange={(e) => setRegexInputValue(e.target.value)}
+                onBlur={handleApplyRegexFilter}
+                onKeyDown={handleRegexKeyDown}
+                className="h-8 w-[200px] text-xs"
               />
             </div>
           </div>

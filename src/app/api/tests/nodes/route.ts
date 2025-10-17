@@ -60,7 +60,7 @@ function buildQueryString(params: ParsedParams): string {
   return q.toString();
 }
 
-function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, repo?: string | null): string {
+function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, repo?: string | null, regex?: string | null): string {
   const queryString = buildQueryString(params);
   const q = new URLSearchParams(queryString);
   if (ignoreDirs) {
@@ -68,6 +68,9 @@ function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, rep
   }
   if (repo) {
     q.set("repo", repo);
+  }
+  if (regex) {
+    q.set("regex", regex);
   }
   return `/tests/nodes?${q.toString()}`;
 }
@@ -157,6 +160,7 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
     const repoParam = searchParams.get("repo");
+    const regexParam = searchParams.get("regex");
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
@@ -178,7 +182,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs, repoParam);
+    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs, repoParam, regexParam);
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
