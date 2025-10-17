@@ -111,6 +111,7 @@ function SignInContent() {
       <div className="w-full max-w-md">
         <Link
           href="/"
+          data-testid="back-to-home"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />

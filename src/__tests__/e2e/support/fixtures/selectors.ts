@@ -9,6 +9,8 @@ export const selectors = {
     mockSignInButton: '[data-testid="mock-signin-button"]',
     githubSignInButton: '[data-testid="github-signin-button"]',
     welcomeMessage: 'div.grid.auto-rows-min.items-start:has-text("Welcome to Hive")',
+    backToHomeLink: '[data-testid="back-to-home"]',
+    signinPageTitle: 'div[data-slot="card-title"]:has-text("Hive")',
   },
 
   // Navigation

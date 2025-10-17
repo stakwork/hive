@@ -15,6 +15,22 @@ export class AuthPage {
   }
 
   /**
+   * Navigate to sign-in page directly
+   */
+  async gotoSignIn(): Promise<void> {
+    await this.page.goto('http://localhost:3000/auth/signin');
+  }
+
+  /**
+   * Click back to home link from signin page
+   */
+  async clickBackToHome(): Promise<void> {
+    const backLink = this.page.locator(selectors.auth.backToHomeLink);
+    await expect(backLink).toBeVisible({ timeout: 10000 });
+    await backLink.click();
+  }
+
+  /**
    * Verify welcome message is visible
    */
   async verifyWelcomeMessage(): Promise<void> {
