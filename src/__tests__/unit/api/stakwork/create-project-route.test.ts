@@ -1,13 +1,8 @@
-import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
+import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/create-project/route";
-import { getServerSession } from "next-auth/next";
 import { type ApiError } from "@/types";
-
-// Mock dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 const mockCreateProject = vi.fn();
 
@@ -16,12 +11,6 @@ vi.mock("@/lib/service-factory", () => ({
     createProject: mockCreateProject,
   }),
 }));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-const mockGetServerSession = getServerSession as Mock;
 
 // Test Data Factories
 const TestDataFactory = {
@@ -54,6 +43,7 @@ const TestDataFactory = {
   createValidUser: () => ({
     id: "user-123",
     email: "test@example.com",
+    name: "Test User",
   }),
 
   createValidSession: () => ({
@@ -80,7 +70,26 @@ const TestDataFactory = {
 
 // Test Helpers
 const TestHelpers = {
-  createMockRequest: (body: object) => {
+  createMockRequest: (body: object, authenticated = true) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    
+    if (authenticated) {
+      const user = TestDataFactory.createValidUser();
+      headers[MIDDLEWARE_HEADERS.USER_ID] = user.id;
+      headers[MIDDLEWARE_HEADERS.USER_EMAIL] = user.email;
+      headers[MIDDLEWARE_HEADERS.USER_NAME] = user.name;
+      headers[MIDDLEWARE_HEADERS.AUTH_STATUS] = "authenticated";
+      headers[MIDDLEWARE_HEADERS.REQUEST_ID] = crypto.randomUUID();
+    }
+    
+    return new NextRequest("http://localhost:3000/api/stakwork/create-project", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  },
+
+  createUnauthenticatedRequest: (body: object) => {
     return new NextRequest("http://localhost:3000/api/stakwork/create-project", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -88,22 +97,10 @@ const TestHelpers = {
     });
   },
 
-  setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
-  },
-
-  setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
-  },
-
-  setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ user: null });
-  },
-
   expectAuthenticationError: async (response: Response) => {
     expect(response.status).toBe(401);
     const data = await response.json();
-    expect(data).toEqual({ error: "Unauthorized" });
+    expect(data.error).toBe("Unauthorized");
     expect(mockCreateProject).not.toHaveBeenCalled();
   },
 
@@ -149,41 +146,32 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      TestHelpers.setupUnauthenticatedUser();
-
-      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), false);
       const response = await POST(request);
       
       await TestHelpers.expectAuthenticationError(response);
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      TestHelpers.setupSessionWithoutUser();
-
-      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), false);
       const response = await POST(request);
       
       await TestHelpers.expectAuthenticationError(response);
     });
 
     test("should proceed with valid session", async () => {
-      TestHelpers.setupAuthenticatedUser();
       const mockProject = TestDataFactory.createMockProject();
       mockCreateProject.mockResolvedValue(mockProject);
 
-      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), true);
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockGetServerSession).toHaveBeenCalled();
       expect(mockCreateProject).toHaveBeenCalled();
     });
   });
 
   describe("Input Validation", () => {
-    beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
-    });
 
     const validationTestCases = [
       {
@@ -223,7 +211,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
     test.each(validationTestCases)(
       "should return 400 when $name is missing",
       async ({ createInvalidData }) => {
-        const request = TestHelpers.createMockRequest(createInvalidData());
+        const request = TestHelpers.createMockRequest(createInvalidData(), true);
         const response = await POST(request);
         
         await TestHelpers.expectValidationError(
@@ -236,7 +224,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
     test("should return 400 when multiple required fields are missing", async () => {
       const invalidData = { title: "Test" }; // Missing description, budget, skills
 
-      const request = TestHelpers.createMockRequest(invalidData);
+      const request = TestHelpers.createMockRequest(invalidData, true);
       const response = await POST(request);
       
       await TestHelpers.expectValidationError(
@@ -250,7 +238,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       mockCreateProject.mockResolvedValue(mockProject);
 
       const minimalData = TestDataFactory.createMinimalProjectData();
-      const request = TestHelpers.createMockRequest(minimalData);
+      const request = TestHelpers.createMockRequest(minimalData, true);
       const response = await POST(request);
 
       expect(response.status).toBe(201);
@@ -265,7 +253,6 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
   describe("Success Cases", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     test("should successfully create project with all fields", async () => {
@@ -279,7 +266,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       mockCreateProject.mockResolvedValue(mockProject);
 
-      const request = TestHelpers.createMockRequest(projectData);
+      const request = TestHelpers.createMockRequest(projectData, true);
       const response = await POST(request);
       
       await TestHelpers.expectSuccessfulResponse(response, mockProject);
@@ -299,7 +286,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       const projectData = TestDataFactory.createValidProjectData();
       mockCreateProject.mockResolvedValue(TestDataFactory.createMockProject());
 
-      const request = TestHelpers.createMockRequest(projectData);
+      const request = TestHelpers.createMockRequest(projectData, true);
       await POST(request);
 
       expect(mockCreateProject).toHaveBeenCalledWith(
@@ -319,7 +306,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       mockCreateProject.mockResolvedValue(mockProject);
 
-      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), true);
       const response = await POST(request);
       
       await TestHelpers.expectSuccessfulResponse(response, mockProject);
@@ -328,7 +315,6 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
   describe("ApiError Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     const apiErrorTestCases = [
@@ -371,7 +357,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       async ({ apiError }) => {
         mockCreateProject.mockRejectedValue(apiError);
 
-        const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+        const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), true);
         const response = await POST(request);
         
         await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -392,7 +378,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       mockCreateProject.mockRejectedValue(apiError);
 
-      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), true);
       const response = await POST(request);
       
       await TestHelpers.expectApiErrorResponse(response, apiError);
@@ -401,7 +387,6 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
   describe("Generic Error Handling", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     const genericErrorTestCases = [
@@ -431,7 +416,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       async ({ error }) => {
         mockCreateProject.mockRejectedValue(error);
 
-        const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+        const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), true);
         const response = await POST(request);
         
         await TestHelpers.expectGenericErrorResponse(response);
@@ -444,7 +429,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       
       mockCreateProject.mockRejectedValue(testError);
 
-      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData(), true);
       await POST(request);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -458,7 +443,6 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
   describe("Edge Cases", () => {
     beforeEach(() => {
-      TestHelpers.setupAuthenticatedUser();
     });
 
     const edgeCaseTestCases = [
@@ -525,7 +509,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
         mockCreateProject.mockResolvedValue(TestDataFactory.createMockProject());
 
         const testData = createData();
-        const request = TestHelpers.createMockRequest(testData);
+        const request = TestHelpers.createMockRequest(testData, true);
         const response = await POST(request);
 
         expect(response.status).toBe(201);
@@ -541,7 +525,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
         title: "",
       };
 
-      const request = TestHelpers.createMockRequest(dataWithEmptyTitle);
+      const request = TestHelpers.createMockRequest(dataWithEmptyTitle, true);
       const response = await POST(request);
       
       // Empty string is falsy, so validation should fail

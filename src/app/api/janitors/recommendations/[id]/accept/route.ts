@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { acceptJanitorRecommendation } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
@@ -16,14 +15,12 @@ export async function POST(
 ) {
   try {
     console.log("Accept route called");
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string })?.id;
-    console.log("Session user ID:", userId);
-
-    if (!userId) {
-      console.log("No user ID found, returning unauthorized");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    
+    const userId = userOrResponse.id;
+    console.log("User ID:", userId);
 
     const { id } = await params;
     const body = await request.json();

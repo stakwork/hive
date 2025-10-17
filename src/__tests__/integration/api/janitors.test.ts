@@ -20,6 +20,7 @@ import {
   createGetRequest,
   createPostRequest,
   createPutRequest,
+  createAuthenticatedPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
 
@@ -780,10 +781,12 @@ describe("Janitor API Integration Tests", () => {
           status: "PENDING",
         },
       });
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createPostRequest("http://localhost/api/test", {});
+      const request = createAuthenticatedPostRequest("http://localhost/api/test", {}, {
+        id: user.id,
+        email: user.email || "",
+        name: user.name || "",
+      });
       
       const response = await AcceptRecommendation(request, {
         params: Promise.resolve({ id: recommendation.id }),
@@ -842,11 +845,13 @@ describe("Janitor API Integration Tests", () => {
           status: "PENDING",
         },
       });
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createPostRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
         reason: "Not relevant for this project",
+      }, {
+        id: user.id,
+        email: user.email || "",
+        name: user.name || "",
       });
       
       const response = await DismissRecommendation(request, {

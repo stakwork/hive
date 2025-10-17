@@ -113,8 +113,8 @@ describe("POST /api/stakwork/user-journey", () => {
       });
 
       expect(result.status).toBe(401);
-      const json = await result.json();
-      expect(json).toEqual({ error: "Unauthorized" });
+      const json = await result.json() as { error?: string; [key: string]: unknown };
+      expect(json.error).toBe("Unauthorized");
     });
 
     it("should return 401 when session has no user", async () => {
@@ -125,8 +125,8 @@ describe("POST /api/stakwork/user-journey", () => {
       });
 
       expect(result.status).toBe(401);
-      const json = await result.json();
-      expect(json).toEqual({ error: "Unauthorized" });
+      const json = await result.json() as { error?: string; [key: string]: unknown };
+      expect(json.error).toBe("Unauthorized");
     });
 
     it("should return 401 when user session has no id", async () => {
@@ -140,8 +140,8 @@ describe("POST /api/stakwork/user-journey", () => {
       });
 
       expect(result.status).toBe(401);
-      const json = await result.json();
-      expect(json).toEqual({ error: "Invalid user session" });
+      const json = await result.json() as { error?: string; [key: string]: unknown };
+      expect(json.error).toBe("Unauthorized");
     });
   });
 
@@ -149,48 +149,48 @@ describe("POST /api/stakwork/user-journey", () => {
     it("should return 400 when message is missing", async () => {
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody({ message: undefined }),
       });
 
       expect(result.status).toBe(400);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Message is required" });
     });
 
     it("should return 400 when message is empty string", async () => {
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody({ message: "" }),
       });
 
       expect(result.status).toBe(400);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Message is required" });
     });
 
     it("should return 400 when workspaceId is missing", async () => {
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody({ workspaceId: undefined }),
       });
 
       expect(result.status).toBe(400);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Workspace ID is required" });
     });
 
     it("should return 400 when workspaceId is empty string", async () => {
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody({ workspaceId: "" }),
       });
 
       expect(result.status).toBe(400);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Workspace ID is required" });
     });
   });
@@ -201,12 +201,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(404);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Workspace not found or access denied" });
       expect(mockGetWorkspaceById).toHaveBeenCalledWith("workspace-123", "user-123");
     });
@@ -217,12 +217,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(404);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Workspace not found" });
       expect(mockDbWorkspaceFindUnique).toHaveBeenCalledWith({
         where: { id: "workspace-123" },
@@ -242,12 +242,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(404);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "No swarm found for this workspace" });
       expect(mockDbSwarmFindUnique).toHaveBeenCalledWith({
         where: { workspaceId: "workspace-123" },
@@ -282,12 +282,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(201);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({
         success: true,
         message: "called stakwork",
@@ -309,7 +309,7 @@ describe("POST /api/stakwork/user-journey", () => {
 
       await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
@@ -332,7 +332,7 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
@@ -358,7 +358,7 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
@@ -385,12 +385,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(201);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json.workflow).toEqual(mockWorkflowData);
     });
 
@@ -408,12 +408,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(201);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json.workflow).toBeNull();
     });
   });
@@ -424,12 +424,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(500);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Failed to create chat message" });
     });
 
@@ -439,12 +439,12 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       expect(result.status).toBe(500);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({ error: "Failed to create chat message" });
     });
 
@@ -460,13 +460,13 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
       // The error should be handled by callStakwork internally and return 201 with null workflow
       expect(result.status).toBe(201);
-      const json = await result.json();
+      const json = await result.json() as { error?: string; [key: string]: unknown };
       expect(json).toEqual({
         success: true,
         message: "called stakwork",
@@ -490,7 +490,7 @@ describe("POST /api/stakwork/user-journey", () => {
 
       await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession("user-456"),
+        session: createMockSession("user-456"), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
@@ -513,7 +513,7 @@ describe("POST /api/stakwork/user-journey", () => {
 
       const result = await invokeRoute(POST, {
         method: "POST",
-        session: createMockSession(),
+        session: createMockSession(), useMiddlewareAuth: true,
         body: createMockRequestBody(),
       });
 
