@@ -33,24 +33,7 @@ export function FormArtifact({
 
   return (
     <div className="relative">
-      {/* Subtle rotating orb - only shown when waiting for input */}
-      {!isDisabled && (
-        <div
-          className="form-artifact-orb absolute rounded-full"
-          style={{
-            width: "6px",
-            height: "6px",
-            offsetPath: "rect(0 100% 100% 0 round 0.5rem)",
-            animation: "rotate-orb 4s ease-in-out infinite",
-            willChange: "offset-distance",
-            background: "linear-gradient(135deg, hsl(var(--primary) / 0.6), hsl(var(--primary) / 0.9))",
-            boxShadow: "0 0 12px hsl(var(--primary) / 0.4), 0 0 20px hsl(var(--primary) / 0.2)",
-            filter: "blur(0.5px)",
-          }}
-        />
-      )}
-
-      <Card className={`p-4 bg-card rounded-lg relative ${!isDisabled ? "border border-primary/25" : "border"}`}>
+      <Card className={`p-4 bg-card rounded-lg relative ${!isDisabled ? "border border-primary/30" : "border"}`}>
         <div className="text-sm font-medium mb-3">
           <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
         </div>
