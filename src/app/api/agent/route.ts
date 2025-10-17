@@ -63,13 +63,13 @@ export async function POST(request: NextRequest) {
         for await (const chunk of result.fullStream) {
           switch (chunk.type) {
             case "text-start":
-              sendEvent({
-                type: "text-start",
-                id: chunk.id,
-              });
+            case "text-end":
+              // Pass through as-is
+              sendEvent(chunk);
               break;
 
             case "text-delta":
+              // AI SDK fullStream uses 'text' field, but our UI expects 'delta'
               sendEvent({
                 type: "text-delta",
                 id: chunk.id,
@@ -77,26 +77,16 @@ export async function POST(request: NextRequest) {
               });
               break;
 
-            case "text-end":
-              sendEvent({
-                type: "text-end",
-                id: chunk.id,
-              });
-              break;
-
             case "tool-call":
-              // Skip if invalid - tool-error event will handle it
-              if (chunk.invalid) {
-                break;
-              }
-              // Send tool-input-start
+              // Skip invalid tool calls - tool-error event will handle them
+              if (chunk.invalid) break;
+
+              // Convert AI SDK tool-call format to tool-input-* events
               sendEvent({
                 type: "tool-input-start",
                 toolCallId: chunk.toolCallId,
                 toolName: chunk.toolName,
               });
-
-              // Send tool-input-available with the parsed input
               sendEvent({
                 type: "tool-input-available",
                 toolCallId: chunk.toolCallId,
@@ -106,7 +96,7 @@ export async function POST(request: NextRequest) {
               break;
 
             case "tool-result":
-              // Send tool-output-available
+              // Convert tool-result to tool-output-available
               sendEvent({
                 type: "tool-output-available",
                 toolCallId: chunk.toolCallId,
@@ -115,9 +105,8 @@ export async function POST(request: NextRequest) {
               break;
 
             case "tool-error":
-              // Even though it's an error from AI SDK perspective (no tool registered),
-              // Goose is still executing the tool, so treat it as a successful call
-              // Send tool-input-start and tool-input-available so UI can show the tool call
+              // Goose manages its own tools, so AI SDK sees them as "errors"
+              // Treat them as successful calls and show in UI
               sendEvent({
                 type: "tool-input-start",
                 toolCallId: chunk.toolCallId,
@@ -132,10 +121,7 @@ export async function POST(request: NextRequest) {
               break;
 
             case "error":
-              sendEvent({
-                type: "error",
-                error: chunk.error,
-              });
+              sendEvent({ type: "error", error: chunk.error });
               break;
 
             case "finish":
