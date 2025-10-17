@@ -14,12 +14,12 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, regex, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setRegex } = useCoverageStore();
   const hasInitializedIgnoreDirs = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, regex],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, regex],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -44,6 +44,7 @@ export function useCoverageNodes() {
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
       if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
       if (repo) qp.set("repo", repo);
+      if (regex) qp.set("regex", regex);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
@@ -77,6 +78,7 @@ export function useCoverageNodes() {
       coverage,
       ignoreDirs,
       repo,
+      regex,
     ];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
@@ -97,6 +99,7 @@ export function useCoverageNodes() {
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
         if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
         if (repo) qp.set("repo", repo);
+        if (regex) qp.set("regex", regex);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {
@@ -132,6 +135,8 @@ export function useCoverageNodes() {
     setIgnoreDirs,
     repo,
     setRepo,
+    regex,
+    setRegex,
     setRoot: () => {},
     setConcise: () => {},
     setStatus: () => {},

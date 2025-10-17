@@ -66,6 +66,7 @@ export interface CoverageNodesResponse {
     total_pages?: number;
     total_returned?: number;
     ignoreDirs?: string;
+    regex?: string;
   };
   message?: string;
   details?: unknown;

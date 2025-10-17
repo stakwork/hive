@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
     const repoParam = searchParams.get("repo");
+    const regexParam = searchParams.get("regex");
 
     let finalIgnoreDirs = ignoreDirsParam;
 
@@ -50,6 +51,9 @@ export async function GET(request: NextRequest) {
     }
     if (repoParam) {
       params.set("repo", repoParam);
+    }
+    if (regexParam) {
+      params.set("regex", regexParam);
     }
     if (params.toString()) {
       endpoint += `?${params.toString()}`;

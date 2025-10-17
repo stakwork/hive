@@ -316,6 +316,7 @@ model Repository {
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
 
   ignoreDirs String? @default("") @map("ignore_dirs")
+  regex      String? @default("") @map("regex")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
