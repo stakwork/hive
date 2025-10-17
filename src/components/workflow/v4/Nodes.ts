@@ -332,7 +332,7 @@ class Nodes {
       140,
       140,
       'white',
-      'IfCondition',
+      'workflow-IfCondition',
       '#8F979D',
       targetPosition,
       sourcePosition,

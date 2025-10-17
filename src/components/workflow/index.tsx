@@ -522,7 +522,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     let connections = data.connections;
 
     updateDiagram({ transitions, connections })
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, workflowData]);
 
   useEffect(() => {
     if (useAssistantDimensions) {
