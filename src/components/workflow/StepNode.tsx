@@ -1,8 +1,26 @@
 import React, { useCallback } from 'react';
-import { Handle, Position, useHandleConnections } from '@xyflow/react';
+import { Handle, Position, useHandleConnections, NodeProps } from '@xyflow/react';
 
-export default function StepNode({ data }) {
-  const onChange = useCallback((evt) => {
+interface StepNodeData {
+  id: string;
+  className?: string;
+  width?: number;
+  height?: number;
+  bgColor: string;
+  borderRadius: number;
+  borderColor?: string;
+  textColor?: string;
+  stepType?: string;
+  project_view?: boolean;
+  data: {
+    html: string;
+  };
+}
+
+export default function StepNode({ data: rawData }: NodeProps) {
+  const data = rawData as unknown as StepNodeData;
+
+  const onChange = useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
     console.log(evt.target.value);
   }, []);
 
@@ -14,15 +32,15 @@ export default function StepNode({ data }) {
     type: 'target',
   });
 
-  let isSourceConnectable = data.id !== 'start'
-  let isTargetConnectable = data.id !== 'start'
+  let isSourceConnectable = data.id !== 'start';
+  let isTargetConnectable = data.id !== 'start';
 
   if (data.id === 'system.succeed' || data.id === 'system.fail') {
-    isTargetConnectable = true
-    isSourceConnectable = false
+    isTargetConnectable = true;
+    isSourceConnectable = false;
   }
 
-  let dragHandleClass = data.project_view ? 'drag-handle__custom_small' : 'drag-handle__custom'
+  let dragHandleClass = data.project_view ? 'drag-handle__custom_small' : 'drag-handle__custom';
 
   return (
     <div className={`nowheel ${data.project_view ? 'flow-project-view' : ''}`}>
@@ -35,20 +53,19 @@ export default function StepNode({ data }) {
         />
       }
 
-      <div className={`${data.className}`} style={{
-          width: `${data.width}px`,
-          height: `${data.height}px`,
+      <div className={`${data.className || ''}`} style={{
+          width: `${data.width || 100}px`,
+          height: `${data.height || 50}px`,
           pointerEvents: 'all',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           willChange: 'top, left',
-          backgroundColor: data.bgColor,
+          backgroundColor: data.bgColor as React.CSSProperties['backgroundColor'],
           borderRadius: `${data.borderRadius}px`,
-          borderColor: data.borderColor,
+          borderColor: data.borderColor as React.CSSProperties['borderColor'],
           borderStyle: 'solid',
-          textColor: data.textColor,
-          color: data.textColor
+          color: data.textColor as React.CSSProperties['color']
       }}>
         <div dangerouslySetInnerHTML={{__html: data.data.html}}>
 

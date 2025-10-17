@@ -1,30 +1,108 @@
+interface NodePosition {
+  x: number;
+  y: number;
+}
+
+interface NodeData {
+  html?: string;
+  [key: string]: any;
+}
+
+interface IfConditionNodeParams {
+  show_only: boolean | string;
+  id: string;
+  uniqueId: string;
+  position: NodePosition;
+  data: string;
+  targetPosition?: string;
+  sourcePosition?: string;
+  sourceNode?: string;
+  targetNode?: string | string[];
+  stepName?: string;
+  stepType?: string;
+  clickCallback?: () => void;
+  borderRadius?: number;
+  childNodes?: any[];
+  borderColor?: string;
+  status?: string;
+  nextStep?: string;
+  result?: string;
+  rotation?: string;
+  connection_edges?: any[];
+  project_id?: string;
+}
+
+interface BooleanResultNodeParams {
+  id: string;
+  position: NodePosition;
+  data: NodeData;
+  bgColor?: string;
+  className?: string;
+  textColor?: string;
+  targetPosition?: string;
+  sourcePosition?: string;
+  sourceNode?: string;
+  targetNode?: string | string[];
+  stepName?: string;
+  stepType?: string;
+  clickCallback?: () => void;
+  result?: string;
+  borderColor?: string;
+  status?: string;
+}
+
 class Nodes {
-  edges = []
+  edges: any[] = [];
+  id: string;
+  position: NodePosition;
+  data: NodeData;
+  width: number;
+  height: number;
+  bgColor: string;
+  className?: string;
+  textColor?: string;
+  targetPosition: string;
+  sourcePosition: string;
+  sourceNode?: string;
+  targetNode?: string | string[];
+  stepName?: string;
+  stepType?: string;
+  clickCallback?: () => void;
+  borderRadius?: number;
+  childNodes?: any[];
+  borderColor: string;
+  status?: string;
+  nextStep?: string;
+  result?: string;
+  rotation: string;
+  connection_edges?: any[];
+  deletable: boolean;
+
   constructor(
-    id,
-    position,
-    data,
-    width,
-    height,
-    bgColor,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback,
-    borderRadius,
-    childNodes,
-    borderColor,
-    status,
-    nextStep,
-    result,
-    rotation,
-    connection_edges,
-    deletable
+    id: string,
+    position: NodePosition,
+    data: NodeData,
+    width: number,
+    height: number,
+    bgColor?: string,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void,
+    borderRadius?: number,
+    childNodes?: any[],
+    borderColor?: string,
+    status?: string,
+    nextStep?: string,
+    result?: string,
+    rotation?: string,
+    connection_edges?: any[],
+    deletable?: boolean
   ) {
     this.id = id;
     this.position = position;
@@ -49,24 +127,24 @@ class Nodes {
     this.result = result;
     this.rotation = rotation || "0";
     this.connection_edges = connection_edges;
-    this.deletable = true
+    this.deletable = deletable !== undefined ? deletable : true;
   }
 
   static standardNode(
-    id,
-    position,
-    data,
-    bgColor,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    data: NodeData,
+    bgColor?: string,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void
+  ): Nodes {
     const newNode = new Nodes(
       id,
       { x: position.x, y: position.y - 136 },
@@ -86,26 +164,26 @@ class Nodes {
       8
     );
 
-    newNode.deletable = (id !== 'set_var')
+    newNode.deletable = (id !== 'set_var');
 
-    return newNode
+    return newNode;
   }
 
   static loopNode(
-    id,
-    position,
-    data,
-    bgColor,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    data: NodeData,
+    bgColor?: string,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void
+  ): Nodes {
     return new Nodes(
       id,
       { x: position.x, y: position.y - 136 },
@@ -127,20 +205,20 @@ class Nodes {
   }
 
   static automatedNode(
-    id,
-    position,
-    data,
-    bgColor,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    data: NodeData,
+    bgColor?: string,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void
+  ): Nodes {
     const newNode = new Nodes(
       id,
       { x: position.x, y: position.y - 100 },
@@ -160,26 +238,26 @@ class Nodes {
       8
     );
 
-    newNode.deletable = (id !== 'set_var')
+    newNode.deletable = (id !== 'set_var');
 
-    return newNode
+    return newNode;
   }
 
   static fileNode(
-    id,
-    position,
-    data,
-    bgColor,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    data: NodeData,
+    bgColor?: string,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void
+  ): Nodes {
     return new Nodes(
       id,
       position,
@@ -197,8 +275,8 @@ class Nodes {
       'finished',
       clickCallback,
       8,
-      null,
-      null,
+      undefined,
+      undefined,
       'finished'
     );
   }
@@ -225,23 +303,21 @@ class Nodes {
     rotation,
     connection_edges,
     project_id
-  }) {
-    let dataElem;
-    let questionFill
-    let currentUrl = new URL(window.location.href);
-    let newPath = `/admin/projects/${project_id}/workflow_steps/${id}`;
-    let icon = `<svg xmlns="http://www.w3.org/2000/svg" width="33" height="33" viewBox="0 0 256 256" fill="none">
+  }: IfConditionNodeParams): Nodes {
+    let dataElem: string;
+    let questionFill: string;
+    const currentUrl = new URL(window.location.href);
+    const newPath = `/admin/projects/${project_id}/workflow_steps/${id}`;
+    const icon = `<svg xmlns="http://www.w3.org/2000/svg" width="33" height="33" viewBox="0 0 256 256" fill="none">
     <path d="M127.52 185.6C130.88 185.6 133.72 184.44 136.04 182.12C138.36 179.8 139.52 176.96 139.52 173.6C139.52 170.24 138.36 167.4 136.04 165.08C133.72 162.76 130.88 161.6 127.52 161.6C124.16 161.6 121.32 162.76 119 165.08C116.68 167.4 115.52 170.24 115.52 173.6C115.52 176.96 116.68 179.8 119 182.12C121.32 184.44 124.16 185.6 127.52 185.6ZM128 224C114.72 224 102.24 221.48 90.56 216.44C78.88 211.4 68.72 204.56 60.08 195.92C51.44 187.28 44.6 177.12 39.56 165.44C34.52 153.76 32 141.28 32 128C32 114.72 34.52 102.24 39.56 90.56C44.6 78.88 51.44 68.72 60.08 60.08C68.72 51.44 78.88 44.6 90.56 39.56C102.24 34.52 114.72 32 128 32C141.28 32 153.76 34.52 165.44 39.56C177.12 44.6 187.28 51.44 195.92 60.08C204.56 68.72 211.4 78.88 216.44 90.56C221.48 102.24 224 114.72 224 128C224 141.28 221.48 153.76 216.44 165.44C211.4 177.12 204.56 187.28 195.92 195.92C187.28 204.56 177.12 211.4 165.44 216.44C153.76 221.48 141.28 224 128 224ZM128.96 86.72C132.96 86.72 136.44 88 139.4 90.56C142.36 93.12 143.84 96.32 143.84 100.16C143.84 103.68 142.76 106.8 140.6 109.52C138.44 112.24 136 114.8 133.28 117.2C129.6 120.4 126.36 123.92 123.56 127.76C120.76 131.6 119.36 135.92 119.36 140.72C119.36 142.96 120.2 144.84 121.88 146.36C123.56 147.88 125.52 148.64 127.76 148.64C130.16 148.64 132.2 147.84 133.88 146.24C135.56 144.64 136.64 142.64 137.12 140.24C137.76 136.88 139.2 133.88 141.44 131.24C143.68 128.6 146.08 126.08 148.64 123.68C152.32 120.16 155.48 116.32 158.12 112.16C160.76 108 162.08 103.36 162.08 98.24C162.08 90.08 158.76 83.4 152.12 78.2C145.48 73 137.76 70.4 128.96 70.4C122.88 70.4 117.08 71.68 111.56 74.24C106.04 76.8 101.84 80.72 98.96 86C97.84 87.92 97.48 89.96 97.88 92.12C98.28 94.28 99.36 95.92 101.12 97.04C103.36 98.32 105.68 98.72 108.08 98.24C110.48 97.76 112.48 96.4 114.08 94.16C115.84 91.76 118.04 89.92 120.68 88.64C123.32 87.36 126.08 86.72 128.96 86.72Z" fill="#444851"/>
     </svg>`;
 
     if (show_only === 'false') {
        questionFill = icon;
     } else {
-    // make make questionFill a link to '/step_details_modal' and pass the uniqueId as a param
       questionFill = `<a href="${newPath}" class="fill-div" data-turbo-stream=true></a>${icon}`;
     }
     if(status){
-      // set fill for questionOutline to red
       questionFill = questionFill.replace('fill="#444851"', 'fill="#FFFFFF"');
     }
     if(show_only === false || show_only === 'false'){
@@ -266,7 +342,7 @@ class Nodes {
       'IfCondition',
       clickCallback,
       8,
-      null,
+      undefined,
       borderColor,
       status,
       nextStep,
@@ -278,18 +354,18 @@ class Nodes {
     ifNode.borderColor = '#8F979D';
     ifNode.status = status;
 
-    return ifNode
+    return ifNode;
   }
 
   static startNode(
-    id,
-    position,
-    className,
-    sourceNode,
-    targetNode,
-    stepName,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    className?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    clickCallback?: () => void
+  ): Nodes {
     const newNode = new Nodes(
       'start',
       { x: position.x, y: position.y - 15 },
@@ -309,24 +385,24 @@ class Nodes {
       200
     );
 
-    newNode.deletable = false
+    newNode.deletable = false;
 
-    return newNode
+    return newNode;
   }
 
   static endNodes(
-    id,
-    position,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void
+  ): Nodes[] {
     const endNode = new Nodes(
       'system.succeed',
       { x: position.x, y: position.y - 15},
@@ -345,9 +421,9 @@ class Nodes {
       clickCallback,
       50
     );
-    endNode.deletable = false
+    endNode.deletable = false;
     endNode.borderColor = '#444851';
-    const haltNode = new Nodes.haltNode(
+    const haltNode = Nodes.haltNode(
       'system.fail',
       { x: endNode.position.x, y: endNode.position.y + 180 },
       className,
@@ -361,23 +437,23 @@ class Nodes {
       clickCallback
     );
     haltNode.borderColor = '#8F979D';
-    haltNode.deletable = false
+    haltNode.deletable = false;
     return [endNode, haltNode];
   }
 
   static haltNode(
-    id,
-    position,
-    className,
-    textColor,
-    targetPosition,
-    sourcePosition,
-    sourceNode,
-    targetNode,
-    stepName,
-    stepType,
-    clickCallback
-  ) {
+    id: string,
+    position: NodePosition,
+    className?: string,
+    textColor?: string,
+    targetPosition?: string,
+    sourcePosition?: string,
+    sourceNode?: string,
+    targetNode?: string | string[],
+    stepName?: string,
+    stepType?: string,
+    clickCallback?: () => void
+  ): Nodes {
     const newNode = new Nodes(
       id,
       position,
@@ -397,9 +473,9 @@ class Nodes {
       8
     );
 
-    newNode.deletable = false
+    newNode.deletable = false;
 
-    return newNode
+    return newNode;
   }
 
   static booleanResultNode({
@@ -419,7 +495,7 @@ class Nodes {
     result,
     borderColor,
     status
-  }){
+  }: BooleanResultNodeParams): Nodes {
       return new Nodes(
         id,
         position,
@@ -437,17 +513,17 @@ class Nodes {
         'output',
         clickCallback,
         8,
-        null,
+        undefined,
         '#9747FF',
         status
       );
     }
 
     static polyNode(
-      id,
-      position,
-      data,
-    ) {
+      id: string,
+      position: NodePosition,
+      data: NodeData
+    ): Nodes {
       return new Nodes(
         id,
       position,
@@ -456,23 +532,23 @@ class Nodes {
       100,
       'white',
       'file-node',
-      null,
+      undefined,
       'right',
       'left',
-      null,
-      null,
-      null,
+      undefined,
+      undefined,
+      undefined,
       'finished',
-      null,
+      undefined,
       8,
-      null,
-      null,
+      undefined,
+      undefined,
       'finished');
     }
 
 
-  addClass(node, className) {
-    node.className += ` ${className}`;
+  addClass(node: Nodes, className: string): void {
+    node.className = node.className ? `${node.className} ${className}` : className;
   }
 }
 

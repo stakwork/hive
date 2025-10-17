@@ -1,16 +1,27 @@
 import React, { useCallback } from 'react';
 import { openImportNodeModal } from './ImportNodeModal';
 
+interface ContextMenuProps {
+  top?: number | string;
+  left?: number | string;
+  right?: number | string;
+  bottom?: number | string;
+  position: { x: number; y: number };
+  workflowId: string;
+  workflowVersionId: string;
+  [key: string]: any;
+}
+
 export default function ContextMenu({
-                                      top,
-                                      left,
-                                      right,
-                                      bottom,
-                                      position,
-                                      workflowId,
-                                      workflowVersionId,
-                                      ...props
-                                    }) {
+  top,
+  left,
+  right,
+  bottom,
+  position,
+  workflowId,
+  workflowVersionId,
+  ...props
+}: ContextMenuProps) {
   const importNode = useCallback(() => {
     // Open the modal and pass along the workflow IDs
     openImportNodeModal(workflowId, workflowVersionId, position);
@@ -37,9 +48,6 @@ export default function ContextMenu({
       })
       .then(data => {
         // Rails would typically return JavaScript that self-executes
-        // You might need to handle this response based on your Rails setup
-        // If the JS response opens a modal or performs some action, you may need to eval it
-        // (though eval should be used carefully for security reasons)
         const script = document.createElement('script');
         script.textContent = data;
         document.body.appendChild(script);
@@ -48,9 +56,9 @@ export default function ContextMenu({
       .catch(error => {
         console.error('Error adding node:', error);
       });
-  }, [workflowId, workflowVersionId]);
+  }, [workflowId, workflowVersionId, position]);
 
-  console.log("position", position)
+  console.log("position", position);
 
   return (
     <div

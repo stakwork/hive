@@ -3,12 +3,31 @@ import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
 
 // Global state to track modal visibility
-let modalOpenCallback = null;
-let modalCloseCallback = null;
-let modalSubmitCallback = null;
+let modalOpenCallback: ((workflowId: string, workflowVersionId: string, position: { x: number; y: number }) => void) | null = null;
+let modalCloseCallback: (() => void) | null = null;
+let modalSubmitCallback: ((responseData: any, contextData: ContextData) => void) | null = null;
+
+interface ContextData {
+  workflowId: string | null;
+  workflowVersionId: string | null;
+  position: { x: number; y: number };
+}
+
+interface FormData {
+  jsonInput: string;
+}
+
+interface SubmitStatus {
+  type: 'error' | 'success';
+  message: string;
+}
+
+interface ImportNodeModalProps {
+  onSubmitSuccess?: (responseData: any, contextData: ContextData) => void;
+}
 
 // Function to open the modal from anywhere
-export function openImportNodeModal(workflowId, workflowVersionId, position) {
+export function openImportNodeModal(workflowId: string, workflowVersionId: string, position: { x: number; y: number }): boolean {
   if (modalOpenCallback) {
     modalOpenCallback(workflowId, workflowVersionId, position);
     return true;
@@ -17,7 +36,7 @@ export function openImportNodeModal(workflowId, workflowVersionId, position) {
 }
 
 // Function to close the modal from anywhere
-export function closeImportNodeModal() {
+export function closeImportNodeModal(): boolean {
   if (modalCloseCallback) {
     modalCloseCallback();
     return true;
@@ -26,14 +45,14 @@ export function closeImportNodeModal() {
 }
 
 // The Modal component that will be rendered via Portal
-const ImportNodeModal = ({ onSubmitSuccess = null }) => {
+const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState(null);
-  const [contextData, setContextData] = useState({
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus | null>(null);
+  const [contextData, setContextData] = useState<ContextData>({
     workflowId: null,
     workflowVersionId: null,
-    position: {}
+    position: { x: 0, y: 0 }
   });
   const [portalContainer] = useState(() => document.createElement('div'));
 
@@ -42,7 +61,7 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
     handleSubmit,
     formState: { errors },
     reset
-  } = useForm({
+  } = useForm<FormData>({
     defaultValues: {
       jsonInput: ''
     }
@@ -60,7 +79,7 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
     };
 
     modalCloseCallback = () => setIsOpen(false);
-    modalSubmitCallback = onSubmitSuccess;
+    modalSubmitCallback = onSubmitSuccess || null;
 
     return () => {
       modalOpenCallback = null;
@@ -109,7 +128,7 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
         align-items: center;
         z-index: 99999;
       }
-      
+
       .import-modal-content {
         background: white;
         border-radius: 8px;
@@ -120,7 +139,7 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
         position: relative;
         z-index: 100000;
       }
-      
+
       .import-modal-header {
         display: flex;
         justify-content: space-between;
@@ -129,11 +148,11 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
         padding-bottom: 10px;
         border-bottom: 1px solid #eee;
       }
-      
+
       .import-modal-header h3 {
         margin: 0;
       }
-      
+
       .import-close-btn {
         background: none;
         border: none;
@@ -142,17 +161,17 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
         padding: 0;
         color: #666;
       }
-      
+
       .import-form-group {
         margin-bottom: 20px;
       }
-      
+
       .import-form-group label {
         display: block;
         margin-bottom: 8px;
         font-weight: bold;
       }
-      
+
       .import-form-group textarea {
         width: 100%;
         padding: 10px;
@@ -161,59 +180,59 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
         font-family: monospace;
         resize: vertical;
       }
-      
+
       .import-error-input {
         border-color: #d32f2f !important;
       }
-      
+
       .import-error-message {
         color: #d32f2f;
         margin-top: 5px;
         font-size: 0.875rem;
       }
-      
+
       .import-status-message {
         margin-bottom: 15px;
         padding: 10px;
         border-radius: 4px;
       }
-      
+
       .import-status-message.import-error {
         color: #d32f2f;
         background-color: #ffebee;
       }
-      
+
       .import-status-message.import-success {
         color: #388e3c;
         background-color: #e8f5e9;
       }
-      
+
       .import-modal-footer {
         display: flex;
         justify-content: flex-end;
         gap: 10px;
         margin-top: 20px;
       }
-      
+
       .import-modal-footer button {
         padding: 8px 16px;
         border-radius: 4px;
         cursor: pointer;
         font-weight: bold;
       }
-      
+
       .import-cancel-btn {
         background-color: #f5f5f5;
         border: 1px solid #ddd;
         color: #333;
       }
-      
+
       .import-submit-btn {
         background-color: #1976d2;
         border: 1px solid #1565c0;
         color: white;
       }
-      
+
       .import-submit-btn:disabled {
         background-color: #90caf9;
         border-color: #64b5f6;
@@ -237,7 +256,7 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
     setIsOpen(false);
   }, []);
 
-  const handleFormSubmit = useCallback(async (data) => {
+  const handleFormSubmit = useCallback(async (data: FormData) => {
     setIsSubmitting(true);
     setSubmitStatus(null);
 
@@ -246,18 +265,18 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
       const parsedJson = JSON.parse(data.jsonInput);
       let plusX = 0;
 
-      parsedJson.forEach((json) => {
+      parsedJson.forEach((json: any) => {
         json['position'] = { x: contextData.position['x'] + plusX, y: contextData.position['y'] };
-        plusX += 200
-      })
+        plusX += 200;
+      });
 
       try {
         // Construct URL with workflow IDs if available
-        let url = `/admin/workflows/${contextData.workflowId}/steps/import`;
+        const url = `/admin/workflows/${contextData.workflowId}/steps/import`;
         const body = {
           steps: parsedJson,
           workflowVersionId: contextData.workflowVersionId,
-        }
+        };
 
         // Send the request
         const response = await fetch(url, {
@@ -274,8 +293,8 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
 
         const responseData = await response.json();
 
-        console.log("responseData", responseData)
-        
+        console.log("responseData", responseData);
+
         if (responseData.data.valid) {
           setSubmitStatus({ type: 'success', message: 'Node imported successfully!' });
 
@@ -289,8 +308,8 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
         } else {
           setSubmitStatus({ type: 'error', message: responseData.data.errors });
         }
-      } catch (fetchError) {
-        console.log("fetchError", fetchError)
+      } catch (fetchError: any) {
+        console.log("fetchError", fetchError);
         setSubmitStatus({
           type: 'error',
           message: `Failed to submit: ${fetchError.message}`
@@ -304,7 +323,7 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [contextData]);
+  }, [contextData, handleClose]);
 
   // Modal content
   const renderModalContent = () => {
@@ -313,9 +332,9 @@ const ImportNodeModal = ({ onSubmitSuccess = null }) => {
     return (
       <div
         className="import-modal-overlay"
-        onClick={(e) => {
+        onClick={(e: React.MouseEvent<HTMLDivElement>) => {
           // Close modal when clicking outside
-          if (e.target.className === 'import-modal-overlay') {
+          if ((e.target as HTMLElement).className === 'import-modal-overlay') {
             handleClose();
           }
         }}

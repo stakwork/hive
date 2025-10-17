@@ -3,15 +3,29 @@ import axios from 'axios';
 import ImportNodeModal from './ImportNodeModal';
 import RequestQueue from './RequestQueue';
 
+// Rails globals
+declare const swal: any;
+declare const $: any;
+declare const Turbo: any;
+
+declare global {
+  interface Window {
+    showFlashMessage: (message: string, type: string) => void;
+    searchTimeout: any;
+  }
+}
+
 import {
   ReactFlow,
   MiniMap,
   Controls,
   ControlButton,
   Background,
+  BackgroundVariant,
   useNodesState,
   useEdgesState,
   addEdge,
+  Connection,
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
@@ -34,14 +48,23 @@ import NodeContextMenu from './NodeContextMenu';
 
 import { SmartLayoutButton } from './SmartLayoutButton';
 
-const SearchButton = ({ workflowId }) => {
+interface SearchResult {
+  unique_id: string;
+  workflow_version_id: string;
+  id: string;
+  workflow_name: string;
+  title: string;
+  skill: string;
+}
+
+const SearchButton = ({ workflowId }: { workflowId: string }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const inputRef = useRef(null);
-  const searchRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   // Focus input when expanded
   useEffect(() => {
@@ -52,8 +75,8 @@ const SearchButton = ({ workflowId }) => {
 
   // Close search when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsExpanded(false);
         setShowResults(false);
       }
@@ -63,7 +86,7 @@ const SearchButton = ({ workflowId }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSearch = async (query) => {
+  const handleSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
       setShowResults(false);
@@ -85,13 +108,13 @@ const SearchButton = ({ workflowId }) => {
     }
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchQuery(value);
 
     // Debounce search
-    clearTimeout(window.searchTimeout);
-    window.searchTimeout = setTimeout(() => {
+    clearTimeout((window as any).searchTimeout);
+    (window as any).searchTimeout = setTimeout(() => {
       handleSearch(value);
     }, 300);
   };
@@ -166,26 +189,43 @@ const SearchButton = ({ workflowId }) => {
   );
 };
 
-const getUrlParameter = (name) => {
+const getUrlParameter = (name: string): string | null => {
   const urlParams = new URLSearchParams(window.location.search);
   return urlParams.get(name);
 };
 
-export default function App(workflowApp) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [nodesSelected, setNodesSelected] = useState([]);
+interface WorkflowAppProps {
+  props: {
+    workflowData?: any;
+    kflowformdata?: string;
+    show_only: boolean | string;
+    mode: string;
+    projectId?: string;
+    isAdmin: boolean;
+    workflowId: string;
+    workflowVersion: string;
+    defaultZoomLevel?: number;
+    useAssistantDimensions?: boolean;
+    projectProgress?: string;
+    rails_env: string;
+  };
+}
+
+export default function App(workflowApp: WorkflowAppProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
+  const [nodesSelected, setNodesSelected] = useState<any[]>([]);
   const [updateConnections, setUpdateConnections] = useState(false);
   const nodeTypes = useMemo(() => ({ stepNode: StepNode }), []);
-  const [customConnections, setCustomConnections] = useState([])
+  const [customConnections, setCustomConnections] = useState<any[]>([])
   const [updateCustomConnections, setUpdateCustomConnections] = useState(false);
-  const [menu, setMenu] = useState(null);
-  const [nodeMenu, setNodeMenu] = useState(null);
-  const ref = useRef(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState(null);
-  const hasAutoClickedRef = useRef(false);
+  const [menu, setMenu] = useState<any>(null);
+  const [nodeMenu, setNodeMenu] = useState<any>(null);
+  const ref = useRef<any>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const hasAutoClickedRef = useRef<boolean>(false);
 
-  const requestQueue = useRef(new RequestQueue());
+  const requestQueue = useRef<RequestQueue>(new RequestQueue());
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
 
   const {
@@ -209,7 +249,7 @@ export default function App(workflowApp) {
   const [workflowVersionId, setWorkflowVersionId] = useState(workflowVersion);
 
   const [isDragging, setIsDragging] = useState(false);
-  const dragEndTimeoutRef = useRef(null);
+  const dragEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const DRAG_END_DELAY = 300;
 
   const showStep = getUrlParameter('show_step');
@@ -229,18 +269,18 @@ export default function App(workflowApp) {
     };
   }, []);
 
-  const onStepGoto = useCallback((stepId) => {
+  const onStepGoto = useCallback((stepId: string) => {
     const step = nodes.find((node) => node.id === stepId);
 
     if (step) {
-      document.startViewTransition(function () {
+      (document as any).startViewTransition(function () {
         setTargetPosition({ ...targetPosition, x: 400-step.position.x*zoomLevel });
       });
     }
-  }, [nodes]); // Dependencies array: recreate onStepGoto only when nodes change
+  }, [nodes, targetPosition, zoomLevel]); // Dependencies array: recreate onStepGoto only when nodes change
 
   useEffect(() => {
-    const handleStepGoto = (e) => {
+    const handleStepGoto = (e: any) => {
       onStepGoto(e.detail.step); // Use the memoized function
     };
 
@@ -271,7 +311,7 @@ export default function App(workflowApp) {
   }, []);
 
   useEffect(() => {
-    const handlePublishWorkflow = (event) => {
+    const handlePublishWorkflow = (event: any) => {
       // Create the request function for the queue
       const requestFn = () => {
         return axios.put(`/admin/workflows/${workflowId}/publish.json?workflow_version_id=${workflowVersionId}`);
@@ -314,7 +354,7 @@ export default function App(workflowApp) {
         });
     };
 
-    const handleCopyStep = (event) => {
+    const handleCopyStep = (event: any) => {
       if (!confirm('Are you sure you want to copy this step?')) {
         return;
       }
@@ -367,7 +407,7 @@ export default function App(workflowApp) {
         });
     };
 
-    const handleWorkflowSave = (event) => {
+    const handleWorkflowSave = (event: any) => {
       const workflowToSave = event.detail.workflowData;
 
       // Create the request function for the queue
@@ -449,17 +489,20 @@ export default function App(workflowApp) {
 
   useEffect(() => {
     if (useAssistantDimensions) {
-      const containerWidth = document.querySelector('.assistant-preview-wrapper > div').clientWidth;
-      const containerHeight = 350;
+      const container = document.querySelector('.assistant-preview-wrapper > div');
+      if (container) {
+        const containerWidth = container.clientWidth;
+        const containerHeight = 350;
 
-      windowWidth = containerWidth
-      windowHeight = containerHeight * 0.8
+        windowWidth = containerWidth
+        windowHeight = containerHeight * 0.8
 
-      setTargetPosition({ ...targetPosition, x: 200, y: 50});
+        setTargetPosition({ ...targetPosition, x: 200, y: 50});
+      }
     }
   }, [useAssistantDimensions]);
 
-  const onConnect = useCallback((connection) => {
+  const onConnect = useCallback((connection: Connection) => {
       const node = nodes.find((node) => node.id === connection.source);
 
       if (!node) {
@@ -467,11 +510,11 @@ export default function App(workflowApp) {
       }
 
       if (node.data.connection_edges && node.data.connection_edges.length > 0) {
-        const conn_edge = node.data.connection_edges.find((conn) => conn.target_id === connection.target);
+        const conn_edge = node.data.connection_edges.find((conn: any) => conn.target_id === connection.target);
 
         if (conn_edge) {
-          connection.custom_label = conn_edge.name
-          connection.disable_edge = true
+          (connection as any).custom_label = conn_edge.name;
+          (connection as any).disable_edge = true;
         }
       }
 
@@ -489,10 +532,10 @@ export default function App(workflowApp) {
     [setEdges, nodes],
   );
 
-  const updateConnectionsWorkflow = (workflowId, connections) => {
-    const connectionIds = connections.map(conn => conn.id);
+  const updateConnectionsWorkflow = (workflowId: string, connections: any[]) => {
+    const connectionIds = connections.map((conn: any) => conn.id);
 
-    const requestFn = (version) => {
+    const requestFn = (version: any) => {
       return axios.put(`/admin/workflows/${workflowId}/connections`, {
         connections: connections,
         workflow_version_id: version
@@ -527,7 +570,7 @@ export default function App(workflowApp) {
     setUpdateConnections(false);
   }, [workflowVersionId, updateConnections, edges]);
 
-  const updateDiagram = (data) => {
+  const updateDiagram = (data: any) => {
     // console.log("data", data)
     let updatedNodes = new NodeArray(
       data.transitions,
@@ -542,12 +585,12 @@ export default function App(workflowApp) {
 
     const workflowSpecField = document.querySelector('#workflow_spec');
 
-    const node_edges = [];
-    let myNodes = updatedNodes.nodes.map((node) => {
+    const node_edges: any[] = [];
+    let myNodes = updatedNodes.nodes.map((node: any) => {
       node.project_view = projectId !== undefined;
 
       if (node.edges.length > 0) {
-        node.edges.forEach(e => {
+        node.edges.forEach((e: any) => {
           node_edges.push({ node: node, edge: e })
         })
       }
@@ -563,26 +606,26 @@ export default function App(workflowApp) {
       }
     });
 
-    let myEdges = []
-    let dedupNodes = {}
+    let myEdges: any[] = [];
+    let dedupNodes: any = {};
 
     if (data.connections && Array.isArray(data.connections) && data.connections.length > 0) {
       // console.log("saved connections detected", data.connections)
-      myEdges = data.connections.map((e, x) => {
-        const node = myNodes.find((node) => node.id === e.source);
+      myEdges = data.connections.map((e: any, x: number) => {
+        const node = myNodes.find((node: any) => node.id === e.source);
 
         if (!node || e.source === '' || e.target === '') {
           return null
         }
 
-        const targetNode = myNodes.find((node) => node.id === e.target);
+        const targetNode = myNodes.find((node: any) => node.id === e.target);
 
         if (!targetNode) {
           return null
         }
 
         if (node.data.connection_edges && node.data.connection_edges.length > 0) {
-          const conn_edge = node.data.connection_edges.find((conn) => conn.target_id === e.target);
+          const conn_edge = node.data.connection_edges.find((conn: any) => conn.target_id === e.target);
 
           if (conn_edge) {
             e.custom_label = conn_edge.name
@@ -603,37 +646,39 @@ export default function App(workflowApp) {
           data: { ...node, datapos: x, conn_edge: e },
           type: 'custom-edge',
         }
-      }).flat().filter(n => n)
+      }).flat().filter((n: any) => n)
 
-      const changes = []
-      myEdges.forEach((edge) => {
+      const changes: any[] = [];
+      myEdges.forEach((edge: any) => {
         if (edge.source === 'start') {
-          const targetNode = myNodes.find((node) => node.id === edge.target);
-
-          changes.push({
-            sourceNode: edge.source,
-            targetNode: targetNode,
-            newPosition: targetNode.position.x - 500
-          })
+          const targetNode = myNodes.find((node: any) => node.id === edge.target);
+          if (targetNode) {
+            changes.push({
+              sourceNode: edge.source,
+              targetNode: targetNode,
+              newPosition: targetNode.position.x - 500
+            })
+          }
         } else if (edge.target === 'system.succeed') {
-          const sourceNode = myNodes.find((node) => node.id === edge.source);
+          const sourceNode = myNodes.find((node: any) => node.id === edge.source);
+          if (sourceNode) {
+            changes.push({
+              sourceNode: edge.target,
+              node: sourceNode,
+              newPosition: sourceNode.position.x + 500
+            })
 
-          changes.push({
-            sourceNode: edge.target,
-            node: sourceNode,
-            newPosition: sourceNode.position.x + 500
-          })
-
-          changes.push({
-            sourceNode: 'system.fail',
-            node: sourceNode,
-            newPosition: sourceNode.position.x + 500
-          })
+            changes.push({
+              sourceNode: 'system.fail',
+              node: sourceNode,
+              newPosition: sourceNode.position.x + 500
+            })
+          }
         }
       })
 
-      changes.forEach((change) => {
-        myNodes = myNodes.map((node) => {
+      changes.forEach((change: any) => {
+        myNodes = myNodes.map((node: any) => {
           if (node.id === change.sourceNode) {
             node.position.x = change.newPosition
           }
@@ -647,7 +692,7 @@ export default function App(workflowApp) {
       setCustomConnections(connections)
     } else {
       // console.log("no connections detected")
-      myEdges = node_edges.flat().map((opts, x) => {
+      myEdges = node_edges.flat().map((opts: any, x: number) => {
         const node = opts.node
         const e = opts.edge
 
@@ -682,37 +727,46 @@ export default function App(workflowApp) {
       }
 
       if (updatedNodes.getCompletedStepPos()) {
-        const pane = document.querySelector('.react-flow').getBoundingClientRect();
+        const paneElement = document.querySelector('.react-flow');
+        if (paneElement) {
+          const pane = paneElement.getBoundingClientRect();
 
-        let lastNode = updatedNodes.getCompletedStepPos()
-        if (updatedNodes.getFinishNode()) {
-          lastNode = updatedNodes.getFinishNode()
+          let lastNode = updatedNodes.getCompletedStepPos()
+          const finishNode = updatedNodes.getFinishNode();
+          if (finishNode) {
+            lastNode = finishNode
+          }
+
+          if (lastNode) {
+            const screenPoint = {
+              x: (lastNode.x - pane.left - 600) * -zoomLevel,
+              y: (lastNode.y - pane.top - 200) * -zoomLevel
+            };
+
+            setTargetPosition({ ...targetPosition, x: screenPoint.x, y: screenPoint.y });
+          }
         }
-
-        const screenPoint = {
-          x: (lastNode.x - pane.left - 600) * -zoomLevel,
-          y: (lastNode.y - pane.top - 200) * -zoomLevel
-        };
-
-        setTargetPosition({ ...targetPosition, x: screenPoint.x, y: screenPoint.y });
       }
     });
   }
 
-  const updateJSONSpecConnections = (connections) => {
+  const updateJSONSpecConnections = (connections: any) => {
     // console.log("saving connections into JSON spec", connections)
-    const workflowSpecField = document.querySelector('#workflow_spec');
+    const workflowSpecField = document.querySelector('#workflow_spec') as HTMLInputElement | null;
     if (!workflowSpecField) {
       return
     }
 
     const json_spec = JSON.parse(workflowSpecField.value)
     json_spec.connections = JSON.stringify(connections)
-    document.querySelector('#workflow_spec').value = JSON.stringify(json_spec)
+    const specField = document.querySelector('#workflow_spec') as HTMLInputElement;
+    if (specField) {
+      specField.value = JSON.stringify(json_spec);
+    }
     $('#workflow_spec').trigger('change');
   }
 
-  const updateWorkflowVersionId = (response) => {
+  const updateWorkflowVersionId = (response: any) => {
     const response_data = response.data
 
     if (!response_data.success) {
@@ -732,8 +786,7 @@ export default function App(workflowApp) {
     fetch(`/admin/workflows/${workflowId}/versions?version=${data.workflow_version_id}&tag_name=edit_workflows_versions_dropdown`, {
       headers: {
         Accept: "text/vnd.turbo-stream.html"
-      },
-      responseKind: 'turbo-stream'
+      }
     }).then(r => r.text())
       .then(function(html) {
         Turbo.renderStreamMessage(html)
@@ -742,7 +795,7 @@ export default function App(workflowApp) {
     const event = new CustomEvent('updateWorkflowVersion', { detail: eventDetail });
     document.dispatchEvent(event);
 
-    history.pushState({}, null, location.protocol + "//" + location.host + location.pathname + location.hash);
+    history.pushState({}, '', location.protocol + "//" + location.host + location.pathname + location.hash);
   }
 
   useEffect(() => {
@@ -763,35 +816,32 @@ export default function App(workflowApp) {
     updateConnectionsWorkflow(workflowId, connectionsToUpdate)
   }, [workflowVersionId, updateCustomConnections, customConnections]);
 
-  const onWorkflowEdit = (data) => {
+  const onWorkflowEdit = (data: any) => {
     const workflow_id = data.workflow_id;
     axios.get(`/admin/workflows/${workflow_id}.json`).then((response) => {
       const workflow = response.data.spec;
 
       updateDiagram(workflow)
 
-      const workflowSpecField = document.querySelector('#workflow_spec');
-      workflowSpecField.value = response.data.workflow;
+      const workflowSpecField = document.querySelector('#workflow_spec') as HTMLInputElement | null;
+      if (workflowSpecField) {
+        workflowSpecField.value = response.data.workflow;
+      }
 
-      const workflow_form = document.querySelector('#edit_workflow');
-      workflow_form.requestSubmit();
+      const workflow_form = document.querySelector('#edit_workflow') as HTMLFormElement | null;
+      if (workflow_form) {
+        workflow_form.requestSubmit();
+      }
     });
   }
 
-  const onWorkflowUpdate = (data) => {
+  const onWorkflowUpdate = (data: any) => {
     const project_id = data.project_id;
     axios.get(`/admin/projects/${project_id}.json`).then((response) => {
       const project_progress = response.data.response;
 
       updateDiagram(project_progress)
     });
-  }
-
-  const onRefreshDashboard = () => {
-    const workflowField = document.querySelector('#workflow_view');
-    this.savedFormData = JSON.parse(workflowField.value);
-
-    updateDiagram(this.savedFormData)
   }
 
   const getCookieKey = () => {
@@ -812,7 +862,7 @@ export default function App(workflowApp) {
     }
   }, [workflowId]);
 
-  const viewportChange = (change) => {
+  const viewportChange = (change: any) => {
     manualNavigation = true
     setTargetPosition(change)
 
@@ -822,29 +872,32 @@ export default function App(workflowApp) {
     }
   }
 
-  const updateWorkflowWithNode = (changed_nodes) => {
-    const workflowSpecField = document.querySelector('#workflow_spec');
+  const updateWorkflowWithNode = (changed_nodes: any[]) => {
+    const workflowSpecField = document.querySelector('#workflow_spec') as HTMLInputElement | null;
     if (!workflowSpecField) return;
 
     const json_spec = JSON.parse(workflowSpecField.value);
 
     // Apply node position changes to the local spec
-    changed_nodes.forEach((changed_node) => {
-      const step_index = json_spec.transitions.findIndex((node) => node.id === changed_node.id);
+    changed_nodes.forEach((changed_node: any) => {
+      const step_index = json_spec.transitions.findIndex((node: any) => node.id === changed_node.id);
       if (step_index !== -1) {
         json_spec.transitions[step_index]['position'] = changed_node.position;
       }
     });
 
     // Update local UI right away for responsiveness
-    document.querySelector('#workflow_spec').value = JSON.stringify(json_spec);
+    const specField = document.querySelector('#workflow_spec') as HTMLInputElement;
+    if (specField) {
+      specField.value = JSON.stringify(json_spec);
+    }
     $('#workflow_spec').trigger('change');
 
     // Prepare node IDs for tracking
-    const nodeIds = changed_nodes.map(node => node.id);
+    const nodeIds = changed_nodes.map((node: any) => node.id);
 
     // Create the request function
-    const requestFn = (version) => {
+    const requestFn = (version: any) => {
       const params = {
         changed_nodes: changed_nodes,
         workflow_version_id: version
@@ -879,14 +932,17 @@ export default function App(workflowApp) {
   };
 
 
-  const debouncedUpdateWorkflowVersion = (response) => {
+  const debouncedUpdateWorkflowVersion = (response: any) => {
     const data = response.data.data
 
     if (!data.valid) {
       return
     }
 
-    document.querySelector('#workflow_spec').value = JSON.stringify(data.workflow_spec)
+    const specField = document.querySelector('#workflow_spec') as HTMLInputElement;
+    if (specField) {
+      specField.value = JSON.stringify(data.workflow_spec);
+    }
     $('#workflow_spec').trigger('change');
 
     updateWorkflowVersionId(response)
@@ -894,16 +950,16 @@ export default function App(workflowApp) {
     updateJSONSpecConnections(data.workflow_spec.connections)
   };
 
-  const exportSteps = (nodes_to_export, node_type) => {
+  const exportSteps = (nodes_to_export: any[], node_type: string) => {
     console.log("exporting nodes", nodes_to_export)
 
     if (!confirm(`Are you sure you want to export the following steps into a ${node_type}? ${nodes_to_export.map((n) => n.id).join(', ')}`)) {
       return;
     }
 
-    const nodeIds = nodes_to_export.map(node => node.id);
+    const nodeIds = nodes_to_export.map((node: any) => node.id);
 
-    const requestFn = (version) => {
+    const requestFn = (version: any) => {
       const params = {
         steps: nodeIds,
         workflow_version_id: version,
@@ -940,14 +996,14 @@ export default function App(workflowApp) {
       });
   }
 
-  const deleteStepWorkflowWithNode = (nodes_to_delete) => {
+  const deleteStepWorkflowWithNode = (nodes_to_delete: any[]) => {
     if (!confirm(`Are you sure you want to delete the following steps? ${nodes_to_delete.map((n) => n.id).join(', ')}`)) {
       return;
     }
 
-    const nodeIds = nodes_to_delete.map(node => node.id);
+    const nodeIds = nodes_to_delete.map((node: any) => node.id);
 
-    const requestFn = (version) => {
+    const requestFn = (version: any) => {
       const params = {
         step_ids: nodeIds,
         workflow_version_id: version
@@ -974,12 +1030,8 @@ export default function App(workflowApp) {
 
         window.showFlashMessage(`Steps deleted ${nodeIds.join(', ')}`, 'info')
 
-        const nodesToDelete = nodes_to_delete.map(node => ({
-          id: node.id,
-          type: 'remove'
-        }));
-
-        onNodesChange(nodesToDelete);
+        // Remove nodes from state using setNodes directly
+        setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)));
 
         debouncedUpdateWorkflowVersion(response);
       })
@@ -988,19 +1040,19 @@ export default function App(workflowApp) {
       });
   };
 
-  const onCustomNodesDelete = (nodes_to_delete) => {
+  const onCustomNodesDelete = (nodes_to_delete: any[]) => {
     deleteStepWorkflowWithNode(nodes_to_delete)
   }
 
-  const onCustomNodesChanged = useCallback((nodes) => {
+  const onCustomNodesChanged = useCallback((nodes: any) => {
     const isAutoLayoutChange = nodes.length > 1 &&
-      nodes.every(change => change.type === 'position' && change.dragging === false);
+      nodes.every((change: any) => change.type === 'position' && change.dragging === false);
 
     if (isAutoLayoutChange) {
       console.log("Processing batch position changes from auto-layout");
 
       // Extract the changed nodes with their new positions
-      const changedNodes = nodes.map(change => ({
+      const changedNodes = nodes.map((change: any) => ({
         id: change.id,
         position: change.position
       }));
@@ -1051,9 +1103,9 @@ export default function App(workflowApp) {
     };
   }, []);
 
-  const processChangeNode = useCallback((nodes) => {
+  const processChangeNode = useCallback((nodes: any) => {
     // Only update if no operations are pending for these nodes
-    const hasConflicts = nodes.some(node =>
+    const hasConflicts = nodes.some((node: any) =>
       requestQueue.current.hasPendingChanges(node.id)
     );
 
@@ -1064,7 +1116,7 @@ export default function App(workflowApp) {
     }
   }, []);
 
-  const customOnEdgesChange = (edges) => {
+  const customOnEdgesChange = (edges: any) => {
     if (edges[0].type === 'remove') {
       onEdgesChange(edges)
 
@@ -1073,7 +1125,7 @@ export default function App(workflowApp) {
   }
 
   const onPaneContextMenu = useCallback(
-    (event) => {
+    (event: any) => {
       if (!reactFlowInstance) return;
 
       // Prevent native context menu from showing
@@ -1081,7 +1133,10 @@ export default function App(workflowApp) {
 
       setNodeMenu(null)
 
-      const pane = document.querySelector('.react-flow').getBoundingClientRect();
+      const paneElement = document.querySelector('.react-flow');
+      if (!paneElement) return;
+
+      const pane = paneElement.getBoundingClientRect();
 
       const screenPoint = {
         x: event.clientX - pane.left,
@@ -1114,7 +1169,7 @@ export default function App(workflowApp) {
     setNodeMenu(null)
   }, [setMenu, setNodeMenu]);
 
-  const handleImportSuccess = (responseData, contextData) => {
+  const handleImportSuccess = (responseData: any, contextData?: any) => {
     if (responseData.data.workflow_spec) {
       const newVersionId = responseData.data.workflow_version_id;
       if (newVersionId) {
@@ -1125,7 +1180,10 @@ export default function App(workflowApp) {
       if (responseData.data.workflow_diagram) {
         updateDiagram(responseData.data.workflow_diagram)
 
-        document.querySelector('#workflow_spec').value = JSON.stringify(responseData.data.workflow_spec)
+        const specField = document.querySelector('#workflow_spec') as HTMLInputElement;
+        if (specField) {
+          specField.value = JSON.stringify(responseData.data.workflow_spec);
+        }
         $('#workflow_spec').trigger('change');
       }
 
@@ -1134,7 +1192,7 @@ export default function App(workflowApp) {
   };
 
   // Store the instance when the flow is initialized
-  const onInit = useCallback((instance) => {
+  const onInit = useCallback((instance: any) => {
     setReactFlowInstance(instance);
   }, []);
 
@@ -1149,7 +1207,7 @@ export default function App(workflowApp) {
     return null;
   };
 
-  const onNodeContextMenu = useCallback((event, node) => {
+  const onNodeContextMenu = useCallback((event: any, node: any) => {
       if (!reactFlowInstance) return;
 
       // Prevent native context menu from showing
@@ -1157,7 +1215,10 @@ export default function App(workflowApp) {
 
       setMenu(null)
 
-      const pane = document.querySelector('.react-flow').getBoundingClientRect();
+      const paneElement = document.querySelector('.react-flow');
+      if (!paneElement) return;
+
+      const pane = paneElement.getBoundingClientRect();
 
       const screenPoint = {
         x: event.clientX - pane.left,
@@ -1180,14 +1241,14 @@ export default function App(workflowApp) {
     [reactFlowInstance, setNodeMenu, setMenu, nodesSelected],
   );
 
-  const onSelectionChange = useCallback((params) => {
+  const onSelectionChange = useCallback((params: any) => {
     setNodesSelected(params['nodes'])
   }, [setNodesSelected])
 
   useEffect(() => {
     if (showStep && nodes.length > 0 && reactFlowInstance && !hasAutoClickedRef.current) {
       // Find the node with matching step name/id
-      const targetNode = nodes.find(node =>
+      const targetNode = nodes.find((node: any) =>
         node.id === showStep ||
         node.data.title === showStep ||
         node.data.name === showStep ||
@@ -1263,7 +1324,7 @@ export default function App(workflowApp) {
           </div>
         }
 
-        <Background variant="dots" gap={12} size={1}/>
+        <Background variant={BackgroundVariant.Dots} gap={12} size={1}/>
         {nodeMenu && <NodeContextMenu onClick={onNodePaneClick} {...nodeMenu} />}
         {menu && <ContextMenu onClick={onPaneClick} {...menu} />}
       </ReactFlow>

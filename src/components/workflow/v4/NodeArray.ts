@@ -2,26 +2,73 @@ import Nodes from './Nodes';
 import Edges from './Edges';
 import { HumanIcon, AutomatedIcon, ApiIcon, CheckBoxIcon, WarningIcon, ErrorIcon, EditIcon, TrueCheck, FalseCross } from './StakIcons';
 import moment from 'moment';
+import { WorkflowTransition } from '@/types/stakwork/workflow';
+
+interface Position {
+  x: number;
+  y: number;
+}
+
+interface ConnectionEdge {
+  source: string;
+  target: string;
+  name?: string;
+  target_id?: string;
+}
+
+interface JobDetails {
+  completed_jobs?: { value: number };
+  total_jobs?: { value: number };
+  marked_correct?: { value: number };
+  pending_jobs?: { value: number };
+  account_nicknames?: { value: string[] };
+  total_projects?: { value: number };
+  completed_projects?: { value: number };
+  completion_time?: { value: number | null };
+  start_time?: { value: string | null };
+  parsed_completion_time?: string;
+}
 
 class NodeArray {
-  constructor(transitions, connecting_edges, show_only, mode, projectId, isAdmin = false, workflowId, workflowVersion) {
-    this.nodes = [];
-    this.edges = [];
+  nodes: any[] = [];
+  edges: any[] = [];
+  connecting_edges: ConnectionEdge[];
+  connected_to_end: string[];
+  show_only: boolean | string;
+  mode: string;
+  projectId?: string;
+  isAdmin: boolean;
+  isProject: boolean;
+  workflowId: string;
+  workflowVersion: string;
+  currentCompletedStepPos?: Position;
+  finishedNodePos?: Position;
+  workflow_state?: string;
+
+  constructor(
+    transitions: Record<string, WorkflowTransition>,
+    connecting_edges: ConnectionEdge[],
+    show_only: boolean | string,
+    mode: string,
+    projectId: string | undefined,
+    isAdmin: boolean = false,
+    workflowId: string,
+    workflowVersion: string
+  ) {
     this.connecting_edges = connecting_edges;
-    this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, 'system.succeed')
+    this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, 'system.succeed');
 
-    console.log("connected_to_end", this.connected_to_end)
+    console.log("connected_to_end", this.connected_to_end);
 
-    this.show_only = show_only
-    this.mode = mode
+    this.show_only = show_only;
+    this.mode = mode;
     this.projectId = projectId;
     this.isAdmin = isAdmin;
     this.isProject = this.isProjectMode();
-    this.workflowId = workflowId
-    this.workflowVersion = workflowVersion
+    this.workflowId = workflowId;
+    this.workflowVersion = workflowVersion;
 
     this.initNodes(transitions);
-
     this.initEdges(this.nodes);
 
     if (this.isProject) {
@@ -33,43 +80,40 @@ class NodeArray {
     };
   }
 
-  findDirectlyConnectedNodes(edges, targetNode) {
-    if (!edges || edges.length > 0) {
-      return []
+  findDirectlyConnectedNodes(edges: ConnectionEdge[], targetNode: string): string[] {
+    if (!edges || edges.length === 0) {
+      return [];
     }
 
-    // Find all edges where the target is the specified node
     const directConnections = edges.filter(edge => edge.target === targetNode);
-
-    // Return just the source nodes
     return directConnections.map(edge => edge.source);
   }
 
-  setTimer() {
+  setTimer(): void {
     const timeElements = document.querySelectorAll('.step-time[data-start-time]');
 
     if (timeElements.length === 0) {
       return;
     }
 
-    if (timeElements.length > 0) {
-      timeElements.forEach((element) => {
-        const startTime = element.dataset.startTime;
-        const time = element;
-        const timer = setInterval(() => {
-          const date = new Date(startTime);
-          const now = new Date();
-          const diff = now - date;
-          const hours = Math.floor(diff / 1000 / 60 / 60);
-          const minutes = Math.floor((diff / 1000 / 60) % 60);
-          const seconds = Math.floor((diff / 1000) % 60);
-          time.innerHTML = `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-        }, 1000);
-      });
-    }
+    timeElements.forEach((element) => {
+      const htmlElement = element as HTMLElement;
+      const startTime = htmlElement.dataset.startTime;
+      if (!startTime) return;
+
+      setInterval(() => {
+        const date = new Date(startTime);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const hours = Math.floor(diff / 1000 / 60 / 60);
+        const minutes = Math.floor((diff / 1000 / 60) % 60);
+        const seconds = Math.floor((diff / 1000) % 60);
+        htmlElement.innerHTML = `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+      }, 1000);
+    });
   }
 
-  checkProjectCompletion(edges) {
+  checkProjectCompletion(edges: any[]): void {
     edges.forEach((edge) => {
       const targetNode = this.nodes.find((node) => node.id === edge.target);
       const sourceNode = this.nodes.find((node) => node.id === edge.source);
@@ -80,11 +124,11 @@ class NodeArray {
           //Nothing to do here
         } else if (sourceNode.status === 'skipped' || targetNode.status === 'skipped') {
           edge.edgeColor = '#8F979D';
-          edge.animate = false
-        } else if ((sourceNode.status === 'finished' && targetNode.id === 'system.succeed') || (sourceNode.status === 'finished' && targetNode.id === 'system.fail') ) {
+          edge.animate = false;
+        } else if ((sourceNode.status === 'finished' && targetNode.id === 'system.succeed') || (sourceNode.status === 'finished' && targetNode.id === 'system.fail')) {
           edge.edgeColor = '#67C083';
           edge.animate = false;
-        } else if (sourceNode.status === 'finished' || targetNode.status === 'finished' ) {
+        } else if (sourceNode.status === 'finished' || targetNode.status === 'finished') {
           edge.edgeColor = '#67C083';
           edge.animate = false;
         }
@@ -92,44 +136,43 @@ class NodeArray {
     });
   }
 
-  setStepPos(pos){
+  setStepPos(pos: Position): void {
     if (this.isProject) {
       this.currentCompletedStepPos = pos;
     }
   }
 
-  getCompletedStepPos() {
+  getCompletedStepPos(): Position | null {
     if (this.currentCompletedStepPos) {
-      const pos = {x: this.currentCompletedStepPos.x, y: this.currentCompletedStepPos.y};
-      return pos || {x: 0, y: 0};
+      return { x: this.currentCompletedStepPos.x, y: this.currentCompletedStepPos.y };
     }
     return null;
   }
 
-  setCompletedStepPos(pos) {
+  setCompletedStepPos(pos: Position): void {
     this.currentCompletedStepPos = pos;
   }
 
-  setFinishNode(pos) {
+  setFinishNode(pos: Position): void {
     this.finishedNodePos = pos;
   }
 
-  getFinishNode() {
-    return this.finishedNodePos
+  getFinishNode(): Position | undefined {
+    return this.finishedNodePos;
   }
 
-  createTrueFalseEdge(type, index, source, target) {
+  createTrueFalseEdge(type: string, index: number | string, source: string, target: string): any {
     return this.createEdge('default', index, source, target);
   }
 
-  setSkippedNode(node){
+  setSkippedNode(node: any): void {
     node.status = 'skipped';
     node.textColor = '#8F979D';
     node.bgColor = '#DFE3E5';
     node.borderColor = '#DFE3E5';
   }
 
-  setSelectedNode(node){
+  setSelectedNode(node: any): void {
     node.status = 'finished';
 
     if (node.stepType === "True") {
@@ -143,26 +186,27 @@ class NodeArray {
     }
   }
 
-  setErrorNode(node){
+  setErrorNode(node: any): void {
     node.bgColor = '#F5F6F8';
     node.borderColor = '#FF5252';
   }
 
-  setHaltedNodeStyle(){
+  setHaltedNodeStyle(): void {
     const haltNode = this.nodes.find(node => node.id === 'system.fail');
-
-    haltNode.bgColor = '#FF5252';
-    haltNode.borderColor = '#FF5252';
+    if (haltNode) {
+      haltNode.bgColor = '#FF5252';
+      haltNode.borderColor = '#FF5252';
+    }
   }
 
-  setSuccessNodeStyle(node){
+  setSuccessNodeStyle(node: any): void {
     node.bgColor = '#67C083';
     node.borderColor = '#67C083';
   }
 
-  setTrueFalseEdges(node, i, type) {
+  setTrueFalseEdges(node: any, i: number, type: string): void {
     const targetPosition = type === 'false' ? 'bottom' : 'top';
-    let targetNode = this.nodes.find((n) => n.id === node.targetNode);
+    const targetNode = this.nodes.find((n) => n.id === node.targetNode);
     if (targetNode === undefined) {
       return;
     }
@@ -174,41 +218,41 @@ class NodeArray {
         targetNode.targetPosition = targetPosition;
 
         this.setSelectedNode(node);
-        node.edges.push(edge)
+        node.edges.push(edge);
       } else {
         const edge = this.createEdge('skipped', i, node.id, node.targetNode);
         targetNode.targetPosition = targetPosition;
         edge.edgeColor = '#8F979D';
-        node.edges.push(edge)
+        node.edges.push(edge);
       }
     } else {
       const edge = this.createTrueFalseEdge(type, i, node.id, node.targetNode);
       targetNode.targetPosition = targetPosition;
-      edge.animate = true
-      node.edges.push(edge)
+      edge.animate = true;
+      node.edges.push(edge);
     }
   }
 
-  createEdge(type, index, source, target) {
+  createEdge(type: string, index: number | string, source: string, target: string): any {
     switch (type) {
       case 'skipped':
-        return new Edges.skippedEdge(`${index}-skipped`, source, target);
+        return Edges.skippedEdge(`${index}-skipped`, source, target);
       case 'false':
-        return new Edges.trueEdge(`${source}${index}-false`, source, target);
+        return Edges.trueEdge(`${source}${index}-false`, source, target);
       case 'true':
-        return new Edges.trueEdge(`${source}${index}-true`, source, target);
+        return Edges.trueEdge(`${source}${index}-true`, source, target);
       case 'default':
-        return new Edges.defaultEdge(`${target}${index}`, source, target);
+        return Edges.defaultEdge(`${target}${index}`, source, target);
       case 'falseAnimated':
-        return new Edges.falseAnimatedEdge(`${index}-falseAnimated`, source, target);
+        return Edges.falseAnimatedEdge(`${index}-falseAnimated`, source, target);
       case 'trueAnimated':
-        return new Edges.trueAnimatedEdge(`${index}-trueAnimated`, source, target);
+        return Edges.trueAnimatedEdge(`${index}-trueAnimated`, source, target);
       default:
         throw new Error(`Invalid edge type: ${type}`);
     }
   }
 
-  setIfConditionEdges(node, i) {
+  setIfConditionEdges(node: any, i: number): void {
     if (node.status) {
       node.bgColor = '#67C083';
       node.borderColor = '#67C083';
@@ -216,24 +260,22 @@ class NodeArray {
     }
   }
 
-  initEdges(nodes) {
+  initEdges(nodes: any[]): void {
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const nextNode = nodes[i + 1];
       if (node.id === 'start') {
-        const edge = this.createEdge('default', i, node.id, nodes[1].id)
-        // CHECK
-        // this.edges.push(edge);
-        node.edges.push(edge)
+        const edge = this.createEdge('default', i, node.id, nodes[1].id);
+        node.edges.push(edge);
 
-        if (nextNode.stepType === 'Add') {
+        if (nextNode?.stepType === 'Add') {
           nextNode.targetNode = nodes[2].id;
         }
       } else if (node.id === 'system.succeed' || node.id === 'system.fail') {
-        // Nothing to do here??
+        // Nothing to do here
       } else if (['IfCondition', 'IfElseCondition', 'False', 'True'].includes(node.stepType)) {
         if (['IfCondition', 'IfElseCondition'].includes(node.stepType)) {
-          node.connection_edges.forEach((conn_edge) => {
+          node.connection_edges?.forEach((conn_edge: any) => {
             node.edges.push({
               id: `${node.id}-${conn_edge.name}`,
               source: node.id,
@@ -241,48 +283,36 @@ class NodeArray {
               data: conn_edge,
               custom_label: conn_edge.name,
               disable_edge: true
-            })
-          })
+            });
+          });
 
           this.setIfConditionEdges(node, i);
         }
-      } else if (nextNode.stepType === 'Add') {
+      } else if (nextNode?.stepType === 'Add') {
         nextNode.targetNode = node.targetNode;
         node.targetNode = nextNode.id;
-        const edge = this.createEdge('default', i, node.id, node.targetNode)
-        // CHECK
-        // this.edges.push(edge);
-        node.edges.push(edge)
+        const edge = this.createEdge('default', i, node.id, node.targetNode);
+        node.edges.push(edge);
       } else if (Array.isArray(node.targetNode) && node.targetNode.length > 0) {
-        node.targetNode.forEach((target, j) => {
-          const edge = this.createEdge('default', `${i}-${j}`, node.id, target)
-          // CHECK
-          // this.edges.push(edge);
-          node.edges.push(edge)
+        node.targetNode.forEach((target: string, j: number) => {
+          const edge = this.createEdge('default', `${i}-${j}`, node.id, target);
+          node.edges.push(edge);
         });
       } else {
-        const edge = this.createEdge('default', i, node.id, node.targetNode)
-        // CHECK
-        // this.edges.push(edge);
-        node.edges.push(edge)
+        const edge = this.createEdge('default', i, node.id, node.targetNode);
+        node.edges.push(edge);
       }
     }
   }
 
-  ensureMinDistance(nodes, minDistance = 500) {
-    // Sort nodes by x attribute for easier processing
-    nodes.sort((a, b) => a.x - b.x);
+  ensureMinDistance(nodes: any[], minDistance: number = 500): any[] {
+    nodes.sort((a, b) => a.position.x - b.position.x);
 
-    // console.log("ensureMinDistance", nodes, minDistance);
-
-    // Iterate through the nodes to adjust their positions
     for (let i = 1; i < nodes.length; i++) {
-      let prevNode = nodes[i - 1];
-      let currNode = nodes[i];
+      const prevNode = nodes[i - 1];
+      const currNode = nodes[i];
 
-      // Check the distance between the current node and the previous one
       if (currNode.position.x - prevNode.position.x < minDistance) {
-        // If too close, adjust the current node's x to be at least minDistance apart
         currNode.position.x = prevNode.position.x + minDistance;
       }
     }
@@ -290,19 +320,22 @@ class NodeArray {
     return nodes;
   }
 
-  initNodes(transitions) {
+  initNodes(transitions: Record<string, WorkflowTransition>): void {
     this.parseTransitions(transitions);
 
-    const firstPosition = { x: -this.nodes[0].position.x-300*2, y: this.nodes[0].position.y+(this.nodes[0].height/2)-40 };
-    const start = new Nodes.startNode(1, firstPosition);
+    if (this.nodes.length === 0) return;
+
+    const firstPosition: Position = {
+      x: -this.nodes[0].position.x - 300 * 2,
+      y: this.nodes[0].position.y + (this.nodes[0].height / 2) - 40
+    };
+    const start = Nodes.startNode('1', firstPosition);
     start.borderColor = '#67c083';
 
     this.nodes.splice(0, 0, start);
 
-    // console.log("this.nodes", this.nodes)
-
-    const endNodes = new Nodes.endNodes(
-      this.nodes.length + 1,
+    const endNodes = Nodes.endNodes(
+      String(this.nodes.length + 1),
       this.calcPosition()
     );
 
@@ -310,33 +343,30 @@ class NodeArray {
       this.addNode(node);
     });
 
-    // this.nodes = this.ensureMinDistance(this.nodes)
-
     if (this.workflow_state === 'halted') {
       this.setHaltedNodeStyle();
     } else if (this.workflow_state === 'completed') {
       const node = this.nodes.find(node => node.id === 'system.succeed');
-      this.setSuccessNodeStyle(node)
+      if (node) {
+        this.setSuccessNodeStyle(node);
+      }
     }
   }
 
-  addNode(node) {
+  addNode(node: any): void {
     if (!this.isProject) {
-      node.clickCallback = node => this.setStepPos({x: node.position.x, y: node.position.y});
+      node.clickCallback = (clickedNode: any) => this.setStepPos({ x: clickedNode.position.x, y: clickedNode.position.y });
     }
-    // Node
     this.nodes.push(node);
   }
 
-  parseTransitions(transitions) {
+  parseTransitions(transitions: Record<string, WorkflowTransition>): void {
     for (const stepId in transitions) {
       if (transitions.hasOwnProperty(stepId)) {
         const step = transitions[stepId];
 
-        let type ;
-        if (step.skill === undefined || step.skill === null || step.skill.type === null || step.skill.type === undefined) {
-          type = 'automated';
-        } else {
+        let type = 'automated';
+        if (step.skill?.type) {
           type = step.skill.type;
         }
 
@@ -344,116 +374,88 @@ class NodeArray {
         const connections = this.parseConnections(step);
 
         if (step.name === 'IfCondition' || step.name === 'IfElseCondition') {
-          const ifConditionNode= new Nodes.ifConditionNode({
+          const ifConditionNode = Nodes.ifConditionNode({
             show_only: this.show_only,
             id: step.id,
             uniqueId: step.unique_id,
             position: step.position || this.calcPosition(),
             data: name,
-            status: step.next_step ? 'finished' : null,
+            status: step.next_step ? 'finished' : undefined,
             nextStep: step.next_step,
             result: this.getIfconResult(step),
             rotation: "45",
             connection_edges: step.connection_edges,
             project_id: this.projectId
-            // targetNode: connections[0]
           });
 
           this.addNode(ifConditionNode);
         } else {
-          if (type === null) {
-            type = 'automated';
-          }
-
           this.nodeBuilder(step, type, connections, name);
         }
       }
     }
   }
 
-  parseConnections(step) {
-    // loop through connections in the connections object
-    let connections;
+  parseConnections(step: WorkflowTransition): string | string[] {
+    let connections: string | string[];
 
-    // if condition has 2 connections
     if (step.name === 'IfCondition') {
-      let elseStatement;
-      let statement;
-
-      statement = step.step.attributes.statement;
-      elseStatement = step.step.attributes.else_statement;
-
-      if (statement === null) {
-        statement = 'system.fail'
-      }
-
-      if (elseStatement === null) {
-        elseStatement = 'system.fail'
-      }
+      let statement = step.step?.attributes?.statement || 'system.fail';
+      let elseStatement = step.step?.attributes?.else_statement || 'system.fail';
 
       if (statement.includes('goTo(')) {
-        statement = statement.replace('goTo(', '');
-        statement = statement.replace(')', '');
+        statement = statement.replace('goTo(', '').replace(')', '');
       }
 
-      // if else statement has goto() wrapping the step id, remove it
       if (elseStatement.includes('goTo(')) {
-        elseStatement = elseStatement.replace('goTo(', '');
-        elseStatement = elseStatement.replace(')', '');
+        elseStatement = elseStatement.replace('goTo(', '').replace(')', '');
       }
-      // add statements to the connection array
+
       connections = [statement, elseStatement];
     } else {
-      connections = Object.values(step.connections)[0];
+      connections = Object.values(step.connections || {})[0] || '';
     }
     return connections;
   }
 
-  getNodes() {
+  getNodes(): any[] {
     return this.nodes;
   }
 
-  getEdges() {
+  getEdges(): any[] {
     return this.edges;
   }
 
-  nodeBuilder(step, type, connections) {
+  nodeBuilder(step: WorkflowTransition, type: string, connections: string | string[], name: string): void {
     const id = step.id;
-    let data = '';
-
     const status = this.getStatus(step);
 
-    this.workflow_state ||= step.status?.workflow_state
-    // console.log(id, step)
+    this.workflow_state ||= step.status?.workflow_state;
 
-    let node;
-    let resultNode;
+    let node: any;
+    let resultNode: any;
 
-    let nodePosition = step.position || this.calcPosition()
+    const nodePosition = step.position || this.calcPosition();
 
     if (type === 'human') {
-      data = this.newStandardData(type, step);
+      const data = this.newStandardData(type, step);
       node = Nodes.standardNode(id, nodePosition, data);
 
       if (step.name === 'Boolean' && this.isProject && step.has_output) {
-        resultNode = this.addBooleanNode(node, step, connections)
-
+        resultNode = this.addBooleanNode(node, step, connections);
         connections = resultNode.id;
       }
     } else if (type === 'api') {
-      data = this.newAutomatedData(type, step)
-
+      const data = this.newAutomatedData(type, step);
       node = Nodes.automatedNode(id, nodePosition, data);
     } else if (type === 'automated') {
-      data = this.newAutomatedData(type, step)
-
-      node = new Nodes.automatedNode(id, nodePosition, data);
+      const data = this.newAutomatedData(type, step);
+      node = Nodes.automatedNode(id, nodePosition, data);
     } else if (type === 'loop') {
-      data = this.newLoopData(type, step);
-
-      node = new Nodes.loopNode(id, nodePosition, data);
+      const data = this.newLoopData(type, step);
+      node = Nodes.loopNode(id, nodePosition, data);
     } else {
-      node = new Nodes.standardNode(id, nodePosition, '  ');
+      node = Nodes.standardNode(id, nodePosition, { html: '  ' });
     }
 
     if (step.position) {
@@ -469,31 +471,31 @@ class NodeArray {
     }
 
     if (status === 'error' || status === 'halted') {
-      this.setErrorNode(node)
+      this.setErrorNode(node);
     }
 
     node.targetNode = connections;
 
     if (status === 'finished') {
       if (this.connected_to_end.includes(node.id)) {
-        this.setFinishNode(node.position)
+        this.setFinishNode(node.position);
       } else {
-        this.setCompletedStepPos(node.position)
+        this.setCompletedStepPos(node.position);
       }
     }
 
     this.addNode(node);
 
     if (resultNode) {
-      this.addNode(resultNode)
+      this.addNode(resultNode);
     }
 
     if (this.hasFileOutput(step)) {
-      this.generateFileNodes(step, node, id, status, connections)
+      this.generateFileNodes(step, node, id, status, connections);
     }
   }
 
-  setNodeStyle(node, status, type) {
+  setNodeStyle(node: any, status: string | null, type: string): any {
     if (status === 'finished') {
       if (type === 'api') {
         node.borderColor = '#4BCDC4';
@@ -515,7 +517,7 @@ class NodeArray {
     return node;
   }
 
-  calcPosition() {
+  calcPosition(): Position {
     const lastNode = this.nodes[this.nodes.length - 1];
     if (!lastNode) {
       return { x: 0, y: 0 };
@@ -525,23 +527,21 @@ class NodeArray {
     return { x: lastNodePosition.x + lastNode.width + 150, y: 0 };
   }
 
-  newGenerateStepHTML({type, step, bottomHtml}) {
+  newGenerateStepHTML({ type, step, bottomHtml }: { type: string; step: WorkflowTransition; bottomHtml?: string }): { html: string } {
     const status = this.getStatus(step);
-
     const rightIcon = this.setStatusIcon(step, type);
 
-    let stepIcon = {
+    const stepIcon = {
       mainIcon: step?.custom_icon || step?.skill_icon || null
-    }
+    };
 
-    let stepLog = step?.log
-
+    const stepLog = step?.log;
     const uniqueId = step.unique_id;
-    let id = step.id
-    const name = step.name
+    let id = step.id;
+    const name = step.name;
     const jobDetails = this.getJobDetails(step);
-    const parsed_completion_time = this.parseCompletionTime(jobDetails?.completion_time.value);
-    const startTime = jobDetails?.start_time || "0:00"
+    const parsed_completion_time = this.parseCompletionTime(jobDetails?.completion_time?.value || null);
+    const startTime = jobDetails?.start_time || { value: "0:00" };
     let stepType = '';
     let time = '';
     let stepIconHtml = '';
@@ -550,20 +550,20 @@ class NodeArray {
     if (this.isAdmin && stepLog) {
       stepIconHtml = `<span class="">${stepLog}</span>`;
     } else {
-      if (stepIcon === undefined || stepIcon === null) {
+      if (!stepIcon || !stepIcon.mainIcon) {
         stepIconHtml = `<span class="step-icon material-icons">code</span>`;
       } else if (step?.custom_icon) {
         stepIconHtml = `<img class="step-img" src="${stepIcon.mainIcon}" alt="step icon" id="custom-icon" />`;
       } else {
-        if (status!== 'finished' && status !== 'in_progress') {
-          stepIconHtml = `<img class="step-img" src="${stepIcon.mainIcon.default}" alt="step icon" />`;
+        if (status !== 'finished' && status !== 'in_progress') {
+          stepIconHtml = `<img class="step-img" src="${(stepIcon.mainIcon as any).default}" alt="step icon" />`;
         } else {
-          stepIconHtml = `<img class="step-img" src="${stepIcon.mainIcon.active}" alt="step icon" />`;
+          stepIconHtml = `<img class="step-img" src="${(stepIcon.mainIcon as any).active}" alt="step icon" />`;
         }
       }
     }
 
-    let iconElement = `<img class="step-icon" src="${this.setIcon(type)}" alt="step icon" />`;
+    const iconElement = `<img class="step-icon" src="${this.setIcon(type)}" alt="step icon" />`;
 
     if (type !== null) {
       stepType = `<span class="step-type">${type.toUpperCase()}</span>`;
@@ -579,7 +579,7 @@ class NodeArray {
       if (step.needs_human_review) {
         actionButton = `<a href="/admin/project_folders/${step.project_step_id}/review" data-turbo-frame="modal" class="step-action-item">Review Step</a>`;
       }
-    } else if (status === 'in_progress'){
+    } else if (status === 'in_progress') {
       if (!type || type === 'human') {
         actionButton = `<div class="step-action-item" data-action="click->project-buttons#doJobs" data-project-step-id="${step.project_step_id}">Complete Jobs</div>`;
       } else if (name === 'Prompt') {
@@ -600,27 +600,24 @@ class NodeArray {
       id = id.substring(0, 30) + '...';
     }
     const sub = `<div class="name-container"><span class="step-name" title=${idFull}>Skill: ${displayName}</span><span class="step-name" title=${idFull}>Alias: ${id}</span></div>`;
-    let menu;
-    let main;
+    let menu: string;
+    let main: string;
 
     if (this.isProject) {
       menu = `<div class="step-actions-menu" data-unique-id="${uniqueId}">${actionButton}${debugButton}</div>`;
-      let step_class_detail = 'step-main'
-      if (stepLog) {
-        step_class_detail = 'step-main-log'
-      }
+      const step_class_detail = stepLog ? 'step-main-log' : 'step-main';
       if (this.getStatus(step) !== 'new') {
         main = `<a href="/admin/projects/${this.projectId}/workflow_steps/${idFull}" data-turbo-frame="step_modal" class="step-details-link"><div class="step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div></a>`;
       } else {
         main = `<div class="step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div>`;
       }
-    } else if (this.mode === 'edit' || this.mode === 'alter'){
+    } else if (this.mode === 'edit' || this.mode === 'alter') {
       let copyButton = '';
-      if(this.mode === 'edit') {
+      if (this.mode === 'edit') {
         copyButton = `<div class="step-action-item step-copy material-icons" data-action="click->workflow-buttons#copy"  data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" >content_copy</div>`;
       }
       const editButton = `<div class="step-menu-edit step-action-item" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${EditIcon}</div>`;
-      
+
       menu = `<div class="step-actions-menu" data-unique-id="${uniqueId}">${copyButton}${editButton}</div>`;
       main = `<div class="step-main step-menu-edit workflow-show-modal" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${stepIconHtml}</div>`;
     } else {
@@ -639,27 +636,28 @@ class NodeArray {
     } else if (type === 'loop') {
       return {
         html: `${rightIcon}<div class="standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`
-      }
+      };
     }
     const html = `${rightIcon}<div class="standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`;
     return { html };
   }
 
-  newLoopData(type, step) {
-    let total_projects, completionTime, completed_projects
+  newLoopData(type: string, step: WorkflowTransition): { html: string } {
+    let total_projects: { value: number };
+    let completed_projects: { value: number };
 
     const status = this.getStatus(step);
     const jobDetails = this.getJobDetails(step);
-    const childProjectId = step.step.attributes.workflow_id;
-    const childProjectName = step.step.attributes.workflow_name?.substring(0, 20) + '...';
-    const workflowLink = `<a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="number">${childProjectName}</span></a>`
+    const childProjectId = step.step?.attributes?.workflow_id;
+    const childProjectName = step.step?.attributes?.workflow_name?.substring(0, 20) + '...';
+    const workflowLink = `<a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="number">${childProjectName}</span></a>`;
 
     if (jobDetails === null) {
-      total_projects = {value: 0}
-      completed_projects = {value: 0}
+      total_projects = { value: 0 };
+      completed_projects = { value: 0 };
     } else {
-      total_projects = jobDetails.total_projects
-      completed_projects = jobDetails.completed_projects
+      total_projects = jobDetails.total_projects || { value: 0 };
+      completed_projects = jobDetails.completed_projects || { value: 0 };
     }
 
     let perc = 0;
@@ -672,20 +670,20 @@ class NodeArray {
       perc = Math.round((completed_projects.value / total_projects.value) * 100);
     }
 
-    let loopTotal
+    let loopTotal: string;
 
     if (total_projects.value > 0) {
-      const childModal = `<a href="/admin/projects/${this.projectId}/children?step_name=${step.id}" class="child-link" data-turbo-frame="loop-modal"><span class="number">${total_projects.value} Child Processes</span></a>`
+      const childModal = `<a href="/admin/projects/${this.projectId}/children?step_name=${step.id}" class="child-link" data-turbo-frame="loop-modal"><span class="number">${total_projects.value} Child Processes</span></a>`;
       loopTotal = `<div class="loop-total">${workflowLink}${childModal}</div>`;
     } else if (childProjectId && !this.isProject) {
-      loopTotal =  `<div class="loop-total"><a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="number">${childProjectName}</span></a></div>`;
+      loopTotal = `<div class="loop-total"><a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="number">${childProjectName}</span></a></div>`;
     } else {
-      loopTotal =  `<div class="loop-total">${workflowLink}<span class="number">${total_projects.value} child processes</span></div>`;
+      loopTotal = `<div class="loop-total">${workflowLink}<span class="number">${total_projects.value} child processes</span></div>`;
     }
 
     let percent = '';
 
-    if (status === 'finished'|| status === 'in_progress') {
+    if (status === 'finished' || status === 'in_progress') {
       percent = `<div class="percent active"><span class="percent-num">${perc}</span>%</div>`;
     } else if (childProjectId) {
       percent = ``;
@@ -697,19 +695,19 @@ class NodeArray {
     return this.newGenerateStepHTML({ type: type, step: step, bottomHtml: bottomHtml });
   }
 
-  newStandardData(type, step) {
-    const totalJobs = step.step.params.job_count
+  newStandardData(type: string, step: WorkflowTransition): { html: string } {
+    const totalJobs = step.step?.params?.job_count || 0;
     let numCircles = totalJobs > 5 ? 5 : totalJobs;
-    let jobTotal = totalJobs
+    let jobTotal = totalJobs;
     const status = this.getStatus(step);
     const jobDetails = this.getJobDetails(step);
 
-    if (numCircles< jobDetails?.total_jobs?.value && jobDetails?.total_jobs?.value <= 5) {
-      numCircles = jobDetails?.total_jobs?.value
-      jobTotal = jobDetails?.total_jobs?.value
+    if (numCircles < (jobDetails?.total_jobs?.value || 0) && (jobDetails?.total_jobs?.value || 0) <= 5) {
+      numCircles = jobDetails?.total_jobs?.value || 0;
+      jobTotal = jobDetails?.total_jobs?.value || 0;
     }
 
-    let avatarElement = [];
+    const avatarElement: string[] = [];
 
     if (!jobDetails) {
       const circle = `<div class="circle"></div>`;
@@ -717,29 +715,25 @@ class NodeArray {
         avatarElement.push(circle);
       }
     } else {
-      let completedJobs = jobDetails.completed_jobs.value;
-      const pending_jobs = jobDetails.pending_jobs.value;
-
-      const avatars = jobDetails.account_nicknames.value;
+      const completedJobs = jobDetails.completed_jobs?.value || 0;
+      const pending_jobs = jobDetails.pending_jobs?.value || 0;
+      const avatars = jobDetails.account_nicknames?.value || [];
 
       for (let i = 0; i < numCircles; i++) {
         if (status === 'finished') {
           if (avatars[i]) {
-            // add div with complete_img class and the avatar image
             avatarElement.push(`<div class="complete_img"><img src="${avatars[i]}" class="completed" alt="avatar"><span class="material-icons check">check</span></div>`);
           } else {
             avatarElement.push(`<span class="material-icons complete_img">check</span>`);
           }
         } else if (i < completedJobs) {
           if (avatars[i]) {
-            // add div with complete_img class and the avatar image
             avatarElement.push(`<div class="complete_img"><img src="${avatars[i]}" class="completed" alt="avatar"><span class="material-icons check">check</span></div>`);
           } else {
             avatarElement.push(`<span class="material-icons complete_img">check</span>`);
           }
         } else if (i >= completedJobs && i <= jobTotal - pending_jobs) {
           if (avatars[i]) {
-            // add div with complete_img class and the avatar image
             avatarElement.push(`<div class="in_progress_img in_progress"><img src="${avatars[i]}" class="in_progress_avatar" alt="avatar"></div>`);
           } else {
             avatarElement.push(`<span class="material-icons in_progress_img in_progress">schedule</span>`);
@@ -750,17 +744,16 @@ class NodeArray {
       }
     }
 
-    // const bottomHtml = `<div class="step-bottom standard">${avatarElement.join('')}</div>`;
     const bottomHtml = `<div class="step-bottom standard">${avatarElement.join('')}</div>`;
     return this.newGenerateStepHTML({ type: type, step: step, bottomHtml: bottomHtml });
   }
 
-  newAutomatedData(type, step) {
-    return this.newGenerateStepHTML({ type:type, step: step });
+  newAutomatedData(type: string, step: WorkflowTransition): { html: string } {
+    return this.newGenerateStepHTML({ type: type, step: step });
   }
 
-  setStatusIcon(step, type) {
-    const status = this.getStatus(step)
+  setStatusIcon(step: WorkflowTransition, type: string): string {
+    const status = this.getStatus(step);
 
     let icon = '';
     const pendingSVG = `
@@ -777,7 +770,7 @@ class NodeArray {
         icon = CheckBoxIcon;
       }
     } else if (status === 'in_progress') {
-      if (name === 'Prompt') {
+      if (step.name === 'Prompt') {
         icon = WarningIcon;
       } else {
         icon = pendingSVG;
@@ -797,8 +790,8 @@ class NodeArray {
       }
     }
 
-    if (status === 'in_progress'){
-      element = icon
+    if (status === 'in_progress') {
+      element = icon;
     } else {
       element = `<img class="right-icon" src="${icon}" />`;
     }
@@ -806,16 +799,15 @@ class NodeArray {
     return element;
   }
 
-  getJobDetails(step) {
+  getJobDetails(step: WorkflowTransition): JobDetails | null {
     if (!step.status) {
       return null;
     }
-    const { completed_jobs, total_jobs, marked_correct, pending_jobs, account_nicknames, total_projects, completed_projects, completion_time, start_time, parsed_completion_time } = step.status.job_statuses;;
+    const { completed_jobs, total_jobs, marked_correct, pending_jobs, account_nicknames, total_projects, completed_projects, completion_time, start_time, parsed_completion_time } = step.status.job_statuses || {};
     return { completed_jobs, total_jobs, marked_correct, pending_jobs, account_nicknames, total_projects, completed_projects, completion_time, start_time, parsed_completion_time };
-
   }
 
-  getStatus(step) {
+  getStatus(step: WorkflowTransition): string | null {
     if (step.status?.step_state) {
       return step.status.step_state;
     } else if (step.last_transition_state) {
@@ -825,7 +817,7 @@ class NodeArray {
     }
   }
 
-  setIcon(type) {
+  setIcon(type: string): string {
     let icon = 'question_mark';
     if (type === 'human') {
       icon = HumanIcon;
@@ -840,32 +832,32 @@ class NodeArray {
     return icon;
   }
 
-  getOutputTemplates({step}) {
+  getOutputTemplates({ step }: { step: WorkflowTransition }): any[] | undefined {
     return step.output_templates;
   }
 
-  hasFileOutput(step) {
+  hasFileOutput(step: WorkflowTransition): boolean {
     if (step.has_output && step.output_templates) {
       return true;
     }
 
-    return false
+    return false;
   }
 
-  humanize(str) {
+  humanize(str: string): string {
     return str
       .replace(/^[\s_]+|[\s_]+$/g, '')
       .replace(/[_\s]+/g, ' ')
-      .replace(/^[a-z]/, function(m) { return m.toUpperCase(); });
+      .replace(/^[a-z]/, function (m) { return m.toUpperCase(); });
   }
 
-  setPolyPreview(step) {
-    const mediaUrl = step.output.media_url;
-    const polygons = step.output.polygons;
+  setPolyPreview(step: WorkflowTransition): string {
+    const mediaUrl = step.output?.media_url;
+    const polygons = step.output?.polygons;
 
-    const polygonsCoordinatesArray = polygons.map((polygon) => {
+    const polygonsCoordinatesArray = polygons?.map((polygon: any) => {
       const coordinates = polygon.scaled_coordinates;
-      return Object.values(coordinates).map((coord) => {
+      return Object.values(coordinates).map((coord: any) => {
         return { x: parseFloat(coord.x), y: parseFloat(coord.y) };
       });
     });
@@ -878,10 +870,10 @@ class NodeArray {
     return `<div class="poly-preview">${data} ${name}</div>`;
   }
 
-  generateFileNodes(step,node, id, status, connections) {
+  generateFileNodes(step: WorkflowTransition, node: any, id: string, status: string | null, connections: string | string[]): void {
     if (step.name === 'Polygon') {
       const data = this.setPolyPreview(step);
-      const polyNode = new Nodes.polyNode(`${id}-output`, this.calcPosition(), {html:data});
+      const polyNode = Nodes.polyNode(`${id}-output`, this.calcPosition(), { html: data });
 
       polyNode.position.x = polyNode.position.x - 50;
       polyNode.borderColor = '#67c083';
@@ -891,27 +883,24 @@ class NodeArray {
 
       return;
     }
-    const files = this.getOutputTemplates({step: step});
+    const files = this.getOutputTemplates({ step: step });
 
     if (!files) {
       return;
     }
 
-    let firstFile;
+    let firstFile: any;
 
-    if (files.length >1) {
+    if (files.length > 1) {
       node.targetNode = [];
     }
 
-    // loop through the filesArray and create a file node for each file
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      let fileNode;
-      // let fileNode = new Nodes.fileNode(`${id}-output`, {x: node.position.x + 90, y: node.position.y + 70}, fileData);
-      // create a file node for each file and set each file node position to below one another
+      let fileNode: any;
 
       if (i === 0) {
-        fileNode = new Nodes.fileNode(`${id}-output${i}`, this.calcPosition(), {html: file});
+        fileNode = Nodes.fileNode(`${id}-output${i}`, this.calcPosition(), { html: file });
         if (step.position) {
           fileNode.position.x = step.position.x - 20;
           fileNode.position.y = step.position.y - 130;
@@ -920,25 +909,22 @@ class NodeArray {
         }
 
         firstFile = fileNode;
-        // if targetNode is an array, push the fileNode id to the array
         if (Array.isArray(node.targetNode)) {
           node.targetNode.push(fileNode.id);
         } else {
-          // if targetNode is not an array, set the fileNode id to the targetNode
           node.targetNode = fileNode.id;
         }
       } else {
-        fileNode = new Nodes.fileNode(`${id}-output-${i}`, this.calcPosition(), {html: file});
+        fileNode = Nodes.fileNode(`${id}-output-${i}`, this.calcPosition(), { html: file });
         fileNode.position.y = firstFile.position.y - (i * 140);
-        fileNode.position.x = firstFile.position.x ;
+        fileNode.position.x = firstFile.position.x;
         node.targetNode.push(fileNode.id);
       }
 
       fileNode.targetNode = connections;
 
       if (status === 'finished') {
-        this.setCompletedStepPos(fileNode.position)
-        // set styles for completed nodes
+        this.setCompletedStepPos(fileNode.position);
         fileNode.borderColor = '#67c083';
       }
 
@@ -946,15 +932,21 @@ class NodeArray {
     }
   }
 
-  addBooleanNode(node, step, connections) {
+  addBooleanNode(node: any, step: WorkflowTransition, connections: string | string[]): any {
     const id = node.id;
 
     const position = {
       x: node.width + node.position.x + 90,
-      y: node.position.y + (node.height / 2 -50)
-    }
+      y: node.position.y + (node.height / 2 - 50)
+    };
 
-    let output, bgColor,borderColor, outputIcon, data, textColor;
+    let output: boolean | undefined;
+    let bgColor: string;
+    let borderColor: string;
+    let outputIcon: string;
+    let data: string;
+    let textColor: string | undefined;
+
     if (step.output) {
       output = step.output.value;
       if (output === true) {
@@ -965,14 +957,12 @@ class NodeArray {
       } else {
         bgColor = '#9747FF';
         borderColor = '#9747FF';
-        // set output to use the NoIcon svg
-        outputIcon =  `<img src="${FalseCross}" alt="no icon" class="bool-output-icon">`;
+        outputIcon = `<img src="${FalseCross}" alt="no icon" class="bool-output-icon">`;
         data = `<div class="bool-output">${outputIcon}<span class="bool-text">No</span></div>`;
       }
     } else {
-      return
+      return;
     }
-
 
     const booleanNode = Nodes.booleanResultNode({
       id: `${id}-output`,
@@ -980,11 +970,12 @@ class NodeArray {
       data: {
         html: data,
       },
-      result: output,
+      result: output !== undefined ? String(output) : undefined,
       bgColor: bgColor,
       className: `bool-node-${output}`,
-      status: step.status?.status
+      status: step.status?.step_state
     });
+
     if (textColor) {
       booleanNode.textColor = textColor;
     }
@@ -995,11 +986,11 @@ class NodeArray {
     return booleanNode;
   }
 
-  parseCompletionTime(completionTime) {
+  parseCompletionTime(completionTime: number | null): string {
     if (completionTime === null) {
       return '0:00';
     }
-    // use moment to parse the completion time show days hours minutes seconds only if they are greater than 0
+
     const duration = moment.duration(completionTime, 'seconds');
     const days = duration.days();
     const hours = duration.hours();
@@ -1021,8 +1012,7 @@ class NodeArray {
       timeString += `${seconds}s`;
     }
     if (milliseconds > 0 && timeString === '') {
-
-      timeString += `${parseInt(milliseconds)}ms`;
+      timeString += `${parseInt(String(milliseconds))}ms`;
     }
 
     if (timeString === '') {
@@ -1032,20 +1022,20 @@ class NodeArray {
     }
   }
 
-  shiftPosition(i, nodes) {
+  shiftPosition(i: number, nodes: any[]): void {
     for (let j = i + 2; j < nodes.length; j++) {
-      nodes[j].position = { x: nodes[j].position.x + 200, y: nodes[j].position.y }
+      nodes[j].position = { x: nodes[j].position.x + 200, y: nodes[j].position.y };
     }
   }
 
-  getIfconResult(step) {
+  getIfconResult(step: WorkflowTransition): string | undefined {
     if (!step.has_output) {
-      return null;
+      return undefined;
     }
-    return step.output.result;
+    return step.output?.result || undefined;
   }
 
-  isProjectMode() {
+  isProjectMode(): boolean {
     return this.mode === 'project';
   }
 }

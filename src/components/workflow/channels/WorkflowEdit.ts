@@ -1,22 +1,19 @@
-import { createConsumer } from '@anycable/web'
+import { createConsumer } from '@anycable/web';
+import type { WorkflowEditData } from '@/types/stakwork/websocket';
 
-// 1. Configure your websocket address
-// let WEBSOCKET_HOST = 'ws://lvh.me/cable';
-// if (process.env.NODE_ENV === 'production') {
-//   WEBSOCKET_HOST = 'wss://stakwork.com/cable';
-// } else if (process.env.NODE_ENV === 'staging') {
-//   WEBSOCKET_HOST = 'wss://staging.stakwork.com/cable';
-// }
+class WorkflowEdit {
+  private cable: ReturnType<typeof createConsumer>;
+  private channel: any | null = null;
+  private workflowId: string;
+  private onUpdate: (data: WorkflowEditData) => void;
 
-export default function WorkflowEdit(railsEnv, workflowId, onUpdate) {
-  // 2. Define our constructor
-  this.cable = createConsumer()
-  this.channel;
-  this.workflowId = workflowId;
-  this.onUpdate = onUpdate;
+  constructor(railsEnv: string, workflowId: string, onUpdate: (data: WorkflowEditData) => void) {
+    this.cable = createConsumer();
+    this.workflowId = workflowId;
+    this.onUpdate = onUpdate;
+  }
 
-  // 3. Define the function we will call to subscribe to our channel
-  this.subscribe = () => {
+  subscribe = (): void => {
     this.channel = this.cable.subscriptions.create(
       { channel: 'WorkflowEditChannel', id: this.workflowId },
       {
@@ -28,22 +25,22 @@ export default function WorkflowEdit(railsEnv, workflowId, onUpdate) {
     );
   };
 
-  // 4. Define our default ActionCable callbacks.
-  this.received = (data) => {
-    console.log(`Received Data: ${data}`);
-
+  private received = (data: WorkflowEditData): void => {
+    console.log(`Received Data:`, data);
     this.onUpdate(data);
   };
 
-  this.connected = () => {
+  private connected = (): void => {
     console.log(`Workflow ${this.workflowId} connected`);
   };
 
-  this.disconnected = () => {
+  private disconnected = (): void => {
     console.warn(`Workflow ${this.workflowId} was disconnected.`);
   };
 
-  this.rejected = () => {
+  private rejected = (): void => {
     console.warn('I was rejected! :(');
   };
 }
+
+export default WorkflowEdit;
