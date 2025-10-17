@@ -32,7 +32,7 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
 
       <RecentTasksCard />
 
-      {repository?.status === 'SYNCED' ? <GraphComponent /> : <Gitsee />}
+      {repository?.status === 'SYNCED' || true ? <GraphComponent /> : <Gitsee />}
     </>
   );
 }
