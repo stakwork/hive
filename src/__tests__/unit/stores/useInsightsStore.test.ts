@@ -1,16 +1,34 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useInsightsStore } from "@/stores/useInsightsStore";
+import {
+  mockFetchSuccess,
+  mockFetchError,
+  mockFetchSuccessMultiple,
+  mockFetchErrorMultiple,
+  mockFetchNetworkError,
+} from "./helpers/mockFetchHelper";
+import {
+  testAcceptRecommendation,
+  testDismissRecommendation,
+  setupFreshStore,
+  getStoreInstance,
+} from "./helpers/storeTestHelper";
+import {
+  TEST_RECOMMENDATION_IDS,
+  createMockSuccessResponse,
+  createMinimalSuccessResponse,
+  createCompleteTaskResponse,
+  createResponseWithMetadata,
+  ERROR_MESSAGES,
+} from "./helpers/testData";
 
 describe("useInsightsStore - acceptRecommendation", () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     // Reset store to initial state
-    const { result } = renderHook(() => useInsightsStore());
-    act(() => {
-      result.current.reset();
-    });
+    setupFreshStore();
     
     // Clear all mocks
     vi.clearAllMocks();
