@@ -1,37 +1,49 @@
 import React, { useCallback } from 'react';
 
+interface NodeContextMenuProps {
+  top?: number | string;
+  left?: number | string;
+  right?: number | string;
+  bottom?: number | string;
+  position?: { x: number; y: number };
+  nodes: any[];
+  deleteCallback: (nodes: any[]) => void;
+  exportCallback: (nodes: any[], exportType: string) => void;
+  [key: string]: any;
+}
+
 export default function NodeContextMenu({
-                                      top,
-                                      left,
-                                      right,
-                                      bottom,
-                                      position,
-                                      nodes,
-                                      deleteCallback,
-                                      exportCallback,
-                                      ...props
-                                    }) {
+  top,
+  left,
+  right,
+  bottom,
+  position,
+  nodes,
+  deleteCallback,
+  exportCallback,
+  ...props
+}: NodeContextMenuProps) {
   const deleteNode = useCallback(() => {
-    console.log("delete nodes", nodes)
-    deleteCallback(nodes)
-  }, [nodes]);
+    console.log("delete nodes", nodes);
+    deleteCallback(nodes);
+  }, [nodes, deleteCallback]);
 
   const exportNodeWR = useCallback(() => {
-    console.log("export node", nodes)
-    exportCallback(nodes, 'WorkflowRunner')
-  }, [nodes]);
+    console.log("export node", nodes);
+    exportCallback(nodes, 'WorkflowRunner');
+  }, [nodes, exportCallback]);
 
   const exportNodeFE = useCallback(() => {
-    console.log("export node", nodes)
-    exportCallback(nodes, 'ForEachCondition')
-  }, [nodes]);
+    console.log("export node", nodes);
+    exportCallback(nodes, 'ForEachCondition');
+  }, [nodes, exportCallback]);
 
   const exportNodeWL = useCallback(() => {
-    console.log("export node", nodes)
-    exportCallback(nodes, 'WhileLoop')
-  }, [nodes]);
+    console.log("export node", nodes);
+    exportCallback(nodes, 'WhileLoop');
+  }, [nodes, exportCallback]);
 
-  const plural = nodes.length > 1 ? 's' : ''
+  const plural = nodes.length > 1 ? 's' : '';
 
   return (
     <div

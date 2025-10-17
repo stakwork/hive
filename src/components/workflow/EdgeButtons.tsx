@@ -4,22 +4,31 @@ import {
   EdgeLabelRenderer,
   getBezierPath,
   useReactFlow,
-  getStraightPath,
+  EdgeProps,
 } from '@xyflow/react';
 
-export default function EdgeButtons({
-                                      id,
-                                      sourceX,
-                                      sourceY,
-                                      targetX,
-                                      targetY,
-                                      sourcePosition,
-                                      targetPosition,
-                                      data,
-                                      style = {},
-                                      markerEnd,
-                                    }) {
+interface CustomEdgeData {
+  id: string;
+  conn_edge: {
+    source: string;
+    target: string;
+    custom_label?: string;
+    disable_edge?: boolean;
+    edgeColor: string;
+    data?: {
+      condition_eval?: boolean;
+    };
+  };
+  project_view?: boolean;
+  data?: {
+    project_view?: boolean;
+  };
+}
+
+export default function EdgeButtons(props: EdgeProps) {
   const { setEdges } = useReactFlow();
+  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style = {}, markerEnd } = props;
+
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -31,20 +40,18 @@ export default function EdgeButtons({
   });
 
   const deleteEdge = () => {
-    // console.log("id", id)
+    setEdges((es) => es.filter((e) => e.id !== id));
+  };
 
-    setEdges((es) => es.filter((e) => e.id !== id))
+  if (!data) return null;
+
+  const edgeData = data as unknown as CustomEdgeData;
+  const edge = edgeData.conn_edge;
+  let project_view = edgeData.project_view;
+
+  if (edgeData.data?.project_view) {
+    project_view = edgeData.data.project_view;
   }
-
-  const edge = data.conn_edge
-
-  let project_view = data.project_view
-
-  if (data.data.project_view) {
-    project_view = data.data.project_view
-  }
-
-  // console.log("edge data>>>>", data)
 
   return (
     <>
@@ -55,9 +62,9 @@ export default function EdgeButtons({
             <div style={{
               position: 'absolute',
               padding: '20px',
-              background: edge.data && edge.data.condition_eval ? '#67C083' : 'white',
+              background: edge.data?.condition_eval ? '#67C083' : 'white',
               border: '1px solid #444851',
-              color: edge.data && edge.data.condition_eval ? 'white' : 'black',
+              color: edge.data?.condition_eval ? 'white' : 'black',
               transform: `translate(-50%, 50%) translate(${labelX+50}px,${labelY-100}px)`,
               pointerEvents: 'all'
             }}>
@@ -67,7 +74,7 @@ export default function EdgeButtons({
           {(!project_view && !edge.disable_edge) &&
             <div>
               <div className="add-step add-step-node" data-target="workflow-buttons.addStep"
-                   data-point-position={data.id}
+                   data-point-position={edgeData.id}
                    data-edge-source={edge.source} data-edge-target={edge.target}
                    data-remote="true" style={{
                 position: 'absolute',

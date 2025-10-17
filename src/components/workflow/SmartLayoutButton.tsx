@@ -1,13 +1,12 @@
-// SmartLayoutButton.tsx
 import React, { useState } from 'react';
-import { useReactFlow } from '@xyflow/react';
+import { useReactFlow, Node, NodeChange } from '@xyflow/react';
 import { smartLayout } from './layoutUtils';
 
-/**
- * Smart layout button that applies layout and saves node positions
- * @param {Function} onNodesChange - Function to call when nodes change
- */
-export function SmartLayoutButton({ onNodesChange }) {
+interface SmartLayoutButtonProps {
+  onNodesChange?: (changes: NodeChange[]) => void;
+}
+
+export function SmartLayoutButton({ onNodesChange }: SmartLayoutButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { getNodes, getEdges, setNodes, fitView } = useReactFlow();
 
@@ -21,8 +20,8 @@ export function SmartLayoutButton({ onNodesChange }) {
       const layoutedNodes = await smartLayout(originalNodes, getEdges());
 
       // Apply with animation if supported
-      if (typeof document.startViewTransition === 'function') {
-        document.startViewTransition(() => {
+      if (typeof (document as any).startViewTransition === 'function') {
+        (document as any).startViewTransition(() => {
           setNodes(layoutedNodes);
           setTimeout(() => {
             fitView({ padding: 0.2 });
@@ -44,12 +43,12 @@ export function SmartLayoutButton({ onNodesChange }) {
   };
 
   // Generate node change events to trigger position saving
-  const saveNodePositions = (layoutedNodes) => {
+  const saveNodePositions = (layoutedNodes: Node[]) => {
     // Skip if no onNodesChange handler
     if (!onNodesChange) return;
 
     // For each node, create a change object that simulates a drag operation
-    const nodeChanges = layoutedNodes.map(node => ({
+    const nodeChanges: NodeChange[] = layoutedNodes.map(node => ({
       id: node.id,
       type: 'position',
       position: node.position,

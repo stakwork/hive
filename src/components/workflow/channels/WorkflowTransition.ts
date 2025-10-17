@@ -1,36 +1,41 @@
-import { createConsumer } from '@anycable/web'
+import { createConsumer } from '@anycable/web';
+import type { WorkflowTransitionData } from '@/types/stakwork/websocket';
 
-export default function WorkflowTransition(railsEnv, projectId, onUpdate) {
+class WorkflowTransition {
   // Configuration
-  const DEBOUNCE_TIME = 1000; // 1 second debounce window
-  const MAX_WAIT_TIME = 2000; // Don't wait more than 2 seconds between updates
+  private readonly DEBOUNCE_TIME = 1000; // 1 second debounce window
+  private readonly MAX_WAIT_TIME = 2000; // Don't wait more than 2 seconds between updates
 
-  this.cable = createConsumer();
-  this.channel = null;
-  this.projectId = projectId;
-  this.onUpdate = onUpdate;
-  this.lastProcessedTime = 0; // Time when we last processed an update
-  this.lastReceivedTime = 0;  // Time when we last received any update
-  this.pendingUpdate = null;  // Holds the most recent update waiting to be processed
-  this.updateTimeout = null;  // Reference to current timeout (if any)
-  this.updateQueue = [];      // Queue of updates to process
+  private cable: ReturnType<typeof createConsumer>;
+  private channel: any | null = null;
+  private projectId: string;
+  private onUpdate: (data: WorkflowTransitionData) => void;
+  private lastProcessedTime: number = 0;
+  private lastReceivedTime: number = 0;
+  private pendingUpdate: WorkflowTransitionData | null = null;
+  private updateTimeout: NodeJS.Timeout | null = null;
+  private updateQueue: any[] = [];
 
-  // Subscribe to the channel
-  this.subscribe = () => {
+  constructor(railsEnv: string, projectId: string, onUpdate: (data: WorkflowTransitionData) => void) {
+    this.cable = createConsumer();
+    this.projectId = projectId;
+    this.onUpdate = onUpdate;
+  }
+
+  subscribe = (): WorkflowTransition => {
     this.channel = this.cable.subscriptions.create(
-        { channel: 'WorkflowChannel', id: this.projectId },
-        {
-          connected: this.connected,
-          disconnected: this.disconnected,
-          received: this.received,
-          rejected: this.rejected,
-        }
+      { channel: 'WorkflowChannel', id: this.projectId },
+      {
+        connected: this.connected,
+        disconnected: this.disconnected,
+        received: this.received,
+        rejected: this.rejected,
+      }
     );
     return this;
   };
 
-  // Process the pending update immediately
-  this.processImmediately = () => {
+  private processImmediately = (): void => {
     if (this.pendingUpdate) {
       console.log(`Processing update immediately: ${this.pendingUpdate.status}`);
       this.onUpdate(this.pendingUpdate);
@@ -44,8 +49,7 @@ export default function WorkflowTransition(railsEnv, projectId, onUpdate) {
     }
   };
 
-  // Schedule processing for later
-  this.scheduleProcessing = (delayMs) => {
+  private scheduleProcessing = (delayMs: number): void => {
     if (this.updateTimeout) {
       clearTimeout(this.updateTimeout);
     }
@@ -61,8 +65,7 @@ export default function WorkflowTransition(railsEnv, projectId, onUpdate) {
     }, delayMs);
   };
 
-  // Handle received messages
-  this.received = (data) => {
+  private received = (data: WorkflowTransitionData): void => {
     const now = new Date().getTime();
 
     // Always update our tracking of when we last received an update
@@ -75,7 +78,7 @@ export default function WorkflowTransition(railsEnv, projectId, onUpdate) {
     const timeSinceLastProcessed = now - this.lastProcessedTime;
 
     // Case 1: If it's been a long time since our last update, process immediately
-    if (timeSinceLastProcessed > MAX_WAIT_TIME) {
+    if (timeSinceLastProcessed > this.MAX_WAIT_TIME) {
       console.log(`It's been ${timeSinceLastProcessed}ms since last update, processing immediately`);
       this.processImmediately();
       return;
@@ -88,37 +91,32 @@ export default function WorkflowTransition(railsEnv, projectId, onUpdate) {
     }
 
     // Case 3: Schedule a new timeout to process this update after the debounce period
-    console.log(`Scheduling update to process in ${DEBOUNCE_TIME}ms`);
-    this.scheduleProcessing(DEBOUNCE_TIME);
+    console.log(`Scheduling update to process in ${this.DEBOUNCE_TIME}ms`);
+    this.scheduleProcessing(this.DEBOUNCE_TIME);
   };
 
-  // Connection established
-  this.connected = () => {
+  private connected = (): void => {
     console.log(`Run ${this.projectId} connected`);
   };
 
-  // Connection lost
-  this.disconnected = () => {
+  private disconnected = (): void => {
     console.warn(`Run ${this.projectId} was disconnected.`);
   };
 
-  // Connection rejected
-  this.rejected = () => {
+  private rejected = (): void => {
     console.warn(`Connection to Run ${this.projectId} was rejected.`);
   };
 
-  // Force an immediate update if needed
-  this.forceUpdate = () => {
+  forceUpdate = (): WorkflowTransition => {
     if (this.pendingUpdate) {
       this.processImmediately();
     }
     return this;
   };
 
-  // Clean up resources
-  this.unsubscribe = () => {
+  unsubscribe = (): WorkflowTransition => {
     if (this.channel) {
-      this.cable.subscriptions.remove(this.channel);
+      this.channel.disconnect();
       this.channel = null;
     }
 
@@ -130,3 +128,5 @@ export default function WorkflowTransition(railsEnv, projectId, onUpdate) {
     return this;
   };
 }
+
+export default WorkflowTransition;
