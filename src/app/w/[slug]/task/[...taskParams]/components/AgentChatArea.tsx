@@ -116,6 +116,7 @@ export function AgentChatArea({
       {/* Input Bar */}
       <ChatInput
         logs={logs}
+        messages={[]}
         onSend={onSend}
         disabled={inputDisabled}
         isLoading={isLoading}
