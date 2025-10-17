@@ -1,5 +1,5 @@
 // Middleware configuration constants and route policy helpers
-import { patternToRegex } from "@/lib/middleware/utils";
+import { patternToRegex } from "@/lib/middleware";
 
 export const MIDDLEWARE_HEADERS = {
   USER_ID: "x-middleware-user-id",
