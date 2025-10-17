@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@Universe/*": [
+        "./src/app/w/[slug]/graph/Universe/*"
       ]
     }
   },

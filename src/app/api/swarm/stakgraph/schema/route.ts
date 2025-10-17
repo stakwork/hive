@@ -36,14 +36,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:3355`;
+    // const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:3355`;
+
+    let jarvisUrl = `https://${getSwarmVanityAddress(swarm.name)}:8444`;
+    let apiKey = swarm.swarmApiKey;
+    if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
+    if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
     const apiResult = await swarmApiRequest({
-      swarmUrl: stakgraphUrl,
+      swarmUrl: jarvisUrl,
       // endpoint: "/search?query=authentication&node_types=Function&output=json",
-      endpoint: "/schema",
+      endpoint: "/schema/all",
       method: "GET",
-      apiKey: swarm.swarmApiKey,
+      apiKey,
     });
 
     console.log('apiResult', apiResult)

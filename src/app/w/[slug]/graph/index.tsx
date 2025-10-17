@@ -1,15 +1,17 @@
 "use client";
 
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { Iframe } from "@/components/s2b-iframe";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getLanguageFromFile } from "@/lib/syntax-utils";
+import { useDataStore } from "@/stores/useDataStore";
+import { useSchemaStore } from "@/stores/useSchemaStore";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vs, vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Graph3D } from "./Graph3D";
+import { Universe } from "./Universe";
 
 // --- TYPE DEFINITIONS ---
 interface GraphNode {
@@ -261,6 +263,9 @@ export const GraphComponent = () => {
   const [viewMode, setViewMode] = useState<'2D' | '3D' | '2B3D'>('2D');
   const [showCameraControls, setShowCameraControls] = useState(false);
 
+  const addNewNode = useDataStore((s) => s.addNewNode);
+  const setSchemas = useSchemaStore((s) => s.setSchemas);
+
   // keep selectedNodeRef in sync for use inside D3 handlers
   useEffect(() => {
     selectedNodeRef.current = selectedNode;
@@ -272,6 +277,23 @@ export const GraphComponent = () => {
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
+
+  useEffect(() => {
+    const fetchSchema = async () => {
+      const response = await fetch(`/api/swarm/stakgraph/schema?id=${workspaceId}`);
+      const data: SchemaResponse = await response.json();
+
+      console.log("schema data", data);
+      if (data.data) {
+
+        setSchemas(data.data.schemas.filter((schema) => !schema.is_deleted))
+        if (!data.success) throw new Error("Failed to fetch schema data");
+        console.log("schema data", data);
+      };
+    };
+    fetchSchema();
+  }, [workspaceId, setSchemas]);
+
   // --- load nodes ---
   useEffect(() => {
     const fetchNodes = async () => {
@@ -281,6 +303,9 @@ export const GraphComponent = () => {
         const data: ApiResponse = await response.json();
         if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
+          addNewNode({ nodes: data.data.nodes, edges: data.data.edges })
+
+
           setNodes(
             data.data.nodes.map((node) => ({
               ...node,
@@ -596,24 +621,21 @@ export const GraphComponent = () => {
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`relative px-4 py-2 text-sm font-medium transition-all duration-200 ease-out ${
-                  index === 0 ? 'rounded-l-md' : index === 2 ? 'rounded-r-md' : ''
-                } ${
-                  viewMode === mode
+                className={`relative px-4 py-2 text-sm font-medium transition-all duration-200 ease-out ${index === 0 ? 'rounded-l-md' : index === 2 ? 'rounded-r-md' : ''
+                  } ${viewMode === mode
                     ? isDarkMode
                       ? "bg-blue-600 text-white shadow-md scale-105 z-10"
                       : "bg-blue-500 text-white shadow-md scale-105 z-10"
                     : isDarkMode
                       ? "text-gray-300 hover:text-white hover:bg-gray-700/50"
                       : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/50"
-                }`}
+                  }`}
                 title={`Switch to ${mode} view`}
               >
                 <span className="relative z-10">{mode}</span>
                 {viewMode === mode && (
-                  <div className={`absolute inset-0 rounded-md ${
-                    isDarkMode ? 'bg-blue-600' : 'bg-blue-500'
-                  } transition-all duration-200 ease-out`} />
+                  <div className={`absolute inset-0 rounded-md ${isDarkMode ? 'bg-blue-600' : 'bg-blue-500'
+                    } transition-all duration-200 ease-out`} />
                 )}
               </button>
             ))}
@@ -686,19 +708,12 @@ export const GraphComponent = () => {
               setSelectedNode(node);
             }}
           />
-        ) : viewMode === '2B3D' ? (
-          workspace?.swarmUrl ? (
-            <Iframe
-              height={600}
-              src={workspace.swarmUrl.replace('/api', ':8000')}
-              className="min-h-[500px]"
-            />
-          ) : (
-            <div>This graph is not available</div>
-          )
-        ) : (
-          <svg ref={svgRef} className="w-full h-96" />
-        )}
+        ) : viewMode === '2B3D' ?
+
+          <Universe />
+          : (
+            <svg ref={svgRef} className="w-full h-96" />
+          )}
       </div>
 
       {
