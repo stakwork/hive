@@ -2,15 +2,11 @@ import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react'
 import axios from 'axios';
 import ImportNodeModal from './ImportNodeModal';
 import RequestQueue from './RequestQueue';
-
-// Rails globals
-declare const swal: any;
-declare const $: any;
-declare const Turbo: any;
+import { useToastContext } from '@/components/ui/toast-provider';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 declare global {
   interface Window {
-    showFlashMessage: (message: string, type: string) => void;
     searchTimeout: any;
   }
 }
@@ -212,6 +208,15 @@ interface WorkflowAppProps {
 }
 
 export default function App(workflowApp: WorkflowAppProps) {
+  const { showToast } = useToastContext();
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    variant?: 'default' | 'destructive';
+  }>({ open: false, title: '', description: '', onConfirm: () => {} });
+
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
   const [nodesSelected, setNodesSelected] = useState<any[]>([]);
@@ -227,6 +232,39 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   const requestQueue = useRef<RequestQueue>(new RequestQueue());
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
+
+  // Ref for workflow spec field
+  const workflowSpecRef = useRef<HTMLInputElement | null>(null);
+
+  // Helper to show toast messages (replaces window.showFlashMessage)
+  const showFlashMessage = useCallback((message: string, type: 'success' | 'info' | 'error') => {
+    const variant = type === 'error' ? 'destructive' : type === 'success' ? 'success' : 'default';
+    showToast({
+      title: message,
+      variant,
+      duration: 3000
+    });
+  }, [showToast]);
+
+  // Helper to show error dialog (replaces swal for errors)
+  const showErrorDialog = useCallback((title: string, message: string) => {
+    setConfirmDialog({
+      open: true,
+      title,
+      description: message,
+      variant: 'destructive',
+      onConfirm: () => setConfirmDialog(prev => ({ ...prev, open: false }))
+    });
+  }, []);
+
+  // Helper to trigger change event on workflow spec field (replaces jQuery trigger)
+  const triggerWorkflowSpecChange = useCallback(() => {
+    const workflowSpecField = document.querySelector('#workflow_spec') as HTMLInputElement | null;
+    if (workflowSpecField) {
+      const changeEvent = new Event('change', { bubbles: true });
+      workflowSpecField.dispatchEvent(changeEvent);
+    }
+  }, []);
 
   const {
     workflowData,
@@ -325,11 +363,10 @@ export default function App(workflowApp: WorkflowAppProps) {
           const response_data = response.data;
 
           if (!response_data.success) {
-            swal({
-              title: `There was an error while publishing this workflow`,
-              text: response_data.error.message,
-              icon: "warning"
-            });
+            showErrorDialog(
+              'There was an error while publishing this workflow',
+              response_data.error.message
+            );
             return;
           }
 
@@ -339,72 +376,73 @@ export default function App(workflowApp: WorkflowAppProps) {
             return;
           }
 
-          window.showFlashMessage("Workflow Published", 'success');
+          showFlashMessage("Workflow Published", 'success');
           updateDiagram(data.workflow_diagram);
           updateWorkflowVersionId(response)
         })
         .catch(error => {
           console.error("Failed to publish workflow:", error);
-
-          swal({
-            title: `There was an error while publishing this workflow`,
-            text: error,
-            icon: "warning"
-          });
+          showErrorDialog(
+            'There was an error while publishing this workflow',
+            error.message || error
+          );
         });
     };
 
     const handleCopyStep = (event: any) => {
-      if (!confirm('Are you sure you want to copy this step?')) {
-        return;
-      }
-
       const unique_id = event.detail.uniqueId;
 
-      // Create the request function for the queue
-      const requestFn = () => {
-        const params = {
-          workflow_version_id: workflowVersionId // Use latest version from queue
-        };
+      setConfirmDialog({
+        open: true,
+        title: 'Copy Step',
+        description: 'Are you sure you want to copy this step?',
+        onConfirm: () => {
+          setConfirmDialog(prev => ({ ...prev, open: false }));
 
-        return axios.put(`/admin/workflows/${workflowId}/steps/${unique_id}/copy.json`, params);
-      };
+          // Create the request function for the queue
+          const requestFn = () => {
+            const params = {
+              workflow_version_id: workflowVersionId // Use latest version from queue
+            };
 
-      // Queue the request with metadata
-      requestQueue.current.enqueue(requestFn, {
-        type: 'copyStep',
-        nodeIds: [unique_id] // Track the node being copied
-      })
-        .then((response) => {
-          const response_data = response.data;
+            return axios.put(`/admin/workflows/${workflowId}/steps/${unique_id}/copy.json`, params);
+          };
 
-          if (!response_data.success) {
-            swal({
-              title: `There was an error while copying this step`,
-              text: response_data.error.message,
-              icon: "warning"
+          // Queue the request with metadata
+          requestQueue.current.enqueue(requestFn, {
+            type: 'copyStep',
+            nodeIds: [unique_id] // Track the node being copied
+          })
+            .then((response) => {
+              const response_data = response.data;
+
+              if (!response_data.success) {
+                showErrorDialog(
+                  'There was an error while copying this step',
+                  response_data.error.message
+                );
+                return;
+              }
+
+              const data = response_data.data;
+
+              if (!data.valid) {
+                return;
+              }
+
+              showFlashMessage("Step copied", 'info');
+              updateDiagram(data.workflow_diagram);
+              debouncedUpdateWorkflowVersion(response);
+            })
+            .catch(error => {
+              console.error("Failed to copy step:", error);
+              showErrorDialog(
+                'There was an error while copying this step',
+                error.message || error
+              );
             });
-            return;
-          }
-
-          const data = response_data.data;
-
-          if (!data.valid) {
-            return;
-          }
-
-          window.showFlashMessage("Step copied", 'info');
-          updateDiagram(data.workflow_diagram);
-          debouncedUpdateWorkflowVersion(response);
-        })
-        .catch(error => {
-          console.error("Failed to copy step:", error);
-          swal({
-            title: `There was an error while copying this step`,
-            text: error,
-            icon: "warning"
-          });
-        });
+        }
+      });
     };
 
     const handleWorkflowSave = (event: any) => {
@@ -431,11 +469,10 @@ export default function App(workflowApp: WorkflowAppProps) {
           const response_data = response.data;
 
           if (!response_data.success) {
-            swal({
-              title: `There was an error while saving your Workflow`,
-              text: response_data.error.message,
-              icon: "warning"
-            });
+            showErrorDialog(
+              'There was an error while saving your Workflow',
+              response_data.error.message
+            );
             return;
           }
 
@@ -445,17 +482,16 @@ export default function App(workflowApp: WorkflowAppProps) {
             return;
           }
 
-          window.showFlashMessage("Workflow Updated", 'info');
+          showFlashMessage("Workflow Updated", 'info');
           updateDiagram(data.workflow_diagram);
           debouncedUpdateWorkflowVersion(response);
         })
         .catch(error => {
           console.error("Failed to save workflow:", error);
-          swal({
-            title: `There was an error while saving this Workflow`,
-            text: error,
-            icon: "warning"
-          });
+          showErrorDialog(
+            'There was an error while saving this Workflow',
+            error.message || error
+          );
         });
     };
 
@@ -763,7 +799,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     if (specField) {
       specField.value = JSON.stringify(json_spec);
     }
-    $('#workflow_spec').trigger('change');
+    triggerWorkflowSpecChange();
   }
 
   const updateWorkflowVersionId = (response: any) => {
@@ -783,14 +819,17 @@ export default function App(workflowApp: WorkflowAppProps) {
 
     setWorkflowVersionId(data.workflow_version_id)
 
-    fetch(`/admin/workflows/${workflowId}/versions?version=${data.workflow_version_id}&tag_name=edit_workflows_versions_dropdown`, {
-      headers: {
-        Accept: "text/vnd.turbo-stream.html"
-      }
-    }).then(r => r.text())
-      .then(function(html) {
-        Turbo.renderStreamMessage(html)
-    })
+    // NOTE: Turbo Stream functionality commented out during Next.js migration
+    // This was used to update the workflow versions dropdown via Rails Turbo Streams
+    // If this functionality is needed in Next.js, implement a React-based version dropdown
+    // fetch(`/admin/workflows/${workflowId}/versions?version=${data.workflow_version_id}&tag_name=edit_workflows_versions_dropdown`, {
+    //   headers: {
+    //     Accept: "text/vnd.turbo-stream.html"
+    //   }
+    // }).then(r => r.text())
+    //   .then(function(html) {
+    //     Turbo.renderStreamMessage(html)
+    // })
 
     const event = new CustomEvent('updateWorkflowVersion', { detail: eventDetail });
     document.dispatchEvent(event);
@@ -891,7 +930,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     if (specField) {
       specField.value = JSON.stringify(json_spec);
     }
-    $('#workflow_spec').trigger('change');
+    triggerWorkflowSpecChange();
 
     // Prepare node IDs for tracking
     const nodeIds = changed_nodes.map((node: any) => node.id);
@@ -915,11 +954,10 @@ export default function App(workflowApp: WorkflowAppProps) {
         const response_data = response.data;
 
         if (!response_data.success) {
-          swal({
-            title: `Operation not permitted`,
-            text: response_data.error.message,
-            icon: "warning"
-          });
+          showErrorDialog(
+            'Operation not permitted',
+            response_data.error.message
+          );
           return;
         }
 
@@ -927,7 +965,10 @@ export default function App(workflowApp: WorkflowAppProps) {
       })
       .catch(error => {
         console.error("Failed to update workflow nodes:", error);
-        // Optionally notify the user of the error
+        showErrorDialog(
+          'Failed to update nodes',
+          error.message || 'An unexpected error occurred'
+        );
       });
   };
 
@@ -943,7 +984,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     if (specField) {
       specField.value = JSON.stringify(data.workflow_spec);
     }
-    $('#workflow_spec').trigger('change');
+    triggerWorkflowSpecChange();
 
     updateWorkflowVersionId(response)
 
@@ -953,91 +994,108 @@ export default function App(workflowApp: WorkflowAppProps) {
   const exportSteps = (nodes_to_export: any[], node_type: string) => {
     console.log("exporting nodes", nodes_to_export)
 
-    if (!confirm(`Are you sure you want to export the following steps into a ${node_type}? ${nodes_to_export.map((n) => n.id).join(', ')}`)) {
-      return;
-    }
-
     const nodeIds = nodes_to_export.map((node: any) => node.id);
 
-    const requestFn = (version: any) => {
-      const params = {
-        steps: nodeIds,
-        workflow_version_id: version,
-        node_type: node_type
-      };
+    setConfirmDialog({
+      open: true,
+      title: 'Export Steps',
+      description: `Are you sure you want to export the following steps into a ${node_type}? ${nodes_to_export.map((n) => n.id).join(', ')}`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
 
-      return axios.post(`/admin/workflows/${workflowId}/steps/export_to.json`, params);
-    };
+        const requestFn = (version: any) => {
+          const params = {
+            steps: nodeIds,
+            workflow_version_id: version,
+            node_type: node_type
+          };
 
-    requestQueue.current.enqueue(requestFn, {
-      type: 'exportNodesToNew',
-      nodeIds: nodeIds
-    }, workflowVersionId)
-      .then(response => {
-        const response_data = response.data;
+          return axios.post(`/admin/workflows/${workflowId}/steps/export_to.json`, params);
+        };
 
-        if (!response_data.success) {
-          swal({
-            title: `Operation not permitted`,
-            text: response_data.error.message,
-            icon: "warning"
+        requestQueue.current.enqueue(requestFn, {
+          type: 'exportNodesToNew',
+          nodeIds: nodeIds
+        }, workflowVersionId)
+          .then(response => {
+            const response_data = response.data;
+
+            if (!response_data.success) {
+              showErrorDialog(
+                'Operation not permitted',
+                response_data.error.message
+              );
+              return;
+            }
+
+            showFlashMessage(`Steps exported ${nodeIds.join(', ')}`, 'info');
+
+            handleImportSuccess(response_data);
+
+            // debouncedUpdateWorkflowVersion(response);
+          })
+          .catch(error => {
+            console.error("Failed to delete workflow nodes:", error);
+            showErrorDialog(
+              'Failed to export steps',
+              error.message || 'An unexpected error occurred'
+            );
           });
-          return;
-        }
-
-        window.showFlashMessage(`Steps exported ${nodeIds.join(', ')}`, 'info')
-
-        handleImportSuccess(response_data);
-
-        // debouncedUpdateWorkflowVersion(response);
-      })
-      .catch(error => {
-        console.error("Failed to delete workflow nodes:", error);
-      });
+      }
+    });
   }
 
   const deleteStepWorkflowWithNode = (nodes_to_delete: any[]) => {
-    if (!confirm(`Are you sure you want to delete the following steps? ${nodes_to_delete.map((n) => n.id).join(', ')}`)) {
-      return;
-    }
-
     const nodeIds = nodes_to_delete.map((node: any) => node.id);
 
-    const requestFn = (version: any) => {
-      const params = {
-        step_ids: nodeIds,
-        workflow_version_id: version
-      };
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Steps',
+      description: `Are you sure you want to delete the following steps? ${nodes_to_delete.map((n) => n.id).join(', ')}`,
+      variant: 'destructive',
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
 
-      return axios.put(`/admin/workflows/${workflowId}/steps/batch_delete.json`, params);
-    };
+        const requestFn = (version: any) => {
+          const params = {
+            step_ids: nodeIds,
+            workflow_version_id: version
+          };
 
-    requestQueue.current.enqueue(requestFn, {
-      type: 'deleteNodes',
-      nodeIds: nodeIds
-    }, workflowVersionId)
-      .then(response => {
-        const response_data = response.data;
+          return axios.put(`/admin/workflows/${workflowId}/steps/batch_delete.json`, params);
+        };
 
-        if (!response_data.success) {
-          swal({
-            title: `Operation not permitted`,
-            text: response_data.error.message,
-            icon: "warning"
+        requestQueue.current.enqueue(requestFn, {
+          type: 'deleteNodes',
+          nodeIds: nodeIds
+        }, workflowVersionId)
+          .then(response => {
+            const response_data = response.data;
+
+            if (!response_data.success) {
+              showErrorDialog(
+                'Operation not permitted',
+                response_data.error.message
+              );
+              return;
+            }
+
+            showFlashMessage(`Steps deleted ${nodeIds.join(', ')}`, 'info');
+
+            // Remove nodes from state using setNodes directly
+            setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)));
+
+            debouncedUpdateWorkflowVersion(response);
+          })
+          .catch(error => {
+            console.error("Failed to delete workflow nodes:", error);
+            showErrorDialog(
+              'Failed to delete steps',
+              error.message || 'An unexpected error occurred'
+            );
           });
-          return;
-        }
-
-        window.showFlashMessage(`Steps deleted ${nodeIds.join(', ')}`, 'info')
-
-        // Remove nodes from state using setNodes directly
-        setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)));
-
-        debouncedUpdateWorkflowVersion(response);
-      })
-      .catch(error => {
-        console.error("Failed to delete workflow nodes:", error);
-      });
+      }
+    });
   };
 
   const onCustomNodesDelete = (nodes_to_delete: any[]) => {
@@ -1184,7 +1242,7 @@ export default function App(workflowApp: WorkflowAppProps) {
         if (specField) {
           specField.value = JSON.stringify(responseData.data.workflow_spec);
         }
-        $('#workflow_spec').trigger('change');
+        triggerWorkflowSpecChange();
       }
 
       updateWorkflowVersionId({ data: responseData })
@@ -1330,6 +1388,15 @@ export default function App(workflowApp: WorkflowAppProps) {
       </ReactFlow>
 
       <ImportNodeModal onSubmitSuccess={handleImportSuccess} />
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        onConfirm={confirmDialog.onConfirm}
+        variant={confirmDialog.variant}
+      />
     </div>
   );
 }
