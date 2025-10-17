@@ -25,6 +25,7 @@ import {
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
+import './workflow.css';
 import NodeArray from "./v4/NodeArray";
 import StepNode from "./StepNode";
 import WorkflowTransition from "./channels/WorkflowTransition";

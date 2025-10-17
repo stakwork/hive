@@ -63,8 +63,9 @@ export default function StepNode({ data: rawData }: NodeProps) {
           willChange: 'top, left',
           backgroundColor: data.bgColor as React.CSSProperties['backgroundColor'],
           borderRadius: `${data.borderRadius}px`,
-          borderColor: data.borderColor as React.CSSProperties['borderColor'],
+          borderWidth: '2px',
           borderStyle: 'solid',
+          borderColor: data.borderColor as React.CSSProperties['borderColor'],
           color: data.textColor as React.CSSProperties['color']
       }}>
         <div dangerouslySetInnerHTML={{__html: data.data.html}}>

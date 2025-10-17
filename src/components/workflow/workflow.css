@@ -1,0 +1,726 @@
+/* Workflow Component Styles - Migrated from senza-lnd admin2.scss */
+
+/* CSS Variables */
+:root {
+  --workflow-success-color: #67c083;
+  --workflow-error-color: #ff5252;
+  --workflow-api-color: #4bcdc4;
+  --workflow-accent-color: #9747ff;
+  --workflow-gray-dark: #444851;
+  --workflow-gray-medium: #8f979d;
+  --workflow-gray-light: #b0b7bc;
+  --workflow-gray-lighter: #d7dadd;
+  --workflow-gray-lightest: #f5f6f8;
+  --workflow-white: #ffffff;
+  --workflow-border-color: #b0b7bc;
+  --workflow-bg-color: #f5f6f8;
+}
+
+/* Step Main Container */
+.step-main-log-container {
+  overflow: hidden;
+  width: 300px;
+  height: 95%;
+}
+
+.step-main-log {
+  height: 95%;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  text-align: left;
+  padding: 20px 16px 20px 16px;
+  color: var(--workflow-gray-dark);
+  cursor: pointer;
+  width: 100%;
+  box-sizing: content-box;
+}
+
+.step-details-link,
+.step-details-link:hover {
+  text-decoration: none;
+}
+
+.step-main {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: center;
+  justify-items: center;
+  padding: 20px 16px 20px 16px;
+  color: var(--workflow-gray-dark);
+  cursor: pointer;
+}
+
+/* Workflow Container */
+.workflow-container {
+  position: relative;
+  width: 100px;
+}
+
+/* Start/End Node Text */
+p.start-text {
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+/* Step Image */
+.step-img {
+  width: 100%;
+  height: 100%;
+}
+
+#custom-icon {
+  max-width: 125px;
+  max-height: 125px;
+}
+
+/* IfCondition Styles */
+.IfCondition {
+  transform: rotate(45deg);
+}
+
+.ifcon-inner {
+  transform: rotate(-45deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ifcon-icon {
+  width: 33px;
+}
+
+.ifconText {
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.fill-div {
+  display: block;
+  position: absolute;
+  height: 140px;
+  width: 140px;
+  left: -36px;
+  top: -33px;
+  transform: rotate(-45deg);
+}
+
+/* Top Section of Step Cards */
+.top {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  align-items: center;
+  cursor: auto;
+  padding: 20px 16px 20px 16px;
+  border-bottom: 1px solid var(--workflow-gray-lighter);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  background-color: var(--workflow-white);
+}
+
+.anchors.top {
+  padding: 0;
+  border: 0;
+}
+
+/* Right Icon (Status Indicator) */
+.right-icon {
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: xx-large;
+  color: var(--workflow-white);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.right-icon-blue {
+  background-color: var(--workflow-api-color);
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: xx-large;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+/* Step Type Badge */
+.top > .step-type {
+  justify-self: left;
+  align-self: center;
+  width: fit-content;
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 11px;
+  line-height: 30px;
+  color: var(--workflow-gray-medium);
+}
+
+/* Step Icon */
+.top > .step-icon {
+  justify-self: start;
+  width: 32px;
+  height: 32px;
+}
+
+/* Step Time */
+.top > .step-time {
+  justify-self: end;
+  width: fit-content;
+  color: var(--workflow-gray-light);
+}
+
+.error-text {
+  color: var(--workflow-error-color) !important;
+}
+
+.error-border {
+  border-bottom: 1px solid var(--workflow-error-color) !important;
+}
+
+/* Sub Section (Name and Actions) */
+.sub {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  cursor: auto;
+  border-bottom: 1px solid var(--workflow-gray-lighter);
+  background-color: white;
+  color: var(--workflow-gray-dark);
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.sub > .step-name {
+  justify-self: left;
+  width: fit-content;
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.sub > .name-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-left: 20px;
+}
+
+.sub > .step-menu {
+  justify-self: end;
+  width: fit-content;
+  color: var(--workflow-gray-dark);
+  cursor: pointer;
+  font-size: 30px;
+  padding-right: 10px;
+}
+
+/* Step Actions Menu */
+.sub > .step-actions-menu {
+  justify-self: end;
+  cursor: pointer;
+  position: absolute;
+  top: -62px;
+  display: flex;
+  gap: 10px;
+}
+
+.step-actions-menu > .step-action-item {
+  border: 1px solid var(--workflow-border-color);
+  color: black;
+  text-underline: none;
+  text-decoration: none;
+  min-width: 50px;
+  padding: 10px;
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.step-actions-menu > .step-action-item > svg {
+  width: 25px;
+  height: 25px;
+}
+
+.ifcon-edit {
+  position: absolute;
+  top: -85px;
+  right: -50px;
+  border: 1px solid var(--workflow-border-color);
+  width: 50px;
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.1);
+  color: var(--workflow-gray-dark);
+  cursor: pointer;
+}
+
+/* Node Styling */
+.Node {
+  border-width: 2px !important;
+  border-style: solid !important;
+}
+
+.Node .standard-node > div,
+.Node .automated-node > div {
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+
+.Node .standard-node,
+.Node .automated-node {
+  justify-content: normal !important;
+  align-content: start;
+  background-color: var(--workflow-bg-color);
+}
+
+.Node .file-node {
+  justify-content: normal !important;
+  background-color: var(--workflow-bg-color);
+}
+
+/* React Flow Node - Border handled by inline styles in StepNode.tsx */
+
+/* Step Bottom (Job Avatars / Loop Progress) */
+.step-bottom {
+  bottom: 0;
+  width: 100%;
+  height: 68px;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  background-color: white;
+  align-items: center;
+  justify-items: center;
+}
+
+.step-bottom.standard {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: 1fr;
+}
+
+.step-bottom .loop {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  justify-items: center;
+  align-items: center;
+  padding: 0 16px;
+}
+
+/* Loop Styles */
+.loop > .loop-total {
+  justify-self: start;
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 19px;
+  color: var(--workflow-gray-light);
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.loop > .loop-total .number {
+  font-weight: 700;
+}
+
+.loop > .percent {
+  justify-self: end;
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 26px;
+  color: var(--workflow-gray-light);
+}
+
+.loop > .active {
+  color: var(--workflow-success-color);
+}
+
+.loop > .percent > .percent-num {
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 42px;
+}
+
+/* Job Status Circles */
+.step-bottom > .circle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--workflow-gray-light);
+}
+
+.complete_img {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--workflow-success-color);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  position: relative;
+}
+
+.in_progress_img {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 2px solid var(--workflow-success-color);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+}
+
+.complete_img > .completed {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.complete_img > .check {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 15px;
+  height: 15px;
+  background-color: var(--workflow-success-color);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: bold;
+  border: 2px solid white;
+}
+
+.in_progress_img > .in_progress_avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+/* Node Templates */
+.standard-template {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 72px 64px 288px 72px;
+  height: 492px;
+}
+
+.automated-template {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 72px 64px 288px;
+  height: 420px;
+}
+
+/* In Progress Background Overlays */
+.automated-in_progress:before,
+.human-in_progress:before,
+.loop-in_progress:before,
+.api-in_progress:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+
+.automated-in_progress:before,
+.human-in_progress:before,
+.loop-in_progress:before {
+  background-color: rgba(196, 243, 191, 0.4) !important;
+}
+
+.api-in_progress:before {
+  background-color: rgba(93, 233, 223, 0.2) !important;
+}
+
+.standard-template-in_progress:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--workflow-bg-color);
+  z-index: -1;
+}
+
+.automated-template .step-main {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+/* Boolean Output Nodes */
+.bool-output {
+  display: flex;
+  align-items: center;
+  width: 120px;
+}
+
+.bool-text {
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 20px;
+}
+
+.bool-output-icon {
+  width: 33px;
+  height: 33px;
+  scale: 1.5;
+  margin: 0 16px;
+}
+
+.bool-node-false {
+  box-shadow: 0 0 0 4px rgba(151, 71, 255, 0.3);
+}
+
+.bool-node-false:hover {
+  box-shadow: none;
+}
+
+.bool-node-true {
+  box-shadow: 0 0 0 4px rgba(103, 192, 131, 0.3);
+}
+
+.bool-node-true:hover {
+  box-shadow: none;
+}
+
+/* File Template */
+.file-template {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  justify-items: center;
+}
+
+.file-template > .step-icon {
+  grid-row: span 2;
+  align-self: center;
+  font-size: xxx-large;
+  color: var(--workflow-gray-light);
+  justify-self: center;
+}
+
+.step-icon#image-play-btn,
+.step-icon#audio-play-btn {
+  cursor: pointer;
+}
+
+video.step-icon {
+  max-width: 137px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.file-template > img.step-icon {
+  max-width: 137px;
+  max-height: 80px;
+  padding: 0 12px;
+  cursor: auto;
+}
+
+.file-template > img.step-icon.gallery-icon {
+  padding-right: 27px;
+  padding-left: 16px;
+}
+
+.file-template > .step-name {
+  grid-column: span 2;
+  align-self: center;
+  justify-self: start;
+  padding-left: 3px;
+  font-family: 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 20px;
+  color: var(--workflow-gray-dark);
+}
+
+.file-template > .step-menu {
+  align-self: center;
+  justify-self: end;
+  color: var(--workflow-gray-medium);
+  padding-right: 5px;
+}
+
+.file-template > .step-download {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+}
+
+.file-template > .step-download > .file-size {
+  grid-column: span 2;
+  align-self: flex-start;
+  color: var(--workflow-gray-light);
+}
+
+.file-template > .step-download > i {
+  align-self: flex-start;
+  color: var(--workflow-gray-dark);
+  font-size: medium;
+  padding-right: 5px;
+}
+
+/* Pulse Animation for In-Progress Nodes */
+.Node .in_progress {
+  animation: pulse 2.5s infinite !important;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(103, 192, 131, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(103, 192, 131, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(103, 192, 131, 0.5);
+  }
+}
+
+/* React Flow Node Selection */
+.react-flow__node.selected {
+  border: 1px solid black;
+  border-radius: 8px;
+}
+
+/* React Flow Handles */
+.flow-project-view {
+  & .react-flow__handle-top,
+  .react-flow__handle-bottom,
+  .react-flow__handle-left,
+  .react-flow__handle-right {
+    opacity: 0;
+  }
+}
+
+.if-condition-left-handle.react-flow__handle-left {
+  z-index: 9;
+}
+
+.react-flow__handle-left {
+  left: -12px;
+}
+
+.if-condition-handle.react-flow__handle-right {
+  opacity: 0;
+  pointer-events: none;
+  cursor: none;
+}
+
+/* Drag Handles */
+.drag-handle__custom {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background-color: white;
+  margin-left: 15px;
+  border-radius: 50%;
+  border-color: grey;
+}
+
+.drag-handle__custom_small {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 15px;
+  border-radius: 50%;
+}
+
+/* Add Step Buttons */
+.remove-step-edge {
+  background: var(--workflow-white);
+  color: #292c33;
+  border: 1px solid var(--workflow-border-color);
+  display: flex;
+  cursor: pointer !important;
+  width: 46px;
+  height: 46px;
+}
+
+.add-step {
+  width: 50px;
+  height: 50px;
+  background: var(--workflow-white);
+  color: #292c33;
+  border: 1px solid var(--workflow-border-color);
+}
+
+.add-step-node {
+  display: flex;
+  cursor: pointer !important;
+  width: 46px;
+  height: 46px;
+}
+
+/* Left/Right Add Buttons */
+.left-add {
+  cursor: pointer;
+  position: absolute;
+  left: -50px;
+  background-color: var(--workflow-success-color);
+  color: white !important;
+  border-radius: 8px;
+  padding: 5px;
+}
+
+.right-add {
+  cursor: pointer;
+  position: absolute;
+  right: -50px;
+  background-color: var(--workflow-success-color);
+  color: white !important;
+  border-radius: 8px;
+  padding: 5px;
+}
