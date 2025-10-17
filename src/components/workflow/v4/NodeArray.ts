@@ -605,7 +605,7 @@ class NodeArray {
 
     if (this.isProject) {
       menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${actionButton}${debugButton}</div>`;
-      const step_class_detail = stepLog ? 'step-main-log' : 'step-main';
+      const step_class_detail = stepLog ? 'workflow-step-main-log' : 'workflow-step-main';
       if (this.getStatus(step) !== 'new') {
         main = `<a href="/admin/projects/${this.projectId}/workflow_steps/${idFull}" data-turbo-frame="step_modal" class="workflow-step-details-link"><div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div></a>`;
       } else {
@@ -619,10 +619,10 @@ class NodeArray {
       const editButton = `<div class="step-menu-edit step-action-item" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${EditIcon}</div>`;
 
       menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${copyButton}${editButton}</div>`;
-      main = `<div class="step-main step-menu-edit workflow-show-modal" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${stepIconHtml}</div>`;
+      main = `<div class="workflow-step-main workflow-step-menu-edit workflow-show-modal" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${stepIconHtml}</div>`;
     } else {
       menu = ``;
-      main = `<div class="step-main workflow-show-modal" >${stepIconHtml}</div>`;
+      main = `<div class="workflow-step-main workflow-show-modal" >${stepIconHtml}</div>`;
     }
     const top = `<div class="workflow-top">${iconElement}${stepType}${time}</div>`;
     const subHead = `<div class="workflow-sub">${sub}${menu}</div>`;
@@ -631,14 +631,14 @@ class NodeArray {
 
     if (type === 'automated' || type === 'api') {
       return {
-        html: `${rightIcon}<div class="automated-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`,
+        html: `${rightIcon}<div class="workflow-automated-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`,
       };
     } else if (type === 'loop') {
       return {
-        html: `${rightIcon}<div class="standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`
+        html: `${rightIcon}<div class="workflow-standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`
       };
     }
-    const html = `${rightIcon}<div class="standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`;
+    const html = `${rightIcon}<div class="workflow-standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`;
     return { html };
   }
 
@@ -690,7 +690,7 @@ class NodeArray {
     } else {
       percent = `<div class="workflow-percent"><span class="workflow-percent-num">${perc}</span>%</div>`;
     }
-    const bottomHtml = `<div class="step-bottom loop">${loopTotal}${percent}</div>`;
+    const bottomHtml = `<div class="workflow-step-bottom loop">${loopTotal}${percent}</div>`;
 
     return this.newGenerateStepHTML({ type: type, step: step, bottomHtml: bottomHtml });
   }
@@ -744,7 +744,7 @@ class NodeArray {
       }
     }
 
-    const bottomHtml = `<div class="step-bottom standard">${avatarElement.join('')}</div>`;
+    const bottomHtml = `<div class="workflow-step-bottom standard">${avatarElement.join('')}</div>`;
     return this.newGenerateStepHTML({ type: type, step: step, bottomHtml: bottomHtml });
   }
 
