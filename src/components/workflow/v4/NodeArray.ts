@@ -563,53 +563,53 @@ class NodeArray {
       }
     }
 
-    const iconElement = `<img class="step-icon" src="${this.setIcon(type)}" alt="step icon" />`;
+    const iconElement = `<img class="workflow-step-icon" src="${this.setIcon(type)}" alt="step icon" />`;
 
     if (type !== null) {
-      stepType = `<span class="step-type">${type.toUpperCase()}</span>`;
+      stepType = `<span class="workflow-step-type">${type.toUpperCase()}</span>`;
     } else {
-      stepType = '<span class="step-type">HUMAN</span>';
+      stepType = '<span class="workflow-step-type">HUMAN</span>';
     }
 
     let actionButton = ``;
     let debugButton = ``;
 
     if (status === 'finished') {
-      time = `<span class="step-time">${parsed_completion_time}</span>`;
+      time = `<span class="workflow-step-time">${parsed_completion_time}</span>`;
       if (step.needs_human_review) {
-        actionButton = `<a href="/admin/project_folders/${step.project_step_id}/review" data-turbo-frame="modal" class="step-action-item">Review Step</a>`;
+        actionButton = `<a href="/admin/project_folders/${step.project_step_id}/review" data-turbo-frame="modal" class="workflow-step-action-item">Review Step</a>`;
       }
     } else if (status === 'in_progress') {
       if (!type || type === 'human') {
-        actionButton = `<div class="step-action-item" data-action="click->project-buttons#doJobs" data-project-step-id="${step.project_step_id}">Complete Jobs</div>`;
+        actionButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#doJobs" data-project-step-id="${step.project_step_id}">Complete Jobs</div>`;
       } else if (name === 'Prompt') {
-        actionButton = `<a href="/admin/project_folders/${step.project_step_id}/prompt" data-turbo-frame="modal" class="step-action-item">Answer Prompt</a>`;
+        actionButton = `<a href="/admin/project_folders/${step.project_step_id}/prompt" data-turbo-frame="modal" class="workflow-step-action-item">Answer Prompt</a>`;
       }
-      time = `<span class="step-time" data-start-time="${startTime.value}"></span>`;
+      time = `<span class="workflow-step-time" data-start-time="${startTime.value}"></span>`;
       this.setTimer();
     } else if (this.getStatus(step) === 'error') {
-      actionButton = `<div class="step-action-item" data-action="click->project-buttons#redirectToWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-workflow-id="${this.workflowId}">Fix</div>`;
-      debugButton = `<div class="step-action-item" data-action="click->project-buttons#redirectToDebugWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-project-folder-id="${step.project_step_id}" data-workflow-id="${this.workflowId}">Debug</div>`;
+      actionButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-workflow-id="${this.workflowId}">Fix</div>`;
+      debugButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToDebugWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-project-folder-id="${step.project_step_id}" data-workflow-id="${this.workflowId}">Debug</div>`;
       time = `<span class="step-time error-text">ERROR</span>`;
     } else {
-      time = `<span class="step-time">0:00</span>`;
+      time = `<span class="workflow-step-time">0:00</span>`;
     }
 
     const idFull = id;
     if (id.length > 30) {
       id = id.substring(0, 30) + '...';
     }
-    const sub = `<div class="name-container"><span class="step-name" title=${idFull}>Skill: ${displayName}</span><span class="step-name" title=${idFull}>Alias: ${id}</span></div>`;
+    const sub = `<div class="workflow-name-container"><span class="workflow-step-name" title=${idFull}>Skill: ${displayName}</span><span class="workflow-step-name" title=${idFull}>Alias: ${id}</span></div>`;
     let menu: string;
     let main: string;
 
     if (this.isProject) {
-      menu = `<div class="step-actions-menu" data-unique-id="${uniqueId}">${actionButton}${debugButton}</div>`;
+      menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${actionButton}${debugButton}</div>`;
       const step_class_detail = stepLog ? 'step-main-log' : 'step-main';
       if (this.getStatus(step) !== 'new') {
-        main = `<a href="/admin/projects/${this.projectId}/workflow_steps/${idFull}" data-turbo-frame="step_modal" class="step-details-link"><div class="step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div></a>`;
+        main = `<a href="/admin/projects/${this.projectId}/workflow_steps/${idFull}" data-turbo-frame="step_modal" class="workflow-step-details-link"><div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div></a>`;
       } else {
-        main = `<div class="step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div>`;
+        main = `<div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div>`;
       }
     } else if (this.mode === 'edit' || this.mode === 'alter') {
       let copyButton = '';
@@ -618,16 +618,16 @@ class NodeArray {
       }
       const editButton = `<div class="step-menu-edit step-action-item" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${EditIcon}</div>`;
 
-      menu = `<div class="step-actions-menu" data-unique-id="${uniqueId}">${copyButton}${editButton}</div>`;
+      menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${copyButton}${editButton}</div>`;
       main = `<div class="step-main step-menu-edit workflow-show-modal" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${stepIconHtml}</div>`;
     } else {
       menu = ``;
       main = `<div class="step-main workflow-show-modal" >${stepIconHtml}</div>`;
     }
-    const top = `<div class="top">${iconElement}${stepType}${time}</div>`;
-    const subHead = `<div class="sub">${sub}${menu}</div>`;
+    const top = `<div class="workflow-top">${iconElement}${stepType}${time}</div>`;
+    const subHead = `<div class="workflow-sub">${sub}${menu}</div>`;
 
-    const bottom = bottomHtml ? `<div class="step-bottom">${bottomHtml}</div>` : '';
+    const bottom = bottomHtml ? `<div class="workflow-step-bottom">${bottomHtml}</div>` : '';
 
     if (type === 'automated' || type === 'api') {
       return {
@@ -650,7 +650,7 @@ class NodeArray {
     const jobDetails = this.getJobDetails(step);
     const childProjectId = step.step?.attributes?.workflow_id;
     const childProjectName = step.step?.attributes?.workflow_name?.substring(0, 20) + '...';
-    const workflowLink = `<a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="number">${childProjectName}</span></a>`;
+    const workflowLink = `<a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="workflow-number">${childProjectName}</span></a>`;
 
     if (jobDetails === null) {
       total_projects = { value: 0 };
@@ -673,22 +673,22 @@ class NodeArray {
     let loopTotal: string;
 
     if (total_projects.value > 0) {
-      const childModal = `<a href="/admin/projects/${this.projectId}/children?step_name=${step.id}" class="child-link" data-turbo-frame="loop-modal"><span class="number">${total_projects.value} Child Processes</span></a>`;
-      loopTotal = `<div class="loop-total">${workflowLink}${childModal}</div>`;
+      const childModal = `<a href="/admin/projects/${this.projectId}/children?step_name=${step.id}" class="child-link" data-turbo-frame="loop-modal"><span class="workflow-number">${total_projects.value} Child Processes</span></a>`;
+      loopTotal = `<div class="workflow-loop-total">${workflowLink}${childModal}</div>`;
     } else if (childProjectId && !this.isProject) {
-      loopTotal = `<div class="loop-total"><a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="number">${childProjectName}</span></a></div>`;
+      loopTotal = `<div class="workflow-loop-total"><a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="workflow-number">${childProjectName}</span></a></div>`;
     } else {
-      loopTotal = `<div class="loop-total">${workflowLink}<span class="number">${total_projects.value} child processes</span></div>`;
+      loopTotal = `<div class="workflow-loop-total">${workflowLink}<span class="workflow-number">${total_projects.value} child processes</span></div>`;
     }
 
     let percent = '';
 
     if (status === 'finished' || status === 'in_progress') {
-      percent = `<div class="percent active"><span class="percent-num">${perc}</span>%</div>`;
+      percent = `<div class="percent active"><span class="workflow-percent-num">${perc}</span>%</div>`;
     } else if (childProjectId) {
       percent = ``;
     } else {
-      percent = `<div class="percent"><span class="percent-num">${perc}</span>%</div>`;
+      percent = `<div class="workflow-percent"><span class="workflow-percent-num">${perc}</span>%</div>`;
     }
     const bottomHtml = `<div class="step-bottom loop">${loopTotal}${percent}</div>`;
 
@@ -710,7 +710,7 @@ class NodeArray {
     const avatarElement: string[] = [];
 
     if (!jobDetails) {
-      const circle = `<div class="circle"></div>`;
+      const circle = `<div class="workflow-circle"></div>`;
       for (let i = 0; i < numCircles; i++) {
         avatarElement.push(circle);
       }
@@ -722,24 +722,24 @@ class NodeArray {
       for (let i = 0; i < numCircles; i++) {
         if (status === 'finished') {
           if (avatars[i]) {
-            avatarElement.push(`<div class="complete_img"><img src="${avatars[i]}" class="completed" alt="avatar"><span class="material-icons check">check</span></div>`);
+            avatarElement.push(`<div class="workflow-complete_img"><img src="${avatars[i]}" class="workflow-completed" alt="avatar"><span class="material-icons check">check</span></div>`);
           } else {
             avatarElement.push(`<span class="material-icons complete_img">check</span>`);
           }
         } else if (i < completedJobs) {
           if (avatars[i]) {
-            avatarElement.push(`<div class="complete_img"><img src="${avatars[i]}" class="completed" alt="avatar"><span class="material-icons check">check</span></div>`);
+            avatarElement.push(`<div class="workflow-complete_img"><img src="${avatars[i]}" class="workflow-completed" alt="avatar"><span class="material-icons check">check</span></div>`);
           } else {
             avatarElement.push(`<span class="material-icons complete_img">check</span>`);
           }
         } else if (i >= completedJobs && i <= jobTotal - pending_jobs) {
           if (avatars[i]) {
-            avatarElement.push(`<div class="in_progress_img in_progress"><img src="${avatars[i]}" class="in_progress_avatar" alt="avatar"></div>`);
+            avatarElement.push(`<div class="in_progress_img in_progress"><img src="${avatars[i]}" class="workflow-in_progress_avatar" alt="avatar"></div>`);
           } else {
             avatarElement.push(`<span class="material-icons in_progress_img in_progress">schedule</span>`);
           }
         } else {
-          avatarElement.push(`<div class="circle"></div>`);
+          avatarElement.push(`<div class="workflow-circle"></div>`);
         }
       }
     }
@@ -757,7 +757,7 @@ class NodeArray {
 
     let icon = '';
     const pendingSVG = `
-      <svg class="right-icon" width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg class="workflow-right-icon" width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M224 128C224 181.019 181.019 224 128 224C74.9807 224 32 181.019 32 128C32 74.9807 74.9807 32 128 32C181.019 32 224 74.9807 224 128Z" fill="white"/>
         <path fill-rule="evenodd" clip-rule="evenodd" d="M205 128C205 170.526 170.526 205 128 205C85.4741 205 51 170.526 51 128C51 85.4741 85.4741 51 128 51C170.526 51 205 85.4741 205 128ZM224 128C224 181.019 181.019 224 128 224C74.9807 224 32 181.019 32 128C32 74.9807 74.9807 32 128 32C181.019 32 224 74.9807 224 128ZM135.5 89.5C135.5 83.9772 131.023 79.5 125.5 79.5C119.977 79.5 115.5 83.9772 115.5 89.5V134C115.5 137.666 117.506 141.038 120.727 142.787L161.227 164.787C166.08 167.423 172.151 165.626 174.787 160.773C177.423 155.92 175.626 149.849 170.773 147.213L135.5 128.052V89.5Z" fill="#67C083"/>
       </svg>
@@ -793,7 +793,7 @@ class NodeArray {
     if (status === 'in_progress') {
       element = icon;
     } else {
-      element = `<img class="right-icon" src="${icon}" />`;
+      element = `<img class="workflow-right-icon" src="${icon}" />`;
     }
 
     return element;
@@ -952,13 +952,13 @@ class NodeArray {
       if (output === true) {
         bgColor = '#67c083';
         borderColor = '#67c083';
-        outputIcon = `<img src="${TrueCheck}" alt="yes icon" class="bool-output-icon">`;
-        data = `<div class="bool-output">${outputIcon}<span class="bool-text">Yes</span></div>`;
+        outputIcon = `<img src="${TrueCheck}" alt="yes icon" class="workflow-bool-output-icon">`;
+        data = `<div class="workflow-bool-output">${outputIcon}<span class="workflow-bool-text">Yes</span></div>`;
       } else {
         bgColor = '#9747FF';
         borderColor = '#9747FF';
-        outputIcon = `<img src="${FalseCross}" alt="no icon" class="bool-output-icon">`;
-        data = `<div class="bool-output">${outputIcon}<span class="bool-text">No</span></div>`;
+        outputIcon = `<img src="${FalseCross}" alt="no icon" class="workflow-bool-output-icon">`;
+        data = `<div class="workflow-bool-output">${outputIcon}<span class="workflow-bool-text">No</span></div>`;
       }
     } else {
       return;

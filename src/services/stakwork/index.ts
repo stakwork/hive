@@ -130,4 +130,51 @@ export class StakworkService extends BaseServiceClass {
 
     return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
   }
+
+  /**
+   * Get workflow data for a specific project
+   * @param projectId - The Stakwork project ID
+   * @returns Workflow data with transitions, connections, and status
+   */
+  async getWorkflowData(
+    projectId: string,
+  ): Promise<{ workflowData: unknown; status: string }> {
+    const endpoint = `/projects/${projectId}.json`;
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Token token=${encryptionService.decryptField(
+        "stakworkApiKey",
+        this.config.apiKey,
+      )}`,
+    };
+
+    const client = this.getClient();
+    const requestFn = () => {
+      return client.get<{
+        success: boolean;
+        data: {
+          transitions: unknown;
+          connections: unknown[];
+          project: {
+            workflow_state: string;
+          };
+        };
+      }>(
+        endpoint,
+        headers,
+        this.serviceName,
+      );
+    };
+
+    const response = await this.handleRequest(
+      requestFn,
+      `stakworkRequest ${endpoint}`,
+    );
+
+    return {
+      workflowData: response.data,
+      status: response.data.project.workflow_state,
+    };
+  }
 }

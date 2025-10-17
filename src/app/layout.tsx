@@ -3,13 +3,18 @@ import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Roboto } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import ModalClient from "./ModalClient";
 import QueryProvider from "@/providers/QueryProvider";
 
 const inter = Inter({ subsets: ["latin"] });
+const roboto = Roboto({
+  weight: ['400', '500', '700'],
+  subsets: ["latin"],
+  variable: '--font-roboto',
+});
 
 export const metadata: Metadata = {
   title: "Hive",
@@ -43,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="/js/staktrak.js" />
         <Script src="/js/playwright-generator.js" />
       </head>
-      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
+      <body className={`${inter.className} ${roboto.variable} min-h-screen bg-background text-foreground antialiased`}>
         <ToastProvider>
           <ThemeProvider defaultTheme="system" storageKey="theme">
             <SessionProvider>
