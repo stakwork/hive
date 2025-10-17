@@ -43,7 +43,7 @@ const stakgraphSettingsSchema = z.object({
   poolCpu: z.string().optional(),
   poolMemory: z.string().optional(),
   description: z.string().optional(),
-  containerFiles: z.record(z.string()).optional().default({}),
+  containerFiles: z.record(z.string(), z.string()).optional().default({}),
   environmentVariables: z
     .array(
       z.object({
@@ -75,7 +75,7 @@ const stakgraphSettingsSchema = z.object({
           rebuild: z.string().optional(),
         }),
         dev: z.boolean().optional(),
-        env: z.record(z.string()).optional(),
+        env: z.record(z.string(), z.string()).optional(),
         language: z.string().optional(),
         interpreter: z.string().optional(),
         cwd: z.string().optional(),
