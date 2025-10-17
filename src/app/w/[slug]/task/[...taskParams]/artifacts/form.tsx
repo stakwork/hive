@@ -32,36 +32,55 @@ export function FormArtifact({
   };
 
   return (
-    <Card className="p-4 bg-card border rounded-lg">
-      <div className="text-sm font-medium mb-3">
-        <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
-      </div>
-
-      {/* Only show buttons for actionType="button" options */}
-      {buttonOptions.length > 0 && (
-        <div className="space-y-2">
-          {buttonOptions.map((option, index) => {
-            const isSelected =
-              selectedOption &&
-              option.optionResponse === selectedOption.optionResponse;
-
-            return (
-              <Button
-                key={index}
-                variant={isSelected ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleSubmit(option)}
-                className={`w-full justify-start ${
-                  isSelected ? "bg-primary text-primary-foreground" : ""
-                }`}
-                disabled={isDisabled}
-              >
-                {option.optionLabel}
-              </Button>
-            );
-          })}
-        </div>
+    <div className="relative">
+      {/* Subtle rotating orb - only shown when waiting for input */}
+      {!isDisabled && (
+        <div
+          className="form-artifact-orb absolute rounded-full"
+          style={{
+            width: "6px",
+            height: "6px",
+            offsetPath: "rect(0 100% 100% 0 round 0.5rem)",
+            animation: "rotate-orb 4s ease-in-out infinite",
+            willChange: "offset-distance",
+            background: "linear-gradient(135deg, hsl(var(--primary) / 0.6), hsl(var(--primary) / 0.9))",
+            boxShadow: "0 0 12px hsl(var(--primary) / 0.4), 0 0 20px hsl(var(--primary) / 0.2)",
+            filter: "blur(0.5px)",
+          }}
+        />
       )}
-    </Card>
+
+      <Card className={`p-4 bg-card rounded-lg relative ${!isDisabled ? "border border-primary/25" : "border"}`}>
+        <div className="text-sm font-medium mb-3">
+          <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
+        </div>
+
+        {/* Only show buttons for actionType="button" options */}
+        {buttonOptions.length > 0 && (
+          <div className="space-y-2">
+            {buttonOptions.map((option, index) => {
+              const isSelected =
+                selectedOption &&
+                option.optionResponse === selectedOption.optionResponse;
+
+              return (
+                <Button
+                  key={index}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleSubmit(option)}
+                  className={`w-full justify-start ${
+                    isSelected ? "bg-primary text-primary-foreground" : ""
+                  }`}
+                  disabled={isDisabled}
+                >
+                  {option.optionLabel}
+                </Button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
