@@ -1,20 +1,40 @@
-// RequestQueue.js - A class to handle sequential workflow updates
+// RequestQueue - A class to handle sequential workflow updates
+import { AxiosResponse } from 'axios';
+
+interface RequestMetadata {
+  type: string;
+  nodeIds?: string[];
+  connectionIds?: string[];
+}
+
+interface PendingChange {
+  type: string;
+  timestamp: number;
+  version: string | null;
+}
+
+interface QueuedRequest {
+  requestFn: (version?: string | null) => Promise<AxiosResponse<any>>;
+  metadata: RequestMetadata;
+  version: string | null;
+  resolve: (value: AxiosResponse<any>) => void;
+  reject: (reason?: any) => void;
+}
 
 class RequestQueue {
-  constructor() {
-    this.queue = [];
-    this.isProcessing = false;
-    this.latestVersion = null;
-    this.pendingChanges = new Map(); // Track changes that haven't been processed yet
-  }
+  private queue: QueuedRequest[] = [];
+  private isProcessing: boolean = false;
+  public latestVersion: string | null = null;
+  private pendingChanges: Map<string, PendingChange> = new Map();
 
   /**
    * Add a request to the queue with its associated changes and metadata
-   * @param {Function} requestFn - The function that makes the API request, should return a Promise
-   * @param {Object} metadata - Information about the request (type, affected nodes, etc.)
-   * @param {String} currentVersion - The workflow version this change is based on
    */
-  enqueue(requestFn, metadata, currentVersion) {
+  enqueue(
+    requestFn: (version?: string | null) => Promise<AxiosResponse<any>>,
+    metadata: RequestMetadata,
+    currentVersion?: string
+  ): Promise<AxiosResponse<any>> {
     return new Promise((resolve, reject) => {
       // Track these changes in our pending changes map
       if (metadata.nodeIds) {
@@ -22,7 +42,7 @@ class RequestQueue {
           this.pendingChanges.set(nodeId, {
             type: metadata.type,
             timestamp: Date.now(),
-            version: this.latestVersion || currentVersion
+            version: this.latestVersion || currentVersion || null
           });
         });
       }
@@ -30,7 +50,7 @@ class RequestQueue {
       this.queue.push({
         requestFn,
         metadata,
-        version: this.latestVersion || currentVersion,
+        version: this.latestVersion || currentVersion || null,
         resolve,
         reject
       });
@@ -44,7 +64,7 @@ class RequestQueue {
   /**
    * Process the next request in the queue
    */
-  async processQueue() {
+  private async processQueue(): Promise<void> {
     if (this.queue.length === 0) {
       this.isProcessing = false;
       return;
@@ -86,25 +106,22 @@ class RequestQueue {
 
   /**
    * Check if there are pending changes for a specific node
-   * @param {String} nodeId - The node ID to check
-   * @returns {Boolean} - Whether the node has pending changes
    */
-  hasPendingChanges(nodeId) {
+  hasPendingChanges(nodeId: string): boolean {
     return this.pendingChanges.has(nodeId);
   }
 
   /**
    * Get current queue length
-   * @returns {Number} - Number of requests in queue
    */
-  get length() {
+  get length(): number {
     return this.queue.length;
   }
 
   /**
    * Clear the queue (useful when switching workflows or components)
    */
-  clear() {
+  clear(): void {
     // Reject all pending requests
     this.queue.forEach(request => {
       request.reject(new Error('Queue cleared'));
