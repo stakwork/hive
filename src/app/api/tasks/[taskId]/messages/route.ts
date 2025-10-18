@@ -108,7 +108,7 @@ export async function GET(
             console.error('Error parsing contextTags for message', msg.id, ':', error, 'value:', msg.contextTags);
           }
         } else if (Array.isArray(msg.contextTags)) {
-          contextTags = msg.contextTags as unknown as ContextTag[];
+          contextTags = msg.contextTags as ContextTag[];
         }
       }
 
