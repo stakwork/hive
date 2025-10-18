@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     async start(controller) {
       const encoder = new TextEncoder();
 
-      const sendEvent = (data: any) => {
+      const sendEvent = (data: unknown) => {
         const line = `data: ${JSON.stringify(data)}\n\n`;
         controller.enqueue(encoder.encode(line));
       };

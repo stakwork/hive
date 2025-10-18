@@ -2,21 +2,8 @@
 
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
@@ -54,9 +41,7 @@ export default function UserJourneys() {
 
     try {
       setFetchingTests(true);
-      const response = await fetch(
-        `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
-      );
+      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
 
       if (!response.ok) {
         console.error("Failed to fetch e2e tests");
@@ -81,27 +66,30 @@ export default function UserJourneys() {
   }, [frontend, fetchE2eTests]);
 
   // Shared function to drop the pod
-  const dropPod = useCallback(async (useBeacon = false) => {
-    if (!id) return;
+  const dropPod = useCallback(
+    async (useBeacon = false) => {
+      if (!id) return;
 
-    try {
-      if (useBeacon) {
-        // Use sendBeacon for reliable delivery when page is closing
-        const blob = new Blob([JSON.stringify({})], { type: "application/json" });
-        navigator.sendBeacon(`/api/pool-manager/drop-pod/${id}`, blob);
-      } else {
-        // Use regular fetch for normal scenarios
-        await fetch(`/api/pool-manager/drop-pod/${id}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+      try {
+        if (useBeacon) {
+          // Use sendBeacon for reliable delivery when page is closing
+          const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+          navigator.sendBeacon(`/api/pool-manager/drop-pod/${id}?latest=true`, blob);
+        } else {
+          // Use regular fetch for normal scenarios
+          await fetch(`/api/pool-manager/drop-pod/${id}?latest=true`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error dropping pod:", error);
       }
-    } catch (error) {
-      console.error("Error dropping pod:", error);
-    }
-  }, [id]);
+    },
+    [id],
+  );
 
   // Drop pod when component unmounts or when navigating away
   useEffect(() => {
@@ -141,7 +129,6 @@ export default function UserJourneys() {
   };
 
   const handleCreateUserJourney = async () => {
-
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
       return;
@@ -187,10 +174,7 @@ export default function UserJourneys() {
     }
   };
 
-  const saveUserJourneyTest = async (
-    filename: string,
-    generatedCode: string,
-  ) => {
+  const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
     try {
       console.log("Saving user journey:", filename, generatedCode);
 
@@ -224,16 +208,16 @@ export default function UserJourneys() {
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
   const browserArtifacts: Artifact[] = frontend
     ? [
-      {
-        id: "frontend-preview",
-        messageId: "",
-        type: "BROWSER",
-        content: { url: frontend } as BrowserContent,
-        icon: "Code",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]
+        {
+          id: "frontend-preview",
+          messageId: "",
+          type: "BROWSER",
+          content: { url: frontend } as BrowserContent,
+          icon: "Code",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]
     : [];
 
   return (
@@ -241,25 +225,14 @@ export default function UserJourneys() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">User Journeys</h1>
-          <p className="text-muted-foreground mt-2">
-            Track and optimize user experiences through your product
-          </p>
+          <p className="text-muted-foreground mt-2">Track and optimize user experiences through your product</p>
         </div>
         {frontend ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCloseBrowser}
-            className="h-8 w-8 p-0"
-          >
+          <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
             ✕
           </Button>
         ) : (
-          <Button
-            className="flex items-center gap-2"
-            onClick={handleCreateUserJourney}
-            disabled={isLoading}
-          >
+          <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
             <Plus className="w-4 h-4" />
             Create User Journey
           </Button>
@@ -268,20 +241,14 @@ export default function UserJourneys() {
 
       {frontend ? (
         <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel
-            artifacts={browserArtifacts}
-            ide={false}
-            onUserJourneySave={saveUserJourneyTest}
-          />
+          <BrowserArtifactPanel artifacts={browserArtifacts} ide={false} onUserJourneySave={saveUserJourneyTest} />
         </div>
       ) : (
         <div className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>E2E Tests</CardTitle>
-              <CardDescription>
-                End-to-end tests from your codebase
-              </CardDescription>
+              <CardDescription>End-to-end tests from your codebase</CardDescription>
             </CardHeader>
             <CardContent>
               {fetchingTests ? (
@@ -301,26 +268,22 @@ export default function UserJourneys() {
                     <TableBody>
                       {e2eTests.map((test) => (
                         <TableRow key={test.ref_id}>
-                          <TableCell className="font-medium">
-                            {test.properties.name}
-                          </TableCell>
+                          <TableCell className="font-medium">{test.properties.name}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">
-                                {test.properties.file}
-                              </span>
+                              <span className="text-sm text-muted-foreground">{test.properties.file}</span>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => {
                                   // Extract repo and path from file path like "stakwork/hive/src/__tests__/e2e/auth.spec.ts"
-                                  const parts = test.properties.file.split('/');
+                                  const parts = test.properties.file.split("/");
                                   if (parts.length >= 2) {
                                     const owner = parts[0];
                                     const repo = parts[1];
-                                    const filePath = parts.slice(2).join('/');
+                                    const filePath = parts.slice(2).join("/");
                                     // Using HEAD which GitHub redirects to the default branch
-                                    window.open(`https://github.com/${owner}/${repo}/blob/HEAD/${filePath}`, '_blank');
+                                    window.open(`https://github.com/${owner}/${repo}/blob/HEAD/${filePath}`, "_blank");
                                   }
                                 }}
                                 className="h-6 w-6 p-0"
@@ -350,9 +313,7 @@ export default function UserJourneys() {
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
-                    No E2E tests found in your codebase.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No E2E tests found in your codebase.</p>
                 </div>
               )}
             </CardContent>

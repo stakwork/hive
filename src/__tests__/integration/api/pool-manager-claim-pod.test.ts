@@ -52,7 +52,10 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
   let mockFetch: ReturnType<typeof vi.fn>;
 
   // Helper to setup successful pod claim mocks
-  const setupSuccessfulPodClaimMocks = (portMappings: Record<string, string> = { "3000": "https://frontend.example.com" }) => {
+  const setupSuccessfulPodClaimMocks = (
+    portMappings: Record<string, string> = { "3000": "https://frontend.example.com" },
+    frontendPort: string = "3000"
+  ) => {
     mockFetch
       // First call: GET workspace from pool
       .mockResolvedValueOnce({
@@ -84,9 +87,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         ok: true,
         status: 200,
         json: async () => ([
-          { pid: 123, name: "frontend", status: "online", port: "3000" },
+          { pid: 123, name: "frontend", status: "online", port: frontendPort },
         ]),
-        text: async () => JSON.stringify([{ pid: 123, name: "frontend", status: "online", port: "3000" }]),
+        text: async () => JSON.stringify([{ pid: 123, name: "frontend", status: "online", port: frontendPort }]),
       });
   };
 
@@ -368,19 +371,8 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {
-              "3000": "https://frontend.example.com",
-              "15552": "https://internal1.example.com",
-              "15553": "https://internal2.example.com",
-            },
-          },
-        }),
+      setupSuccessfulPodClaimMocks({
+        "3000": "https://frontend.example.com",
       });
 
       const request = createPostRequest(
@@ -416,20 +408,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {
-              "8080": "https://app.example.com",
-              "15552": "https://internal1.example.com",
-              "15553": "https://internal2.example.com",
-            },
-          },
-        }),
-      });
+      setupSuccessfulPodClaimMocks({
+        "8080": "https://app.example.com",
+      }, "8080");
 
       const request = createPostRequest(
         `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
@@ -464,20 +445,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {
-              "8080": "https://single-app.example.com",
-              "15552": "https://internal1.example.com",
-              "15553": "https://internal2.example.com",
-            },
-          },
-        }),
-      });
+      setupSuccessfulPodClaimMocks({
+        "8080": "https://single-app.example.com",
+      }, "8080");
 
       const request = createPostRequest(
         `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
@@ -510,20 +480,10 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {
-              "8080": "https://app1.example.com",
-              "3000": "https://frontend.example.com",
-              "9090": "https://app2.example.com",
-              "15552": "https://internal1.example.com",
-            },
-          },
-        }),
+      setupSuccessfulPodClaimMocks({
+        "8080": "https://app1.example.com",
+        "3000": "https://frontend.example.com",
+        "9090": "https://app2.example.com",
       });
 
       const request = createPostRequest(
@@ -557,19 +517,43 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {
-              "15552": "https://internal1.example.com",
-              "15553": "https://internal2.example.com",
+      // Mock with portMappings that have no frontend port (only internal ports)
+      // This should cause the fallback to port 3000 to fail as well
+      mockFetch
+        // First call: GET workspace from pool (no port 3000, only internal ports)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            workspace: {
+              id: "workspace-123",
+              password: "test-password",
+              url: "https://ide.example.com",
+              portMappings: {
+                "15552": "https://internal1.example.com",
+                "15553": "https://internal2.example.com",
+              },
             },
-          },
-        }),
-      });
+          }),
+          text: async () => JSON.stringify({ success: true }),
+        })
+        // Second call: POST mark-used
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+          text: async () => JSON.stringify({ success: true }),
+        })
+        // Third call: GET /jlist (process list with frontend on port 3000)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ([
+            { pid: 123, name: "frontend", status: "online", port: "3000" },
+          ]),
+          text: async () => JSON.stringify([{ pid: 123, name: "frontend", status: "online", port: "3000" }]),
+        });
 
       const request = createPostRequest(
         `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
@@ -601,16 +585,30 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {},
-          },
-        }),
-      });
+      // Mock with empty portMappings - should fail
+      mockFetch
+        // First call: GET workspace from pool (empty portMappings)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            workspace: {
+              id: "workspace-123",
+              password: "test-password",
+              url: "https://ide.example.com",
+              portMappings: {},
+            },
+          }),
+          text: async () => JSON.stringify({ success: true }),
+        })
+        // Second call: POST mark-used
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+          text: async () => JSON.stringify({ success: true }),
+        });
 
       const request = createPostRequest(
         `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
@@ -642,20 +640,10 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          workspace: {
-            portMappings: {
-              "8080": "https://app1.example.com",
-              "9090": "https://app2.example.com",
-              "15552": "https://internal1.example.com",
-            },
-          },
-        }),
-      });
+      setupSuccessfulPodClaimMocks({
+        "8080": "https://app1.example.com",
+        "9090": "https://app2.example.com",
+      }, "8080");
 
       const request = createPostRequest(
         `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
@@ -665,9 +653,10 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      // When multiple app ports exist but no port 3000, should return 500
-      // because the logic doesn't find port 3000 and frontend remains empty
-      await expectError(response, "Failed to claim pod", 500);
+      // When multiple app ports exist without port 3000, should successfully
+      // return the frontend process URL from the discovered port (8080 in this case)
+      const data = await expectSuccess(response, 200);
+      expect(data.frontend).toBe("https://app1.example.com");
     });
   });
 

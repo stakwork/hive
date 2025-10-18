@@ -51,10 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (process.env.MOCK_BROWSER_URL) {
-      return NextResponse.json(
-        { success: true, message: "Pod dropped successfully" },
-        { status: 200 },
-      );
+      return NextResponse.json({ success: true, message: "Pod dropped successfully" }, { status: 200 });
     }
 
     const isOwner = workspace.ownerId === userId;
@@ -94,8 +91,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!controlPortUrl) {
         console.error("Control port (15552) not found in port mappings, skipping repository reset");
       } else {
-        // Reset repositories to empty array
-        await updatePodRepositories(controlPortUrl, podWorkspace.password, []);
+        try {
+          // Reset repositories to empty array
+          await updatePodRepositories(controlPortUrl, podWorkspace.password, []);
+        } catch (error) {
+          console.error("Error resetting pod repositories:", error);
+        }
       }
     }
 
