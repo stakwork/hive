@@ -268,46 +268,46 @@ export default function TaskChatPage() {
           }
         }
 
-        // Create new task
-        const response = await fetch("/api/tasks", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: msg,
-            description: "New task description", // TODO: Add description
-            status: "active",
-            workspaceSlug: slug,
-            mode: taskMode, // Save the task mode
-          }),
-        });
+      // Create new task
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: msg,
+          description: "New task description", // TODO: Add description
+          status: "active",
+          workspaceSlug: slug,
+          mode: taskMode, // Save the task mode
+        }),
+      });
 
-        if (!response.ok) {
-          throw new Error(`Failed to create task: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        const newTaskId = result.data.id;
-        setCurrentTaskId(newTaskId);
-
-        // Set the task title from the response or fallback to the initial message
-        if (result.data.title) {
-          setTaskTitle(result.data.title);
-        } else {
-          setTaskTitle(msg); // Use the initial message as title fallback
-        }
-
-        const newUrl = `/w/${slug}/task/${newTaskId}`;
-        // this updates the URL WITHOUT reloading the page
-        window.history.replaceState({}, "", newUrl);
-
-        setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
-      } else {
-        setStarted(true);
-        await sendMessage(msg);
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.statusText}`);
       }
+
+      const result = await response.json();
+      const newTaskId = result.data.id;
+      setCurrentTaskId(newTaskId);
+
+      // Set the task title from the response or fallback to the initial message
+      if (result.data.title) {
+        setTaskTitle(result.data.title);
+      } else {
+        setTaskTitle(msg); // Use the initial message as title fallback
+      }
+
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      // this updates the URL WITHOUT reloading the page
+      window.history.replaceState({}, "", newUrl);
+
+      setStarted(true);
+      await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+    } else {
+      setStarted(true);
+      await sendMessage(msg);
+    }
     } catch (error) {
       console.error("Error in handleStart:", error);
       setIsLoading(false);
