@@ -130,7 +130,10 @@ export const selectors = {
     nextButton: 'button:has-text("Next"), button:has-text("Continue")',
     backButton: 'button:has-text("Back"), button:has-text("Previous")',
     nameInput: 'input[name="name"], input[placeholder*="workspace" i]',
-    createButton: 'button:has-text("Create")',
+    createButton: '[data-testid="onboarding-create-button"]',
+    repositoryUrlInput: '[data-testid="onboarding-repository-url-input"]',
+    getStartedButton: '[data-testid="onboarding-get-started-button"]',
+    projectNameInput: 'input#graphDomain',
   },
 
   // Common UI elements

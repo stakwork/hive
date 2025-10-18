@@ -404,6 +404,7 @@ export function ProjectNameSetupStep() {
                     Cancel
                   </Button>
                   <Button
+                    data-testid="onboarding-create-button"
                     disabled={swarmIsLoading || hasWorkspaceConflict}
                     className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
                     type="button"

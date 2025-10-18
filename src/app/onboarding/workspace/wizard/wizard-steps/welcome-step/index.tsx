@@ -84,6 +84,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
         {/* Repository URL Input */}
         <div className="max-w-md mx-auto">
           <Input
+            data-testid="onboarding-repository-url-input"
             id="repository-url"
             type="url"
             placeholder="https://github.com/username/repository"
@@ -101,7 +102,12 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
         </div>
 
         <div className="flex flex-col items-center gap-3">
-          <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()}>
+          <Button 
+            data-testid="onboarding-get-started-button"
+            onClick={handleNext} 
+            className="px-8 py-3" 
+            disabled={!repositoryUrl.trim()}
+          >
             Get Started
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
