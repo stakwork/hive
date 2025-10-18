@@ -2,18 +2,16 @@
 
 import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import type { AgentStreamingMessage } from "@/types/agent";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
-import type { WorkflowStatus, Artifact } from "@/lib/chat";
+import type { WorkflowStatus, Artifact, ChatMessage } from "@/lib/chat";
 
 interface AgentChatAreaProps {
-  messages: AgentStreamingMessage[];
+  messages: ChatMessage[];
   onSend: (message: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;

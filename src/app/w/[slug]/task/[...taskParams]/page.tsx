@@ -49,7 +49,6 @@ export default function TaskChatPage() {
 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [agentMessages, setAgentMessages] = useState<AgentStreamingMessage[]>([]);
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
@@ -162,18 +161,6 @@ export default function TaskChatPage() {
         // Set task mode from loaded task data
         if (result.data.task?.mode) {
           setTaskMode(result.data.task.mode);
-        }
-
-        // Convert messages to agent format if in agent mode
-        const loadedTaskMode = result.data.task?.mode || taskMode;
-        if (loadedTaskMode === "agent") {
-          const convertedAgentMessages: AgentStreamingMessage[] = result.data.messages.map((msg: ChatMessage) => ({
-            id: msg.id,
-            content: msg.message, // Map 'message' field to 'content'
-            role: msg.role.toLowerCase() as "user" | "assistant",
-            timestamp: new Date(msg.timestamp),
-          }));
-          setAgentMessages(convertedAgentMessages);
         }
 
         // Set initial workflow status from task data
@@ -398,25 +385,18 @@ export default function TaskChatPage() {
     try {
       // Use agent mode streaming
       if (taskMode === "agent") {
-        // Add user message to agent messages
-        const userAgentMessage: AgentStreamingMessage = {
-          id: newMessage.id,
-          content: messageText,
-          role: "user",
-          timestamp: new Date(),
-        };
-        setAgentMessages((prev) => [...prev, userAgentMessage]);
-
-        // Mark user message as sent in regular messages too
+        // Mark user message as sent
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
-        // Prepare history for agent mode from agentMessages
-        const history = agentMessages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
+        // Prepare history for agent mode from messages (convert ChatMessage to agent format)
+        const history = messages
+          .filter((msg) => msg.role === ChatRole.USER || msg.role === ChatRole.ASSISTANT)
+          .map((msg) => ({
+            role: msg.role.toLowerCase() as "user" | "assistant",
+            content: msg.message,
+          }));
 
         // Extract gooseUrl from IDE artifact if available
         const gooseUrl = options?.podUrls?.goose;
@@ -463,14 +443,15 @@ export default function TaskChatPage() {
             // Store the final message
             finalAssistantMessage = updatedMessage;
 
-            setAgentMessages((prev) => {
+            // Update messages array with AgentStreamingMessage
+            setMessages((prev) => {
               const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
               if (existingIndex >= 0) {
                 const updated = [...prev];
-                updated[existingIndex] = updatedMessage;
+                updated[existingIndex] = updatedMessage as unknown as ChatMessage;
                 return updated;
               }
-              return [...prev, updatedMessage];
+              return [...prev, updatedMessage as unknown as ChatMessage];
             });
           },
           // Additional fields specific to AgentStreamingMessage
@@ -625,7 +606,7 @@ export default function TaskChatPage() {
               <ResizablePanel defaultSize={40} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
                   <AgentChatArea
-                    messages={agentMessages}
+                    messages={messages}
                     onSend={handleSend}
                     inputDisabled={inputDisabled}
                     isLoading={isLoading}
@@ -648,7 +629,7 @@ export default function TaskChatPage() {
           ) : taskMode === "agent" ? (
             <div className="flex-1 min-w-0">
               <AgentChatArea
-                messages={agentMessages}
+                messages={messages}
                 onSend={handleSend}
                 inputDisabled={inputDisabled}
                 isLoading={isLoading}

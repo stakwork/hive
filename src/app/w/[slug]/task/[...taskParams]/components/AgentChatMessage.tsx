@@ -3,27 +3,37 @@
 import React from "react";
 import { motion } from "framer-motion";
 import type { AgentStreamingMessage } from "@/types/agent";
+import type { ChatMessage } from "@/lib/chat";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { StreamingMessage, StreamErrorBoundary } from "@/components/streaming";
 import { FINAL_ANSWER_ID } from "../lib/streaming-config";
 
 interface AgentChatMessageProps {
-  message: AgentStreamingMessage;
+  message: ChatMessage | AgentStreamingMessage;
+}
+
+// Type guard to check if message is AgentStreamingMessage
+function isAgentStreamingMessage(msg: ChatMessage | AgentStreamingMessage): msg is AgentStreamingMessage {
+  return 'content' in msg && ('textParts' in msg || 'toolCalls' in msg || 'isStreaming' in msg);
 }
 
 export function AgentChatMessage({ message }: AgentChatMessageProps) {
-  const isUser = message.role === "user";
+  const isUser = message.role === "USER" || message.role === "user";
+
+  // Get the text content - use 'content' for streaming messages, 'message' for ChatMessage
+  const textContent = isAgentStreamingMessage(message) ? message.content : message.message;
 
   // Check if this is a streaming message (has streaming data)
-  const isStreamingMessage = !!(message.textParts || message.toolCalls || message.reasoningParts);
+  const isStreamingMessage = isAgentStreamingMessage(message) &&
+    !!(message.textParts || message.toolCalls || message.reasoningParts);
 
   // Check if we have any visible content (tool calls or text with actual content)
-  const hasVisibleContent =
-    (message.toolCalls && message.toolCalls.length > 0) ||
-    (message.textParts && message.textParts.some(part => part.content.trim().length > 0));
+  const hasVisibleContent = isAgentStreamingMessage(message) &&
+    ((message.toolCalls && message.toolCalls.length > 0) ||
+    (message.textParts && message.textParts.some(part => part.content.trim().length > 0)));
 
   // Show "Thinking..." ONLY if streaming but no visible content yet (no tool calls, no text)
-  const showThinking = message.isStreaming && !hasVisibleContent && !isUser;
+  const showThinking = isAgentStreamingMessage(message) && message.isStreaming && !hasVisibleContent && !isUser;
 
   return (
     <motion.div
@@ -42,7 +52,7 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
           }`}
         >
           {isUser ? (
-            <MarkdownRenderer variant="user">{message.content}</MarkdownRenderer>
+            <MarkdownRenderer variant="user">{textContent}</MarkdownRenderer>
           ) : showThinking ? (
             <div className="text-sm text-muted-foreground italic flex items-center gap-2">
               <div className="flex space-x-1">
@@ -61,13 +71,13 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
           ) : isStreamingMessage ? (
             <StreamErrorBoundary>
               <StreamingMessage
-                message={message}
+                message={message as AgentStreamingMessage}
                 finalTextPartId={FINAL_ANSWER_ID}
                 toolCallsExpectOutput={false}
               />
             </StreamErrorBoundary>
           ) : (
-            <MarkdownRenderer variant="assistant">{message.content}</MarkdownRenderer>
+            <MarkdownRenderer variant="assistant">{textContent}</MarkdownRenderer>
           )}
         </div>
       </div>
