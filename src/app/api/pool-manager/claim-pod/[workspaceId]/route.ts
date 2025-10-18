@@ -4,8 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { claimPodAndGetFrontend } from "@/lib/pods";
+import { claimPodAndGetFrontend, getWorkspaceFromPool, updatePodRepositories } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -29,6 +28,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
+    // Check for "latest" query parameter
+    const { searchParams } = new URL(request.url);
+    const shouldUpdateToLatest = searchParams.get("latest") === "true";
+
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
@@ -39,6 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           select: { role: true },
         },
         swarm: true,
+        repositories: true,
       },
     });
 
@@ -65,12 +69,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    let poolApiKey = workspace.swarm.poolApiKey;
-    const swarm = workspace.swarm;
-    if (!swarm.poolApiKey) {
-      await updateSwarmPoolApiKeyFor(swarm.id);
-      poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    const poolApiKey = workspace.swarm.poolApiKey;
+    console.log(">>> poolApiKey", poolApiKey);
+    if (!poolApiKey) {
+      return NextResponse.json({ error: "No pool API key found for this workspace" }, { status: 404 });
     }
+    // const swarm = workspace.swarm;
+    // if (!swarm.poolApiKey) {
+    //   await updateSwarmPoolApiKeyFor(swarm.id);
+    //   poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    // }
 
     // Check if swarm has pool configuration
     if (!workspace.swarm.poolName || !poolApiKey) {
@@ -87,6 +95,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     };
 
     const frontend = await claimPodAndGetFrontend(poolName, headers);
+
+    // If "latest" parameter is provided, update the pod repositories
+    if (shouldUpdateToLatest) {
+      const podWorkspace = await getWorkspaceFromPool(poolName, headers);
+      const controlPortUrl = podWorkspace.portMappings["15552"];
+
+      if (!controlPortUrl) {
+        console.error("Control port (15552) not found in port mappings, skipping repository update");
+      } else {
+        const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+
+        if (repositories.length > 0) {
+          await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+        } else {
+          console.log(">>> No repositories to update");
+        }
+      }
+    }
 
     return NextResponse.json(
       {

@@ -5,11 +5,11 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { dropPod, getWorkspaceFromPool } from "@/lib/pods";
+import { dropPod, getWorkspaceFromPool, updatePodRepositories } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -28,6 +28,10 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     if (!workspaceId) {
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
+
+    // Check for "latest" query parameter
+    const { searchParams } = new URL(request.url);
+    const shouldResetRepositories = searchParams.get("latest") === "true";
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -87,6 +91,18 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
     // First, get the workspace info to retrieve the external workspace ID
     const podWorkspace = await getWorkspaceFromPool(poolName, headers);
+
+    // If "latest" parameter is provided, reset the pod repositories before dropping
+    if (shouldResetRepositories) {
+      const controlPortUrl = podWorkspace.portMappings["15552"];
+
+      if (!controlPortUrl) {
+        console.error("Control port (15552) not found in port mappings, skipping repository reset");
+      } else {
+        // Reset repositories to empty array
+        await updatePodRepositories(controlPortUrl, podWorkspace.password, []);
+      }
+    }
 
     // Now drop the pod
     await dropPod(poolName, podWorkspace.id, headers);

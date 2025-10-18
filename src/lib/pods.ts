@@ -162,3 +162,28 @@ export async function dropPod(
 ): Promise<void> {
   await markWorkspaceAsUnused(poolName, workspaceId, headers);
 }
+
+export async function updatePodRepositories(
+  controlPortUrl: string,
+  password: string,
+  repositories: Array<{ url: string }>,
+): Promise<void> {
+  const updateUrl = `${controlPortUrl}/latest`;
+
+  const response = await fetch(updateUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${password}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ repos: repositories }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Failed to update pod repositories: ${response.status} - ${errorText}`);
+    throw new Error(`Failed to update pod repositories: ${response.status}`);
+  }
+
+  console.log(">>> Pod repositories updated");
+}
