@@ -14,12 +14,15 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, regex, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setRegex } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob } = useCoverageStore();
   const hasInitializedIgnoreDirs = useRef(false);
+  const hasInitializedUnitGlob = useRef(false);
+  const hasInitializedIntegrationGlob = useRef(false);
+  const hasInitializedE2eGlob = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, regex],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, regex],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -44,7 +47,9 @@ export function useCoverageNodes() {
       if (coverage && coverage !== "all") qp.set("coverage", coverage);
       if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
       if (repo) qp.set("repo", repo);
-      if (regex) qp.set("regex", regex);
+      if (hasInitializedUnitGlob.current && unitGlob) qp.set("unitGlob", unitGlob);
+      if (hasInitializedIntegrationGlob.current && integrationGlob) qp.set("integrationGlob", integrationGlob);
+      if (hasInitializedE2eGlob.current && e2eGlob) qp.set("e2eGlob", e2eGlob);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
@@ -65,6 +70,30 @@ export function useCoverageNodes() {
     }
   }, [query.data?.data?.ignoreDirs, setIgnoreDirs]);
 
+  useEffect(() => {
+    if (!hasInitializedUnitGlob.current && query.data?.data?.unitGlob !== undefined) {
+      const apiUnitGlob = query.data.data.unitGlob;
+      setUnitGlob(apiUnitGlob);
+      hasInitializedUnitGlob.current = true;
+    }
+  }, [query.data?.data?.unitGlob, setUnitGlob]);
+
+  useEffect(() => {
+    if (!hasInitializedIntegrationGlob.current && query.data?.data?.integrationGlob !== undefined) {
+      const apiIntegrationGlob = query.data.data.integrationGlob;
+      setIntegrationGlob(apiIntegrationGlob);
+      hasInitializedIntegrationGlob.current = true;
+    }
+  }, [query.data?.data?.integrationGlob, setIntegrationGlob]);
+
+  useEffect(() => {
+    if (!hasInitializedE2eGlob.current && query.data?.data?.e2eGlob !== undefined) {
+      const apiE2eGlob = query.data.data.e2eGlob;
+      setE2eGlob(apiE2eGlob);
+      hasInitializedE2eGlob.current = true;
+    }
+  }, [query.data?.data?.e2eGlob, setE2eGlob]);
+
   const prefetch = async (targetPage: number) => {
     if (!workspaceId) return;
     const prefetchKey = [
@@ -78,7 +107,9 @@ export function useCoverageNodes() {
       coverage,
       ignoreDirs,
       repo,
-      regex,
+      unitGlob,
+      integrationGlob,
+      e2eGlob,
     ];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
@@ -99,7 +130,9 @@ export function useCoverageNodes() {
         if (coverage && coverage !== "all") qp.set("coverage", coverage);
         if (hasInitializedIgnoreDirs.current && ignoreDirs) qp.set("ignoreDirs", ignoreDirs);
         if (repo) qp.set("repo", repo);
-        if (regex) qp.set("regex", regex);
+        if (hasInitializedUnitGlob.current && unitGlob) qp.set("unitGlob", unitGlob);
+        if (hasInitializedIntegrationGlob.current && integrationGlob) qp.set("integrationGlob", integrationGlob);
+        if (hasInitializedE2eGlob.current && e2eGlob) qp.set("e2eGlob", e2eGlob);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {
@@ -135,8 +168,12 @@ export function useCoverageNodes() {
     setIgnoreDirs,
     repo,
     setRepo,
-    regex,
-    setRegex,
+    unitGlob,
+    setUnitGlob,
+    integrationGlob,
+    setIntegrationGlob,
+    e2eGlob,
+    setE2eGlob,
     setRoot: () => {},
     setConcise: () => {},
     setStatus: () => {},

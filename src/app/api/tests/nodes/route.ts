@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { convertGlobsToRegex } from "@/lib/utils/glob";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
@@ -60,7 +61,7 @@ function buildQueryString(params: ParsedParams): string {
   return q.toString();
 }
 
-function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, repo?: string | null, regex?: string | null): string {
+function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, repo?: string | null, unitGlob?: string | null, integrationGlob?: string | null, e2eGlob?: string | null): string {
   const queryString = buildQueryString(params);
   const q = new URLSearchParams(queryString);
   if (ignoreDirs) {
@@ -69,8 +70,17 @@ function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, rep
   if (repo) {
     q.set("repo", repo);
   }
-  if (regex) {
-    q.set("regex", regex);
+  if (unitGlob) {
+    const regex = convertGlobsToRegex(unitGlob);
+    if (regex) q.set("unit_regexes", regex);
+  }
+  if (integrationGlob) {
+    const regex = convertGlobsToRegex(integrationGlob);
+    if (regex) q.set("integration_regexes", regex);
+  }
+  if (e2eGlob) {
+    const regex = convertGlobsToRegex(e2eGlob);
+    if (regex) q.set("e2e_regexes", regex);
   }
   return `/tests/nodes?${q.toString()}`;
 }
@@ -102,6 +112,9 @@ function normalizeResponse(
   limit: number,
   offset: number,
   ignoreDirs?: string | null,
+  unitGlob?: string | null,
+  integrationGlob?: string | null,
+  e2eGlob?: string | null,
 ): CoverageNodesResponse {
   let items: CoverageNodeConcise[] = [];
   const mapToConcise = (n: unknown): CoverageNodeConcise => {
@@ -144,6 +157,9 @@ function normalizeResponse(
       total_pages,
       total_returned,
       ignoreDirs: ignoreDirs || "",
+      unitGlob: unitGlob || "",
+      integrationGlob: integrationGlob || "",
+      e2eGlob: e2eGlob || "",
     },
   };
 }
@@ -160,13 +176,18 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
     const repoParam = searchParams.get("repo");
-    const regexParam = searchParams.get("regex");
+    const unitGlobParam = searchParams.get("unitGlob");
+    const integrationGlobParam = searchParams.get("integrationGlob");
+    const e2eGlobParam = searchParams.get("e2eGlob");
 
     const parsed = parseAndValidateParams(searchParams);
     if ("error" in parsed) return parsed.error;
     const { nodeType, limit, offset } = parsed;
 
     let finalIgnoreDirs = ignoreDirsParam;
+    let finalUnitGlob = unitGlobParam;
+    let finalIntegrationGlob = integrationGlobParam;
+    let finalE2eGlob = e2eGlobParam;
 
     if (workspaceId && !swarmId) {
       const primaryRepo = await getPrimaryRepository(workspaceId);
@@ -179,10 +200,37 @@ export async function GET(request: NextRequest) {
             data: { ignoreDirs: ignoreDirsParam },
           });
         }
+
+        if (!unitGlobParam) {
+          finalUnitGlob = primaryRepo.unitGlob || "";
+        } else if (unitGlobParam !== primaryRepo.unitGlob) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { unitGlob: unitGlobParam },
+          });
+        }
+
+        if (!integrationGlobParam) {
+          finalIntegrationGlob = primaryRepo.integrationGlob || "";
+        } else if (integrationGlobParam !== primaryRepo.integrationGlob) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { integrationGlob: integrationGlobParam },
+          });
+        }
+
+        if (!e2eGlobParam) {
+          finalE2eGlob = primaryRepo.e2eGlob || "";
+        } else if (e2eGlobParam !== primaryRepo.e2eGlob) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { e2eGlob: e2eGlobParam },
+          });
+        }
       }
     }
 
-    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs, repoParam, regexParam);
+    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs, repoParam, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
@@ -196,7 +244,7 @@ export async function GET(request: NextRequest) {
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as Payload, nodeType, limit, offset, finalIgnoreDirs);
+      const response = normalizeResponse(data as Payload, nodeType, limit, offset, finalIgnoreDirs, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -243,7 +291,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset, finalIgnoreDirs);
+    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset, finalIgnoreDirs, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);
