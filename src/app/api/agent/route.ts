@@ -17,6 +17,7 @@ type Provider = "anthropic" | "google" | "openai" | "claude_code";
 export async function POST(request: NextRequest) {
   const model = gooseWeb("goose", {
     wsUrl: "ws://localhost:8888/ws",
+    // wsUrl: "wss://09c0a821-15551.workspaces.sphinx.chat/ws",
   });
 
   const body = await request.json();
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     async start(controller) {
       const encoder = new TextEncoder();
 
-      const sendEvent = (data: any) => {
+      const sendEvent = (data: unknown) => {
         const line = `data: ${JSON.stringify(data)}\n\n`;
         controller.enqueue(encoder.encode(line));
       };

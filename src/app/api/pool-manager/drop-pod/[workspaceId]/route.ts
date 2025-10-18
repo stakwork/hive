@@ -4,7 +4,8 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories } from "@/lib/pods";
+import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
+import { dropPod, getWorkspaceFromPool, updatePodRepositories } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Check for "latest" query parameter
     const { searchParams } = new URL(request.url);
-    const shouldUpdateToLatest = searchParams.get("latest") === "true";
+    const shouldResetRepositories = searchParams.get("latest") === "true";
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -51,10 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (process.env.MOCK_BROWSER_URL) {
-      return NextResponse.json(
-        { success: true, message: "Pod claimed successfully", frontend: process.env.MOCK_BROWSER_URL },
-        { status: 200 },
-      );
+      return NextResponse.json({ success: true, message: "Pod dropped successfully" }, { status: 200 });
     }
 
     const isOwner = workspace.ownerId === userId;
@@ -69,54 +67,57 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
+    let poolApiKey = workspace.swarm.poolApiKey;
+    const swarm = workspace.swarm;
+    if (!swarm.poolApiKey) {
+      await updateSwarmPoolApiKeyFor(swarm.id);
+      poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+    }
+
     // Check if swarm has pool configuration
-    if (!workspace.swarm.poolName || !workspace.swarm.poolApiKey) {
+    if (!workspace.swarm.poolName || !poolApiKey) {
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
-
-    // Call Pool Manager API to claim pod
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
+    // First, get the workspace info to retrieve the external workspace ID
+    const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
 
-    // If "latest" parameter is provided, update the pod repositories
-    if (shouldUpdateToLatest) {
+    // If "latest" parameter is provided, reset the pod repositories before dropping
+    if (shouldResetRepositories) {
       const controlPortUrl = podWorkspace.portMappings["15552"];
 
       if (!controlPortUrl) {
-        console.error("Control port (15552) not found in port mappings, skipping repository update");
+        console.error("Control port (15552) not found in port mappings, skipping repository reset");
       } else {
-        const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+        try {
+          const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
-        if (repositories.length > 0) {
-          await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
-        } else {
-          console.log(">>> No repositories to update");
+          if (repositories.length > 0) {
+            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+          } else {
+            console.log(">>> No repositories to reset");
+          }
+        } catch (error) {
+          console.error("Error resetting pod repositories:", error);
         }
       }
     }
 
-    // Extract control, IDE, and goose URLs
-    const control = podWorkspace.portMappings["15552"] || null;
-    const ide = podWorkspace.url || null;
-    const goose = podWorkspace.portMappings["15551"] || null;
+    // Now drop the pod
+    await dropPod(poolName, podWorkspace.id, poolApiKeyPlain);
 
     return NextResponse.json(
       {
         success: true,
-        message: "Pod claimed successfully",
-        frontend,
-        control,
-        ide,
-        goose,
+        message: "Pod dropped successfully",
       },
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error claiming pod:", error);
+    console.error("Error dropping pod:", error);
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
@@ -131,6 +132,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    return NextResponse.json({ error: "Failed to claim pod" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to drop pod" }, { status: 500 });
   }
 }
