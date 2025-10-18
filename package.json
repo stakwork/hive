@@ -27,7 +27,8 @@
     "rotate-keys": "tsx scripts/rotate-encryption-key.ts",
     "seed:db": "tsx scripts/helpers/seed-database.ts",
     "seed:auto-seed": "tsx scripts/seed-from-github-account.ts",
-    "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts"
+    "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts",
+    "decrypt-json": "tsx scripts/decrypt-json-file.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",

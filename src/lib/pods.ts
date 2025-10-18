@@ -30,12 +30,15 @@ interface ProcessInfo {
   cwd?: string;
 }
 
-export async function getWorkspaceFromPool(poolName: string, headers: Record<string, string>): Promise<PodWorkspace> {
+export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspace`;
 
   const response = await fetch(url, {
     method: "GET",
-    headers: headers,
+    headers: {
+      Authorization: `Bearer ${poolApiKey}`,
+      "Content-Type": "application/json",
+    },
   });
 
   if (!response.ok) {
@@ -48,16 +51,18 @@ export async function getWorkspaceFromPool(poolName: string, headers: Record<str
   return data.workspace as PodWorkspace;
 }
 
-async function markWorkspaceAsUsed(
-  poolName: string,
-  workspaceId: string,
-  headers: Record<string, string>,
-): Promise<void> {
+async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
   const markUsedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
+
+  console.log(`>>> Marking workspace as used: POST ${markUsedUrl}`);
 
   const response = await fetch(markUsedUrl, {
     method: "POST",
-    headers: headers,
+    headers: {
+      Authorization: `Bearer ${poolApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {
@@ -66,19 +71,22 @@ async function markWorkspaceAsUsed(
     throw new Error(`Failed to mark workspace as used: ${response.status}`);
   }
 
-  console.log(">>> Workspace marked as used");
+  const responseData = await response.text();
+  console.log(`>>> Workspace marked as used successfully (${response.status}):`, responseData || "No response body");
 }
 
-async function markWorkspaceAsUnused(
-  poolName: string,
-  workspaceId: string,
-  headers: Record<string, string>,
-): Promise<void> {
+async function markWorkspaceAsUnused(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
   const markUnusedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-unused`;
+
+  console.log(`>>> Marking workspace as unused: POST ${markUnusedUrl}`);
 
   const response = await fetch(markUnusedUrl, {
     method: "POST",
-    headers: headers,
+    headers: {
+      Authorization: `Bearer ${poolApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {
@@ -87,7 +95,8 @@ async function markWorkspaceAsUnused(
     throw new Error(`Failed to drop pod: ${response.status}`);
   }
 
-  console.log(">>> Pod dropped");
+  const responseData = await response.text();
+  console.log(`>>> Pod dropped successfully (${response.status}):`, responseData || "No response body");
 }
 
 async function getProcessList(controlPortUrl: string, password: string): Promise<ProcessInfo[]> {
@@ -131,14 +140,14 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
   return frontend;
 }
 
-export async function claimPodAndGetFrontend(poolName: string, headers: Record<string, string>): Promise<string> {
+export async function claimPodAndGetFrontend(poolName: string, poolApiKey: string): Promise<string> {
   // Get workspace from pool
-  const workspace = await getWorkspaceFromPool(poolName, headers);
+  const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
 
   console.log(">>> workspace data", workspace);
 
   // Mark the workspace as used
-  await markWorkspaceAsUsed(poolName, workspace.id, headers);
+  await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
 
   // Get the control port URL (15552)
   const controlPortUrl = workspace.portMappings["15552"];
@@ -155,12 +164,8 @@ export async function claimPodAndGetFrontend(poolName: string, headers: Record<s
   return frontend;
 }
 
-export async function dropPod(
-  poolName: string,
-  workspaceId: string,
-  headers: Record<string, string>,
-): Promise<void> {
-  await markWorkspaceAsUnused(poolName, workspaceId, headers);
+export async function dropPod(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
+  await markWorkspaceAsUnused(poolName, workspaceId, poolApiKey);
 }
 
 export async function updatePodRepositories(

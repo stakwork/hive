@@ -89,16 +89,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const headers = {
-      Authorization: `Bearer ${poolApiKeyPlain}`,
-      "Content-Type": "application/json",
-    };
-
-    const frontend = await claimPodAndGetFrontend(poolName, headers);
+    const frontend = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
-      const podWorkspace = await getWorkspaceFromPool(poolName, headers);
+      const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
       const controlPortUrl = podWorkspace.portMappings["15552"];
 
       if (!controlPortUrl) {

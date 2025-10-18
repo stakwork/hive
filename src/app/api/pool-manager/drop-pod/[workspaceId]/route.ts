@@ -84,13 +84,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const headers = {
-      Authorization: `Bearer ${poolApiKeyPlain}`,
-      "Content-Type": "application/json",
-    };
-
     // First, get the workspace info to retrieve the external workspace ID
-    const podWorkspace = await getWorkspaceFromPool(poolName, headers);
+    const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
 
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
@@ -105,7 +100,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Now drop the pod
-    await dropPod(poolName, podWorkspace.id, headers);
+    await dropPod(poolName, podWorkspace.id, poolApiKeyPlain);
 
     return NextResponse.json(
       {
