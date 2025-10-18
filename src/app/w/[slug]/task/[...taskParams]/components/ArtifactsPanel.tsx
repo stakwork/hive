@@ -4,7 +4,7 @@ import { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Artifact, ArtifactType } from "@/lib/chat";
-import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel } from "../artifacts";
+import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel } from "../artifacts";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -19,6 +19,7 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
   const browserArtifacts = artifacts.filter((a) => a.type === "BROWSER");
   const ideArtifacts = artifacts.filter((a) => a.type === "IDE");
   const graphArtifacts = artifacts.filter((a) => a.type === "GRAPH");
+  const workflowArtifacts = artifacts.filter((a) => a.type === "WORKFLOW");
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
@@ -26,8 +27,9 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
+    if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     return tabs;
-  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length]);
+  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -83,6 +85,11 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
                 Graph
               </TabsTrigger>
             )}
+            {workflowArtifacts.length > 0 && (
+              <TabsTrigger className="cursor-pointer" value="WORKFLOW">
+                Workflow
+              </TabsTrigger>
+            )}
           </TabsList>
         </motion.div>
 
@@ -130,6 +137,19 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               hidden={activeTab !== "GRAPH"}
             >
               <GraphArtifactPanel artifacts={graphArtifacts} />
+            </TabsContent>
+          )}
+          {workflowArtifacts.length > 0 && (
+            <TabsContent
+              value="WORKFLOW"
+              className="h-full mt-0"
+              forceMount
+              hidden={activeTab !== "WORKFLOW"}
+            >
+              <WorkflowArtifactPanel
+                artifacts={workflowArtifacts}
+                isActive={activeTab === "WORKFLOW"}
+              />
             </TabsContent>
           )}
         </motion.div>

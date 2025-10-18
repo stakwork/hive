@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
-import { ChatMessage, ChatRole, ChatStatus, WorkflowStatus, createChatMessage, Option, Artifact } from "@/lib/chat";
+import { ChatMessage, ChatRole, ChatStatus, WorkflowStatus, createChatMessage, createArtifact, Option, Artifact, ArtifactType } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
@@ -153,6 +153,31 @@ export default function TaskChatPage() {
           console.log("Setting project ID from task data:", result.data.task.stakworkProjectId);
           setProjectId(result.data.task.stakworkProjectId.toString());
           setStakworkProjectId(result.data.task.stakworkProjectId);
+
+          // Create ephemeral WORKFLOW artifact for existing tasks with workflows
+          // This artifact is not stored in DB - it's always generated client-side
+          const projectId = result.data.task.stakworkProjectId.toString();
+          const targetMessage = result.data.messages[result.data.messages.length - 1];
+
+          if (targetMessage) {
+            const workflowArtifact = createArtifact({
+              id: generateUniqueId(),
+              messageId: targetMessage.id,
+              type: ArtifactType.WORKFLOW,
+              content: {
+                projectId: projectId,
+              },
+            });
+
+            // Update the last message with the workflow artifact
+            setMessages((msgs) =>
+              msgs.map((msg, idx) =>
+                idx === msgs.length - 1
+                  ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] }
+                  : msg
+              )
+            );
+          }
         }
 
         // Set task title from API response
@@ -377,6 +402,25 @@ export default function TaskChatPage() {
         setStakworkProjectId(result.workflow.project_id);
         setIsChainVisible(true);
         clearLogs();
+
+        // Create a WORKFLOW artifact with the project_id
+        const workflowArtifact = createArtifact({
+          id: generateUniqueId(),
+          messageId: newMessage.id,
+          type: ArtifactType.WORKFLOW,
+          content: {
+            projectId: result.workflow.project_id.toString(),
+          },
+        });
+
+        // Add the workflow artifact to the last message
+        setMessages((msgs) =>
+          msgs.map((msg) =>
+            msg.id === newMessage.id
+              ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] }
+              : msg
+          )
+        );
       }
 
       // Update the temporary message status instead of replacing entirely

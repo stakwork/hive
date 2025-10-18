@@ -81,9 +81,13 @@ export interface BugReportContent {
   };
 }
 
+export interface WorkflowContent {
+  projectId: string;
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
 }
 
 export interface Attachment extends PrismaAttachment {
@@ -133,7 +137,7 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent;
+  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

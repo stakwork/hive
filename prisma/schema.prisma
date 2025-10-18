@@ -470,6 +470,7 @@ enum ArtifactType {
   LONGFORM
   BUG_REPORT
   GRAPH
+  WORKFLOW
 }
 
 // =============================================
