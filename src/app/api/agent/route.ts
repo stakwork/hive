@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT, authOptions } from "@/lib/auth/nextauth";
+import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -9,30 +10,121 @@ import { streamText, ModelMessage, hasToolCall } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { ChatRole, ChatStatus } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { gooseWeb } from "ai-sdk-provider-goose-web";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
+interface ArtifactRequest {
+  type: ArtifactType;
+  content?: Record<string, unknown>;
+}
+
+// Generate a session ID using timestamp format (yyyymmdd_hhmmss) like CLI
+function generateSessionId() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hour = String(now.getHours()).padStart(2, "0");
+  const minute = String(now.getMinutes()).padStart(2, "0");
+  const second = String(now.getSeconds()).padStart(2, "0");
+
+  return `${year}${month}${day}_${hour}${minute}${second}`;
+}
+
 export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { message, gooseUrl, taskId, artifacts = [] } = body;
+
+  // Authenticate user
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Load chat history from database
+  let chatHistory: { role: string; message: string; sourceWebsocketID: string | null }[] = [];
+  let sessionId: string | null = null;
+
+  if (taskId) {
+    try {
+      chatHistory = await db.chatMessage.findMany({
+        where: { taskId },
+        orderBy: { timestamp: "asc" },
+        select: {
+          role: true,
+          message: true,
+          sourceWebsocketID: true,
+        },
+      });
+
+      // Check if first message has a sourceWebsocketID
+      if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
+        sessionId = chatHistory[0].sourceWebsocketID;
+        console.log("🔄 Reusing existing session ID:", sessionId);
+      } else {
+        // Generate new session ID for first message
+        sessionId = generateSessionId();
+        console.log("🆕 Generated new session ID:", sessionId);
+      }
+    } catch (error) {
+      console.error("Error loading chat history:", error);
+    }
+  }
+
+  // If no taskId or failed to load, generate new session
+  if (!sessionId) {
+    sessionId = generateSessionId();
+    console.log("🆕 Generated new session ID (no task):", sessionId);
+  }
+
+  // Save user message with artifacts and sourceWebsocketID to database if taskId is provided
+  if (taskId) {
+    try {
+      await db.chatMessage.create({
+        data: {
+          taskId,
+          message,
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+          sourceWebsocketID: sessionId,
+          artifacts: {
+            create: artifacts.map((artifact: ArtifactRequest) => ({
+              type: artifact.type,
+              content: artifact.content,
+            })),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error saving message to database:", error);
+    }
+  }
+
+  // Use provided gooseUrl or fall back to localhost
+  const wsUrl = gooseUrl
+    ? gooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws"
+    : "ws://localhost:8888/ws";
+
+  console.log("🤖 Goose URL:", wsUrl);
+  console.log("🤖 Session ID:", sessionId); // 20251018_143907
   const model = gooseWeb("goose", {
-    wsUrl: "ws://localhost:8888/ws",
-    // wsUrl: "wss://09c0a821-15551.workspaces.sphinx.chat/ws",
+    wsUrl,
+    sessionId,
   });
 
-  const body = await request.json();
-  const { message, history = [] } = body;
-
-  // Build messages array from history
+  // Build messages array from database history
   const messages: ModelMessage[] = [{ role: "system", content: AGENT_SYSTEM_PROMPT }];
 
-  // Add history if provided
-  if (Array.isArray(history) && history.length > 0) {
-    for (const msg of history) {
-      if (msg.role === "user" || msg.role === "assistant") {
+  // Add chat history from database
+  if (chatHistory.length > 0) {
+    for (const msg of chatHistory) {
+      const role = msg.role.toLowerCase();
+      if (role === "user" || role === "assistant") {
         messages.push({
-          role: msg.role,
-          content: msg.content || msg.message || "",
+          role: role as "user" | "assistant",
+          content: msg.message,
         });
       }
     }

@@ -4,7 +4,17 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
-import { ChatMessage, ChatRole, ChatStatus, WorkflowStatus, createChatMessage, createArtifact, Option, Artifact, ArtifactType } from "@/lib/chat";
+import {
+  ChatMessage,
+  ChatRole,
+  ChatStatus,
+  WorkflowStatus,
+  createChatMessage,
+  createArtifact,
+  Option,
+  Artifact,
+  ArtifactType,
+} from "@/lib/chat";
 import { useParams } from "next/navigation";
 import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
@@ -15,6 +25,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -26,6 +37,7 @@ export default function TaskChatPage() {
   const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
   const { toast } = useToast();
   const params = useParams();
+  const { id: workspaceId } = useWorkspace();
 
   const { taskMode, setTaskMode } = useTaskMode();
 
@@ -37,7 +49,6 @@ export default function TaskChatPage() {
 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [agentMessages, setAgentMessages] = useState<AgentStreamingMessage[]>([]);
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
@@ -46,6 +57,7 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
+  // const [podUrls, setPodUrls] = useState<{ frontend: string; ide: string; goose: string } | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -61,23 +73,26 @@ export default function TaskChatPage() {
   const hasReceivedContentRef = useRef(false);
 
   // Save agent message to backend after streaming completes
-  const saveAgentMessageToBackend = useCallback(async (message: AgentStreamingMessage, taskId: string, role: "user" | "assistant") => {
-    try {
-      // Create a proper chat message record in the database
-      await fetch(`/api/tasks/${taskId}/messages/save`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: message.content,
-          role: role === "user" ? "USER" : "ASSISTANT",
-        }),
-      });
-    } catch (error) {
-      console.error("Error saving agent message:", error);
-    }
-  }, []);
+  const saveAgentMessageToBackend = useCallback(
+    async (message: AgentStreamingMessage, taskId: string, role: "user" | "assistant") => {
+      try {
+        // Create a proper chat message record in the database
+        await fetch(`/api/tasks/${taskId}/messages/save`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: message.content,
+            role: role === "user" ? "USER" : "ASSISTANT",
+          }),
+        });
+      } catch (error) {
+        console.error("Error saving agent message:", error);
+      }
+    },
+    [],
+  );
 
   // Handle incoming SSE messages
   const handleSSEMessage = useCallback((message: ChatMessage) => {
@@ -143,6 +158,11 @@ export default function TaskChatPage() {
         setMessages(result.data.messages);
         console.log(`Loaded ${result.data.count} existing messages for task`);
 
+        // Set task mode from loaded task data
+        if (result.data.task?.mode) {
+          setTaskMode(result.data.task.mode);
+        }
+
         // Set initial workflow status from task data
         if (result.data.task?.workflowStatus) {
           setWorkflowStatus(result.data.task.workflowStatus);
@@ -172,10 +192,8 @@ export default function TaskChatPage() {
             // Update the last message with the workflow artifact
             setMessages((msgs) =>
               msgs.map((msg, idx) =>
-                idx === msgs.length - 1
-                  ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] }
-                  : msg
-              )
+                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+              ),
             );
           }
         }
@@ -208,7 +226,48 @@ export default function TaskChatPage() {
   }, [taskIdFromUrl, loadTaskMessages]);
 
   const handleStart = async (msg: string) => {
-    if (isNewTask) {
+    if (isLoading) return; // Prevent duplicate sends
+    setIsLoading(true);
+
+    try {
+      if (isNewTask) {
+        // Claim pod if agent mode is selected
+        let claimedPodUrls: { frontend: string; ide: string; goose: string } | null = null;
+        if (taskMode === "agent" && workspaceId) {
+          try {
+            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            });
+
+          if (podResponse.ok) {
+            const podResult = await podResponse.json();
+            claimedPodUrls = {
+              frontend: podResult.frontend,
+              ide: podResult.ide,
+              goose: podResult.goose,
+            };
+            // setPodUrls(claimedPodUrls);
+          } else {
+            console.error("Failed to claim pod:", await podResponse.text());
+            toast({
+              title: "Warning",
+              description: "Failed to claim pod. Continuing without pod integration.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          console.error("Error claiming pod:", error);
+          toast({
+            title: "Warning",
+            description: "Failed to claim pod. Continuing without pod integration.",
+            variant: "destructive",
+          });
+        }
+      }
+
       // Create new task
       const response = await fetch("/api/tasks", {
         method: "POST",
@@ -220,6 +279,7 @@ export default function TaskChatPage() {
           description: "New task description", // TODO: Add description
           status: "active",
           workspaceSlug: slug,
+          mode: taskMode, // Save the task mode
         }),
       });
 
@@ -238,21 +298,31 @@ export default function TaskChatPage() {
         setTaskTitle(msg); // Use the initial message as title fallback
       }
 
-      const newUrl = `/w/${slug}/task/${newTaskId}`;
-      // this updates the URL WITHOUT reloading the page
-      window.history.replaceState({}, "", newUrl);
+        const newUrl = `/w/${slug}/task/${newTaskId}`;
+        // this updates the URL WITHOUT reloading the page
+        window.history.replaceState({}, "", newUrl);
 
-      setStarted(true);
-      await sendMessage(msg, { taskId: newTaskId });
-    } else {
-      setStarted(true);
-      await sendMessage(msg);
+        setStarted(true);
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+      } else {
+        setStarted(true);
+        await sendMessage(msg);
+      }
+    } catch (error) {
+      console.error("Error in handleStart:", error);
+      setIsLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to start task. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleSend = async (message: string) => {
     // Allow sending if we have either text or a pending debug attachment
     if (!message.trim() && !pendingDebugAttachment) return;
+    if (isLoading) return; // Prevent duplicate sends
 
     // For artifact-only messages, provide a default message
     const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
@@ -271,9 +341,33 @@ export default function TaskChatPage() {
       replyId?: string;
       webhook?: string;
       artifact?: Artifact;
+      podUrls?: { frontend: string; ide: string; goose: string } | null;
     },
   ) => {
-    if (isLoading) return;
+    // Create artifacts array starting with any existing artifact
+    const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
+
+    // Add BROWSER and IDE artifacts if podUrls are provided
+    if (options?.podUrls) {
+      artifacts.push(
+        createArtifact({
+          id: generateUniqueId(),
+          messageId: "",
+          type: ArtifactType.BROWSER,
+          content: {
+            url: options.podUrls.frontend,
+          },
+        }),
+        createArtifact({
+          id: generateUniqueId(),
+          messageId: "",
+          type: ArtifactType.IDE,
+          content: {
+            url: options.podUrls.ide,
+          },
+        }),
+      );
+    }
 
     const newMessage: ChatMessage = createChatMessage({
       id: generateUniqueId(),
@@ -281,7 +375,7 @@ export default function TaskChatPage() {
       role: ChatRole.USER,
       status: ChatStatus.SENDING,
       replyId: options?.replyId,
-      artifacts: options?.artifact ? [options.artifact] : [],
+      artifacts,
     });
 
     setMessages((msgs) => [...msgs, newMessage]);
@@ -291,22 +385,18 @@ export default function TaskChatPage() {
     try {
       // Use agent mode streaming
       if (taskMode === "agent") {
-        // Add user message to agent messages
-        const userAgentMessage: AgentStreamingMessage = {
-          id: newMessage.id,
-          content: messageText,
-          role: "user",
-          timestamp: new Date(),
-        };
-        setAgentMessages((prev) => [...prev, userAgentMessage]);
+        // Mark user message as sent
+        setMessages((msgs) =>
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+        );
 
-        // Mark user message as sent in regular messages too
-        setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)));
+        // Extract gooseUrl from IDE artifact if available
+        const gooseUrl = options?.podUrls?.goose;
 
-        // Prepare history for agent mode from agentMessages
-        const history = agentMessages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
+        // Prepare artifacts for backend (convert to serializable format)
+        const backendArtifacts = artifacts.map((artifact) => ({
+          type: artifact.type,
+          content: artifact.content,
         }));
 
         const response = await fetch("/api/agent", {
@@ -318,7 +408,8 @@ export default function TaskChatPage() {
             taskId: options?.taskId || currentTaskId,
             message: messageText,
             workspaceSlug: slug,
-            history,
+            gooseUrl,
+            artifacts: backendArtifacts,
           }),
         });
 
@@ -343,26 +434,28 @@ export default function TaskChatPage() {
             // Store the final message
             finalAssistantMessage = updatedMessage;
 
-            setAgentMessages((prev) => {
+            // Update messages array with AgentStreamingMessage
+            setMessages((prev) => {
               const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
               if (existingIndex >= 0) {
                 const updated = [...prev];
-                updated[existingIndex] = updatedMessage;
+                updated[existingIndex] = updatedMessage as unknown as ChatMessage;
                 return updated;
               }
-              return [...prev, updatedMessage];
+              return [...prev, updatedMessage as unknown as ChatMessage];
             });
           },
           // Additional fields specific to AgentStreamingMessage
           {
             role: "assistant" as const,
             timestamp: new Date(),
-          }
+          },
         );
 
-        // After streaming completes, save both messages to backend
+        // After streaming completes, save assistant message to backend
+        // (user message already saved in /api/agent POST route)
         if (finalAssistantMessage) {
-          await saveAgentMessageToBackend(userAgentMessage, options?.taskId || currentTaskId || "", "user");
+          console.log("🤖 Final Assistant Message:", finalAssistantMessage);
           await saveAgentMessageToBackend(finalAssistantMessage, options?.taskId || currentTaskId || "", "assistant");
         }
 
@@ -416,10 +509,8 @@ export default function TaskChatPage() {
         // Add the workflow artifact to the last message
         setMessages((msgs) =>
           msgs.map((msg) =>
-            msg.id === newMessage.id
-              ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] }
-              : msg
-          )
+            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+          ),
         );
       }
 
@@ -501,10 +592,35 @@ export default function TaskChatPage() {
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
           className="h-[92vh] md:h-[97vh] flex"
         >
-          {taskMode === "agent" ? (
+          {taskMode === "agent" && hasNonFormArtifacts ? (
+            <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0 min-h-0 gap-2">
+              <ResizablePanel defaultSize={40} minSize={25}>
+                <div className="h-full min-h-0 min-w-0">
+                  <AgentChatArea
+                    messages={messages}
+                    onSend={handleSend}
+                    inputDisabled={inputDisabled}
+                    isLoading={isLoading}
+                    logs={logs}
+                    pendingDebugAttachment={pendingDebugAttachment}
+                    onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                    workflowStatus={workflowStatus}
+                    taskTitle={taskTitle}
+                    workspaceSlug={slug}
+                  />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={60} minSize={25}>
+                <div className="h-full min-h-0 min-w-0">
+                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : taskMode === "agent" ? (
             <div className="flex-1 min-w-0">
               <AgentChatArea
-                messages={agentMessages}
+                messages={messages}
                 onSend={handleSend}
                 inputDisabled={inputDisabled}
                 isLoading={isLoading}
