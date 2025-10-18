@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { convertGlobsToRegex } from "@/lib/utils/glob";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -26,8 +27,14 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
     const repoParam = searchParams.get("repo");
+    const unitGlobParam = searchParams.get("unitGlob");
+    const integrationGlobParam = searchParams.get("integrationGlob");
+    const e2eGlobParam = searchParams.get("e2eGlob");
 
     let finalIgnoreDirs = ignoreDirsParam;
+    let finalUnitGlob = unitGlobParam;
+    let finalIntegrationGlob = integrationGlobParam;
+    let finalE2eGlob = e2eGlobParam;
 
     if (workspaceId && !swarmId) {
       const primaryRepo = await getPrimaryRepository(workspaceId);
@@ -40,6 +47,33 @@ export async function GET(request: NextRequest) {
             data: { ignoreDirs: ignoreDirsParam },
           });
         }
+
+        if (!unitGlobParam) {
+          finalUnitGlob = primaryRepo.unitGlob || "";
+        } else if (unitGlobParam !== primaryRepo.unitGlob) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { unitGlob: unitGlobParam },
+          });
+        }
+
+        if (!integrationGlobParam) {
+          finalIntegrationGlob = primaryRepo.integrationGlob || "";
+        } else if (integrationGlobParam !== primaryRepo.integrationGlob) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { integrationGlob: integrationGlobParam },
+          });
+        }
+
+        if (!e2eGlobParam) {
+          finalE2eGlob = primaryRepo.e2eGlob || "";
+        } else if (e2eGlobParam !== primaryRepo.e2eGlob) {
+          await db.repository.update({
+            where: { id: primaryRepo.id },
+            data: { e2eGlob: e2eGlobParam },
+          });
+        }
       }
     }
 
@@ -50,6 +84,18 @@ export async function GET(request: NextRequest) {
     }
     if (repoParam) {
       params.set("repo", repoParam);
+    }
+    if (finalUnitGlob) {
+      const regex = convertGlobsToRegex(finalUnitGlob);
+      if (regex) params.set("unit_regexes", regex);
+    }
+    if (finalIntegrationGlob) {
+      const regex = convertGlobsToRegex(finalIntegrationGlob);
+      if (regex) params.set("integration_regexes", regex);
+    }
+    if (finalE2eGlob) {
+      const regex = convertGlobsToRegex(finalE2eGlob);
+      if (regex) params.set("e2e_regexes", regex);
     }
     if (params.toString()) {
       endpoint += `?${params.toString()}`;

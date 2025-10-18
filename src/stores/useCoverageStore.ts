@@ -14,6 +14,9 @@ type CoverageStore = {
   coverage: "all" | "tested" | "untested";
   ignoreDirs: string;
   repo: string;
+  unitGlob: string;
+  integrationGlob: string;
+  e2eGlob: string;
   setNodeType: (t: UncoveredNodeType) => void;
   setSort: (s: CoverageSortOption) => void;
   setSortDirection: (d: SortDirection) => void;
@@ -23,6 +26,9 @@ type CoverageStore = {
   setCoverage: (c: "all" | "tested" | "untested") => void;
   setIgnoreDirs: (dirs: string) => void;
   setRepo: (repo: string) => void;
+  setUnitGlob: (glob: string) => void;
+  setIntegrationGlob: (glob: string) => void;
+  setE2eGlob: (glob: string) => void;
   resetPagination: () => void;
 };
 
@@ -36,6 +42,9 @@ export const useCoverageStore = create<CoverageStore>()(
     coverage: "all",
     ignoreDirs: "",
     repo: "",
+    unitGlob: "",
+    integrationGlob: "",
+    e2eGlob: "",
     setNodeType: (t) => set({ nodeType: t, offset: 0 }),
     setSort: (s) => set({ sort: s, offset: 0 }),
     setSortDirection: (d) => set({ sortDirection: d, offset: 0 }),
@@ -52,6 +61,9 @@ export const useCoverageStore = create<CoverageStore>()(
     setCoverage: (c) => set({ coverage: c, offset: 0 }),
     setIgnoreDirs: (dirs) => set({ ignoreDirs: dirs, offset: 0 }),
     setRepo: (repo) => set({ repo, offset: 0 }),
+    setUnitGlob: (glob) => set({ unitGlob: glob, offset: 0 }),
+    setIntegrationGlob: (glob) => set({ integrationGlob: glob, offset: 0 }),
+    setE2eGlob: (glob) => set({ e2eGlob: glob, offset: 0 }),
     resetPagination: () => set({ offset: 0 }),
   })),
 );
