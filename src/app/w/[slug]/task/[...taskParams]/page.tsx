@@ -399,6 +399,12 @@ export default function TaskChatPage() {
         // Extract gooseUrl from IDE artifact if available
         const gooseUrl = options?.podUrls?.goose;
 
+        // Prepare artifacts for backend (convert to serializable format)
+        const backendArtifacts = artifacts.map((artifact) => ({
+          type: artifact.type,
+          content: artifact.content,
+        }));
+
         const response = await fetch("/api/agent", {
           method: "POST",
           headers: {
