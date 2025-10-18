@@ -32,6 +32,11 @@ export interface BrowserContent {
   url: string;
 }
 
+export interface IDEContent {
+  url: string;
+  gooseUrl?: string;
+}
+
 export interface GraphContent {
   ref_id: string;
   depth?: number;
@@ -87,7 +92,7 @@ export interface WorkflowContent {
 
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
+  content?: FormContent | CodeContent | BrowserContent | IDEContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
 }
 
 export interface Attachment extends PrismaAttachment {
@@ -137,7 +142,7 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
+  content?: FormContent | CodeContent | BrowserContent | IDEContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

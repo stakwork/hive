@@ -15,13 +15,18 @@ import { gooseWeb } from "ai-sdk-provider-goose-web";
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function POST(request: NextRequest) {
-  const model = gooseWeb("goose", {
-    wsUrl: "ws://localhost:8888/ws",
-    // wsUrl: "wss://09c0a821-15551.workspaces.sphinx.chat/ws",
-  });
-
   const body = await request.json();
-  const { message, history = [] } = body;
+  const { message, history = [], gooseUrl } = body;
+
+  // Use provided gooseUrl or fall back to localhost
+  const wsUrl = gooseUrl
+    ? gooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws"
+    : "ws://localhost:8888/ws";
+
+  console.log("🤖 Goose URL:", wsUrl);
+  const model = gooseWeb("goose", {
+    wsUrl,
+  });
 
   // Build messages array from history
   const messages: ModelMessage[] = [{ role: "system", content: AGENT_SYSTEM_PROMPT }];
