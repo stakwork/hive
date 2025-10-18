@@ -602,7 +602,32 @@ export default function TaskChatPage() {
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
           className="h-[92vh] md:h-[97vh] flex"
         >
-          {taskMode === "agent" ? (
+          {taskMode === "agent" && hasNonFormArtifacts ? (
+            <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0 min-h-0 gap-2">
+              <ResizablePanel defaultSize={40} minSize={25}>
+                <div className="h-full min-h-0 min-w-0">
+                  <AgentChatArea
+                    messages={agentMessages}
+                    onSend={handleSend}
+                    inputDisabled={inputDisabled}
+                    isLoading={isLoading}
+                    logs={logs}
+                    pendingDebugAttachment={pendingDebugAttachment}
+                    onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                    workflowStatus={workflowStatus}
+                    taskTitle={taskTitle}
+                    workspaceSlug={slug}
+                  />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={60} minSize={25}>
+                <div className="h-full min-h-0 min-w-0">
+                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : taskMode === "agent" ? (
             <div className="flex-1 min-w-0">
               <AgentChatArea
                 messages={agentMessages}
