@@ -222,17 +222,21 @@ export default function TaskChatPage() {
   }, [taskIdFromUrl, loadTaskMessages]);
 
   const handleStart = async (msg: string) => {
-    if (isNewTask) {
-      // Claim pod if agent mode is selected
-      let claimedPodUrls: { frontend: string; ide: string; goose: string } | null = null;
-      if (taskMode === "agent" && workspaceId) {
-        try {
-          const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
+    if (isLoading) return; // Prevent duplicate sends
+    setIsLoading(true);
+
+    try {
+      if (isNewTask) {
+        // Claim pod if agent mode is selected
+        let claimedPodUrls: { frontend: string; ide: string; goose: string } | null = null;
+        if (taskMode === "agent" && workspaceId) {
+          try {
+            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            });
 
           if (podResponse.ok) {
             const podResult = await podResponse.json();
@@ -289,21 +293,31 @@ export default function TaskChatPage() {
         setTaskTitle(msg); // Use the initial message as title fallback
       }
 
-      const newUrl = `/w/${slug}/task/${newTaskId}`;
-      // this updates the URL WITHOUT reloading the page
-      window.history.replaceState({}, "", newUrl);
+        const newUrl = `/w/${slug}/task/${newTaskId}`;
+        // this updates the URL WITHOUT reloading the page
+        window.history.replaceState({}, "", newUrl);
 
-      setStarted(true);
-      await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
-    } else {
-      setStarted(true);
-      await sendMessage(msg);
+        setStarted(true);
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+      } else {
+        setStarted(true);
+        await sendMessage(msg);
+      }
+    } catch (error) {
+      console.error("Error in handleStart:", error);
+      setIsLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to start task. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleSend = async (message: string) => {
     // Allow sending if we have either text or a pending debug attachment
     if (!message.trim() && !pendingDebugAttachment) return;
+    if (isLoading) return; // Prevent duplicate sends
 
     // For artifact-only messages, provide a default message
     const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
@@ -325,8 +339,6 @@ export default function TaskChatPage() {
       podUrls?: { frontend: string; ide: string; goose: string } | null;
     },
   ) => {
-    if (isLoading) return;
-
     // Create artifacts array starting with any existing artifact
     const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
 
@@ -391,6 +403,12 @@ export default function TaskChatPage() {
         // Extract gooseUrl from IDE artifact if available
         const gooseUrl = options?.podUrls?.goose;
 
+        // Prepare artifacts for backend (convert to serializable format)
+        const backendArtifacts = artifacts.map((artifact) => ({
+          type: artifact.type,
+          content: artifact.content,
+        }));
+
         const response = await fetch("/api/agent", {
           method: "POST",
           headers: {
@@ -402,6 +420,7 @@ export default function TaskChatPage() {
             workspaceSlug: slug,
             history,
             gooseUrl,
+            artifacts: backendArtifacts,
           }),
         });
 
@@ -443,11 +462,10 @@ export default function TaskChatPage() {
           },
         );
 
-        // After streaming completes, save both messages to backend
+        // After streaming completes, save assistant message to backend
+        // (user message already saved in /api/agent POST route)
         if (finalAssistantMessage) {
-          console.log("🤖 User Agent Message:", userAgentMessage);
           console.log("🤖 Final Assistant Message:", finalAssistantMessage);
-          await saveAgentMessageToBackend(userAgentMessage, options?.taskId || currentTaskId || "", "user");
           await saveAgentMessageToBackend(finalAssistantMessage, options?.taskId || currentTaskId || "", "assistant");
         }
 

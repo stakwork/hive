@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT, authOptions } from "@/lib/auth/nextauth";
+import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -9,14 +10,47 @@ import { streamText, ModelMessage, hasToolCall } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { ChatRole, ChatStatus } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { gooseWeb } from "ai-sdk-provider-goose-web";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
+interface ArtifactRequest {
+  type: ArtifactType;
+  content?: Record<string, unknown>;
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { message, history = [], gooseUrl } = body;
+  const { message, history = [], gooseUrl, taskId, artifacts = [] } = body;
+
+  // Authenticate user
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Save user message with artifacts to database if taskId is provided
+  if (taskId) {
+    try {
+      await db.chatMessage.create({
+        data: {
+          taskId,
+          message,
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+          artifacts: {
+            create: artifacts.map((artifact: ArtifactRequest) => ({
+              type: artifact.type,
+              content: artifact.content,
+            })),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error saving message to database:", error);
+    }
+  }
 
   // Use provided gooseUrl or fall back to localhost
   const wsUrl = gooseUrl

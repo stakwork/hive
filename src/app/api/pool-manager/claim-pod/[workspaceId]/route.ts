@@ -92,7 +92,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
         if (repositories.length > 0) {
-          await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+          try {
+            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+          } catch (error) {
+            console.error("Error updating pod repositories:", error);
+          }
         } else {
           console.log(">>> No repositories to update");
         }
