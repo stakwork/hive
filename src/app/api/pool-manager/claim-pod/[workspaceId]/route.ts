@@ -69,21 +69,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
-    console.log(">>> poolApiKey", poolApiKey);
-    if (!poolApiKey) {
-      return NextResponse.json({ error: "No pool API key found for this workspace" }, { status: 404 });
-    }
-    // const swarm = workspace.swarm;
-    // if (!swarm.poolApiKey) {
-    //   await updateSwarmPoolApiKeyFor(swarm.id);
-    //   poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
-    // }
-
     // Check if swarm has pool configuration
-    if (!workspace.swarm.poolName || !poolApiKey) {
+    if (!workspace.swarm.poolName || !workspace.swarm.poolApiKey) {
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
+
+    const poolApiKey = workspace.swarm.poolApiKey;
 
     // Call Pool Manager API to claim pod
     const poolName = workspace.swarm.poolName;
