@@ -43,6 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           select: { role: true },
         },
         swarm: true,
+        repositories: true,
       },
     });
 
@@ -92,8 +93,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         console.error("Control port (15552) not found in port mappings, skipping repository reset");
       } else {
         try {
-          // Reset repositories to empty array
-          await updatePodRepositories(controlPortUrl, podWorkspace.password, []);
+          const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+
+          if (repositories.length > 0) {
+            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+          } else {
+            console.log(">>> No repositories to reset");
+          }
         } catch (error) {
           console.error("Error resetting pod repositories:", error);
         }
