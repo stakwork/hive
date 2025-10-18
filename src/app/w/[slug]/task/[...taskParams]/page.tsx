@@ -390,14 +390,6 @@ export default function TaskChatPage() {
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
-        // Prepare history for agent mode from messages (convert ChatMessage to agent format)
-        const history = messages
-          .filter((msg) => msg.role === ChatRole.USER || msg.role === ChatRole.ASSISTANT)
-          .map((msg) => ({
-            role: msg.role.toLowerCase() as "user" | "assistant",
-            content: msg.message,
-          }));
-
         // Extract gooseUrl from IDE artifact if available
         const gooseUrl = options?.podUrls?.goose;
 
@@ -416,7 +408,6 @@ export default function TaskChatPage() {
             taskId: options?.taskId || currentTaskId,
             message: messageText,
             workspaceSlug: slug,
-            history,
             gooseUrl,
             artifacts: backendArtifacts,
           }),

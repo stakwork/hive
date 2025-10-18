@@ -35,7 +35,7 @@ function generateSessionId() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { message, history = [], gooseUrl, taskId, artifacts = [] } = body;
+  const { message, gooseUrl, taskId, artifacts = [] } = body;
 
   // Authenticate user
   const session = await getServerSession(authOptions);
@@ -43,7 +43,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Save user message with artifacts to database if taskId is provided
+  // Load chat history from database
+  let chatHistory: { role: string; message: string; sourceWebsocketID: string | null }[] = [];
+  let sessionId: string | null = null;
+
+  if (taskId) {
+    try {
+      chatHistory = await db.chatMessage.findMany({
+        where: { taskId },
+        orderBy: { timestamp: "asc" },
+        select: {
+          role: true,
+          message: true,
+          sourceWebsocketID: true,
+        },
+      });
+
+      // Check if first message has a sourceWebsocketID
+      if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
+        sessionId = chatHistory[0].sourceWebsocketID;
+        console.log("🔄 Reusing existing session ID:", sessionId);
+      } else {
+        // Generate new session ID for first message
+        sessionId = generateSessionId();
+        console.log("🆕 Generated new session ID:", sessionId);
+      }
+    } catch (error) {
+      console.error("Error loading chat history:", error);
+    }
+  }
+
+  // If no taskId or failed to load, generate new session
+  if (!sessionId) {
+    sessionId = generateSessionId();
+    console.log("🆕 Generated new session ID (no task):", sessionId);
+  }
+
+  // Save user message with artifacts and sourceWebsocketID to database if taskId is provided
   if (taskId) {
     try {
       await db.chatMessage.create({
@@ -52,6 +88,7 @@ export async function POST(request: NextRequest) {
           message,
           role: ChatRole.USER,
           status: ChatStatus.SENT,
+          sourceWebsocketID: sessionId,
           artifacts: {
             create: artifacts.map((artifact: ArtifactRequest) => ({
               type: artifact.type,
@@ -71,20 +108,23 @@ export async function POST(request: NextRequest) {
     : "ws://localhost:8888/ws";
 
   console.log("🤖 Goose URL:", wsUrl);
+  console.log("🤖 Session ID:", sessionId); // 20251018_143907
   const model = gooseWeb("goose", {
     wsUrl,
+    sessionId,
   });
 
-  // Build messages array from history
+  // Build messages array from database history
   const messages: ModelMessage[] = [{ role: "system", content: AGENT_SYSTEM_PROMPT }];
 
-  // Add history if provided
-  if (Array.isArray(history) && history.length > 0) {
-    for (const msg of history) {
-      if (msg.role === "user" || msg.role === "assistant") {
+  // Add chat history from database
+  if (chatHistory.length > 0) {
+    for (const msg of chatHistory) {
+      const role = msg.role.toLowerCase();
+      if (role === "user" || role === "assistant") {
         messages.push({
-          role: msg.role,
-          content: msg.content || msg.message || "",
+          role: role as "user" | "assistant",
+          content: msg.message,
         });
       }
     }
