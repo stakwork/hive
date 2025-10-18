@@ -80,10 +80,64 @@ export default function UserJourneys() {
     }
   }, [frontend, fetchE2eTests]);
 
+  // Shared function to drop the pod
+  const dropPod = useCallback(async (useBeacon = false) => {
+    if (!id) return;
+
+    try {
+      if (useBeacon) {
+        // Use sendBeacon for reliable delivery when page is closing
+        const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+        navigator.sendBeacon(`/api/pool-manager/drop-pod/${id}`, blob);
+      } else {
+        // Use regular fetch for normal scenarios
+        await fetch(`/api/pool-manager/drop-pod/${id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error dropping pod:", error);
+    }
+  }, [id]);
+
+  // Drop pod when component unmounts or when navigating away
+  useEffect(() => {
+    return () => {
+      if (frontend) {
+        dropPod();
+      }
+    };
+  }, [frontend, dropPod]);
+
+  // Drop pod when browser/tab closes or page refreshes
+  useEffect(() => {
+    if (!frontend) return;
+
+    const handleBeforeUnload = () => {
+      dropPod(true);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [frontend, dropPod]);
+
   const handleCopyCode = async (code: string, refId: string) => {
     await navigator.clipboard.writeText(code);
     setCopiedId(refId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleCloseBrowser = () => {
+    // Close iframe immediately for better UX
+    setFrontend(null);
+    // Drop pod in background (no await)
+    dropPod();
   };
 
   const handleCreateUserJourney = async () => {
@@ -195,7 +249,7 @@ export default function UserJourneys() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setFrontend(null)}
+            onClick={handleCloseBrowser}
             className="h-8 w-8 p-0"
           >
             ✕
