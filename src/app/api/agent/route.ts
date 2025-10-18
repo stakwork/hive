@@ -44,8 +44,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Load chat history from database
-  let chatHistory: { role: string; message: string; sourceWebsocketID: string | null }[] = [];
+  let chatHistory: {
+    role: string;
+    message: string;
+    sourceWebsocketID: string | null;
+    artifacts: { content: unknown }[];
+  }[] = [];
   let sessionId: string | null = null;
+  let persistedGooseUrl: string | null = null;
 
   if (taskId) {
     try {
@@ -56,6 +62,12 @@ export async function POST(request: NextRequest) {
           role: true,
           message: true,
           sourceWebsocketID: true,
+          artifacts: {
+            where: { type: ArtifactType.IDE },
+            select: {
+              content: true,
+            },
+          },
         },
       });
 
@@ -67,6 +79,22 @@ export async function POST(request: NextRequest) {
         // Generate new session ID for first message
         sessionId = generateSessionId();
         console.log("🆕 Generated new session ID:", sessionId);
+      }
+
+      // Look for IDE artifact to get persisted gooseUrl
+      for (const msg of chatHistory) {
+        if (msg.artifacts && msg.artifacts.length > 0) {
+          const ideArtifact = msg.artifacts[0];
+          if (ideArtifact.content && typeof ideArtifact.content === 'object') {
+            const content = ideArtifact.content as { url?: string };
+            if (content.url) {
+              // Transform URL: https://09c0a821.workspaces.sphinx.chat -> https://09c0a821-15551.workspaces.sphinx.chat
+              persistedGooseUrl = content.url.replace(/^(https?:\/\/[^.]+)\./, '$1-15551.');
+              console.log("🔄 Found persisted Goose URL from IDE artifact:", persistedGooseUrl);
+              break;
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error loading chat history:", error);
@@ -102,13 +130,19 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Use provided gooseUrl or fall back to localhost
-  const wsUrl = gooseUrl
-    ? gooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws"
+  // Use persisted gooseUrl from IDE artifact, or provided gooseUrl, or fall back to localhost
+  const effectiveGooseUrl = persistedGooseUrl || gooseUrl;
+  const wsUrl = effectiveGooseUrl
+    ? effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws"
     : "ws://localhost:8888/ws";
 
   console.log("🤖 Goose URL:", wsUrl);
-  console.log("🤖 Session ID:", sessionId); // 20251018_143907
+  if (persistedGooseUrl) {
+    console.log("🔄 Using persisted Goose URL from database");
+  } else if (gooseUrl) {
+    console.log("🆕 Using Goose URL from request");
+  }
+  console.log("🤖 Session ID:", sessionId);
   const model = gooseWeb("goose", {
     wsUrl,
     sessionId,

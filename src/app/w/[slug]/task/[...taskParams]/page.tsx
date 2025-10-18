@@ -242,61 +242,61 @@ export default function TaskChatPage() {
               },
             });
 
-          if (podResponse.ok) {
-            const podResult = await podResponse.json();
-            claimedPodUrls = {
-              frontend: podResult.frontend,
-              ide: podResult.ide,
-              goose: podResult.goose,
-            };
-            // setPodUrls(claimedPodUrls);
-          } else {
-            console.error("Failed to claim pod:", await podResponse.text());
+            if (podResponse.ok) {
+              const podResult = await podResponse.json();
+              claimedPodUrls = {
+                frontend: podResult.frontend,
+                ide: podResult.ide,
+                goose: podResult.goose,
+              };
+              // setPodUrls(claimedPodUrls);
+            } else {
+              console.error("Failed to claim pod:", await podResponse.text());
+              toast({
+                title: "Warning",
+                description: "Failed to claim pod. Continuing without pod integration.",
+                variant: "destructive",
+              });
+            }
+          } catch (error) {
+            console.error("Error claiming pod:", error);
             toast({
               title: "Warning",
               description: "Failed to claim pod. Continuing without pod integration.",
               variant: "destructive",
             });
           }
-        } catch (error) {
-          console.error("Error claiming pod:", error);
-          toast({
-            title: "Warning",
-            description: "Failed to claim pod. Continuing without pod integration.",
-            variant: "destructive",
-          });
         }
-      }
 
-      // Create new task
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: msg,
-          description: "New task description", // TODO: Add description
-          status: "active",
-          workspaceSlug: slug,
-          mode: taskMode, // Save the task mode
-        }),
-      });
+        // Create new task
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: msg,
+            description: "New task description", // TODO: Add description
+            status: "active",
+            workspaceSlug: slug,
+            mode: taskMode, // Save the task mode
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          throw new Error(`Failed to create task: ${response.statusText}`);
+        }
 
-      const result = await response.json();
-      const newTaskId = result.data.id;
-      setCurrentTaskId(newTaskId);
+        const result = await response.json();
+        const newTaskId = result.data.id;
+        setCurrentTaskId(newTaskId);
 
-      // Set the task title from the response or fallback to the initial message
-      if (result.data.title) {
-        setTaskTitle(result.data.title);
-      } else {
-        setTaskTitle(msg); // Use the initial message as title fallback
-      }
+        // Set the task title from the response or fallback to the initial message
+        if (result.data.title) {
+          setTaskTitle(result.data.title);
+        } else {
+          setTaskTitle(msg); // Use the initial message as title fallback
+        }
 
         const newUrl = `/w/${slug}/task/${newTaskId}`;
         // this updates the URL WITHOUT reloading the page
@@ -390,14 +390,14 @@ export default function TaskChatPage() {
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
-        // Extract gooseUrl from IDE artifact if available
-        const gooseUrl = options?.podUrls?.goose;
-
         // Prepare artifacts for backend (convert to serializable format)
         const backendArtifacts = artifacts.map((artifact) => ({
           type: artifact.type,
           content: artifact.content,
         }));
+
+        // Extract gooseUrl from IDE artifact if available
+        const gooseUrl = options?.podUrls?.goose;
 
         const response = await fetch("/api/agent", {
           method: "POST",
@@ -581,7 +581,7 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} />
+          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} isLoading={isLoading} />
         </motion.div>
       ) : (
         <motion.div

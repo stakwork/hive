@@ -11,9 +11,10 @@ interface TaskStartInputProps {
   onStart: (task: string) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
+  isLoading?: boolean;
 }
 
-export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInputProps) {
+export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = false }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -62,7 +63,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange }: TaskStartInp
           size="icon"
           className="absolute bottom-6 right-8 z-10 rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
           style={{ width: 32, height: 32 }}
-          disabled={!hasText}
+          disabled={!hasText || isLoading}
           onClick={handleClick}
           tabIndex={0}
           data-testid="task-start-submit"
