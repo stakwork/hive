@@ -124,6 +124,16 @@ export const selectors = {
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
   },
 
+  // Stakgraph
+  stakgraph: {
+    editConfigurationLink: '[data-testid="edit-configuration-link"]',
+    pageHeader: '[data-testid="page-header"]',
+    pageTitle: '[data-testid="page-title"]',
+    cardTitle: '[data-testid="stakgraph-card-title"]',
+    saveButton: '[data-testid="stakgraph-save-button"]',
+    poolStatusSection: '[data-testid="vm-config-section"]',
+  },
+
   // Onboarding
   onboarding: {
     welcomeText: 'text=/Welcome|Get Started|Create.*Workspace/i',

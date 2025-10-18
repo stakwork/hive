@@ -73,7 +73,7 @@ export function VMConfigSection() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem asChild>
-                <Link href={`/w/${slug}/stakgraph`} className="cursor-pointer">
+                <Link href={`/w/${slug}/stakgraph`} className="cursor-pointer" data-testid="edit-configuration-link">
                   <Settings className="w-4 h-4 mr-2" />
                   Edit Configuration
                 </Link>
