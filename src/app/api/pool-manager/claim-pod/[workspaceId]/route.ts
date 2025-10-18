@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, getWorkspaceFromPool, updatePodRepositories } from "@/lib/pods";
+import { claimPodAndGetFrontend, updatePodRepositories } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -89,11 +89,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const frontend = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
+    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
-      const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
       const controlPortUrl = podWorkspace.portMappings["15552"];
 
       if (!controlPortUrl) {
@@ -109,11 +108,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
+    // Extract control, IDE, and goose URLs
+    const control = podWorkspace.portMappings["15552"] || null;
+    const ide = podWorkspace.url || null;
+    const goose = podWorkspace.portMappings["15551"] || null;
+
     return NextResponse.json(
       {
         success: true,
         message: "Pod claimed successfully",
         frontend,
+        control,
+        ide,
+        goose,
       },
       { status: 200 },
     );

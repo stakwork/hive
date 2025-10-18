@@ -1,6 +1,6 @@
 import { config } from "@/lib/env";
 
-interface PodWorkspace {
+export interface PodWorkspace {
   branches: string[];
   created: string;
   customImage: boolean;
@@ -140,7 +140,10 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
   return frontend;
 }
 
-export async function claimPodAndGetFrontend(poolName: string, poolApiKey: string): Promise<string> {
+export async function claimPodAndGetFrontend(
+  poolName: string,
+  poolApiKey: string,
+): Promise<{ frontend: string; workspace: PodWorkspace }> {
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
 
@@ -149,19 +152,34 @@ export async function claimPodAndGetFrontend(poolName: string, poolApiKey: strin
   // Mark the workspace as used
   await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
 
-  // Get the control port URL (15552)
-  const controlPortUrl = workspace.portMappings["15552"];
-  if (!controlPortUrl) {
-    throw new Error("Control port (15552) not found in port mappings");
+  let frontend: string;
+
+  try {
+    // Get the control port URL (15552)
+    const controlPortUrl = workspace.portMappings["15552"];
+    if (!controlPortUrl) {
+      throw new Error("Control port (15552) not found in port mappings");
+    }
+
+    // Get the process list from the control port
+    const processList = await getProcessList(controlPortUrl, workspace.password);
+
+    // Get the frontend URL from port mappings
+    frontend = getFrontendUrl(processList, workspace.portMappings);
+  } catch (error) {
+    console.error(">>> Failed to get frontend from process list, falling back to port 3000:", error);
+
+    // Fallback to port 3000 if process discovery fails
+    frontend = workspace.portMappings["3000"];
+
+    if (!frontend) {
+      throw new Error("Failed to discover frontend and port 3000 not found in port mappings");
+    }
+
+    console.log(">>> Using fallback frontend on port 3000:", frontend);
   }
 
-  // Get the process list from the control port
-  const processList = await getProcessList(controlPortUrl, workspace.password);
-
-  // Get the frontend URL from port mappings
-  const frontend = getFrontendUrl(processList, workspace.portMappings);
-
-  return frontend;
+  return { frontend, workspace };
 }
 
 export async function dropPod(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
