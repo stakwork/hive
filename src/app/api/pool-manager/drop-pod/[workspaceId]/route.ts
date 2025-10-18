@@ -5,11 +5,11 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { claimPodAndGetFrontend } from "@/lib/pods";
+import { dropPod, getWorkspaceFromPool } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (process.env.MOCK_BROWSER_URL) {
       return NextResponse.json(
-        { success: true, message: "Pod claimed successfully", frontend: process.env.MOCK_BROWSER_URL },
+        { success: true, message: "Pod dropped successfully" },
         { status: 200 },
       );
     }
@@ -77,7 +77,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
-    // Call Pool Manager API to claim pod
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
@@ -86,18 +85,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "Content-Type": "application/json",
     };
 
-    const frontend = await claimPodAndGetFrontend(poolName, headers);
+    // First, get the workspace info to retrieve the external workspace ID
+    const podWorkspace = await getWorkspaceFromPool(poolName, headers);
+
+    // Now drop the pod
+    await dropPod(poolName, podWorkspace.id, headers);
 
     return NextResponse.json(
       {
         success: true,
-        message: "Pod claimed successfully",
-        frontend,
+        message: "Pod dropped successfully",
       },
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error claiming pod:", error);
+    console.error("Error dropping pod:", error);
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
@@ -112,6 +114,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    return NextResponse.json({ error: "Failed to claim pod" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to drop pod" }, { status: 500 });
   }
 }
