@@ -159,6 +159,23 @@ export default function TaskChatPage() {
         setMessages(result.data.messages);
         console.log(`Loaded ${result.data.count} existing messages for task`);
 
+        // Set task mode from loaded task data
+        if (result.data.task?.mode) {
+          setTaskMode(result.data.task.mode);
+        }
+
+        // Convert messages to agent format if in agent mode
+        const loadedTaskMode = result.data.task?.mode || taskMode;
+        if (loadedTaskMode === "agent") {
+          const convertedAgentMessages: AgentStreamingMessage[] = result.data.messages.map((msg: ChatMessage) => ({
+            id: msg.id,
+            content: msg.message, // Map 'message' field to 'content'
+            role: msg.role.toLowerCase() as "user" | "assistant",
+            timestamp: new Date(msg.timestamp),
+          }));
+          setAgentMessages(convertedAgentMessages);
+        }
+
         // Set initial workflow status from task data
         if (result.data.task?.workflowStatus) {
           setWorkflowStatus(result.data.task.workflowStatus);
@@ -275,6 +292,7 @@ export default function TaskChatPage() {
           description: "New task description", // TODO: Add description
           status: "active",
           workspaceSlug: slug,
+          mode: taskMode, // Save the task mode
         }),
       });
 

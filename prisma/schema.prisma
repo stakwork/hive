@@ -362,6 +362,9 @@ model Task {
   // Task source tracking
   sourceType TaskSourceType @default(USER) @map("source_type")
 
+  // Task mode (live, test, agent, etc.)
+  mode String @default("live")
+
   // Audit fields
   createdById String @map("created_by_id")
   createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id])

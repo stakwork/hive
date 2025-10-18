@@ -46,6 +46,7 @@ export async function GET(
         workspaceId: true,
         workflowStatus: true,
         stakworkProjectId: true,
+        mode: true,
         workspace: {
           select: {
             id: true,
@@ -107,7 +108,7 @@ export async function GET(
             console.error('Error parsing contextTags for message', msg.id, ':', error, 'value:', msg.contextTags);
           }
         } else if (Array.isArray(msg.contextTags)) {
-          contextTags = msg.contextTags as ContextTag[];
+          contextTags = msg.contextTags as unknown as ContextTag[];
         }
       }
 
@@ -131,6 +132,7 @@ export async function GET(
             workspaceId: task.workspaceId,
             workflowStatus: task.workflowStatus,
             stakworkProjectId: task.stakworkProjectId,
+            mode: task.mode,
           },
           messages: clientMessages,
           count: clientMessages.length,
