@@ -11,10 +11,11 @@ import {
   forceZ,
 } from 'd3-force-3d'
 import { create } from 'zustand'
-import { ForceSimulation } from '~/transformers/forceSimulation'
 import { useDataStore } from '../useDataStore'
 import { useGraphStore } from '../useGraphStore'
 import { distributeNodesOnSphere } from './utils/distributeNodesOnSphere'
+
+type ForceSimulation = typeof forceSimulation
 
 const resetPosition = {
   fx: null,
