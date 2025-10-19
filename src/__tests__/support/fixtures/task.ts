@@ -10,6 +10,9 @@ export interface CreateTestTaskOptions {
   assigneeId?: string;
   status?: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
   sourceType?: "USER" | "JANITOR" | "SYSTEM";
+  priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  workflowStatus?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+  stakworkProjectId?: number;
 }
 
 export interface CreateTestChatMessageOptions {
@@ -33,6 +36,9 @@ export async function createTestTask(
       assigneeId: options.assigneeId || null,
       status: options.status || "TODO",
       sourceType: options.sourceType || "USER",
+      priority: options.priority || "MEDIUM",
+      workflowStatus: options.workflowStatus || null,
+      stakworkProjectId: options.stakworkProjectId || null,
     },
   });
 }
