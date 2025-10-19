@@ -25,6 +25,11 @@ export const Connections = memo(({ linksPosition }: Props) => {
   const hoveredNode = useGraphStore((s) => s.hoveredNode)
   const selectedNode = useGraphStore((s) => s.selectedNode)
 
+  console.log(hoveredNode)
+  console.log(selectedNode)
+  console.log(searchQuery)
+  console.log(selectedNodeTypes)
+  console.log(highlightNodes)
 
 
   const simulationInProgress = useSimulationStore((s) => s.simulationInProgress)

@@ -9,9 +9,9 @@ import { useNodeNavigation } from '../../useNodeNavigation'
 import { NodePoints } from './NodePoints'
 import { NodeWrapper } from './NodeWrapper'
 import { RelevanceGroups } from './RelevanceGroups'
+import { RelevanceList } from './RelevanceList/indes'
 import { nodeBackground } from './constants'
 import { nodeMatchesFollowerFilter } from './utils/nodesMatchsFollowesFilter'
-import { RelevanceList } from './RelevanceList/indes'
 
 const POINTER_IN_DELAY = 100
 
@@ -272,7 +272,7 @@ export const Cubes = memo(() => {
             const scaleToFixed = Number(scaleNormalized.toFixed(1))
 
             return normalizedNode ? (
-              <NodeWrapper key={node.ref_id} isFixed={isFixed} node={normalizedNode} scale={scaleToFixed || 1} />
+              <NodeWrapper key={node.ref_id} isFixed={isFixed} node={normalizedNode} scale={1} />
             ) : null
           })}
         </group>
