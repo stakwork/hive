@@ -233,3 +233,64 @@ export const testRepositoryUrls = {
   withGit: "https://github.com/test-owner/test-repo.git",
   different: "https://github.com/another-org/different-repo",
 };
+
+/**
+ * Mock GitHub API responses for webhook operations
+ */
+export const mockGitHubApiResponses = {
+  listHooksEmpty: [],
+  listHooksWithExisting: (callbackUrl: string, hookId: number = 12345) => [
+    {
+      id: hookId,
+      config: {
+        url: callbackUrl,
+        content_type: "json",
+      },
+      events: ["push", "pull_request"],
+      active: true,
+    },
+  ],
+  createHookSuccess: (hookId: number = 12345) => ({
+    id: hookId,
+    config: {
+      url: "https://example.com/webhook",
+      content_type: "json",
+    },
+    events: ["push", "pull_request"],
+    active: true,
+  }),
+  updateHookSuccess: {
+    id: 12345,
+    config: {
+      url: "https://example.com/webhook",
+      content_type: "json",
+    },
+    events: ["push", "pull_request"],
+    active: true,
+  },
+  repositoryInfo: (defaultBranch: string = "main") => ({
+    id: 123456,
+    name: "test-repo",
+    full_name: "test-owner/test-repo",
+    default_branch: defaultBranch,
+    private: false,
+  }),
+};
+
+/**
+ * Mock GitHub API error responses
+ */
+export const mockGitHubApiErrors = {
+  forbidden403: {
+    message: "Resource not accessible by integration",
+    documentation_url: "https://docs.github.com/rest",
+  },
+  notFound404: {
+    message: "Not Found",
+    documentation_url: "https://docs.github.com/rest",
+  },
+  serverError500: {
+    message: "Internal Server Error",
+    documentation_url: "https://docs.github.com/rest",
+  },
+};
