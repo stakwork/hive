@@ -1,5 +1,5 @@
+import { Guests, NodeExtended } from '@Universe/types'
 import { Vector3 } from 'three'
-import { Guests, NodeExtended } from '~/types'
 
 export const variableVector3 = new Vector3(0, 0, 0)
 

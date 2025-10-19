@@ -1,7 +1,7 @@
 import { useSimulationStore } from '@/stores/useSimulationStore'
+import { NodeExtended } from '@Universe/types'
 import { useRef } from 'react'
 import { Group } from 'three'
-import { NodeExtended } from '~/types'
 import { HtmlNode } from './HtmlNode'
 
 export const FloatingNodes = () => {

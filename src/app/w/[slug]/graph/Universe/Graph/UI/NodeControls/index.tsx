@@ -6,11 +6,11 @@ import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
+import { ActionDetail } from '@Universe/types'
 import { useNodeNavigation } from '@Universe/useNodeNavigation'
-import { Edit, GitBranch, GitMerge, Loader2, X, Plus, TestTube } from 'lucide-react'
+import { Edit, GitBranch, GitMerge, Loader2, Plus, TestTube, X } from 'lucide-react'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { Group, Vector3 } from 'three'
-import { ActionDetail } from '~/types'
 
 const reuseableVector3 = new Vector3()
 

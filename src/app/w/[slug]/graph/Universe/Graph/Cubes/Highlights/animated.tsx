@@ -1,10 +1,10 @@
 import { useAppStore } from '@/stores/useAppStore'
 import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
 import { useFrame } from '@react-three/fiber'
+import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef, useState } from 'react'
 import { Color, Material, Mesh, Vector3 } from 'three'
 import { useGraphData } from '~/components/DataRetriever'
-import { NodeExtended } from '~/types'
 import { boxGeometry } from '../constants'
 import { getHighlighter, highlightMaterial } from './constants'
 

@@ -4,9 +4,9 @@ import { useGraphStore } from '@/stores/useGraphStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
 import { distributeNodesOnSphere } from '@/stores/useSimulationStore/utils/distributeNodesOnSphere'
 import { Billboard, Edges, Html } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'
 import * as THREE from 'three'
-import { NodeExtended } from '~/types'
 import { nodeSize } from '../Cubes/constants'
 
 // Helper function to distribute neighborhoods based on node_type positioning

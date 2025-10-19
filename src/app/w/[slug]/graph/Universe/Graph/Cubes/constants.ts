@@ -1,5 +1,5 @@
+import { NodeExtended } from '@Universe/types'
 import * as THREE from 'three'
-import { NodeExtended } from '~/types'
 
 const createRoundedBoxGeometry = (width: number, height: number, depth: number, radius: number, segments: number) => {
   const shape = new THREE.Shape()

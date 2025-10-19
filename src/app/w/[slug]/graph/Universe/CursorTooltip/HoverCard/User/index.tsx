@@ -1,6 +1,6 @@
 import CheckIcon from '@/components/Icons/CheckIcon'
 import PersonIcon from '@/components/Icons/PersonIcon'
-import { Node } from '~/types'
+import { Node } from '@Universe/types'
 import { Avatar, TooltipContainer } from '../index'
 
 type Props = {

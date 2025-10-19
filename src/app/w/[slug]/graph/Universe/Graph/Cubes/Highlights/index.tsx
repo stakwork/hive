@@ -1,9 +1,9 @@
 import { useAppStore } from '@/stores/useAppStore'
 import { useSelectedNode } from '@/stores/useGraphStore'
+import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'
 import { Color, Material, Vector3 } from 'three'
 import { useGraphData } from '~/components/DataRetriever'
-import { NodeExtended } from '~/types'
 import { boxGeometry } from '../constants'
 import { HighlightProps, getHighlighter, highlightMaterial } from './constants'
 

@@ -1,5 +1,5 @@
+import { NodeExtended } from '@Universe/types'
 import { Vector3 } from 'three'
-import { NodeExtended } from '~/types'
 
 export type BadgeProps = {
   color: string

@@ -1,8 +1,8 @@
+import { ActionDetail } from '@Universe/types'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { SchemaExtended } from '~/components/ModalsContainer/BlueprintModal/types'
 import { SchemaLink } from '~/network/fetchSourcesData'
-import { ActionDetail } from '~/types'
 
 const COLORS_PALETTE = [
   ['#D25353', '#362429'],

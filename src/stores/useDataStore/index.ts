@@ -1,6 +1,6 @@
+import { FetchDataResponse, FilterParams, Link, Node, NodeExtended, NodeType, Sources, Trending, TStats } from '@Universe/types'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import { FetchDataResponse, FilterParams, Link, Node, NodeExtended, NodeType, Sources, Trending, TStats } from '~/types'
 
 export const defaultFilters = {
   skip: 0,

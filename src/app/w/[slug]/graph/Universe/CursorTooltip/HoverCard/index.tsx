@@ -1,4 +1,4 @@
-import { Node } from '~/types'
+import { Node } from '@Universe/types'
 import { General } from './General'
 import { Tweet } from './Tweet'
 import { User } from './User'

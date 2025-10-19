@@ -2,9 +2,9 @@ import { useDataStore } from '@/stores/useDataStore'
 import { useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useGraphStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
 import { Billboard, Html } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
 import { useNodeNavigation } from '@Universe/useNodeNavigation'
 import { useCallback, useMemo } from 'react'
-import { NodeExtended } from '~/types'
 import { nodeSize } from '../constants'
 
 export const RelevanceList = () => {

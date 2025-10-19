@@ -1,6 +1,7 @@
 import { Icons } from '@/components/Icons'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Billboard, Html } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
 import { colors } from '@Universe/utils/colors'
 import { removeEmojis } from '@Universe/utils/removeEmojisFromText'
 import { removeLeadingMentions } from '@Universe/utils/removeLeadingMentions'
@@ -8,7 +9,6 @@ import gsap from 'gsap'
 import { useLayoutEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
 import { Flex } from '~/components/common/Flex'
-import { NodeExtended } from '~/types'
 import { nodeSize } from '../../Cubes/constants'
 
 const NodeSize = nodeSize * 3

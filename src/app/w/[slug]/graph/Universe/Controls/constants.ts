@@ -1,7 +1,7 @@
 import { Camera } from '@react-three/fiber'
-import { NodeExtended } from '~/types'
-import { meshRenderLimit, meshRenderRadius } from '../Graph/Cubes/constants'
+import { NodeExtended } from '@Universe/types'
 import { variableVector3 } from '../constants'
+import { meshRenderLimit, meshRenderRadius } from '../Graph/Cubes/constants'
 
 type NearbyRenderProps = {
   id: string
