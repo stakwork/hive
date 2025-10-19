@@ -1,8 +1,8 @@
 import { Billboard, Instance } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
+import { generatePalette } from '@Universe/utils/palleteGenerator'
 import { memo, useRef } from 'react'
 import { Group, Mesh } from 'three'
-import { NodeExtended } from '../../../../../../types'
-import { generatePalette } from '@Universe/utils/palleteGenerator'
 import { nodeSize } from '../../constants'
 
 type Props = {

@@ -1,8 +1,69 @@
 import { ActionDetail } from '@Universe/types'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import { SchemaExtended } from '~/components/ModalsContainer/BlueprintModal/types'
-import { SchemaLink } from '~/network/fetchSourcesData'
+
+
+export interface Schema {
+  name?: string
+  ref_id?: string
+  type: string
+  age?: number
+  parent?: string
+  link?: string
+  icon?: string
+  title?: string
+  app_version?: string
+  description?: string
+  mission_statement?: string
+  namespace?: string
+  search_term?: string
+  is_deleted?: boolean
+  children?: string[]
+  primary_color?: string
+  secondary_color?: string
+  node_key?: string
+  index?: string
+  media_url?: string
+  image_url?: string
+  source_link?: string
+  type_description?: string
+  attributes?: { [key: string]: string | boolean }
+  action?: string[]
+}
+
+export interface SchemaLink {
+  edge_type: string
+  ref_id: string
+  source: string
+  target: string
+}
+
+export type SchemaWithChildren = Schema & {
+  children: string[]
+}
+
+export type SchemaExtended = SchemaWithChildren & {
+  x?: number
+  y?: number
+  z?: number
+  fx?: number
+  fy?: number
+  fz?: number
+  vx?: number
+  vy?: number
+  vz?: number
+}
+
+export type SchemaLinkExtended = SchemaLink & {
+  start: { x: number; y: number; z: number }
+  end: { x: number; y: number; z: number }
+}
+export interface SchemaLink {
+  edge_type: string
+  ref_id: string
+  source: string
+  target: string
+}
 
 const COLORS_PALETTE = [
   ['#D25353', '#362429'],

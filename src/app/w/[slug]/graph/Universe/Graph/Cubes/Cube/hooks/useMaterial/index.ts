@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { MeshStandardMaterial } from 'three'
+import { MeshStandardMaterial, Texture } from 'three'
 import { smoothness } from '../../constants'
 import { loader, noImageMaterial, noImageTexture, noImageTransparentMaterial, transparentValue } from './constants'
 
 type materialRecord = {
-  texture: THREE.Texture
-  material: THREE.MeshStandardMaterial
+  texture: Texture
+  material: MeshStandardMaterial
 }
 
 const cachedMaterials: Record<string, materialRecord> = {}
