@@ -28,9 +28,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for "latest" query parameter
+    // Check for "latest" and "goose" query parameters
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
+    const shouldIncludeGoose = searchParams.get("goose") === "true";
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -107,30 +108,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
     const ide = podWorkspace.url || null;
 
-    // Check if goose service is already running by checking process list
+    // Only handle goose if requested via query parameter
     let goose: string | null = null;
-    const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
+    if (shouldIncludeGoose) {
+      // Check if goose service is already running by checking process list
+      const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
 
-    if (gooseIsRunning) {
-      // Goose is always on the designated port
-      goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
-      if (goose) {
-        console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
+      if (gooseIsRunning) {
+        // Goose is always on the designated port
+        goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
+        if (goose) {
+          console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
+        }
       }
-    }
 
-    // If goose service is not running, start it up via control port
-    if (!goose && control) {
-      // Get the first repository name (or default to "hive")
-      const repoName = workspace.repositories[0]?.repositoryUrl.split("/").pop()?.replace(".git", "") || "hive";
+      // If goose service is not running, start it up via control port
+      if (!goose && control) {
+        // Get the first repository name (or default to "hive")
+        const repoName = workspace.repositories[0]?.repositoryUrl.split("/").pop()?.replace(".git", "") || "hive";
 
-      // Get Anthropic API key from environment
-      const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+        // Get Anthropic API key from environment
+        const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
-      if (!anthropicApiKey) {
-        console.error("ANTHROPIC_API_KEY not found in environment");
-      } else {
-        goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey, podWorkspace.portMappings);
+        if (!anthropicApiKey) {
+          console.error("ANTHROPIC_API_KEY not found in environment");
+        } else {
+          goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey, podWorkspace.portMappings);
+        }
       }
     }
 

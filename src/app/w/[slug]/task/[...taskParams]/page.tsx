@@ -57,11 +57,62 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
+  const [hasPod, setHasPod] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+
+  // Shared function to drop the pod
+  const dropPod = useCallback(
+    async (useBeacon = false) => {
+      if (!workspaceId) return;
+
+      try {
+        if (useBeacon) {
+          // Use sendBeacon for reliable delivery when page is closing
+          const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+          navigator.sendBeacon(`/api/pool-manager/drop-pod/${workspaceId}?latest=true`, blob);
+        } else {
+          // Use regular fetch for normal scenarios
+          await fetch(`/api/pool-manager/drop-pod/${workspaceId}?latest=true`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error dropping pod:", error);
+      }
+    },
+    [workspaceId],
+  );
+
+  // Drop pod when component unmounts or when navigating away
+  useEffect(() => {
+    return () => {
+      if (hasPod) {
+        dropPod();
+      }
+    };
+  }, [hasPod, dropPod]);
+
+  // Drop pod when browser/tab closes or page refreshes
+  useEffect(() => {
+    if (!hasPod) return;
+
+    const handleBeforeUnload = () => {
+      dropPod(true);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasPod, dropPod]);
 
   // Streaming processor for agent mode
   const { processStream } = useStreamProcessor<AgentStreamingMessage>({
@@ -234,7 +285,7 @@ export default function TaskChatPage() {
         let claimedPodUrls: { frontend: string; ide: string; goose: string } | null = null;
         if (taskMode === "agent" && workspaceId) {
           try {
-            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true`, {
+            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true&goose=true`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -248,6 +299,7 @@ export default function TaskChatPage() {
                 ide: podResult.ide,
                 goose: podResult.goose,
               };
+              setHasPod(true);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
               toast({
