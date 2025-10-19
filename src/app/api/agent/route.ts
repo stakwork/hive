@@ -130,14 +130,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Use persisted gooseUrl from IDE artifact, or provided gooseUrl, or fall back to localhost
-  const effectiveGooseUrl = persistedGooseUrl || gooseUrl;
-  const wsUrl = effectiveGooseUrl
-    ? effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws"
-    : "ws://localhost:8888/ws";
+  // Use custom dev URL (highest priority for testing), or persisted gooseUrl from IDE artifact, or provided gooseUrl
+  const effectiveGooseUrl = process.env.CUSTOM_GOOSE_WEB_URL || persistedGooseUrl || gooseUrl;
+
+  if (!effectiveGooseUrl) {
+    return NextResponse.json(
+      { error: "No Goose URL available. Please start a new agent task to claim a pod." },
+      { status: 400 }
+    );
+  }
+
+  const wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
 
   console.log("🤖 Goose URL:", wsUrl);
-  if (persistedGooseUrl) {
+  if (process.env.CUSTOM_GOOSE_WEB_URL) {
+    console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_WEB_URL");
+  } else if (persistedGooseUrl) {
     console.log("🔄 Using persisted Goose URL from database");
   } else if (gooseUrl) {
     console.log("🆕 Using Goose URL from request");
