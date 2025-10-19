@@ -142,6 +142,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       {
         success: true,
         message: "Pod claimed successfully",
+        podId: podWorkspace.id,
         frontend,
         control,
         ide,

@@ -58,6 +58,7 @@ export default function TaskChatPage() {
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [hasPod, setHasPod] = useState(false);
+  const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -67,16 +68,18 @@ export default function TaskChatPage() {
   // Shared function to drop the pod
   const dropPod = useCallback(
     async (useBeacon = false) => {
-      if (!workspaceId) return;
+      if (!workspaceId || !claimedPodId) return;
+
+      const dropUrl = `/api/pool-manager/drop-pod/${workspaceId}?latest=true&podId=${claimedPodId}`;
 
       try {
         if (useBeacon) {
           // Use sendBeacon for reliable delivery when page is closing
           const blob = new Blob([JSON.stringify({})], { type: "application/json" });
-          navigator.sendBeacon(`/api/pool-manager/drop-pod/${workspaceId}?latest=true`, blob);
+          navigator.sendBeacon(dropUrl, blob);
         } else {
           // Use regular fetch for normal scenarios
-          await fetch(`/api/pool-manager/drop-pod/${workspaceId}?latest=true`, {
+          await fetch(dropUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -87,7 +90,7 @@ export default function TaskChatPage() {
         console.error("Error dropping pod:", error);
       }
     },
-    [workspaceId],
+    [workspaceId, claimedPodId],
   );
 
   // Drop pod when component unmounts or when navigating away
@@ -300,6 +303,7 @@ export default function TaskChatPage() {
                 goose: podResult.goose,
               };
               setHasPod(true);
+              setClaimedPodId(podResult.podId);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
               toast({
