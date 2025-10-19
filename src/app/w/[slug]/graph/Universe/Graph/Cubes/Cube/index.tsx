@@ -1,6 +1,5 @@
 import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
 import { useFrame } from '@react-three/fiber'
-import { Select } from '@react-three/postprocessing'
 import { NodeExtended } from '@Universe/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Mesh } from 'three'
@@ -51,18 +50,17 @@ export const Cube = memo(({ node, hide, animated }: Props) => {
   }, [node, isSelected, showSelectionGraph])
 
   return (
-    <Select enabled={!!isSelected}>
-      <mesh
-        ref={ref}
-        geometry={boxGeometry}
-        material={material}
-        name={node.id}
-        // position={[node.x, node.y, node.z]}
-        scale={scale}
-        userData={node}
-        visible={!hide}
-      />
-    </Select>
+    <mesh
+      ref={ref}
+      geometry={boxGeometry}
+      material={material}
+      name={node.id}
+      // position={[node.x, node.y, node.z]}
+      scale={scale}
+      userData={node}
+      visible={!hide}
+    />
+
   )
 })
 

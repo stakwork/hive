@@ -1,165 +1,66 @@
 import { useGraphStore } from '@/stores/useGraphStore'
-import { useModal } from '@/stores/useModalStore'
-import { Button } from '@mui/material'
-import { useParams } from 'react-router-dom'
-import styled, { css } from 'styled-components'
-import { Flex } from '~/components/common/Flex'
-import ClearIcon from '~/components/Icons/ClearIcon'
-import SearchIcon from '~/components/Icons/SearchIcon'
-import { colors } from '~/utils'
+import ClearIcon from '@/components/Icons/ClearIcon'
+import SearchIcon from '@/components/Icons/SearchIcon'
 import { GraphFilter } from './GraphFilter'
 
 export const GraphSearch = () => {
   const [setSearchQuery, searchQuery] = useGraphStore((s) => [s.setSearchQuery, s.searchQuery])
-  const { open } = useModal('claim')
-  const { episodeId } = useParams()
 
   return (
-    <Wrapper>
-      <TopBarContainer>
-        <SearchWrapper>
-          <Input
+    <div className="absolute top-0 right-0 left-0 z-[100] flex flex-col items-center px-4 pt-4">
+      {/* Glass morphism background for better visual separation */}
+      <div className="flex flex-row items-center justify-end w-full mx-auto gap-4 p-3 rounded-2xl bg-black/20 backdrop-blur-md border border-white/10 shadow-2xl">
+        {/* Enhanced search input with modern styling */}
+        <div className="relative flex flex-row w-72 group">
+          <input
             id="graph-search"
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search graph"
             type="text"
             value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search graph..."
+            autoCorrect="off"
+            autoComplete="off"
+            className="
+              box-border pointer-events-auto h-10 px-4 pr-12 z-[2] w-full
+              border border-gray-600/50 rounded-xl bg-gray-900/80 backdrop-blur-sm
+              text-sm font-medium text-white placeholder-gray-400
+              focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400/50
+              hover:border-gray-500/50 hover:bg-gray-800/80
+              transition-all duration-300 ease-out
+              shadow-inner
+            "
           />
 
           {searchQuery?.trim() ? (
-            <InputButton
+            <button
               data-testid="search_action_icon"
-              onClick={() => {
-                setSearchQuery('')
-              }}
+              onClick={() => setSearchQuery('')}
+              className="
+                absolute right-3 top-1/2 -translate-y-1/2 z-[2]
+                flex items-center justify-center w-6 h-6 rounded-md
+                text-gray-400 hover:text-white hover:bg-white/10
+                cursor-pointer transition-all duration-200
+                active:scale-95
+              "
+              title="Clear search"
             >
-              <ClearIcon />
-            </InputButton>
+              <ClearIcon className="w-4 h-4" />
+            </button>
           ) : (
-            <SearchIconWrapper>
-              <SearchIcon />
-            </SearchIconWrapper>
+            <div className="
+              absolute right-3 top-1/2 -translate-y-1/2 z-[3]
+              flex items-center justify-center w-6 h-6
+              pointer-events-none transition-all duration-200
+              group-focus-within:text-blue-400 text-gray-500
+            ">
+              <SearchIcon className="w-5 h-5" />
+            </div>
           )}
-        </SearchWrapper>
+        </div>
+
+        {/* Filter component with consistent styling */}
         <GraphFilter />
-        {episodeId && <Button onClick={() => open()}>Claims</Button>}
-      </TopBarContainer>
-    </Wrapper>
+      </div>
+    </div>
   )
 }
-
-const Wrapper = styled(Flex)`
-  padding: 16px 16px 0;
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  flex-direction: column;
-  align-items: center;
-  z-index: 100;
-`
-
-const TopBarContainer = styled(Flex)`
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  margin: 0 auto;
-  gap: 12px;
-`
-
-const SearchWrapper = styled(Flex)`
-  flex-direction: row;
-  position: relative;
-  width: 250px;
-`
-
-const SearchIconWrapper = styled(Flex)`
-  position: absolute;
-  right: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 3;
-  pointer-events: none;
-
-  width: 28px;
-  height: 28px;
-
-  svg {
-    width: 28px;
-    height: 28px;
-
-    path {
-      fill: ${colors.GRAY8};
-    }
-  }
-`
-
-const Input = styled.input.attrs(() => ({
-  autoCorrect: 'off',
-  autoComplete: 'off',
-})) <{ loading?: boolean }>`
-  box-sizing: border-box;
-  pointer-events: auto;
-  height: 32px;
-  padding: 11px 16px;
-  z-index: 2;
-  width: 100%;
-  border: none;
-  border-radius: 200px;
-  background: ${colors.BG2};
-
-  font-size: 15px;
-  font-weight: 500;
-  color: ${colors.white};
-
-  -webkit-autofill,
-  -webkit-autocomplete,
-  -webkit-contacts-auto-fill,
-  -webkit-credentials-auto-fill {
-    display: none !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    position: absolute !important;
-    right: 0 !important;
-  }
-
-  &:focus {
-    outline: 1px solid ${colors.primaryBlue};
-  }
-
-  &::placeholder {
-    color: ${colors.GRAY7};
-  }
-
-  ${({ loading }) =>
-    loading &&
-    css`
-      background-image: url('https://i.gifer.com/ZZ5H.gif');
-      background-size: 25px 25px;
-      background-position: right center;
-      background-position-x: 95%;
-      background-repeat: no-repeat;
-    `}
-`
-
-const InputButton = styled(Flex).attrs({
-  align: 'center',
-  justify: 'center',
-})`
-  font-size: 20px;
-  color: ${colors.GRAY7};
-  cursor: pointer;
-  transition-duration: 0.2s;
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  width: 20px;
-  height: 20px;
-
-  &:hover {
-    color: ${colors.white};
-  }
-`

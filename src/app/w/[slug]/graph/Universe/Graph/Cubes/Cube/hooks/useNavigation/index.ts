@@ -1,10 +1,10 @@
-/* eslint-disable no-param-reassign */
+
 import { useSelectedNode } from '@/stores/useGraphStore'
 import { useFrame } from '@react-three/fiber'
+import { variableVector3 } from '@Universe/constants'
 import { NodeExtended } from '@Universe/types'
 import { RefObject, useCallback, useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
-import { variableVector3 } from '~/components/Universe/constants'
 
 export const useNavigation = (thisNodeRef: RefObject<THREE.Mesh | null>) => {
   const selectedNode = useSelectedNode()

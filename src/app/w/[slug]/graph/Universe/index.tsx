@@ -11,6 +11,7 @@ import { initialCameraPosition } from './Controls/CameraAnimations/constants'
 import { CursorTooltip } from './CursorTooltip'
 import { Graph } from './Graph'
 import { GraphStyleSwitcher } from './Graph/UI/GraphStyleSwitcher'
+import { GraphSearch } from './GraphSearch'
 import { Overlay } from './Overlay'
 import { colors } from './utils/colors'
 
@@ -103,7 +104,7 @@ const _Universe = () => {
           </Suspense>
         </Canvas>
         <GraphStyleSwitcher />
-        {/* <GraphSearch /> */}
+        <GraphSearch />
         <CursorTooltip />
       </Suspense>
       <Overlay />
