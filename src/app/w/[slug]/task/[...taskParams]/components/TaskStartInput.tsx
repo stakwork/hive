@@ -71,24 +71,24 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
           <ArrowUp className="w-4 h-4" />
         </Button>
       </Card>
-      {devMode && (
-        <div className="flex justify-center mt-6">
-          <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
-            <legend className="sr-only">Mode</legend>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                value="live"
-                style={{
-                  accentColor: "var(--color-green-500)",
-                }}
-                checked={taskMode === "live"}
-                onChange={() => onModeChange("live")}
-                className="accent-primary"
-              />
-              <span className="text-sm text-foreground">Live</span>
-            </label>
+      <div className="flex justify-center mt-6">
+        <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
+          <legend className="sr-only">Mode</legend>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="mode"
+              value="live"
+              style={{
+                accentColor: "var(--color-green-500)",
+              }}
+              checked={taskMode === "live"}
+              onChange={() => onModeChange("live")}
+              className="accent-primary"
+            />
+            <span className="text-sm text-foreground">Live</span>
+          </label>
+          {devMode && (
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -103,23 +103,23 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
               />
               <span className="text-sm text-foreground">Artifact Test</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                value="agent"
-                style={{
-                  accentColor: "var(--color-green-500)",
-                }}
-                checked={taskMode === "agent"}
-                onChange={() => onModeChange("agent")}
-                className="accent-primary"
-              />
-              <span className="text-sm text-foreground">Agent</span>
-            </label>
-          </fieldset>
-        </div>
-      )}
+          )}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="mode"
+              value="agent"
+              style={{
+                accentColor: "var(--color-green-500)",
+              }}
+              checked={taskMode === "agent"}
+              onChange={() => onModeChange("agent")}
+              className="accent-primary"
+            />
+            <span className="text-sm text-foreground">Agent</span>
+          </label>
+        </fieldset>
+      </div>
     </div>
   );
 }
