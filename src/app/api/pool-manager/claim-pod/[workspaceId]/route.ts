@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning } from "@/lib/pods";
+import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -84,10 +84,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
-      const controlPortUrl = podWorkspace.portMappings["15552"];
+      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
-        console.error("Control port (15552) not found in port mappings, skipping repository update");
+        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`);
       } else {
         const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Extract control, IDE, and goose URLs
-    const control = podWorkspace.portMappings["15552"] || null;
+    const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
     const ide = podWorkspace.url || null;
 
     // Check if goose service is already running by checking process list
@@ -112,10 +112,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
 
     if (gooseIsRunning) {
-      // Goose is always on port 15551
-      goose = podWorkspace.portMappings["15551"] || null;
+      // Goose is always on the designated port
+      goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
       if (goose) {
-        console.log("✅ Goose service already running:", goose);
+        console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
       }
     }
 
