@@ -1,6 +1,5 @@
 import { useDataStore } from '@/stores/useDataStore'
 import { useGraphStore } from '@/stores/useGraphStore'
-import { useSchemaStore } from '@/stores/useSchemaStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
 import { Segments } from '@react-three/drei'
 import { Link } from '@Universe/types'
@@ -16,7 +15,6 @@ type Props = {
 export const Connections = memo(({ linksPosition }: Props) => {
 
   const dataInitial = useDataStore((s) => s.dataInitial)
-  const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
 
   const searchQuery = useGraphStore((s) => s.searchQuery)
@@ -34,7 +32,6 @@ export const Connections = memo(({ linksPosition }: Props) => {
 
   const simulationInProgress = useSimulationStore((s) => s.simulationInProgress)
 
-  const normalizedSchemasByType = useSchemaStore((s) => s.normalizedSchemasByType)
 
   return (
     <>
@@ -91,11 +88,7 @@ export const Connections = memo(({ linksPosition }: Props) => {
               tz: 0,
             }
 
-            const sourceNode = nodesNormalized.get(l.source) || ''
-
-            const color = sourceNode ? normalizedSchemasByType[sourceNode.node_type]?.primary_color : 'white'
-
-            const linkColor = 'rgba(97, 138, 255, 1)' || '#494C5A' || color || 'white'
+            const linkColor = 'rgba(97, 138, 255, 1)'
 
             return (
               <LineInstance
