@@ -113,6 +113,7 @@ export const Graph = () => {
     const grConnections = groupRef.current.getObjectByName('simulation-3d-group__connections') as Group
 
     simulation.on('tick', () => {
+      console.log(linksPositionRef.current)
       if (groupRef?.current) {
         if (gr && grPoints) {
           const nodes = simulation.nodes()
@@ -122,7 +123,11 @@ export const Graph = () => {
           for (let index = 0; index < maxLength; index += 1) {
             const simulationNode = nodes[index]
 
+
+
             if (simulationNode) {
+              nodesPositionRef.current.set(simulationNode.ref_id, { x: simulationNode.x, y: simulationNode.y, z: simulationNode.z || 0 })
+
               if (gr.children[index]) {
                 gr.children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
@@ -134,14 +139,18 @@ export const Graph = () => {
           }
         }
 
+        console.log('[GRAPH] nodesPositionRef size:', nodesPositionRef.current.size)
+        console.log('[GRAPH] First few node keys:', Array.from(nodesPositionRef.current.keys()).slice(0, 5))
+
         linksPositionRef.current.clear()
 
         dataInitial?.links.forEach((link) => {
-          const sourceNode = nodesPositionRef.current.get(link.source) || { x: 0, y: 0, z: 0 }
-          const targetNode = nodesPositionRef.current.get(link.target) || { x: 0, y: 0, z: 0 }
+          const sourceNode = link.source.ref_id ? nodesPositionRef.current.get(link.source.ref_id as string) : { x: 0, y: 0, z: 0 }
+          const targetNode = link.target.ref_id ? nodesPositionRef.current.get(link.target.ref_id as string) : { x: 0, y: 0, z: 0 }
 
-          const { x: sx, y: sy, z: sz } = sourceNode
-          const { x: tx, y: ty, z: tz } = targetNode
+
+          const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
+          const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
 
           // Set positions for the link
           linksPositionRef.current.set(link.ref_id, {
@@ -165,8 +174,8 @@ export const Graph = () => {
               const link = dataInitial?.links[i]
 
               if (link) {
-                const sourceNode = nodesPositionRef.current.get(link.source) || { x: 0, y: 0, z: 0 }
-                const targetNode = nodesPositionRef.current.get(link.target) || { x: 0, y: 0, z: 0 }
+                const sourceNode = link.source.ref_id ? nodesPositionRef.current.get(link.source.ref_id as string) : { x: 0, y: 0, z: 0 }
+                const targetNode = link.target.ref_id ? nodesPositionRef.current.get(link.target.ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
                   console.warn(`Missing source or target node for link: ${link?.ref_id}`)
@@ -174,8 +183,8 @@ export const Graph = () => {
                   return
                 }
 
-                const { x: sx, y: sy, z: sz } = sourceNode
-                const { x: tx, y: ty, z: tz } = targetNode
+                const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
+                const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
 
                 // Set positions for the link
                 linksPositionRef.current.set(link.ref_id, {
@@ -256,11 +265,11 @@ export const Graph = () => {
         linksPositionRef.current.clear()
 
         dataInitial?.links.forEach((link) => {
-          const sourceNode = nodesPositionRef.current.get(link.source) || { x: 0, y: 0, z: 0 }
-          const targetNode = nodesPositionRef.current.get(link.target) || { x: 0, y: 0, z: 0 }
+          const sourceNode = link.source.ref_id ? nodesPositionRef.current.get(link.source.ref_id as string) : { x: 0, y: 0, z: 0 }
+          const targetNode = link.target.ref_id ? nodesPositionRef.current.get(link.target.ref_id as string) : { x: 0, y: 0, z: 0 }
 
-          const { x: sx, y: sy, z: sz } = sourceNode
-          const { x: tx, y: ty, z: tz } = targetNode
+          const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
+          const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
 
           // Set positions for the link
           linksPositionRef.current.set(link.ref_id, {
@@ -284,8 +293,8 @@ export const Graph = () => {
               const link = dataInitial?.links[i]
 
               if (link) {
-                const sourceNode = nodesPositionRef.current.get(link.source) || { x: 0, y: 0, z: 0 }
-                const targetNode = nodesPositionRef.current.get(link.target) || { x: 0, y: 0, z: 0 }
+                const sourceNode = link.source.ref_id ? nodesPositionRef.current.get(link.source.ref_id as string) : { x: 0, y: 0, z: 0 }
+                const targetNode = link.target.ref_id ? nodesPositionRef.current.get(link.target.ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
                   console.warn(`Missing source or target node for link: ${link?.ref_id}`)
@@ -293,8 +302,8 @@ export const Graph = () => {
                   return
                 }
 
-                const { x: sx, y: sy, z: sz } = sourceNode
-                const { x: tx, y: ty, z: tz } = targetNode
+                const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
+                const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
 
                 // Set positions for the link
                 linksPositionRef.current.set(link.ref_id, {
@@ -355,14 +364,16 @@ export const Graph = () => {
   }
 
   return (
-    <group ref={groupRef}>
-      <group visible={!isolatedView}>
-        <Cubes />
+    <>
+      <group ref={groupRef}>
+        <group visible={!isolatedView}>
+          <Cubes />
 
-        <Connections linksPosition={linksPositionRef.current} />
+          <Connections linksPosition={linksPositionRef.current} />
+        </group>
+        {neighbourhoods?.length && (graphStyle === 'force' || graphStyle === 'split') ? <Neighbourhoods /> : null}
+        <NodeDetailsPanel />
       </group>
-      {neighbourhoods?.length && graphStyle === 'force' ? <Neighbourhoods /> : null}
-      <NodeDetailsPanel />
-    </group>
+    </>
   )
 }

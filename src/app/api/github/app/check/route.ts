@@ -74,6 +74,12 @@ export async function GET(request: Request) {
     const installationId = sourceControlOrg.githubInstallationId;
     const installationReposUrl = `https://api.github.com/user/installations/${installationId}/repositories`;
 
+
+    console.log('installationReposUrl')
+    console.log('installationReposUrl', installationReposUrl)
+    console.log(tokens.accessToken, installationId)
+    console.log('installationReposUrl')
+
     const response = await fetch(installationReposUrl, {
       headers: {
         Accept: "application/vnd.github+json",

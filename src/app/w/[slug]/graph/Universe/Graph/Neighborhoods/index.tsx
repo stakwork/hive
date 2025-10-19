@@ -1,4 +1,5 @@
 import { useControlStore } from '@/stores/useControlStore'
+import { useDataStore } from '@/stores/useDataStore'
 import { useGraphStore } from '@/stores/useGraphStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
 import { distributeNodesOnSphere } from '@/stores/useSimulationStore/utils/distributeNodesOnSphere'
@@ -8,21 +9,72 @@ import * as THREE from 'three'
 import { NodeExtended } from '~/types'
 import { nodeSize } from '../Cubes/constants'
 
+// Helper function to distribute neighborhoods based on node_type positioning
+const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; name?: string }[], nodeTypes: string[]) => {
+  return neighbourhoods.reduce((acc: Record<string, { x: number; y: number; z: number }>, neighbourhood, i) => {
+    // Use the same logic as addSplitForce for consistent positioning
+    const index = i + 1
+    const yOffset = Math.floor(index / 2) * 500
+    const y = index % 2 === 0 ? yOffset : -yOffset
+
+    // Distribute on X-Z plane in a circle for each Y level
+    const angle = (i * 2 * Math.PI) / Math.max(neighbourhoods.length, 4)
+    const radius = 800
+
+    acc[neighbourhood.ref_id] = {
+      x: radius * Math.cos(angle),
+      y,
+      z: radius * Math.sin(angle),
+    }
+
+    return acc
+  }, {})
+}
+
 export const Neighbourhoods = () => {
   const [selectedNeighbourhoodId, setSelectedNeighbourhoodId] = useState<string | null>(null)
 
   console.log(selectedNeighbourhoodId)
 
+  const graphStyle = useGraphStore((s) => s.graphStyle)
   const neighbourhoods = useGraphStore((s) => s.neighbourhoods)
-
-  const neighbourhoodsWithPosition = useMemo(() => distributeNodesOnSphere(neighbourhoods, 3000), [neighbourhoods])
+  const nodeTypes = useDataStore((s) => s.nodeTypes)
   const simulation = useSimulationStore((s) => s.simulation)
   const simulationInProgress = useSimulationStore((s) => s.simulationInProgress)
   const cameraControlsRef = useControlStore((s) => s.cameraControlsRef)
 
-  const neigboorHoodsBoundingBox: Record<string, { x: number; y: number; z: number }[]> = useMemo(
-    () =>
-      simulationInProgress
+  // Choose neighborhoods and positioning based on graph style
+  const { displayNeighbourhoods, neighbourhoodsWithPosition, neigboorHoodsBoundingBox } = useMemo(() => {
+    if (graphStyle === 'split') {
+      // For 'split' style, use node types as neighborhoods
+      const nodeTypeNeighbourhoods = nodeTypes.map(nodeType => ({
+        ref_id: nodeType,
+        name: nodeType
+      }))
+
+      const positionsMap = distributeNeighborhoodsByNodeType(nodeTypeNeighbourhoods, nodeTypes)
+
+      const boundingBoxMap = simulationInProgress
+        ? {}
+        : simulation
+          ?.nodes()
+          .reduce((acc: Record<string, { x: number; y: number; z: number }[]>, node: NodeExtended) => {
+            if (node.node_type) {
+              acc[node.node_type] = [...(acc[node.node_type] || []), { x: node.x, y: node.y, z: node.z }]
+            }
+            return acc
+          }, {}) || {}
+
+      return {
+        displayNeighbourhoods: nodeTypeNeighbourhoods,
+        neighbourhoodsWithPosition: positionsMap,
+        neigboorHoodsBoundingBox: boundingBoxMap
+      }
+    } else {
+      // For 'force' style, use original neighborhood-based approach
+      const positionsMap = distributeNodesOnSphere(neighbourhoods, 3000)
+
+      const boundingBoxMap = simulationInProgress
         ? {}
         : simulation
           ?.nodes()
@@ -30,11 +82,16 @@ export const Neighbourhoods = () => {
             if (node.neighbourHood) {
               acc[node.neighbourHood] = [...(acc[node.neighbourHood] || []), { x: node.x, y: node.y, z: node.z }]
             }
-
             return acc
-          }, {}) || {},
-    [simulation, simulationInProgress],
-  )
+          }, {}) || {}
+
+      return {
+        displayNeighbourhoods: neighbourhoods,
+        neighbourhoodsWithPosition: positionsMap,
+        neigboorHoodsBoundingBox: boundingBoxMap
+      }
+    }
+  }, [graphStyle, nodeTypes, neighbourhoods, simulation, simulationInProgress])
 
   const handleClick = (neighbourhoodId: string, center: THREE.Vector3, size: THREE.Vector3) => {
     const distance = size.length() * 1.5
@@ -59,7 +116,7 @@ export const Neighbourhoods = () => {
       {Object.entries(neigboorHoodsBoundingBox).map(([neighbourhoodId, positions]) => {
         const labelCenter = neighbourhoodsWithPosition[neighbourhoodId]
 
-        const name = neighbourhoods.find((n) => n.ref_id === neighbourhoodId)?.name || neighbourhoodId
+        const name = displayNeighbourhoods.find((n) => n.ref_id === neighbourhoodId)?.name || neighbourhoodId
 
         if (!labelCenter || positions.length === 0) {
           return null

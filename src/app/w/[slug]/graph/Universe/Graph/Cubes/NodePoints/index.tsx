@@ -72,7 +72,7 @@ const _NodePoints = () => {
         const secondaryColor = normalizedSchemasByType[node.node_type]?.secondary_color
         const color = secondaryColor ?? (COLORS_MAP[nodeTypes.indexOf(node.node_type)] || colors.white)
 
-        return <Point key={node.ref_id} color={color} node={node} scale={!scaleFeature ? 1 : scaleToFixed} />
+        return <Point key={node.ref_id} color={color} node={node} scale={!scaleFeature ? 1 : 1} />
       })}
     </Instances>
   )

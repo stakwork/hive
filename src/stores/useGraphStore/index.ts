@@ -113,7 +113,7 @@ const defaultData: Omit<
   scrollEventsDisabled: false,
   graphRadius: 1500, // calculated from initial load
   selectionGraphRadius: 200, // calculated from initial load
-  graphStyle: 'split',
+  graphStyle: 'sphere',
   hoveredNode: null,
   hoveredNodeSiblings: [],
   selectedNodeSiblings: [],

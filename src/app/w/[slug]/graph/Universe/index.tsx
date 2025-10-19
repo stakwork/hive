@@ -8,9 +8,10 @@ import { Canvas } from '@react-three/fiber'
 import { Suspense, memo, useCallback } from 'react'
 import { Controls } from './Controls'
 import { initialCameraPosition } from './Controls/CameraAnimations/constants'
-import { Graph } from './Graph'
-import { colors } from './utils/colors'
 import { CursorTooltip } from './CursorTooltip'
+import { Graph } from './Graph'
+import { GraphStyleSwitcher } from './Graph/UI/GraphStyleSwitcher'
+import { colors } from './utils/colors'
 
 const Fallback = () => (
   <Html>
@@ -100,6 +101,7 @@ const _Universe = () => {
             <Content />
           </Suspense>
         </Canvas>
+        <GraphStyleSwitcher />
         {/* <GraphSearch /> */}
         <CursorTooltip />
       </Suspense>

@@ -5,9 +5,8 @@ import { removeEmojis } from '@Universe/utils/removeEmojisFromText'
 import { removeLeadingMentions } from '@Universe/utils/removeLeadingMentions'
 import { truncateText } from '@Universe/utils/truncateText'
 import { memo, useEffect, useRef, useState } from 'react'
-import { CircleGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Texture, TextureLoader } from 'three'
-import { NodeExtended } from '~/types'
-import { NodeCircleGeometry, nodeSize } from '../constants'
+import { Group, Mesh, Texture, TextureLoader } from 'three'
+import { nodeSize } from '../constants'
 import { TextWithBackground } from './TextWithBackgound'
 
 type Props = {
@@ -51,6 +50,8 @@ export const TextNode = memo(
 
     // Load SVG icon as texture
     useEffect(() => {
+
+      console.log('iconName', iconName)
       const loader = new TextureLoader()
 
       loader.load(`/svg-icons/${iconName}.svg`, setIconTexture, undefined, (error) => {
@@ -65,28 +66,18 @@ export const TextNode = memo(
     return (
       <Billboard follow lockX={false} lockY={false} lockZ={false} name="billboard" userData={node}>
         <mesh ref={nodeRef} name={node.ref_id} position={[0, 0, 1]} scale={scale} userData={node} visible={!hide}>
-          {node?.properties?.image_url && texture ? (
-            <mesh geometry={NodeCircleGeometry}>
-              <meshBasicMaterial map={texture} />
-            </mesh>
-          ) : iconTexture ? (
-            <mesh
-              ref={iconRef}
-              position={[-nodeSize / 4, nodeSize / 4, 1]}
-            >
-              <planeGeometry args={[nodeSize / 2, nodeSize / 2]} />
-              <meshBasicMaterial
-                map={iconTexture}
-                transparent
-                opacity={0.8}
-              />
-            </mesh>) : (
-            // Fallback: simple circle
-            <mesh position={[-nodeSize / 4, nodeSize / 4, 1]}>
-              <circleGeometry args={[nodeSize / 8, 8]} />
-              <meshBasicMaterial color={0xffffff} transparent opacity={0.6} />
-            </mesh>
-          )}
+
+          <mesh
+            ref={iconRef}
+            position={[-nodeSize / 4, nodeSize / 4, 1]}
+          >
+            <planeGeometry args={[nodeSize / 2, nodeSize / 2]} />
+            <meshBasicMaterial
+              map={iconTexture}
+              transparent
+              opacity={0.8}
+            />
+          </mesh>
 
           {sanitizedNodeName && (
             <TextWithBackground ref={backgroundRef} id={node.ref_id} text={truncateText(sanitizedNodeName, 150)} />
