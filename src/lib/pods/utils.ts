@@ -1,5 +1,11 @@
 import { config } from "@/lib/env";
 
+// Re-export constants for external use
+export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+
+// Import for internal use
+import { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+
 export interface PodWorkspace {
   branches: string[];
   created: string;
@@ -121,7 +127,7 @@ async function getProcessList(controlPortUrl: string, password: string): Promise
 }
 
 function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string, string>): string {
-  const frontendProcess = processList.find((proc) => proc.name === "frontend");
+  const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
 
   if (!frontendProcess || !frontendProcess.port) {
     throw new Error("Frontend process not found or has no port");
@@ -143,7 +149,7 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
 export async function claimPodAndGetFrontend(
   poolName: string,
   poolApiKey: string,
-): Promise<{ frontend: string; workspace: PodWorkspace }> {
+): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
 
@@ -153,33 +159,34 @@ export async function claimPodAndGetFrontend(
   await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
 
   let frontend: string;
+  let processList: ProcessInfo[] | undefined;
 
   try {
-    // Get the control port URL (15552)
-    const controlPortUrl = workspace.portMappings["15552"];
+    // Get the control port URL
+    const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
     if (!controlPortUrl) {
-      throw new Error("Control port (15552) not found in port mappings");
+      throw new Error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`);
     }
 
     // Get the process list from the control port
-    const processList = await getProcessList(controlPortUrl, workspace.password);
+    processList = await getProcessList(controlPortUrl, workspace.password);
 
     // Get the frontend URL from port mappings
     frontend = getFrontendUrl(processList, workspace.portMappings);
   } catch (error) {
-    console.error(">>> Failed to get frontend from process list, falling back to port 3000:", error);
+    console.error(`>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`, error);
 
     // Fallback to port 3000 if process discovery fails
-    frontend = workspace.portMappings["3000"];
+    frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
 
     if (!frontend) {
-      throw new Error("Failed to discover frontend and port 3000 not found in port mappings");
+      throw new Error(`Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`);
     }
 
-    console.log(">>> Using fallback frontend on port 3000:", frontend);
+    console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
   }
 
-  return { frontend, workspace };
+  return { frontend, workspace, processList };
 }
 
 export async function dropPod(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
@@ -209,4 +216,78 @@ export async function updatePodRepositories(
   }
 
   console.log(">>> Pod repositories updated");
+}
+
+/**
+ * Check if Goose service is running by checking the process list
+ * Returns true if goose process is found, false otherwise
+ */
+export function checkGooseRunning(processList: ProcessInfo[]): boolean {
+  const gooseProcess = processList.find((proc) => proc.name === PROCESS_NAMES.GOOSE);
+  return !!gooseProcess;
+}
+
+/**
+ * Start the Goose service via the control port
+ * Returns the goose URL if startup succeeded, or null if startup failed
+ */
+export async function startGoose(
+  controlPortUrl: string,
+  password: string,
+  repoName: string,
+  anthropicApiKey: string,
+  portMappings: Record<string, string>,
+): Promise<string | null> {
+  console.log(`🚀 Starting Goose service via control port (${POD_PORTS.CONTROL})...`);
+
+  try {
+    // Start goose_web service via control port
+    const startGooseResponse = await fetch(`${controlPortUrl}/goose_web`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${password}`,
+      },
+      body: JSON.stringify({
+        repoName,
+        apiKey: anthropicApiKey,
+      }),
+    });
+
+    if (!startGooseResponse.ok) {
+      const errorText = await startGooseResponse.text();
+      console.error("Failed to start goose service:", startGooseResponse.status, errorText);
+      return null;
+    }
+
+    console.log("✅ Goose service start request sent successfully");
+
+    // Poll to check if goose process is running
+    for (let attempt = 1; attempt <= GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS; attempt++) {
+      console.log(`🔍 Polling for Goose process (attempt ${attempt}/${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS})...`);
+
+      await new Promise((resolve) => setTimeout(resolve, GOOSE_CONFIG.POLLING_INTERVAL_MS));
+
+      // Check if goose process is running
+      try {
+        const processList = await getProcessList(controlPortUrl, password);
+        if (checkGooseRunning(processList)) {
+          // Goose is always on the designated port
+          const gooseUrl = portMappings[POD_PORTS.GOOSE];
+          if (gooseUrl) {
+            console.log(`✅ Goose service is now available on port ${POD_PORTS.GOOSE} after ${attempt} attempt(s):`, gooseUrl);
+            return gooseUrl;
+          }
+        }
+      } catch (error) {
+        console.error(`Error checking process list on attempt ${attempt}:`, error);
+      }
+    }
+
+    console.warn(`⚠️ Goose service did not start after ${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS} attempts`);
+    return null;
+  } catch (error) {
+    console.error("Error starting goose service:", error);
+    return null;
+  }
 }

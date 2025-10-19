@@ -34,6 +34,7 @@ export default function UserJourneys() {
   const [e2eTests, setE2eTests] = useState<E2eTest[]>([]);
   const [fetchingTests, setFetchingTests] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const open = useModal();
 
   const fetchE2eTests = useCallback(async () => {
@@ -68,16 +69,18 @@ export default function UserJourneys() {
   // Shared function to drop the pod
   const dropPod = useCallback(
     async (useBeacon = false) => {
-      if (!id) return;
+      if (!id || !claimedPodId) return;
+
+      const dropUrl = `/api/pool-manager/drop-pod/${id}?latest=true&podId=${claimedPodId}`;
 
       try {
         if (useBeacon) {
           // Use sendBeacon for reliable delivery when page is closing
           const blob = new Blob([JSON.stringify({})], { type: "application/json" });
-          navigator.sendBeacon(`/api/pool-manager/drop-pod/${id}?latest=true`, blob);
+          navigator.sendBeacon(dropUrl, blob);
         } else {
           // Use regular fetch for normal scenarios
-          await fetch(`/api/pool-manager/drop-pod/${id}?latest=true`, {
+          await fetch(dropUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -88,7 +91,7 @@ export default function UserJourneys() {
         console.error("Error dropping pod:", error);
       }
     },
-    [id],
+    [id, claimedPodId],
   );
 
   // Drop pod when component unmounts or when navigating away
@@ -126,6 +129,8 @@ export default function UserJourneys() {
     setFrontend(null);
     // Drop pod in background (no await)
     dropPod();
+    // Clear podId
+    setClaimedPodId(null);
   };
 
   const handleCreateUserJourney = async () => {
@@ -161,6 +166,7 @@ export default function UserJourneys() {
 
       if (data.frontend) {
         setFrontend(data.frontend);
+        setClaimedPodId(data.podId);
       }
     } catch (error) {
       console.error("Error claiming pod:", error);

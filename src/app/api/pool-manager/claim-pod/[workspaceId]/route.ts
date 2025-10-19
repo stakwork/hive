@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories } from "@/lib/pods";
+import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -28,9 +28,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for "latest" query parameter
+    // Check for "latest" and "goose" query parameters
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
+    const shouldIncludeGoose = searchParams.get("goose") === "true";
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -80,14 +81,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
+    const { frontend, workspace: podWorkspace, processList } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
-      const controlPortUrl = podWorkspace.portMappings["15552"];
+      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
-        console.error("Control port (15552) not found in port mappings, skipping repository update");
+        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`);
       } else {
         const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
@@ -104,14 +105,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Extract control, IDE, and goose URLs
-    const control = podWorkspace.portMappings["15552"] || null;
+    const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
     const ide = podWorkspace.url || null;
-    const goose = podWorkspace.portMappings["15551"] || null;
+
+    // Only handle goose if requested via query parameter
+    let goose: string | null = null;
+    if (shouldIncludeGoose) {
+      // Check if goose service is already running by checking process list
+      const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
+
+      if (gooseIsRunning) {
+        // Goose is always on the designated port
+        goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
+        if (goose) {
+          console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
+        }
+      }
+
+      // If goose service is not running, start it up via control port
+      if (!goose && control) {
+        // Get the first repository name (or default to "hive")
+        const repoName = workspace.repositories[0]?.repositoryUrl.split("/").pop()?.replace(".git", "") || "hive";
+
+        // Get Anthropic API key from environment
+        const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+
+        if (!anthropicApiKey) {
+          console.error("ANTHROPIC_API_KEY not found in environment");
+        } else {
+          goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey, podWorkspace.portMappings);
+        }
+      }
+    }
 
     return NextResponse.json(
       {
         success: true,
         message: "Pod claimed successfully",
+        podId: podWorkspace.id,
         frontend,
         control,
         ide,

@@ -57,12 +57,65 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  // const [podUrls, setPodUrls] = useState<{ frontend: string; ide: string; goose: string } | null>(null);
+  const [hasPod, setHasPod] = useState(false);
+  const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
+
+  // Shared function to drop the pod
+  const dropPod = useCallback(
+    async (useBeacon = false) => {
+      if (!workspaceId || !claimedPodId) return;
+
+      const dropUrl = `/api/pool-manager/drop-pod/${workspaceId}?latest=true&podId=${claimedPodId}`;
+
+      try {
+        if (useBeacon) {
+          // Use sendBeacon for reliable delivery when page is closing
+          const blob = new Blob([JSON.stringify({})], { type: "application/json" });
+          navigator.sendBeacon(dropUrl, blob);
+        } else {
+          // Use regular fetch for normal scenarios
+          await fetch(dropUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error dropping pod:", error);
+      }
+    },
+    [workspaceId, claimedPodId],
+  );
+
+  // Drop pod when component unmounts or when navigating away
+  useEffect(() => {
+    return () => {
+      if (hasPod) {
+        dropPod();
+      }
+    };
+  }, [hasPod, dropPod]);
+
+  // Drop pod when browser/tab closes or page refreshes
+  useEffect(() => {
+    if (!hasPod) return;
+
+    const handleBeforeUnload = () => {
+      dropPod(true);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasPod, dropPod]);
 
   // Streaming processor for agent mode
   const { processStream } = useStreamProcessor<AgentStreamingMessage>({
@@ -235,79 +288,80 @@ export default function TaskChatPage() {
         let claimedPodUrls: { frontend: string; ide: string; goose: string } | null = null;
         if (taskMode === "agent" && workspaceId) {
           try {
-            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true`, {
+            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true&goose=true`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
             });
 
-          if (podResponse.ok) {
-            const podResult = await podResponse.json();
-            claimedPodUrls = {
-              frontend: podResult.frontend,
-              ide: podResult.ide,
-              goose: podResult.goose,
-            };
-            // setPodUrls(claimedPodUrls);
-          } else {
-            console.error("Failed to claim pod:", await podResponse.text());
+            if (podResponse.ok) {
+              const podResult = await podResponse.json();
+              claimedPodUrls = {
+                frontend: podResult.frontend,
+                ide: podResult.ide,
+                goose: podResult.goose,
+              };
+              setHasPod(true);
+              setClaimedPodId(podResult.podId);
+            } else {
+              console.error("Failed to claim pod:", await podResponse.text());
+              toast({
+                title: "Warning",
+                description: "Failed to claim pod. Continuing without pod integration.",
+                variant: "destructive",
+              });
+            }
+          } catch (error) {
+            console.error("Error claiming pod:", error);
             toast({
               title: "Warning",
               description: "Failed to claim pod. Continuing without pod integration.",
               variant: "destructive",
             });
           }
-        } catch (error) {
-          console.error("Error claiming pod:", error);
-          toast({
-            title: "Warning",
-            description: "Failed to claim pod. Continuing without pod integration.",
-            variant: "destructive",
-          });
         }
-      }
 
-      // Create new task
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: msg,
-          description: "New task description", // TODO: Add description
-          status: "active",
-          workspaceSlug: slug,
-          mode: taskMode, // Save the task mode
-        }),
-      });
+        // Create new task
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: msg,
+            description: "New task description", // TODO: Add description
+            status: "active",
+            workspaceSlug: slug,
+            mode: taskMode, // Save the task mode
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          throw new Error(`Failed to create task: ${response.statusText}`);
+        }
 
-      const result = await response.json();
-      const newTaskId = result.data.id;
-      setCurrentTaskId(newTaskId);
+        const result = await response.json();
+        const newTaskId = result.data.id;
+        setCurrentTaskId(newTaskId);
 
-      // Set the task title from the response or fallback to the initial message
-      if (result.data.title) {
-        setTaskTitle(result.data.title);
-      } else {
-        setTaskTitle(msg); // Use the initial message as title fallback
-      }
+        // Set the task title from the response or fallback to the initial message
+        if (result.data.title) {
+          setTaskTitle(result.data.title);
+        } else {
+          setTaskTitle(msg); // Use the initial message as title fallback
+        }
 
-        const newUrl = `/w/${slug}/task/${newTaskId}`;
-        // this updates the URL WITHOUT reloading the page
-        window.history.replaceState({}, "", newUrl);
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      // this updates the URL WITHOUT reloading the page
+      window.history.replaceState({}, "", newUrl);
 
-        setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
-      } else {
-        setStarted(true);
-        await sendMessage(msg);
-      }
+      setStarted(true);
+      await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+    } else {
+      setStarted(true);
+      await sendMessage(msg);
+    }
     } catch (error) {
       console.error("Error in handleStart:", error);
       setIsLoading(false);
@@ -390,14 +444,14 @@ export default function TaskChatPage() {
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
-        // Extract gooseUrl from IDE artifact if available
-        const gooseUrl = options?.podUrls?.goose;
-
         // Prepare artifacts for backend (convert to serializable format)
         const backendArtifacts = artifacts.map((artifact) => ({
           type: artifact.type,
           content: artifact.content,
         }));
+
+        // Extract gooseUrl from IDE artifact if available
+        const gooseUrl = options?.podUrls?.goose;
 
         const response = await fetch("/api/agent", {
           method: "POST",
@@ -581,7 +635,7 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} />
+          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} isLoading={isLoading} />
         </motion.div>
       ) : (
         <motion.div

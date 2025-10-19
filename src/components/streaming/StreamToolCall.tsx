@@ -40,6 +40,11 @@ export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCal
   const isError = toolCall.status === "input-error" || toolCall.status === "output-error";
   const isRunning = !isComplete && !isError;
 
+  // Strip "developer__" prefix from tool name for display only
+  const displayName = toolCall.toolName.startsWith("developer__")
+    ? toolCall.toolName.replace("developer__", "")
+    : toolCall.toolName;
+
   return (
     <div>
       <button
@@ -47,7 +52,7 @@ export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCal
         className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-xs font-medium cursor-pointer"
       >
         <WrenchIcon />
-        <span>{toolCall.toolName}</span>
+        <span>{displayName}</span>
         {isRunning && <span className="text-muted-foreground animate-pulse">...</span>}
         {isComplete && <span className="text-muted-foreground">Complete</span>}
         {isError && <span className="text-destructive">Error</span>}

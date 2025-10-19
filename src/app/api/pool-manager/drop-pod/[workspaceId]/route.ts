@@ -4,8 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { dropPod, getWorkspaceFromPool, updatePodRepositories } from "@/lib/pods";
+import { dropPod, getWorkspaceFromPool, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -29,9 +28,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for "latest" query parameter
+    // Check for "latest" and "podId" query parameters
     const { searchParams } = new URL(request.url);
     const shouldResetRepositories = searchParams.get("latest") === "true";
+    const podId = searchParams.get("podId");
+
+    // podId is required - we must know which specific pod to drop
+    if (!podId) {
+      return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
+    }
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -67,12 +72,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    let poolApiKey = workspace.swarm.poolApiKey;
-    const swarm = workspace.swarm;
-    if (!swarm.poolApiKey) {
-      await updateSwarmPoolApiKeyFor(swarm.id);
-      poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
-    }
+    const poolApiKey = workspace.swarm.poolApiKey;
 
     // Check if swarm has pool configuration
     if (!workspace.swarm.poolName || !poolApiKey) {
@@ -82,15 +82,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    // First, get the workspace info to retrieve the external workspace ID
-    const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
+    console.log(">>> Dropping pod with ID:", podId);
 
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
-      const controlPortUrl = podWorkspace.portMappings["15552"];
+      // Fetch workspace details to get port mappings and password
+      const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
+      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
-        console.error("Control port (15552) not found in port mappings, skipping repository reset");
+        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`);
       } else {
         try {
           const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Now drop the pod
-    await dropPod(poolName, podWorkspace.id, poolApiKeyPlain);
+    await dropPod(poolName, podId, poolApiKeyPlain);
 
     return NextResponse.json(
       {

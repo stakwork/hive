@@ -1,11 +1,5 @@
 // Import Prisma-generated types for enums that are duplicated
-import {
-  ChatRole,
-  ChatStatus,
-  ContextTagType,
-  ArtifactType,
-  WorkflowStatus,
-} from "@prisma/client";
+import { ChatRole, ChatStatus, ContextTagType, ArtifactType, WorkflowStatus } from "@prisma/client";
 import type {
   ChatMessage as PrismaChatMessage,
   Artifact as PrismaArtifact,
@@ -34,7 +28,6 @@ export interface BrowserContent {
 
 export interface IDEContent {
   url: string;
-  gooseUrl?: string;
 }
 
 export interface GraphContent {
@@ -55,7 +48,7 @@ export interface FormContent {
   options: Option[];
 }
 // Artifact icon system - modular and reusable across all artifact types
-export type ArtifactIcon = 'Code' | 'Agent' | 'Call' | 'Message';
+export type ArtifactIcon = "Code" | "Agent" | "Call" | "Message";
 
 export interface LongformContent {
   text: string;
@@ -65,7 +58,7 @@ export interface LongformContent {
 export interface BugReportContent {
   bugDescription: string;
   iframeUrl: string;
-  method: 'click' | 'selection';
+  method: "click" | "selection";
   sourceFiles: Array<{
     file: string;
     lines: number[];
@@ -92,15 +85,22 @@ export interface WorkflowContent {
 
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
-  content?: FormContent | CodeContent | BrowserContent | IDEContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
+  content?:
+    | FormContent
+    | CodeContent
+    | BrowserContent
+    | IDEContent
+    | LongformContent
+    | BugReportContent
+    | GraphContent
+    | WorkflowContent;
 }
 
 export interface Attachment extends PrismaAttachment {
   // No additional fields needed, using Prisma type as-is
 }
 
-export interface ChatMessage
-  extends Omit<PrismaChatMessage, "contextTags" | "artifacts" | "attachments"> {
+export interface ChatMessage extends Omit<PrismaChatMessage, "contextTags" | "artifacts" | "attachments"> {
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
   attachments?: Attachment[];
@@ -142,7 +142,15 @@ export function createArtifact(data: {
   id: string;
   messageId: string;
   type: ArtifactType;
-  content?: FormContent | CodeContent | BrowserContent | IDEContent | LongformContent | BugReportContent | GraphContent | WorkflowContent;
+  content?:
+    | FormContent
+    | CodeContent
+    | BrowserContent
+    | IDEContent
+    | LongformContent
+    | BugReportContent
+    | GraphContent
+    | WorkflowContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

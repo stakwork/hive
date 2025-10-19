@@ -8,6 +8,7 @@ import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import type { WorkflowStatus, Artifact, ChatMessage } from "@/lib/chat";
 
 interface AgentChatAreaProps {
@@ -108,6 +109,23 @@ export function AgentChatArea({
         {messages.map((msg) => (
           <AgentChatMessage key={msg.id} message={msg} />
         ))}
+
+        {/* Show thinking indicator when loading but no assistant message streaming yet */}
+        {isLoading && messages.length > 0 && messages[messages.length - 1].role === "USER" && (
+          <motion.div
+            className="space-y-3 relative"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            <div className="flex items-end gap-3 justify-start">
+              <div className="px-4 py-1 rounded-md max-w-full shadow-sm relative bg-background text-foreground rounded-bl-md border">
+                <ThinkingIndicator />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
