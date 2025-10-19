@@ -1,5 +1,6 @@
 import CheckIcon from '@/components/Icons/CheckIcon'
 import PersonIcon from '@/components/Icons/PersonIcon'
+import { Node } from '@Universe/types'
 import { FaBookmark, FaChartBar, FaComment, FaHeart, FaQuoteRight, FaRetweet } from 'react-icons/fa'
 import { TooltipContainer } from '../index'
 
@@ -16,6 +17,9 @@ type MetricsProps = {
   }
 }
 
+type Props = {
+  node: Node
+}
 const MetricsBar = ({ metrics }: MetricsProps) => {
   const formatNumber = (num?: number) => {
     if (!num) {
