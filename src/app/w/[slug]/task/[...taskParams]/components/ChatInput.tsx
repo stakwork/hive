@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Mic, MicOff } from "lucide-react";
-import { Artifact, WorkflowStatus, ChatMessage } from "@/lib/chat";
+import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
@@ -14,7 +14,6 @@ import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 
 interface ChatInputProps {
   logs: LogEntry[];
-  messages: ChatMessage[];
   onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   isLoading?: boolean;
@@ -25,7 +24,6 @@ interface ChatInputProps {
 
 export function ChatInput({
   logs,
-  messages,
   onSend,
   disabled = false,
   isLoading = false,
@@ -82,7 +80,9 @@ export function ChatInput({
   return (
     <div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <WorkflowStatusBadge logs={logs} status={workflowStatus} messages={messages} />
+        <span>{mode}</span>
+        <span>|</span>
+        <WorkflowStatusBadge logs={logs} status={workflowStatus} />
       </div>
 
       {/* Debug attachment display */}
