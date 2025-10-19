@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories } from "@/lib/pods";
+import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
+    const { frontend, workspace: podWorkspace, processList } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
@@ -106,7 +106,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Extract control, IDE, and goose URLs
     const control = podWorkspace.portMappings["15552"] || null;
     const ide = podWorkspace.url || null;
-    const goose = podWorkspace.portMappings["15551"] || null;
+
+    // Check if goose service is already running by checking process list
+    let goose: string | null = null;
+    const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
+
+    if (gooseIsRunning) {
+      // Goose is always on port 15551
+      goose = podWorkspace.portMappings["15551"] || null;
+      if (goose) {
+        console.log("✅ Goose service already running:", goose);
+      }
+    }
+
+    // If goose service is not running, start it up via control port
+    if (!goose && control) {
+      // Get the first repository name (or default to "hive")
+      const repoName = workspace.repositories[0]?.repositoryUrl.split("/").pop()?.replace(".git", "") || "hive";
+
+      // Get Anthropic API key from environment
+      const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+
+      if (!anthropicApiKey) {
+        console.error("ANTHROPIC_API_KEY not found in environment");
+      } else {
+        goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey, podWorkspace.portMappings);
+      }
+    }
 
     return NextResponse.json(
       {
