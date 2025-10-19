@@ -1,29 +1,7 @@
-import styled from 'styled-components'
-import { ActionsToolbar } from '~/components/App/ActionsToolbar'
+import { ActionsToolbar } from './ActionsToolbar'
 
 export const Overlay = () => (
-  <OverlayWrap>
+  <div className="absolute z-[1] top-0 left-0 select-none pointer-events-none flex justify-end items-start h-full w-full p-4 pr-0 overflow-hidden sm:top-0 max-sm:top-[50px]">
     <ActionsToolbar />
-  </OverlayWrap>
+  </div>
 )
-
-const OverlayWrap = styled('div')(({ theme }) => ({
-  position: 'absolute',
-  zIndex: 1,
-  top: 0,
-  left: 0,
-  userSelect: 'none',
-  pointerEvents: 'none',
-  display: 'flex',
-
-  justifyContent: 'flex-end',
-  alignItems: 'flex-start',
-  height: '100%',
-  width: '100%',
-  padding: '16px',
-  paddingRight: '0',
-  overflow: 'hidden',
-  [theme.breakpoints.down('sm')]: {
-    top: 50,
-  },
-}))

@@ -7,7 +7,6 @@ import { removeLeadingMentions } from '@Universe/utils/removeLeadingMentions'
 import { truncateText } from '@Universe/utils/truncateText'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Group, Mesh, Texture, TextureLoader } from 'three'
-import { nodeSize } from '../constants'
 import { TextWithBackground } from './TextWithBackgound'
 
 type Props = {
@@ -68,7 +67,7 @@ export const TextNode = memo(
       <Billboard follow lockX={false} lockY={false} lockZ={false} name="billboard" userData={node}>
         <mesh ref={nodeRef} name={node.ref_id} position={[0, 0, 1]} scale={scale} userData={node} visible={!hide}>
 
-          <mesh
+          {/* <mesh
             ref={iconRef}
             position={[-nodeSize / 4, nodeSize / 4, 1]}
           >
@@ -78,7 +77,7 @@ export const TextNode = memo(
               transparent
               opacity={0.8}
             />
-          </mesh>
+          </mesh> */}
 
           {sanitizedNodeName && (
             <TextWithBackground ref={backgroundRef} id={node.ref_id} text={truncateText(sanitizedNodeName, 150)} />

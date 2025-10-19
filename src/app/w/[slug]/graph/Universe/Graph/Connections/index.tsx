@@ -52,11 +52,11 @@ export const Connections = memo(({ linksPosition }: Props) => {
                 <LineComponent
                   key={l.ref_id}
                   label={l.edge_type}
-                  source={l.source}
+                  source={l.source?.ref_id ? (l.source?.ref_id as string) : l.source || ''}
                   sourceX={position.sx}
                   sourceY={position.sy}
                   sourceZ={position.sz}
-                  target={l.target}
+                  target={l.target?.ref_id ? (l.target?.ref_id as string) : l.target || ''}
                   targetX={position.tx}
                   targetY={position.ty}
                   targetZ={position.tz}
