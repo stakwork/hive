@@ -22,7 +22,7 @@ export function useTaskMode() {
 
   // Set mode and persist to localStorage
   const setTaskMode = (mode: string) => {
-    // Only allow valid modes: live, test in development, or agent in development
+    // Only allow valid modes: live, agent (always), or test (dev only)
     if (isValidMode(mode)) {
       setTaskModeState(mode as TaskMode);
       localStorage.setItem("task_mode", mode);
@@ -33,7 +33,7 @@ export function useTaskMode() {
 }
 
 function isValidMode(mode: string): boolean {
-  if (mode === "live") return true;
-  if ((mode === "test" || mode === "agent") && isDevelopmentMode()) return true;
+  if (mode === "live" || mode === "agent") return true;
+  if (mode === "test" && isDevelopmentMode()) return true;
   return false;
 }
