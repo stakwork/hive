@@ -1,6 +1,7 @@
 import { Icons } from '@/components/Icons'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Billboard } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
 import { removeEmojis } from '@Universe/utils/removeEmojisFromText'
 import { removeLeadingMentions } from '@Universe/utils/removeLeadingMentions'
 import { truncateText } from '@Universe/utils/truncateText'
