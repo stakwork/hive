@@ -57,7 +57,6 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  // const [podUrls, setPodUrls] = useState<{ frontend: string; ide: string; goose: string } | null>(null);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -249,7 +248,6 @@ export default function TaskChatPage() {
                 ide: podResult.ide,
                 goose: podResult.goose,
               };
-              // setPodUrls(claimedPodUrls);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
               toast({
@@ -268,35 +266,35 @@ export default function TaskChatPage() {
           }
         }
 
-      // Create new task
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: msg,
-          description: "New task description", // TODO: Add description
-          status: "active",
-          workspaceSlug: slug,
-          mode: taskMode, // Save the task mode
-        }),
-      });
+        // Create new task
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: msg,
+            description: "New task description", // TODO: Add description
+            status: "active",
+            workspaceSlug: slug,
+            mode: taskMode, // Save the task mode
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          throw new Error(`Failed to create task: ${response.statusText}`);
+        }
 
-      const result = await response.json();
-      const newTaskId = result.data.id;
-      setCurrentTaskId(newTaskId);
+        const result = await response.json();
+        const newTaskId = result.data.id;
+        setCurrentTaskId(newTaskId);
 
-      // Set the task title from the response or fallback to the initial message
-      if (result.data.title) {
-        setTaskTitle(result.data.title);
-      } else {
-        setTaskTitle(msg); // Use the initial message as title fallback
-      }
+        // Set the task title from the response or fallback to the initial message
+        if (result.data.title) {
+          setTaskTitle(result.data.title);
+        } else {
+          setTaskTitle(msg); // Use the initial message as title fallback
+        }
 
       const newUrl = `/w/${slug}/task/${newTaskId}`;
       // this updates the URL WITHOUT reloading the page
