@@ -55,11 +55,11 @@ export const RelevanceGroups = memo(() => {
 
     const center = new Vector3(0, 0, -1)
 
-    const badges: JSX.Element[] = []
+    const badges: React.ReactElement[] = []
 
     const posStatic = new Vector3(nodeSize * 5, 0, 0)
 
-    const lines: JSX.Element[] = [
+    const lines: React.ReactElement[] = [
       <group key="line-menu">
         <Line color="white" lineWidth={2} opacity={0.5} points={[center, posStatic]} transparent />
       </group>,
