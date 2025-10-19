@@ -1,3 +1,4 @@
+import { Link, Node, NodeExtended } from '@Universe/types'
 import {
   forceCenter,
   forceCollide,
@@ -11,7 +12,6 @@ import {
 } from 'd3-force-3d'
 import { create } from 'zustand'
 import { ForceSimulation } from '~/transformers/forceSimulation'
-import { Link, Node, NodeExtended } from '~/types'
 import { useDataStore } from '../useDataStore'
 import { useGraphStore } from '../useGraphStore'
 import { distributeNodesOnSphere } from './utils/distributeNodesOnSphere'

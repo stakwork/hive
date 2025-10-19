@@ -1,10 +1,10 @@
 import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
 import { Segment as DreiSegment, SegmentObject } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
+import { Link } from '@Universe/types'
 import { useEffect, useRef, useState } from 'react'
 import { Vector3 } from 'three'
 import { NODE_RELATIVE_HIGHLIGHT_COLORS } from '~/constants'
-import { Link } from '~/types'
 
 type Props = {
   link: Link

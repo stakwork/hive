@@ -1,5 +1,5 @@
+import { GraphData, Link, NodeExtended } from '@Universe/types'
 import { create } from 'zustand'
-import { GraphData, Link, NodeExtended } from '~/types'
 import { useDataStore } from '../useDataStore'
 import { useSimulationStore } from '../useSimulationStore'
 

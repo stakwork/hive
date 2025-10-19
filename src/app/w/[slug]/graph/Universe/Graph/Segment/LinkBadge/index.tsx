@@ -2,12 +2,12 @@ import { Html } from '@react-three/drei'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
 
+import { Link, NodeExtended } from '@Universe/types'
 import { useFrame } from '@react-three/fiber'
 import styled from 'styled-components'
 import DeleteIcon from '~/components/Icons/DeleteIcon'
 import { Flex } from '~/components/common/Flex'
 import { ForceSimulation } from '~/transformers/forceSimulation'
-import { Link, NodeExtended } from '~/types'
 
 type Props = {
   links: Link[]

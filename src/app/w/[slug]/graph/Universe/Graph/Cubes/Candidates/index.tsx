@@ -1,7 +1,7 @@
 import { useGraphStore } from '@/stores/useGraphStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
+import { NodeExtended } from '@Universe/types'
 import { memo, useRef, useState } from 'react'
-import { NodeExtended } from '~/types'
 import { CandidateWrapper } from './CandidateWrapper'
 
 export const Candidates = memo(() => {

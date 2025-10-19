@@ -1,5 +1,5 @@
+import { NodeExtended } from '@Universe/types'
 import { memo } from 'react'
-import { NodeExtended } from '~/types'
 import { TextNode } from '../Text/index'
 
 type Props = {

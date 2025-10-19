@@ -1,9 +1,9 @@
 import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
 import { useFrame } from '@react-three/fiber'
 import { Select } from '@react-three/postprocessing'
+import { NodeExtended } from '@Universe/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Mesh } from 'three'
-import { NodeExtended } from '~/types'
 import { boxGeometry } from '../constants'
 import { useMaterial } from './hooks/useMaterial'
 

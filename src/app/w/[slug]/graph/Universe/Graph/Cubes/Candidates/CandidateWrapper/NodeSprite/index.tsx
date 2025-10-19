@@ -1,13 +1,13 @@
 import { Icons } from '@/components/Icons'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Html } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
 import { truncateText } from '@Universe/utils/truncateText'
 import gsap from 'gsap'
 import { useEffect, useRef } from 'react'
 import styled from 'styled-components'
 import { Flex } from '~/components/common/Flex'
 import NodesIcon from '~/components/Icons/NodesIcon'
-import { NodeExtended } from '~/types'
 import { colors } from '~/utils'
 
 type Props = {

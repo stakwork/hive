@@ -1,7 +1,7 @@
 import { Color, MeshStandardMaterial, Vector3 } from 'three'
 
+import { NodeExtended } from '@Universe/types'
 import { NODE_RELATIVE_HIGHLIGHT_COLORS } from '~/constants'
-import { NodeExtended } from '~/types'
 
 type NodeTypeColors = Record<string, string>
 

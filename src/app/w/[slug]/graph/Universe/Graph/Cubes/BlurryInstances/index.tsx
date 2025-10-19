@@ -1,9 +1,9 @@
 import { useGraphStore } from '@/stores/useGraphStore'
 import { Instance, Instances } from '@react-three/drei'
+import { NodeExtended } from '@Universe/types'
 import { useMemo } from 'react'
 import { useGraphData } from '~/components/DataRetriever'
 import { getNodeColorByType } from '~/components/Universe/Graph/constant'
-import { NodeExtended } from '~/types'
 import { boxGeometry, isMainTopic } from '../constants'
 import { blurryMaterial } from './constants'
 

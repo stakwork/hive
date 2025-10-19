@@ -1,4 +1,4 @@
-import { NodeExtended } from '~/types'
+import { NodeExtended } from '@Universe/types'
 
 export const nodeMatchesFollowerFilter = (targetNode: NodeExtended, value: string | null): boolean => {
   if (!value) {

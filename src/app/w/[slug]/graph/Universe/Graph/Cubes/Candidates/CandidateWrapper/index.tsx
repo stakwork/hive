@@ -1,7 +1,7 @@
+import { NodeExtended } from '@Universe/types'
 import { gsap } from 'gsap'
 import { memo, useEffect, useRef } from 'react'
 import { Mesh } from 'three'
-import { NodeExtended } from '~/types'
 import { NodeSprite } from './NodeSprite'
 
 type Props = {

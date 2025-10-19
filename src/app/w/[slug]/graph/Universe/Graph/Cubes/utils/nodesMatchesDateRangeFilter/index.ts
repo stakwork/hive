@@ -1,5 +1,5 @@
+import { NodeExtended } from '@Universe/types'
 import moment from 'moment'
-import { NodeExtended } from '~/types'
 
 export const nodesMatchesDateRangeFilter = (targetNode: NodeExtended, value: string | null): boolean => {
   if (!value || targetNode.date_added_to_graph === undefined) {

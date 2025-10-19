@@ -1,9 +1,9 @@
 import { useSelectedNode } from '@/stores/useGraphStore'
 import { Line } from '@react-three/drei'
+import { Link } from '@Universe/types'
 import { useEffect, useMemo, useState } from 'react'
 import { Vector3 } from 'three'
 import { NODE_RELATIVE_HIGHLIGHT_COLORS } from '~/constants'
-import { Link } from '~/types'
 import { getCurvedLineFromStartAndEnd } from './constants'
 
 type Props = {
