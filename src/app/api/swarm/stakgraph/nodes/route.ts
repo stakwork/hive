@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     console.log("stakgraphUrl", stakgraphUrl);
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
-      endpoint: `graph/search?limit=500&top_node_count=500`,
+      endpoint: `graph/search?limit=1000&top_node_count=500`,
       method: "GET",
       apiKey,
     });

@@ -8,7 +8,7 @@ type RoundedRectProps = {
   color: string
 }
 
-const fontSize = nodeSize / 4
+const fontSize = nodeSize / 1
 
 const RoundedRect = forwardRef<Mesh, RoundedRectProps>(({ color }, ref) => (
   <mesh ref={ref} geometry={NodePillGeometry} name="background">
