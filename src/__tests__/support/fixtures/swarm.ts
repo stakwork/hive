@@ -12,6 +12,8 @@ export interface CreateTestSwarmOptions {
   instanceType?: string;
   swarmApiKey?: string;
   containerFilesSetUp?: boolean;
+  poolName?: string | null;
+  poolApiKey?: string | null;
 }
 
 export async function createTestSwarm(
@@ -27,9 +29,10 @@ export async function createTestSwarm(
     agentRequestId: null,
     agentStatus: null,
     containerFilesSetUp: options.containerFilesSetUp ?? true, // Default to true for E2E tests
+    poolName: options.poolName !== undefined ? options.poolName : null,
   };
 
-  const createData = options.swarmApiKey
+  let createData = options.swarmApiKey
     ? {
         ...baseData,
         swarmApiKey: JSON.stringify(
@@ -37,6 +40,13 @@ export async function createTestSwarm(
         ),
       }
     : baseData;
+
+  if (options.poolApiKey !== undefined) {
+    createData = {
+      ...createData,
+      poolApiKey: options.poolApiKey,
+    };
+  }
 
   return db.swarm.create({ data: createData });
 }
