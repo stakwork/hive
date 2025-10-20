@@ -20,6 +20,13 @@ export class TasksPage {
    */
   async waitForLoad(): Promise<void> {
     await expect(this.page.locator(selectors.pageTitle.tasks)).toBeVisible({ timeout: 10000 });
+
+    // Wait for loading state to disappear (if it exists)
+    const loadingText = this.page.getByText('Loading tasks...');
+    const isLoading = await loadingText.isVisible().catch(() => false);
+    if (isLoading) {
+      await loadingText.waitFor({ state: 'hidden', timeout: 10000 });
+    }
   }
 
   /**
