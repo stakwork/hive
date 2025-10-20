@@ -920,7 +920,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       );
     });
 
-    test("should default to TODO status when not specified", async () => {
+    test("should default to IN_PROGRESS status when not specified", async () => {
       MockSetup.setupTaskCreationWorkflow();
 
       await createTaskWithStakworkWorkflow({
@@ -935,7 +935,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       expect(mockDb.task.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            status: "TODO",
+            status: "IN_PROGRESS",
           }),
         })
       );
