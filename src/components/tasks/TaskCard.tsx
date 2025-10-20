@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Calendar, User, Sparkles, Bot, ExternalLink } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,7 +22,6 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
   const handleClick = () => {
     router.push(`/w/${workspaceSlug}/task/${task.id}`);
   };
-
 
   return (
     <motion.div
@@ -55,17 +54,22 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
           )}
         </div>
         <div className="flex items-center gap-2">
-          {task.sourceType === "JANITOR" && (
+          {!hideWorkflowStatus && task.sourceType === "JANITOR" && (
             <Badge variant="secondary" className="gap-1">
               <Sparkles className="w-3 h-3" />
               Janitor
             </Badge>
           )}
-          {task.sourceType === "TASK_COORDINATOR" && (
+          {!hideWorkflowStatus && task.sourceType === "TASK_COORDINATOR" && (
             <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200">
               <Bot className="w-3 h-3" />
               Task Coordinator
             </Badge>
+          )}
+          {!hideWorkflowStatus && (
+            <div className="px-2 py-1 rounded-full border bg-background text-xs">
+              <WorkflowStatusBadge status={task.workflowStatus} />
+            </div>
           )}
           {task.stakworkProjectId && (
             <Link
@@ -73,36 +77,47 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              className="text-blue-600 hover:text-blue-800 transition-colors"
+              title="View workflow in Stakwork"
             >
-              Workflow
               <ExternalLink className="w-3 h-3" />
             </Link>
-          )}
-          {!hideWorkflowStatus && (
-            <div className="px-2 py-1 rounded-full border bg-background text-xs">
-              <WorkflowStatusBadge status={task.workflowStatus} />
-            </div>
           )}
         </div>
       </div>
       
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Avatar className="size-5">
-            <AvatarImage src={task.createdBy.image || undefined} />
-            <AvatarFallback className="text-xs">
-              <User className="w-3 h-3" />
-            </AvatarFallback>
-          </Avatar>
-          <span>
-            {task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}
-          </span>
-        </div>
-        {task.assignee && (
-          <div className="flex items-center gap-1">
-            <Users className="w-3 h-3" />
+        {hideWorkflowStatus && task.sourceType === "JANITOR" ? (
+          <Badge variant="secondary" className="gap-1">
+            <Sparkles className="w-3 h-3" />
+            Janitor
+          </Badge>
+        ) : hideWorkflowStatus && task.sourceType === "TASK_COORDINATOR" ? (
+          <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200">
+            <Bot className="w-3 h-3" />
+            Task Coordinator
+          </Badge>
+        ) : task.assignee ? (
+          <div className="flex items-center gap-2">
+            <Avatar className="size-5">
+              <AvatarImage src={task.assignee.image || undefined} />
+              <AvatarFallback className="text-xs">
+                <User className="w-3 h-3" />
+              </AvatarFallback>
+            </Avatar>
             <span>{task.assignee.name || task.assignee.email}</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Avatar className="size-5">
+              <AvatarImage src={task.createdBy.image || undefined} />
+              <AvatarFallback className="text-xs">
+                <User className="w-3 h-3" />
+              </AvatarFallback>
+            </Avatar>
+            <span>
+              {task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}
+            </span>
           </div>
         )}
         <div className="flex items-center gap-1">
