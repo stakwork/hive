@@ -5,7 +5,6 @@ import { GripVertical, Trash2 } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Table,
   TableBody,
@@ -110,6 +109,11 @@ function SortableTableRow({
           currentAssignee={task.assignee}
           onSelect={onAssigneeUpdate}
           showSpecialAssignees={true}
+          ticketData={{
+            id: ticket.id,
+            title: ticket.title,
+            description: ticket.description,
+          }}
         />
       </TableCell>
       <TableCell className="w-[200px]">
