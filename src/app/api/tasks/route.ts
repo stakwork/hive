@@ -86,9 +86,12 @@ export async function GET(request: NextRequest) {
         where: {
           workspaceId,
           deleted: false,
-          status: { not: TaskStatus.TODO },
           OR: [
+            // Show non-TODO tasks (active work)
+            { status: { not: TaskStatus.TODO } },
+            // Show agent mode tasks regardless of status
             { mode: "agent" },
+            // Show Stakwork tasks regardless of status
             { stakworkProjectId: { not: null } },
           ],
         },
@@ -164,9 +167,12 @@ export async function GET(request: NextRequest) {
         where: {
           workspaceId,
           deleted: false,
-          status: { not: TaskStatus.TODO },
           OR: [
+            // Show non-TODO tasks (active work)
+            { status: { not: TaskStatus.TODO } },
+            // Show agent mode tasks regardless of status
             { mode: "agent" },
+            // Show Stakwork tasks regardless of status
             { stakworkProjectId: { not: null } },
           ],
         },
