@@ -32,7 +32,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     sourceType = "USER",
     userId,
     initialMessage,
-    status = "TODO",
+    status = "IN_PROGRESS",  // Default to IN_PROGRESS since workflow starts immediately
     mode = "default",
   } = params;
 

@@ -812,6 +812,7 @@ describe("Janitor API Integration Tests", () => {
       });
       expect(task).toBeTruthy();
       expect(task?.sourceType).toBe("JANITOR");
+      expect(task?.status).toBe("IN_PROGRESS");
     });
 
     test("POST /api/janitors/recommendations/[id]/dismiss - should dismiss recommendation", async () => {
