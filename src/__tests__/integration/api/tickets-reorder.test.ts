@@ -5,6 +5,8 @@ import { TaskStatus, Priority } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
+  createTestTask,
+  findTestTask
 } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
@@ -14,13 +16,13 @@ import {
   createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 
-describe("Tickets Reorder API - Integration Tests", () => {
+describe("Tasks Reorder API - Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("POST /api/tickets/reorder", () => {
-    test("reorders tickets successfully and persists new order", async () => {
+  describe("POST /api/tasks/reorder", () => {
+    test("reorders tasks successfully and persists new order", async () => {
       // Setup
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
@@ -38,10 +40,11 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Create 3 tickets with initial order [0, 1, 2]
-      const ticket1 = await db.ticket.create({
+      // Create 3 tasks with initial order [0, 1, 2]
+      const task1 = await db.task.create({
         data: {
-          title: "Ticket 1",
+          workspaceId: workspace.id,
+          title: "Task 1",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -51,9 +54,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket2 = await db.ticket.create({
+      const task2 = await db.task.create({
         data: {
-          title: "Ticket 2",
+          workspaceId: workspace.id,
+          title: "Task 2",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -63,9 +67,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket3 = await db.ticket.create({
+      const task3 = await db.task.create({
         data: {
-          title: "Ticket 3",
+          workspaceId: workspace.id,
+          title: "Task 3",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -75,14 +80,14 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Reorder to [Ticket 3, Ticket 1, Ticket 2] with new order [0, 1, 2]
+      // Reorder to [Task 3, Task 1, Task 2] with new order [0, 1, 2]
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [
-            { id: ticket3.id, order: 0 },
-            { id: ticket1.id, order: 1 },
-            { id: ticket2.id, order: 2 },
+          tasks: [
+            { id: task3.id, order: 0 },
+            { id: task1.id, order: 1 },
+            { id: task2.id, order: 2 },
           ],
         },
         user
@@ -95,21 +100,21 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.data).toHaveLength(3);
 
       // Verify database state reflects new order
-      const updatedTickets = await db.ticket.findMany({
+      const updatedTasks = await db.task.findMany({
         where: { featureId: feature.id },
         orderBy: { order: "asc" },
       });
 
-      expect(updatedTickets).toHaveLength(3);
-      expect(updatedTickets[0].id).toBe(ticket3.id);
-      expect(updatedTickets[0].order).toBe(0);
-      expect(updatedTickets[1].id).toBe(ticket1.id);
-      expect(updatedTickets[1].order).toBe(1);
-      expect(updatedTickets[2].id).toBe(ticket2.id);
-      expect(updatedTickets[2].order).toBe(2);
+      expect(updatedTasks).toHaveLength(3);
+      expect(updatedTasks[0].id).toBe(task3.id);
+      expect(updatedTasks[0].order).toBe(0);
+      expect(updatedTasks[1].id).toBe(task1.id);
+      expect(updatedTasks[1].order).toBe(1);
+      expect(updatedTasks[2].id).toBe(task2.id);
+      expect(updatedTasks[2].order).toBe(2);
     });
 
-    test("reorders tickets across phases with phaseId updates", async () => {
+    test("reorders tasks across phases with phaseId updates", async () => {
       // Setup
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
@@ -143,9 +148,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket1 = await db.ticket.create({
+      const task1 = await db.task.create({
         data: {
-          title: "Ticket 1",
+          workspaceId: workspace.id,
+          title: "Task 1",
           featureId: feature.id,
           phaseId: phase1.id,
           status: TaskStatus.TODO,
@@ -156,9 +162,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket2 = await db.ticket.create({
+      const task2 = await db.task.create({
         data: {
-          title: "Ticket 2",
+          workspaceId: workspace.id,
+          title: "Task 2",
           featureId: feature.id,
           phaseId: phase1.id,
           status: TaskStatus.TODO,
@@ -169,13 +176,13 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Move ticket1 to phase2 and reorder
+      // Move task1 to phase2 and reorder
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [
-            { id: ticket2.id, order: 0, phaseId: phase1.id },
-            { id: ticket1.id, order: 0, phaseId: phase2.id },
+          tasks: [
+            { id: task2.id, order: 0, phaseId: phase1.id },
+            { id: task1.id, order: 0, phaseId: phase2.id },
           ],
         },
         user
@@ -187,22 +194,22 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify phaseId and order updates
-      const updatedTicket1 = await db.ticket.findUnique({
-        where: { id: ticket1.id },
+      const updatedTask1 = await db.task.findUnique({
+        where: { id: task1.id },
       });
-      const updatedTicket2 = await db.ticket.findUnique({
-        where: { id: ticket2.id },
+      const updatedTask2 = await db.task.findUnique({
+        where: { id: task2.id },
       });
 
-      expect(updatedTicket1?.phaseId).toBe(phase2.id);
-      expect(updatedTicket1?.order).toBe(0);
-      expect(updatedTicket2?.phaseId).toBe(phase1.id);
-      expect(updatedTicket2?.order).toBe(0);
+      expect(updatedTask1?.phaseId).toBe(phase2.id);
+      expect(updatedTask1?.order).toBe(0);
+      expect(updatedTask2?.phaseId).toBe(phase1.id);
+      expect(updatedTask2?.order).toBe(0);
     });
 
     test("requires authentication", async () => {
-      const request = createPostRequest("http://localhost:3000/api/tickets/reorder", {
-        tickets: [{ id: "ticket-id", order: 0 }],
+      const request = createPostRequest("http://localhost:3000/api/tasks/reorder", {
+        tasks: [{ id: "task-id", order: 0 }],
       });
 
       const response = await POST(request);
@@ -228,9 +235,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket = await db.ticket.create({
+      const task = await db.task.create({
         data: {
-          title: "Test Ticket",
+          workspaceId: workspace.id,
+          title: "Test Task",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -241,9 +249,9 @@ describe("Tickets Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [{ id: ticket.id, order: 0 }],
+          tasks: [{ id: task.id, order: 0 }],
         },
         nonMember
       );
@@ -253,56 +261,56 @@ describe("Tickets Reorder API - Integration Tests", () => {
       await expectError(response, "Access denied", 403);
     });
 
-    test("validates tickets array is provided", async () => {
+    test("validates tasks array is provided", async () => {
       const user = await createTestUser();
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
-        { tickets: "not-an-array" },
+        "http://localhost:3000/api/tasks/reorder",
+        { tasks: "not-an-array" },
         user
       );
 
       const response = await POST(request);
 
-      await expectError(response, "Tickets must be a non-empty array", 400);
+      await expectError(response, "Tasks must be a non-empty array", 400);
     });
 
-    test("handles empty tickets array", async () => {
+    test("handles empty tasks array", async () => {
       const user = await createTestUser();
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
-        { tickets: [] },
+        "http://localhost:3000/api/tasks/reorder",
+        { tasks: [] },
         user
       );
 
       const response = await POST(request);
 
-      await expectError(response, "Tickets must be a non-empty array", 400);
+      await expectError(response, "Tasks must be a non-empty array", 400);
     });
 
-    test("returns 404 for non-existent ticket", async () => {
+    test("returns 404 for non-existent task", async () => {
       const user = await createTestUser();
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [{ id: "non-existent-ticket-id", order: 0 }],
+          tasks: [{ id: "non-existent-task-id", order: 0 }],
         },
         user
       );
 
       const response = await POST(request);
 
-      await expectError(response, "Ticket not found", 404);
+      await expectError(response, "Task not found", 404);
     });
 
-    // TODO: Enable this test once production code validates all tickets belong to same feature
-    // Currently the reorderTickets service only validates the first ticket's feature access
-    // but doesn't check if all tickets belong to the same feature. This allows cross-feature
+    // TODO: Enable this test once production code validates all tasks belong to same feature
+    // Currently the reorderTasks service only validates the first task's feature access
+    // but doesn't check if all tasks belong to the same feature. This allows cross-feature
     // reordering which could be a security/data integrity issue.
-    // Production code fix needed in: src/services/roadmap/tickets.ts (reorderTickets function)
-    test.skip("prevents cross-feature ticket reordering", async () => {
+    // Production code fix needed in: src/services/roadmap/tasks.ts (reorderTasks function)
+    test.skip("prevents cross-feature task reordering", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -329,10 +337,11 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Create ticket in feature 1
-      const ticket1 = await db.ticket.create({
+      // Create task in feature 1
+      const task1 = await db.task.create({
         data: {
-          title: "Ticket in Feature 1",
+          workspaceId: workspace.id,
+          title: "Task in Feature 1",
           featureId: feature1.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -342,10 +351,11 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Create ticket in feature 2
-      const ticket2 = await db.ticket.create({
+      // Create task in feature 2
+      const task2 = await db.task.create({
         data: {
-          title: "Ticket in Feature 2",
+          workspaceId: workspace.id,
+          title: "Task in Feature 2",
           featureId: feature2.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -355,13 +365,13 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Attempt to reorder tickets from different features together
+      // Attempt to reorder tasks from different features together
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [
-            { id: ticket1.id, order: 0 },
-            { id: ticket2.id, order: 1 }, // Wrong feature!
+          tasks: [
+            { id: task1.id, order: 0 },
+            { id: task2.id, order: 1 }, // Wrong feature!
           ],
         },
         user
@@ -369,24 +379,24 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
       const response = await POST(request);
 
-      // Service should fail - tickets must belong to same feature
+      // Service should fail - tasks must belong to same feature
       expect(response.status).toBeGreaterThanOrEqual(400);
 
       // Verify original order is preserved (transaction rolled back)
-      const ticket1Check = await db.ticket.findUnique({
-        where: { id: ticket1.id },
+      const task1Check = await db.task.findUnique({
+        where: { id: task1.id },
       });
-      const ticket2Check = await db.ticket.findUnique({
-        where: { id: ticket2.id },
+      const task2Check = await db.task.findUnique({
+        where: { id: task2.id },
       });
 
-      expect(ticket1Check?.order).toBe(0);
-      expect(ticket1Check?.featureId).toBe(feature1.id);
-      expect(ticket2Check?.order).toBe(0);
-      expect(ticket2Check?.featureId).toBe(feature2.id);
+      expect(task1Check?.order).toBe(0);
+      expect(task1Check?.featureId).toBe(feature1.id);
+      expect(task2Check?.order).toBe(0);
+      expect(task2Check?.featureId).toBe(feature2.id);
     });
 
-    test("rolls back transaction on partial failure with invalid ticket ID", async () => {
+    test("rolls back transaction on partial failure with invalid task ID", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -403,9 +413,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket1 = await db.ticket.create({
+      const task1 = await db.task.create({
         data: {
-          title: "Ticket 1",
+          workspaceId: workspace.id,
+          title: "Task 1",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -415,9 +426,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket2 = await db.ticket.create({
+      const task2 = await db.task.create({
         data: {
-          title: "Ticket 2",
+          workspaceId: workspace.id,
+          title: "Task 2",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -427,14 +439,14 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      // Attempt reorder with one invalid ticket ID in the middle
+      // Attempt reorder with one invalid task ID in the middle
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [
-            { id: ticket1.id, order: 0 },
-            { id: "non-existent-ticket-id", order: 1 }, // Invalid!
-            { id: ticket2.id, order: 2 },
+          tasks: [
+            { id: task1.id, order: 0 },
+            { id: "non-existent-task-id", order: 1 }, // Invalid!
+            { id: task2.id, order: 2 },
           ],
         },
         user
@@ -446,16 +458,16 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(response.status).toBeGreaterThanOrEqual(400);
 
       // Verify original order is preserved (no partial updates)
-      const updatedTickets = await db.ticket.findMany({
+      const updatedTasks = await db.task.findMany({
         where: { featureId: feature.id },
         orderBy: { order: "asc" },
       });
 
-      expect(updatedTickets).toHaveLength(2);
-      expect(updatedTickets[0].id).toBe(ticket1.id);
-      expect(updatedTickets[0].order).toBe(0); // Original order
-      expect(updatedTickets[1].id).toBe(ticket2.id);
-      expect(updatedTickets[1].order).toBe(1); // Original order
+      expect(updatedTasks).toHaveLength(2);
+      expect(updatedTasks[0].id).toBe(task1.id);
+      expect(updatedTasks[0].order).toBe(0); // Original order
+      expect(updatedTasks[1].id).toBe(task2.id);
+      expect(updatedTasks[1].order).toBe(1); // Original order
     });
 
     test("handles reordering with duplicate order values", async () => {
@@ -475,9 +487,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket1 = await db.ticket.create({
+      const task1 = await db.task.create({
         data: {
-          title: "Ticket 1",
+          workspaceId: workspace.id,
+          title: "Task 1",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -487,9 +500,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket2 = await db.ticket.create({
+      const task2 = await db.task.create({
         data: {
-          title: "Ticket 2",
+          workspaceId: workspace.id,
+          title: "Task 2",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -501,11 +515,11 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
       // Reorder with duplicate order values (both order: 0)
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [
-            { id: ticket1.id, order: 0 },
-            { id: ticket2.id, order: 0 }, // Duplicate order
+          tasks: [
+            { id: task1.id, order: 0 },
+            { id: task2.id, order: 0 }, // Duplicate order
           ],
         },
         user
@@ -517,13 +531,13 @@ describe("Tickets Reorder API - Integration Tests", () => {
       const data = await expectSuccess(response, 200);
       expect(data.success).toBe(true);
 
-      // Verify both tickets have order 0
-      const updatedTickets = await db.ticket.findMany({
+      // Verify both tasks have order 0
+      const updatedTasks = await db.task.findMany({
         where: { featureId: feature.id },
       });
 
-      expect(updatedTickets).toHaveLength(2);
-      expect(updatedTickets.every((t) => t.order === 0)).toBe(true);
+      expect(updatedTasks).toHaveLength(2);
+      expect(updatedTasks.every((t) => t.order === 0)).toBe(true);
     });
 
     test("rejects deleted workspace features", async () => {
@@ -543,9 +557,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket = await db.ticket.create({
+      const task = await db.task.create({
         data: {
-          title: "Test Ticket",
+          workspaceId: workspace.id,
+          title: "Test Task",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -562,9 +577,9 @@ describe("Tickets Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [{ id: ticket.id, order: 0 }],
+          tasks: [{ id: task.id, order: 0 }],
         },
         user
       );
@@ -575,7 +590,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(response.status).toBeGreaterThanOrEqual(400);
     });
 
-    test("allows workspace owner to reorder tickets", async () => {
+    test("allows workspace owner to reorder tasks", async () => {
       const owner = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: owner.id,
@@ -592,9 +607,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket = await db.ticket.create({
+      const task = await db.task.create({
         data: {
-          title: "Test Ticket",
+          workspaceId: workspace.id,
+          title: "Test Task",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -605,9 +621,9 @@ describe("Tickets Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [{ id: ticket.id, order: 5 }],
+          tasks: [{ id: task.id, order: 5 }],
         },
         owner
       );
@@ -618,13 +634,13 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify owner can reorder
-      const updatedTicket = await db.ticket.findUnique({
-        where: { id: ticket.id },
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
       });
-      expect(updatedTicket?.order).toBe(5);
+      expect(updatedTask?.order).toBe(5);
     });
 
-    test("allows workspace member to reorder tickets", async () => {
+    test("allows workspace member to reorder tasks", async () => {
       const owner = await createTestUser();
       const member = await createTestUser();
       const workspace = await createTestWorkspace({
@@ -651,9 +667,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket = await db.ticket.create({
+      const task = await db.task.create({
         data: {
-          title: "Test Ticket",
+          workspaceId: workspace.id,
+          title: "Test Task",
           featureId: feature.id,
           status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
@@ -664,9 +681,9 @@ describe("Tickets Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [{ id: ticket.id, order: 3 }],
+          tasks: [{ id: task.id, order: 3 }],
         },
         member
       );
@@ -677,13 +694,13 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify member can reorder
-      const updatedTicket = await db.ticket.findUnique({
-        where: { id: ticket.id },
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
       });
-      expect(updatedTicket?.order).toBe(3);
+      expect(updatedTask?.order).toBe(3);
     });
 
-    test("reorders multiple tickets and preserves other ticket properties", async () => {
+    test("reorders multiple tasks and preserves other task properties", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -700,9 +717,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket1 = await db.ticket.create({
+      const task1 = await db.task.create({
         data: {
-          title: "High Priority Ticket",
+          workspaceId: workspace.id,
+          title: "High Priority Task",
           description: "Important task",
           featureId: feature.id,
           status: TaskStatus.IN_PROGRESS,
@@ -713,9 +731,10 @@ describe("Tickets Reorder API - Integration Tests", () => {
         },
       });
 
-      const ticket2 = await db.ticket.create({
+      const task2 = await db.task.create({
         data: {
-          title: "Low Priority Ticket",
+          workspaceId: workspace.id,
+          title: "Low Priority Task",
           description: "Less important",
           featureId: feature.id,
           status: TaskStatus.TODO,
@@ -728,11 +747,11 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
       // Reverse order
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tickets/reorder",
+        "http://localhost:3000/api/tasks/reorder",
         {
-          tickets: [
-            { id: ticket2.id, order: 0 },
-            { id: ticket1.id, order: 1 },
+          tasks: [
+            { id: task2.id, order: 0 },
+            { id: task1.id, order: 1 },
           ],
         },
         user
@@ -744,22 +763,22 @@ describe("Tickets Reorder API - Integration Tests", () => {
       expect(data.success).toBe(true);
 
       // Verify order changed but other properties preserved
-      const updatedTicket1 = await db.ticket.findUnique({
-        where: { id: ticket1.id },
+      const updatedTask1 = await db.task.findUnique({
+        where: { id: task1.id },
       });
-      const updatedTicket2 = await db.ticket.findUnique({
-        where: { id: ticket2.id },
+      const updatedTask2 = await db.task.findUnique({
+        where: { id: task2.id },
       });
 
-      expect(updatedTicket1?.order).toBe(1);
-      expect(updatedTicket1?.title).toBe("High Priority Ticket");
-      expect(updatedTicket1?.status).toBe(TaskStatus.IN_PROGRESS);
-      expect(updatedTicket1?.priority).toBe(Priority.HIGH);
+      expect(updatedTask1?.order).toBe(1);
+      expect(updatedTask1?.title).toBe("High Priority Task");
+      expect(updatedTask1?.status).toBe(TaskStatus.IN_PROGRESS);
+      expect(updatedTask1?.priority).toBe(Priority.HIGH);
 
-      expect(updatedTicket2?.order).toBe(0);
-      expect(updatedTicket2?.title).toBe("Low Priority Ticket");
-      expect(updatedTicket2?.status).toBe(TaskStatus.TODO);
-      expect(updatedTicket2?.priority).toBe(Priority.LOW);
+      expect(updatedTask2?.order).toBe(0);
+      expect(updatedTask2?.title).toBe("Low Priority Task");
+      expect(updatedTask2?.status).toBe(TaskStatus.TODO);
+      expect(updatedTask2?.priority).toBe(Priority.LOW);
     });
   });
 });

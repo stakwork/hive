@@ -79,13 +79,14 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     phaseId = phase.id;
 
     // Create some tickets in the phase
-    await db.ticket.create({
+    await db.task.create({
       data: {
         title: "Ticket 1",
         description: "Test ticket",
         status: "TODO",
         priority: "MEDIUM",
         order: 0,
+        workspaceId: workspace.id,
         featureId: feature.id,
         phaseId: phase.id,
         createdById: owner.id,
@@ -93,13 +94,14 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       },
     });
 
-    await db.ticket.create({
+    await db.task.create({
       data: {
         title: "Ticket 2",
         description: "Another test ticket",
         status: "TODO",
         priority: "HIGH",
         order: 1,
+        workspaceId: workspace.id,
         featureId: feature.id,
         phaseId: phase.id,
         createdById: owner.id,
@@ -134,12 +136,12 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(result.data.feature.workspaceId).toBe(workspaceId);
 
       // Verify tickets
-      expect(result.data.tickets).toBeInstanceOf(Array);
-      expect(result.data.tickets).toHaveLength(2);
-      expect(result.data.tickets[0].title).toBe("Ticket 1");
-      expect(result.data.tickets[0].phaseId).toBe(phaseId);
-      expect(result.data.tickets[1].title).toBe("Ticket 2");
-      expect(result.data.tickets[1].order).toBe(1);
+      expect(result.data.tasks).toBeInstanceOf(Array);
+      expect(result.data.tasks).toHaveLength(2);
+      expect(result.data.tasks[0].title).toBe("Ticket 1");
+      expect(result.data.tasks[0].phaseId).toBe(phaseId);
+      expect(result.data.tasks[1].title).toBe("Ticket 2");
+      expect(result.data.tasks[1].order).toBe(1);
     });
 
     test("member can fetch phase details", async () => {
@@ -155,7 +157,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const result = await expectSuccess(response);
       expect(result.data.id).toBe(phaseId);
       expect(result.data.name).toBe("Phase 1");
-      expect(result.data.tickets).toHaveLength(2);
+      expect(result.data.tasks).toHaveLength(2);
     });
 
     test("outsider cannot fetch phase", async () => {
@@ -224,7 +226,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("filters out deleted tickets from phase", async () => {
       // Soft delete one ticket
-      await db.ticket.updateMany({
+      await db.task.updateMany({
         where: { title: "Ticket 1" },
         data: {
           deleted: true,
@@ -242,18 +244,19 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       });
 
       const result = await expectSuccess(response);
-      expect(result.data.tickets).toHaveLength(1);
-      expect(result.data.tickets[0].title).toBe("Ticket 2");
+      expect(result.data.tasks).toHaveLength(1);
+      expect(result.data.tasks[0].title).toBe("Ticket 2");
     });
 
     test("returns tickets ordered by order field", async () => {
       // Create additional tickets with specific order
-      await db.ticket.create({
+      await db.task.create({
         data: {
           title: "Ticket 0",
           status: "TODO",
           priority: "LOW",
           order: -1,
+          workspaceId: workspaceId,
           featureId: featureId,
           phaseId: phaseId,
           createdById: owner.id,
@@ -271,10 +274,10 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       });
 
       const result = await expectSuccess(response);
-      expect(result.data.tickets).toHaveLength(3);
-      expect(result.data.tickets[0].order).toBe(-1);
-      expect(result.data.tickets[1].order).toBe(0);
-      expect(result.data.tickets[2].order).toBe(1);
+      expect(result.data.tasks).toHaveLength(3);
+      expect(result.data.tasks[0].order).toBe(-1);
+      expect(result.data.tasks[1].order).toBe(0);
+      expect(result.data.tasks[2].order).toBe(1);
     });
   });
 
@@ -610,7 +613,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
     test("soft delete does not orphan tickets automatically", async () => {
       // Get initial tickets
-      const ticketsBefore = await db.ticket.findMany({
+      const ticketsBefore = await db.task.findMany({
         where: { phaseId: phaseId },
       });
       expect(ticketsBefore).toHaveLength(2);
@@ -628,7 +631,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
       // Verify tickets still reference the phase (soft delete doesn't trigger onDelete cascade)
       // Note: Tickets need to be manually updated to set phaseId to null if desired
-      const ticketsAfter = await db.ticket.findMany({
+      const ticketsAfter = await db.task.findMany({
         where: {
           id: { in: ticketsBefore.map((t) => t.id) },
         },
@@ -643,7 +646,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("does not delete ticket records when phase is deleted", async () => {
-      const ticketsBefore = await db.ticket.findMany({
+      const ticketsBefore = await db.task.findMany({
         where: { phaseId: phaseId },
       });
       const ticketIds = ticketsBefore.map((t) => t.id);
@@ -659,7 +662,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       });
 
       // Verify tickets still exist
-      const ticketsAfter = await db.ticket.findMany({
+      const ticketsAfter = await db.task.findMany({
         where: { id: { in: ticketIds } },
       });
 

@@ -13,13 +13,13 @@ import {
   createPostRequest,
 } from "@/__tests__/support/helpers";
 
-describe("Batch Create Phases and Tickets API - Integration Tests", () => {
+describe("Batch Create Phases and Tasks API - Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   describe("POST /api/features/[featureId]/phases/batch-create", () => {
-    test("creates phases and tickets successfully with real database operations", async () => {
+    test("creates phases and tasks successfully with real database operations", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -41,7 +41,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
           {
             name: "Foundation",
             description: "Setup infrastructure",
-            tickets: [
+            tasks: [
               {
                 title: "Setup database schema",
                 description: "Create tables for voice commands",
@@ -61,7 +61,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
           {
             name: "Core Features",
             description: "Implement main functionality",
-            tickets: [
+            tasks: [
               {
                 title: "Implement voice recognition",
                 priority: "HIGH" as const,
@@ -91,45 +91,45 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       expect(phase1.phase.name).toBe("Foundation");
       expect(phase1.phase.description).toBe("Setup infrastructure");
       expect(phase1.phase.order).toBe(0);
-      expect(phase1.tickets).toHaveLength(2);
+      expect(phase1.tasks).toHaveLength(2);
 
       const phase2 = data.data[1];
       expect(phase2.phase.name).toBe("Core Features");
       expect(phase2.phase.order).toBe(1);
-      expect(phase2.tickets).toHaveLength(1);
+      expect(phase2.tasks).toHaveLength(1);
 
-      // Verify tickets
-      const ticket1 = phase1.tickets[0];
-      expect(ticket1.title).toBe("Setup database schema");
-      expect(ticket1.priority).toBe("HIGH");
-      expect(ticket1.dependsOnTaskIds).toEqual([]);
+      // Verify tasks
+      const task1 = phase1.tasks[0];
+      expect(task1.title).toBe("Setup database schema");
+      expect(task1.priority).toBe("HIGH");
+      expect(task1.dependsOnTaskIds).toEqual([]);
 
-      const ticket2 = phase1.tickets[1];
-      expect(ticket2.title).toBe("Build API endpoints");
-      expect(ticket2.dependsOnTaskIds).toHaveLength(1);
-      expect(ticket2.dependsOnTaskIds[0]).toBe(ticket1.id); // Real ID, not "T1"
+      const task2 = phase1.tasks[1];
+      expect(task2.title).toBe("Build API endpoints");
+      expect(task2.dependsOnTaskIds).toHaveLength(1);
+      expect(task2.dependsOnTaskIds[0]).toBe(task1.id); // Real ID, not "T1"
 
-      const ticket3 = phase2.tickets[0];
-      expect(ticket3.title).toBe("Implement voice recognition");
-      expect(ticket3.dependsOnTaskIds).toHaveLength(2);
-      expect(ticket3.dependsOnTaskIds).toContain(ticket1.id);
-      expect(ticket3.dependsOnTaskIds).toContain(ticket2.id);
+      const task3 = phase2.tasks[0];
+      expect(task3.title).toBe("Implement voice recognition");
+      expect(task3.dependsOnTaskIds).toHaveLength(2);
+      expect(task3.dependsOnTaskIds).toContain(task1.id);
+      expect(task3.dependsOnTaskIds).toContain(task2.id);
 
       // Verify database persistence
       const phasesInDb = await db.phase.findMany({
         where: { featureId: feature.id },
-        include: { tickets: true },
+        include: { tasks: true },
         orderBy: { order: "asc" },
       });
 
       expect(phasesInDb).toHaveLength(2);
       expect(phasesInDb[0].name).toBe("Foundation");
-      expect(phasesInDb[0].tickets).toHaveLength(2);
+      expect(phasesInDb[0].tasks).toHaveLength(2);
       expect(phasesInDb[1].name).toBe("Core Features");
-      expect(phasesInDb[1].tickets).toHaveLength(1);
+      expect(phasesInDb[1].tasks).toHaveLength(1);
     });
 
-    test("maps tempId dependencies to real ticket IDs correctly", async () => {
+    test("maps tempId dependencies to real task IDs correctly", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -150,7 +150,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tickets: [
+            tasks: [
               { title: "Ticket 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
               { title: "Ticket 2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: ["T1"] },
               { title: "Ticket 3", priority: "MEDIUM" as const, tempId: "T3", dependsOn: ["T1", "T2"] },
@@ -170,22 +170,22 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       });
 
       const data = await expectSuccess(response, 201);
-      const tickets = data.data[0].tickets;
+      const tasks = data.data[0].tasks;
 
       // Verify T1 has no dependencies
-      expect(tickets[0].dependsOnTaskIds).toEqual([]);
+      expect(tasks[0].dependsOnTaskIds).toEqual([]);
 
       // Verify T2 depends on T1 (real ID)
-      expect(tickets[1].dependsOnTaskIds).toEqual([tickets[0].id]);
+      expect(tasks[1].dependsOnTaskIds).toEqual([tasks[0].id]);
 
       // Verify T3 depends on both T1 and T2 (real IDs)
-      expect(tickets[2].dependsOnTaskIds).toHaveLength(2);
-      expect(tickets[2].dependsOnTaskIds).toContain(tickets[0].id);
-      expect(tickets[2].dependsOnTaskIds).toContain(tickets[1].id);
+      expect(tasks[2].dependsOnTaskIds).toHaveLength(2);
+      expect(tasks[2].dependsOnTaskIds).toContain(tasks[0].id);
+      expect(tasks[2].dependsOnTaskIds).toContain(tasks[1].id);
 
       // Verify no tempIds remain in database
-      expect(tickets[2].dependsOnTaskIds).not.toContain("T1");
-      expect(tickets[2].dependsOnTaskIds).not.toContain("T2");
+      expect(tasks[2].dependsOnTaskIds).not.toContain("T1");
+      expect(tasks[2].dependsOnTaskIds).not.toContain("T2");
     });
 
     test("handles cross-phase dependencies", async () => {
@@ -209,13 +209,13 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tickets: [
+            tasks: [
               { title: "Setup", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
             ],
           },
           {
             name: "Phase 2",
-            tickets: [
+            tasks: [
               { title: "Feature", priority: "MEDIUM" as const, tempId: "T2", dependsOn: ["T1"] },
             ],
           },
@@ -234,11 +234,11 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
 
       const data = await expectSuccess(response, 201);
 
-      const phase1Ticket = data.data[0].tickets[0];
-      const phase2Ticket = data.data[1].tickets[0];
+      const phase1Task = data.data[0].tasks[0];
+      const phase2Task = data.data[1].tasks[0];
 
-      // Phase 2 ticket depends on Phase 1 ticket (cross-phase dependency)
-      expect(phase2Ticket.dependsOnTaskIds).toEqual([phase1Ticket.id]);
+      // Phase 2 task depends on Phase 1 task (cross-phase dependency)
+      expect(phase2Task.dependsOnTaskIds).toEqual([phase1Task.id]);
     });
 
     test("uses transaction (atomicity test)", async () => {
@@ -262,7 +262,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Valid Phase",
-            tickets: [
+            tasks: [
               { title: "Ticket 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
             ],
           },
@@ -279,14 +279,14 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         params: Promise.resolve({ featureId: feature.id }),
       });
 
-      // Verify both phase and ticket were created (transaction succeeded)
+      // Verify both phase and task were created (transaction succeeded)
       const phasesInDb = await db.phase.findMany({
         where: { featureId: feature.id },
-        include: { tickets: true },
+        include: { tasks: true },
       });
 
       expect(phasesInDb).toHaveLength(1);
-      expect(phasesInDb[0].tickets).toHaveLength(1);
+      expect(phasesInDb[0].tasks).toHaveLength(1);
     });
 
     test("requires authentication", async () => {
@@ -324,7 +324,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tickets: [
+            tasks: [
               { title: "Ticket", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
             ],
           },
@@ -351,7 +351,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tickets: [
+            tasks: [
               { title: "Ticket", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
             ],
           },
@@ -431,7 +431,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       await expectError(response, "cannot be empty", 400);
     });
 
-    test("sets correct ticket order within each phase", async () => {
+    test("sets correct task order within each phase", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -452,7 +452,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tickets: [
+            tasks: [
               { title: "First", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
               { title: "Second", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
               { title: "Third", priority: "MEDIUM" as const, tempId: "T3", dependsOn: [] },
@@ -472,11 +472,11 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       });
 
       const data = await expectSuccess(response, 201);
-      const tickets = data.data[0].tickets;
+      const tasks = data.data[0].tasks;
 
-      expect(tickets[0].order).toBe(0);
-      expect(tickets[1].order).toBe(1);
-      expect(tickets[2].order).toBe(2);
+      expect(tasks[0].order).toBe(0);
+      expect(tasks[1].order).toBe(1);
+      expect(tasks[2].order).toBe(2);
     });
 
     test("verifies dependsOnTaskIds contains real IDs not tempIds", async () => {
@@ -500,7 +500,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tickets: [
+            tasks: [
               { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
               { title: "T2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: ["T1"] },
             ],
@@ -521,14 +521,14 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       const data = await expectSuccess(response, 201);
 
       // Verify from database
-      const ticketInDb = await db.ticket.findFirst({
+      const taskInDb = await db.task.findFirst({
         where: { title: "T2" },
       });
 
-      expect(ticketInDb?.dependsOnTaskIds).toHaveLength(1);
+      expect(taskInDb?.dependsOnTaskIds).toHaveLength(1);
       // Should be a real database ID (cuid format), not tempId "T1"
-      expect(ticketInDb?.dependsOnTaskIds[0]).not.toBe("T1");
-      expect(ticketInDb?.dependsOnTaskIds[0]).toMatch(/^c[a-z0-9]{24}$/); // cuid format
+      expect(taskInDb?.dependsOnTaskIds[0]).not.toBe("T1");
+      expect(taskInDb?.dependsOnTaskIds[0]).toMatch(/^c[a-z0-9]{24}$/); // cuid format
     });
   });
 });
