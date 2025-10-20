@@ -264,7 +264,7 @@ export const Cubes = memo(() => {
       >
         <group ref={nodesWrapperRef} name="simulation-3d-group__nodes" visible={!hideUniverse}>
           {dataInitial?.nodes.map((node: NodeExtended, index) => {
-            const simulationNode = simulation.nodes()[index]
+            const simulationNode = simulation?.nodes()[index]
             const isFixed = true || typeof simulationNode?.fx === 'number'
             const normalizedNode = nodesNormalized.get(node.ref_id)
             const scale = index || normalizedNode?.weight || normalizedNode?.properties?.weight || 1
