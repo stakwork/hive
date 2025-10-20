@@ -8,7 +8,16 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const { password } = await request.json();
+    let password = ""
+    try {
+      const body = await request.json();
+      password = body.password
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, message: "Invalid or missing JSON body"},
+        { status: 400 }
+      );
+    }
 
     // Check if landing page password is set
     const landingPassword = process.env.LANDING_PAGE_PASSWORD;
