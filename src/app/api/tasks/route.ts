@@ -87,6 +87,10 @@ export async function GET(request: NextRequest) {
           workspaceId,
           deleted: false,
           status: { not: TaskStatus.TODO },
+          OR: [
+            { mode: "agent" },
+            { stakworkProjectId: { not: null } },
+          ],
         },
         select: {
           id: true,
@@ -161,6 +165,10 @@ export async function GET(request: NextRequest) {
           workspaceId,
           deleted: false,
           status: { not: TaskStatus.TODO },
+          OR: [
+            { mode: "agent" },
+            { stakworkProjectId: { not: null } },
+          ],
         },
       }),
     ]);
