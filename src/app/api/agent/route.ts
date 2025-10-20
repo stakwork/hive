@@ -85,11 +85,11 @@ export async function POST(request: NextRequest) {
       for (const msg of chatHistory) {
         if (msg.artifacts && msg.artifacts.length > 0) {
           const ideArtifact = msg.artifacts[0];
-          if (ideArtifact.content && typeof ideArtifact.content === 'object') {
+          if (ideArtifact.content && typeof ideArtifact.content === "object") {
             const content = ideArtifact.content as { url?: string };
             if (content.url) {
               // Transform URL: https://09c0a821.workspaces.sphinx.chat -> https://09c0a821-15551.workspaces.sphinx.chat
-              persistedGooseUrl = content.url.replace(/^(https?:\/\/[^.]+)\./, '$1-15551.');
+              persistedGooseUrl = content.url.replace(/^(https?:\/\/[^.]+)\./, "$1-15551.");
               console.log("🔄 Found persisted Goose URL from IDE artifact:", persistedGooseUrl);
               break;
             }
@@ -130,26 +130,34 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Use custom dev URL (highest priority for testing), or persisted gooseUrl from IDE artifact, or provided gooseUrl
-  const effectiveGooseUrl = process.env.CUSTOM_GOOSE_WEB_URL || persistedGooseUrl || gooseUrl;
+  // If CUSTOM_GOOSE_URL is set, use it as-is (it should be the full ws:// URL)
+  // export CUSTOM_GOOSE_URL=ws://0.0.0.0:8888/ws
+  let wsUrl: string;
 
-  if (!effectiveGooseUrl) {
-    return NextResponse.json(
-      { error: "No Goose URL available. Please start a new agent task to claim a pod." },
-      { status: 400 }
-    );
+  if (process.env.CUSTOM_GOOSE_URL) {
+    wsUrl = process.env.CUSTOM_GOOSE_URL;
+    console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_URL:", wsUrl);
+  } else {
+    // Use persisted gooseUrl from IDE artifact, or provided gooseUrl
+    const effectiveGooseUrl = persistedGooseUrl || gooseUrl;
+
+    if (!effectiveGooseUrl) {
+      return NextResponse.json(
+        { error: "No Goose URL available. Please start a new agent task to claim a pod." },
+        { status: 400 },
+      );
+    }
+
+    wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
+
+    if (persistedGooseUrl) {
+      console.log("🔄 Using persisted Goose URL from database:", wsUrl);
+    } else if (gooseUrl) {
+      console.log("🆕 Using Goose URL from request:", wsUrl);
+    }
   }
 
-  const wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
-
-  console.log("🤖 Goose URL:", wsUrl);
-  if (process.env.CUSTOM_GOOSE_WEB_URL) {
-    console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_WEB_URL");
-  } else if (persistedGooseUrl) {
-    console.log("🔄 Using persisted Goose URL from database");
-  } else if (gooseUrl) {
-    console.log("🆕 Using Goose URL from request");
-  }
+  console.log("🤖 Final Goose WebSocket URL:", wsUrl);
   console.log("🤖 Session ID:", sessionId);
   const model = gooseWeb("goose", {
     wsUrl,
