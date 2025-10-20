@@ -1,10 +1,11 @@
-import { useGraphStore } from '@/stores/useGraphStore'
 import ClearIcon from '@/components/Icons/ClearIcon'
 import SearchIcon from '@/components/Icons/SearchIcon'
+import { useGraphStore } from '@/stores/useGraphStore'
 import { GraphFilter } from './GraphFilter'
 
 export const GraphSearch = () => {
-  const [setSearchQuery, searchQuery] = useGraphStore((s) => [s.setSearchQuery, s.searchQuery])
+  const searchQuery = useGraphStore((s) => s.searchQuery)
+  const setSearchQuery = useGraphStore((s) => s.setSearchQuery)
 
   return (
     <div className="absolute top-0 right-0 left-0 z-[100] flex flex-col items-center px-4 pt-4">
