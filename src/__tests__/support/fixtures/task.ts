@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import type { Task, ChatMessage } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
-import { expect } from "vitest";
 
 export interface CreateTestTaskOptions {
   title?: string;
@@ -91,10 +90,4 @@ export async function updateTestTask(taskId: string, updates: any) {
 
 export async function deleteTestTask(taskId: string) {
   return db.task.delete({ where: { id: taskId } });
-}
-
-export async function expectTaskDeleted(taskId: string) {
-  const task = await db.task.findUnique({ where: { id: taskId } });
-  expect(task?.deleted).toBe(true);
-  expect(task?.deletedAt).toBeTruthy();
 }
