@@ -258,6 +258,7 @@ export const GraphComponent = () => {
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
+  const resetData = useDataStore((s) => s.resetData);
 
   // keep selectedNodeRef in sync for use inside D3 handlers
   useEffect(() => {
@@ -290,6 +291,7 @@ export const GraphComponent = () => {
   // --- load nodes ---
   useEffect(() => {
     const fetchNodes = async () => {
+      resetData()
       setNodesLoading(true);
       try {
         const response = await fetch(`/api/swarm/stakgraph/nodes?id=${workspaceId}`);
