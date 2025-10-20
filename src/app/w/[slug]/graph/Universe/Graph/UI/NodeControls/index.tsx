@@ -52,13 +52,10 @@ export const NodeControls = memo(() => {
 
   const setPosition = useCallback(() => {
 
-    if (ref.current) {
-
+    if (ref.current && selectedNode) {
       const { x, y, z } = selectedNode
-      if (selectedNode) {
-        const newPosition = reuseableVector3.set(x, y, z)
-        ref.current.position.copy(newPosition)
-      }
+      const newPosition = reuseableVector3.set(x, y, z)
+      ref.current.position.copy(newPosition)
     }
   }, [selectedNode])
 
