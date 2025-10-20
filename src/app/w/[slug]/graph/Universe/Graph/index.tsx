@@ -54,7 +54,6 @@ export const Graph = () => {
   } = useSimulationStore((s) => s)
 
   const highlightNodes = useGraphStore((s) => s.highlightNodes)
-  const isolatedView = useGraphStore((s) => s.isolatedView)
 
   useEffect(() => {
     if (highlightNodes.length) {
@@ -114,6 +113,7 @@ export const Graph = () => {
 
     simulation.on('tick', () => {
       console.log(linksPositionRef.current)
+      console.log(nodesPositionRef.current)
       if (groupRef?.current) {
         if (gr && grPoints) {
           const nodes = simulation.nodes()
@@ -147,12 +147,17 @@ export const Graph = () => {
         dataInitial?.links.forEach((link) => {
           const sourceId = typeof link.source === 'string' ? link.source : (link.source as any)?.ref_id
           const targetId = typeof link.target === 'string' ? link.target : (link.target as any)?.ref_id
+
+
+
+
           const sourceNode = sourceId ? nodesPositionRef.current.get(sourceId) : { x: 0, y: 0, z: 0 }
           const targetNode = targetId ? nodesPositionRef.current.get(targetId) : { x: 0, y: 0, z: 0 }
 
 
           const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
           const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
+
 
           // Set positions for the link
           linksPositionRef.current.set(link.ref_id, {
@@ -163,6 +168,7 @@ export const Graph = () => {
             ty: ty || 0,
             tz: tz || 0,
           })
+
         })
 
         if (grConnections) {
@@ -188,15 +194,6 @@ export const Graph = () => {
                 const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
                 const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
 
-                // Set positions for the link
-                linksPositionRef.current.set(link.ref_id, {
-                  sx: sx || 0,
-                  sy: sy || 0,
-                  sz: sz || 0,
-                  tx: tx || 0,
-                  ty: ty || 0,
-                  tz: tz || 0,
-                })
 
                 text.position.set((sx + tx) / 2, (sy + ty) / 2, (sz + tz) / 2)
 
@@ -309,15 +306,6 @@ export const Graph = () => {
                 const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
                 const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
 
-                // Set positions for the link
-                linksPositionRef.current.set(link.ref_id, {
-                  sx: sx || 0,
-                  sy: sy || 0,
-                  sz: sz || 0,
-                  tx: tx || 0,
-                  ty: ty || 0,
-                  tz: tz || 0,
-                })
 
                 text.position.set((sx + tx) / 2, (sy + ty) / 2, (sz + tz) / 2)
 
@@ -367,17 +355,18 @@ export const Graph = () => {
     return null
   }
 
-  return (
-    <>
-      <group ref={groupRef}>
-        <group visible={!isolatedView}>
-          <Cubes />
 
-          <Connections linksPosition={linksPositionRef.current} />
-        </group>
-        {neighbourhoods?.length && (graphStyle === 'force' || graphStyle === 'split') ? <Neighbourhoods /> : null}
-        <NodeDetailsPanel />
+
+  return (
+
+    <group ref={groupRef}>
+      <group>
+        <Cubes />
+
+        <Connections linksPosition={linksPositionRef.current} />
       </group>
-    </>
+      {neighbourhoods?.length && (graphStyle === 'force' || graphStyle === 'split') ? <Neighbourhoods /> : null}
+      <NodeDetailsPanel />
+    </group>
   )
 }
