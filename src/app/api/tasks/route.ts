@@ -86,6 +86,7 @@ export async function GET(request: NextRequest) {
         where: {
           workspaceId,
           deleted: false,
+          status: { not: TaskStatus.TODO },
         },
         select: {
           id: true,
@@ -159,6 +160,7 @@ export async function GET(request: NextRequest) {
         where: {
           workspaceId,
           deleted: false,
+          status: { not: TaskStatus.TODO },
         },
       }),
     ]);
