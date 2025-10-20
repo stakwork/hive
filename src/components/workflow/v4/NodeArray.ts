@@ -588,8 +588,9 @@ class NodeArray {
       time = `<span class="workflow-step-time" data-start-time="${startTime.value}"></span>`;
       this.setTimer();
     } else if (this.getStatus(step) === 'error') {
-      actionButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-workflow-id="${this.workflowId}">Fix</div>`;
-      debugButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToDebugWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-project-folder-id="${step.project_step_id}" data-workflow-id="${this.workflowId}">Debug</div>`;
+      // Fix/Debug buttons removed - Rails-specific features not available in Hive
+      // actionButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-workflow-id="${this.workflowId}">Fix</div>`;
+      // debugButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToDebugWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-project-folder-id="${step.project_step_id}" data-workflow-id="${this.workflowId}">Debug</div>`;
       time = `<span class="step-time error-text">ERROR</span>`;
     } else {
       time = `<span class="workflow-step-time">0:00</span>`;
@@ -606,11 +607,9 @@ class NodeArray {
     if (this.isProject) {
       menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${actionButton}${debugButton}</div>`;
       const step_class_detail = stepLog ? 'workflow-step-main-log' : 'workflow-step-main';
-      if (this.getStatus(step) !== 'new') {
-        main = `<a href="/admin/projects/${this.projectId}/workflow_steps/${idFull}" data-turbo-frame="step_modal" class="workflow-step-details-link"><div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div></a>`;
-      } else {
-        main = `<div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div>`;
-      }
+      // Step click navigation removed - Rails-specific modal not available in Hive
+      // Clicking on steps no longer attempts to link to admin routes
+      main = `<div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div>`;
     } else if (this.mode === 'edit' || this.mode === 'alter') {
       let copyButton = '';
       if (this.mode === 'edit') {
@@ -650,7 +649,8 @@ class NodeArray {
     const jobDetails = this.getJobDetails(step);
     const childProjectId = step.step?.attributes?.workflow_id;
     const childProjectName = step.step?.attributes?.workflow_name?.substring(0, 20) + '...';
-    const workflowLink = `<a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="workflow-number">${childProjectName}</span></a>`;
+    // Rails admin links removed - display workflow name without clickable link
+    const workflowDisplay = `<span class="workflow-number">${childProjectName}</span>`;
 
     if (jobDetails === null) {
       total_projects = { value: 0 };
@@ -673,24 +673,25 @@ class NodeArray {
     let loopTotal: string;
 
     if (total_projects.value > 0) {
-      const childModal = `<a href="/admin/projects/${this.projectId}/children?step_name=${step.id}" class="child-link" data-turbo-frame="loop-modal"><span class="workflow-number">${total_projects.value} Child Processes</span></a>`;
-      loopTotal = `<div class="workflow-loop-total">${workflowLink}${childModal}</div>`;
+      // Display child process count without clickable link
+      const childProcessCount = `<span class="workflow-number">${total_projects.value} Child Processes</span>`;
+      loopTotal = `<div class="workflow-loop-total">${workflowDisplay} ${childProcessCount}</div>`;
     } else if (childProjectId && !this.isProject) {
-      loopTotal = `<div class="workflow-loop-total"><a href="/admin/workflows/${childProjectId}/edit" class="child-link" data-turbo-frame="loop-modal" target="_blank"><span class="workflow-number">${childProjectName}</span></a></div>`;
+      loopTotal = `<div class="workflow-loop-total">${workflowDisplay}</div>`;
     } else {
-      loopTotal = `<div class="workflow-loop-total">${workflowLink}<span class="workflow-number">${total_projects.value} child processes</span></div>`;
+      loopTotal = `<div class="workflow-loop-total">${workflowDisplay} <span class="workflow-number">${total_projects.value} child processes</span></div>`;
     }
 
     let percent = '';
 
     if (status === 'finished' || status === 'in_progress') {
-      percent = `<div class="percent active"><span class="workflow-percent-num">${perc}</span>%</div>`;
+      percent = `<div class="workflow-percent workflow-active"><span class="workflow-percent-num">${perc}</span>%</div>`;
     } else if (childProjectId) {
       percent = ``;
     } else {
       percent = `<div class="workflow-percent"><span class="workflow-percent-num">${perc}</span>%</div>`;
     }
-    const bottomHtml = `<div class="workflow-step-bottom loop">${loopTotal}${percent}</div>`;
+    const bottomHtml = `<div class="workflow-step-bottom workflow-loop">${loopTotal}${percent}</div>`;
 
     return this.newGenerateStepHTML({ type: type, step: step, bottomHtml: bottomHtml });
   }
