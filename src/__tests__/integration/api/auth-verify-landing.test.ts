@@ -400,7 +400,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
   });
 
   describe("Error handling", () => {
-    test("should return 500 for malformed JSON body", async () => {
+    test("should return 400 for malformed JSON body", async () => {
       const request = new Request("http://localhost:3000/api/auth/verify-landing", {
         method: "POST",
         headers: {
@@ -412,9 +412,9 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const response = await POST(request as any);
       const data = await response.json();
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("An error occurred");
+      expect(data.message).toBe("Invalid or missing JSON body");
     });
 
     test("should handle missing NEXTAUTH_SECRET gracefully during signCookie", async () => {
