@@ -15,17 +15,17 @@ import {
 } from "@dnd-kit/sortable";
 import type { TicketListItem } from "@/types/roadmap";
 
-interface UseReorderTicketsParams {
-  tickets: TicketListItem[];
+interface UseReorderRoadmapTasksParams {
+  tasks: TicketListItem[];
   phaseId: string;
-  onOptimisticUpdate?: (reorderedTickets: TicketListItem[]) => void;
+  onOptimisticUpdate?: (reorderedTasks: TicketListItem[]) => void;
 }
 
-export function useReorderTickets({
-  tickets,
+export function useReorderRoadmapTasks({
+  tasks,
   phaseId,
   onOptimisticUpdate,
-}: UseReorderTicketsParams) {
+}: UseReorderRoadmapTasksParams) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -33,7 +33,7 @@ export function useReorderTickets({
     })
   );
 
-  const ticketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
+  const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -42,26 +42,26 @@ export function useReorderTickets({
       return;
     }
 
-    const oldIndex = tickets.findIndex((t) => t.id === active.id);
-    const newIndex = tickets.findIndex((t) => t.id === over.id);
+    const oldIndex = tasks.findIndex((t) => t.id === active.id);
+    const newIndex = tasks.findIndex((t) => t.id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const reorderedTickets = arrayMove(tickets, oldIndex, newIndex).map(
-        (ticket, index) => ({
-          ...ticket,
+      const reorderedTasks = arrayMove(tasks, oldIndex, newIndex).map(
+        (task, index) => ({
+          ...task,
           order: index,
         })
       );
 
       // Optimistically update parent
       if (onOptimisticUpdate) {
-        onOptimisticUpdate(reorderedTickets);
+        onOptimisticUpdate(reorderedTasks);
       }
 
       // Call API to save new order
       try {
-        const reorderData = reorderedTickets.map((ticket, index) => ({
-          id: ticket.id,
+        const reorderData = reorderedTasks.map((task, index) => ({
+          id: task.id,
           order: index,
           phaseId: phaseId,
         }));
@@ -73,10 +73,10 @@ export function useReorderTickets({
         });
 
         if (!response.ok) {
-          throw new Error("Failed to reorder tickets");
+          throw new Error("Failed to reorder roadmap tasks");
         }
       } catch (error) {
-        console.error("Failed to reorder tickets:", error);
+        console.error("Failed to reorder roadmap tasks:", error);
         // TODO: Could add error rollback callback here
       }
     }
@@ -84,7 +84,7 @@ export function useReorderTickets({
 
   return {
     sensors,
-    ticketIds,
+    taskIds,
     handleDragEnd,
     collisionDetection: closestCenter,
   };

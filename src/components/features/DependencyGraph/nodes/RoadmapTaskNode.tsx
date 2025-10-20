@@ -5,11 +5,11 @@ import { User as UserIcon, Bot } from "lucide-react";
 import type { TicketListItem } from "@/types/roadmap";
 import { PRIORITY_LABELS } from "@/types/roadmap";
 
-interface TicketNodeProps {
+interface RoadmapTaskNodeProps {
   data: TicketListItem;
 }
 
-export function TicketNode({ data }: TicketNodeProps) {
+export function RoadmapTaskNode({ data }: RoadmapTaskNodeProps) {
   const statusColors = {
     TODO: {
       border: "border-gray-400",

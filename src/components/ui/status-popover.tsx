@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { StatusBadge, getAllStatusOptions, getStatusConfig } from "@/components/ui/status-badge";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
 
-type StatusType = "feature" | "phase" | "ticket";
+type StatusType = "feature" | "phase" | "task";
 
 interface StatusPopoverProps<T extends FeatureStatus | PhaseStatus | TaskStatus> {
   statusType: StatusType;

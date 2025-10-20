@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
 
-type StatusType = "feature" | "phase" | "ticket";
+type StatusType = "feature" | "phase" | "task";
 
 interface StatusConfig {
   icon: React.ReactNode;
@@ -71,7 +71,7 @@ const PHASE_STATUS_CONFIG: Record<PhaseStatus, StatusConfig> = {
   },
 };
 
-const TICKET_STATUS_CONFIG: Record<TaskStatus, StatusConfig> = {
+const TASK_STATUS_CONFIG: Record<TaskStatus, StatusConfig> = {
   TODO: {
     icon: <Circle className="h-3 w-3" />,
     label: "To Do",
@@ -115,8 +115,8 @@ export function StatusBadge({ statusType, status, className }: StatusBadgeProps)
     case "phase":
       config = PHASE_STATUS_CONFIG[status as PhaseStatus];
       break;
-    case "ticket":
-      config = TICKET_STATUS_CONFIG[status as TaskStatus];
+    case "task":
+      config = TASK_STATUS_CONFIG[status as TaskStatus];
       break;
   }
 
@@ -140,8 +140,8 @@ export function getStatusConfig(statusType: StatusType, status: string): StatusC
       return FEATURE_STATUS_CONFIG[status as FeatureStatus] || null;
     case "phase":
       return PHASE_STATUS_CONFIG[status as PhaseStatus] || null;
-    case "ticket":
-      return TICKET_STATUS_CONFIG[status as TaskStatus] || null;
+    case "task":
+      return TASK_STATUS_CONFIG[status as TaskStatus] || null;
     default:
       return null;
   }
@@ -153,8 +153,8 @@ export function getAllStatusOptions(statusType: StatusType): string[] {
       return Object.keys(FEATURE_STATUS_CONFIG) as FeatureStatus[];
     case "phase":
       return Object.keys(PHASE_STATUS_CONFIG) as PhaseStatus[];
-    case "ticket":
-      return Object.keys(TICKET_STATUS_CONFIG) as TaskStatus[];
+    case "task":
+      return Object.keys(TASK_STATUS_CONFIG) as TaskStatus[];
     default:
       return [];
   }

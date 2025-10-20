@@ -13,14 +13,14 @@ import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { TicketsTable } from "@/components/features/TicketsTable";
+import { RoadmapTasksTable } from "@/components/features/RoadmapTasksTable";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
-import { TicketNode } from "@/components/features/DependencyGraph/nodes";
+import { RoadmapTaskNode } from "@/components/features/DependencyGraph/nodes";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
-import { useTicketMutations } from "@/hooks/useTicketMutations";
+import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import type { PhaseWithTickets, TicketListItem } from "@/types/roadmap";
 import type { PhaseStatus, TaskStatus, Priority } from "@prisma/client";
 
@@ -68,7 +68,7 @@ export default function PhaseDetailPage() {
   const [activeView, setActiveView] = useState<"table" | "graph">("table");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  const { createTicket, loading: creatingTicket } = useTicketMutations();
+  const { createTicket, loading: creatingTicket } = useRoadmapTaskMutations();
 
   // Auto-focus after ticket creation completes
   useEffect(() => {
@@ -346,7 +346,7 @@ export default function PhaseDetailPage() {
                   />
                   <div className="flex items-center gap-4">
                     <StatusPopover
-                      statusType="ticket"
+                      statusType="task"
                       currentStatus={newTicketStatus}
                       onUpdate={async (status) => setNewTicketStatus(status)}
                     />
@@ -407,12 +407,12 @@ export default function PhaseDetailPage() {
               </TabsList>
 
               <TabsContent value="table" className="mt-4">
-                <TicketsTable
+                <RoadmapTasksTable
                   phaseId={phaseId}
                   workspaceSlug={workspaceSlug}
-                  tickets={phase.tasks}
-                  onTicketsReordered={handleTicketsReordered}
-                  onTicketUpdate={handleTicketUpdate}
+                  tasks={phase.tasks}
+                  onTasksReordered={handleTicketsReordered}
+                  onTaskUpdate={handleTicketUpdate}
                 />
               </TabsContent>
 
@@ -420,7 +420,7 @@ export default function PhaseDetailPage() {
                 <DependencyGraph
                   entities={phase.tasks}
                   getDependencies={(ticket) => ticket.dependsOnTaskIds || []}
-                  renderNode={(ticket) => <TicketNode data={ticket} />}
+                  renderNode={(ticket) => <RoadmapTaskNode data={ticket} />}
                   onNodeClick={(ticketId) => {
                     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
                   }}

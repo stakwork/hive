@@ -220,7 +220,7 @@ export default function TicketDetailPage() {
             {/* Status, Priority, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover
-                statusType="ticket"
+                statusType="task"
                 currentStatus={ticket.status}
                 onUpdate={handleUpdateStatus}
               />
