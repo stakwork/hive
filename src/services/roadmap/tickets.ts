@@ -39,9 +39,7 @@ function getSystemAssigneeEnum(id: string): SystemAssigneeType | null {
 }
 
 function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
-  const entry = Object.entries(SYSTEM_ASSIGNEE_CONFIG).find(
-    ([_, config]) => config.enumValue === enumValue
-  );
+  const entry = Object.entries(SYSTEM_ASSIGNEE_CONFIG).find(([, config]) => config.enumValue === enumValue);
 
   if (!entry) return null;
 

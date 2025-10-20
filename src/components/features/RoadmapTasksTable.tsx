@@ -110,9 +110,9 @@ function SortableTableRow({
           onSelect={onAssigneeUpdate}
           showSpecialAssignees={true}
           ticketData={{
-            id: ticket.id,
-            title: ticket.title,
-            description: ticket.description,
+            id: task.id,
+            title: task.title,
+            description: task.description,
           }}
         />
       </TableCell>

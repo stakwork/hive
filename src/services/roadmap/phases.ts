@@ -1,21 +1,11 @@
 import { db } from "@/lib/db";
-import { SystemAssigneeType } from "@prisma/client";
-import type {
-  CreatePhaseRequest,
-  UpdatePhaseRequest,
-  PhaseWithDetails,
-  PhaseListItem,
-  PhaseWithTasks,
-} from "@/types/roadmap";
+import type { CreatePhaseRequest, UpdatePhaseRequest, PhaseListItem, PhaseWithTasks } from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
 
 /**
  * Gets a phase with its tasks and feature context
  */
-export async function getPhase(
-  phaseId: string,
-  userId: string
-): Promise<PhaseWithTasks> {
+export async function getPhase(phaseId: string, userId: string): Promise<PhaseWithTasks> {
   const phase = await validatePhaseAccess(phaseId, userId);
   if (!phase) {
     throw new Error("Phase not found or access denied");
@@ -83,21 +73,22 @@ export async function getPhase(
   }
 
   // Convert system assignee types to virtual user objects
-  const tasksWithConvertedAssignees = phaseWithTasks.tasks.map(task => {
+  const tasksWithConvertedAssignees = phaseWithTasks.tasks.map((task) => {
     if (task.systemAssigneeType) {
-      const systemAssignee = task.systemAssigneeType === "TASK_COORDINATOR"
-        ? {
-            id: "system:task-coordinator",
-            name: "Task Coordinator",
-            email: null,
-            image: null,
-          }
-        : {
-            id: "system:bounty-hunter",
-            name: "Bounty Hunter",
-            email: null,
-            image: "/sphinx_icon.png",
-          };
+      const systemAssignee =
+        task.systemAssigneeType === "TASK_COORDINATOR"
+          ? {
+              id: "system:task-coordinator",
+              name: "Task Coordinator",
+              email: null,
+              image: null,
+            }
+          : {
+              id: "system:bounty-hunter",
+              name: "Bounty Hunter",
+              email: null,
+              image: "/sphinx_icon.png",
+            };
 
       return {
         ...task,
@@ -116,11 +107,7 @@ export async function getPhase(
 /**
  * Creates a new phase for a feature
  */
-export async function createPhase(
-  featureId: string,
-  userId: string,
-  data: CreatePhaseRequest
-): Promise<PhaseListItem> {
+export async function createPhase(featureId: string, userId: string, data: CreatePhaseRequest): Promise<PhaseListItem> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
     throw new Error("Feature not found or access denied");
@@ -160,11 +147,7 @@ export async function createPhase(
 /**
  * Updates a phase
  */
-export async function updatePhase(
-  phaseId: string,
-  userId: string,
-  data: UpdatePhaseRequest
-): Promise<PhaseListItem> {
+export async function updatePhase(phaseId: string, userId: string, data: UpdatePhaseRequest): Promise<PhaseListItem> {
   const phase = await validatePhaseAccess(phaseId, userId);
   if (!phase) {
     throw new Error("Phase not found or access denied");
@@ -218,10 +201,7 @@ export async function updatePhase(
 /**
  * Soft deletes a phase (tickets will have phaseId set to null)
  */
-export async function deletePhase(
-  phaseId: string,
-  userId: string
-): Promise<void> {
+export async function deletePhase(phaseId: string, userId: string): Promise<void> {
   const phase = await validatePhaseAccess(phaseId, userId);
   if (!phase) {
     throw new Error("Phase not found or access denied");
@@ -242,7 +222,7 @@ export async function deletePhase(
 export async function reorderPhases(
   featureId: string,
   userId: string,
-  phases: { id: string; order: number }[]
+  phases: { id: string; order: number }[],
 ): Promise<PhaseListItem[]> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
@@ -261,8 +241,8 @@ export async function reorderPhases(
           featureId: featureId,
         },
         data: { order: phase.order },
-      })
-    )
+      }),
+    ),
   );
 
   const updatedPhases = await db.phase.findMany({
@@ -303,7 +283,7 @@ export async function batchCreatePhasesWithTasks(
       tempId: string;
       dependsOn?: string[];
     }>;
-  }>
+  }>,
 ): Promise<Array<{ phase: PhaseListItem; tasks: any[] }>> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
@@ -368,7 +348,7 @@ export async function batchCreatePhasesWithTasks(
 
         // Map dependsOn tempIds to real IDs (if dependencies are already created)
         const dependsOnTaskIds = taskData.dependsOn
-          ? taskData.dependsOn.map((tempId) => tempIdToRealId.get(tempId)).filter(Boolean) as string[]
+          ? (taskData.dependsOn.map((tempId) => tempIdToRealId.get(tempId)).filter(Boolean) as string[])
           : [];
 
         const task = await tx.task.create({
