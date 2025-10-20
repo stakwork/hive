@@ -69,7 +69,7 @@ export function useReorderTickets({
         const response = await fetch(`/api/tickets/reorder`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tickets: reorderData }),
+          body: JSON.stringify({ tasks: reorderData }),
         });
 
         if (!response.ok) {
