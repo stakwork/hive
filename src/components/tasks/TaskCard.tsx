@@ -100,7 +100,6 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
         ) : task.assignee ? (
           <div className="flex items-center gap-2">
             <Avatar className="size-5">
-              <AvatarImage src={task.assignee.image || undefined} />
               <AvatarFallback className="text-xs">
                 <User className="w-3 h-3" />
               </AvatarFallback>
