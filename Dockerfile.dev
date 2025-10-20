@@ -1,8 +1,8 @@
 # Use the official Node.js 20 Alpine image as base
 FROM node:20-alpine
 
-# Install dependencies
-RUN apk add --no-cache libc6-compat
+# Install dependencies including Python and build tools for native modules
+RUN apk add --no-cache libc6-compat python3 make g++
 
 WORKDIR /app
 
