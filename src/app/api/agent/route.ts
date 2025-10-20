@@ -121,26 +121,34 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Use custom dev URL (highest priority for testing), or persisted gooseUrl from IDE artifact, or provided gooseUrl
-  const effectiveGooseUrl = process.env.CUSTOM_GOOSE_WEB_URL || persistedGooseUrl || gooseUrl;
+  // If CUSTOM_GOOSE_URL is set, use it as-is (it should be the full ws:// URL)
+  // export CUSTOM_GOOSE_URL=ws://0.0.0.0:8888/ws
+  let wsUrl: string;
 
-  if (!effectiveGooseUrl) {
-    return NextResponse.json(
-      { error: "No Goose URL available. Please start a new agent task to claim a pod." },
-      { status: 400 },
-    );
+  if (process.env.CUSTOM_GOOSE_URL) {
+    wsUrl = process.env.CUSTOM_GOOSE_URL;
+    console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_URL:", wsUrl);
+  } else {
+    // Use persisted gooseUrl from IDE artifact, or provided gooseUrl
+    const effectiveGooseUrl = persistedGooseUrl || gooseUrl;
+
+    if (!effectiveGooseUrl) {
+      return NextResponse.json(
+        { error: "No Goose URL available. Please start a new agent task to claim a pod." },
+        { status: 400 },
+      );
+    }
+
+    wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
+
+    if (persistedGooseUrl) {
+      console.log("🔄 Using persisted Goose URL from database:", wsUrl);
+    } else if (gooseUrl) {
+      console.log("🆕 Using Goose URL from request:", wsUrl);
+    }
   }
 
-  const wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
-
-  console.log("🤖 Goose URL:", wsUrl);
-  if (process.env.CUSTOM_GOOSE_WEB_URL) {
-    console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_WEB_URL");
-  } else if (persistedGooseUrl) {
-    console.log("🔄 Using persisted Goose URL from database");
-  } else if (gooseUrl) {
-    console.log("🆕 Using Goose URL from request");
-  }
+  console.log("🤖 Final Goose WebSocket URL:", wsUrl);
   console.log("🤖 Session ID:", sessionId);
   const model = gooseWeb("goose", {
     wsUrl,
@@ -175,7 +183,7 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      let accumulatedText = '';
+      let accumulatedText = "";
       let assistantMessageId: string | null = null;
       let lastSaveTimestamp = Date.now();
       const SAVE_INTERVAL = 3000; // Save every 3 seconds
@@ -186,7 +194,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Save progress to database incrementally
-      const saveProgress = async (status: 'STREAMING' | 'SENT') => {
+      const saveProgress = async (status: "STREAMING" | "SENT") => {
         if (!taskId || !accumulatedText) return;
 
         try {
@@ -197,7 +205,7 @@ export async function POST(request: NextRequest) {
                 taskId,
                 message: accumulatedText,
                 role: ChatRole.ASSISTANT,
-                status: status === 'STREAMING' ? ChatStatus.SENDING : ChatStatus.SENT,
+                status: status === "STREAMING" ? ChatStatus.SENDING : ChatStatus.SENT,
                 sourceWebsocketID: sessionId,
               },
             });
@@ -209,7 +217,7 @@ export async function POST(request: NextRequest) {
               where: { id: assistantMessageId },
               data: {
                 message: accumulatedText,
-                status: status === 'STREAMING' ? ChatStatus.SENDING : ChatStatus.SENT,
+                status: status === "STREAMING" ? ChatStatus.SENDING : ChatStatus.SENT,
               },
             });
             console.log(`💾 Updated assistant message (${status}):`, assistantMessageId);
@@ -245,7 +253,7 @@ export async function POST(request: NextRequest) {
 
               // Save periodically while streaming
               if (Date.now() - lastSaveTimestamp > SAVE_INTERVAL) {
-                await saveProgress('STREAMING');
+                await saveProgress("STREAMING");
                 lastSaveTimestamp = Date.now();
               }
               break;
@@ -305,7 +313,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Final save with SENT status
-        await saveProgress('SENT');
+        await saveProgress("SENT");
 
         // Send done marker
         sendEvent("[DONE]");
