@@ -115,14 +115,15 @@ export const Neighbourhoods = () => {
     <group>
       {Object.entries(neigboorHoodsBoundingBox).map(([neighbourhoodId, positions]) => {
         const labelCenter = neighbourhoodsWithPosition[neighbourhoodId]
+        const typedPositions = positions as { x: number; y: number; z: number }[]
 
         const name = displayNeighbourhoods.find((n) => n.ref_id === neighbourhoodId)?.name || neighbourhoodId
 
-        if (!labelCenter || positions.length === 0) {
+        if (!labelCenter || typedPositions.length === 0) {
           return null
         }
 
-        const points = positions.map((p) => new THREE.Vector3(p.x, p.y, p.z))
+        const points = typedPositions.map((p) => new THREE.Vector3(p.x, p.y, p.z))
         const box = new THREE.Box3().setFromPoints(points)
 
         const size = new THREE.Vector3()

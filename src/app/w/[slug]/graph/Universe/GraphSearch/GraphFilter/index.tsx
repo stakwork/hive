@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
-import { usePathname } from 'next/navigation'
-import { Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useDataStore, useNodeTypes } from '@/stores/useDataStore'
 import { useGraphStore } from '@/stores/useGraphStore'
+import { Filter } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 import { FilterGroup } from './FilterGroup'
 
 const followerRanges = [
@@ -34,8 +34,13 @@ export const GraphFilter = () => {
   const setSelectedLinkTypes = useGraphStore((s) => s.setSelectedLinkTypes)
   const resetSelectedNodeTypes = useGraphStore((s) => s.resetSelectedNodeTypes)
   const resetSelectedLinkTypes = useGraphStore((s) => s.resetSelectedLinkTypes)
-  const [followersFilter, setFollowersFilter] = useGraphStore((s) => [s.followersFilter, s.setFollowersFilter])
-  const [dateRangeFilter, setDateRangeFilter] = useGraphStore((s) => [s.dateRangeFilter, s.setDateRangeFilter])
+  const followersFilter = useGraphStore((s) => s.followersFilter)
+  const setFollowersFilter = useGraphStore((s) => s.setFollowersFilter)
+  const dateRangeFilter = useGraphStore((s) => s.dateRangeFilter)
+  const setDateRangeFilter = useGraphStore((s) => s.setDateRangeFilter)
+
+
+
 
   const pathname = usePathname()
   const isTweetMindset = pathname.includes('/tweet/')
@@ -81,11 +86,10 @@ export const GraphFilter = () => {
         <Button
           variant={open ? "secondary" : "outline"}
           size="sm"
-          className={`rounded-full transition-all ${
-            open
-              ? 'bg-white text-gray-900 hover:bg-white/90'
-              : 'bg-gray-800 text-white hover:bg-white hover:text-gray-900'
-          }`}
+          className={`rounded-full transition-all ${open
+            ? 'bg-white text-gray-900 hover:bg-white/90'
+            : 'bg-gray-800 text-white hover:bg-white hover:text-gray-900'
+            }`}
         >
           <Filter className="w-3.5 h-3.5" />
           Filter

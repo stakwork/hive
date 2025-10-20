@@ -103,7 +103,6 @@ const _Universe = () => {
             <Content />
           </Suspense>
         </Canvas>
-        <GraphStyleSwitcher />
         <GraphSearch />
         <CursorTooltip />
       </Suspense>
