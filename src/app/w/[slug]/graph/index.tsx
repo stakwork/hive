@@ -12,19 +12,14 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vs, vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Graph3D } from "./Graph3D";
 import { Universe } from "./Universe";
+import { Node } from "./Universe/types";
 
 // --- TYPE DEFINITIONS ---
-interface GraphNode {
-  id: string;
-  name: string;
-  type: string;
-  [key: string]: unknown;
-}
 
 interface ApiResponse {
   success: boolean;
   data?: {
-    nodes?: GraphNode[];
+    nodes?: Node[];
     edges?: { source: string; target: string;[key: string]: unknown }[];
   };
 }
@@ -304,9 +299,7 @@ export const GraphComponent = () => {
           addNewNode({
             nodes: data.data.nodes.map(node => ({
               ...node,
-              ref_id: node.id,
-              node_type: node.type,
-              label: node.name,
+
               x: 0,
               y: 0,
               z: 0,
