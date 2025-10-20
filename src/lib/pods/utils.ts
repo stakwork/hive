@@ -39,6 +39,8 @@ interface ProcessInfo {
 export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspace`;
 
+  console.log("🔍 Fetching workspace from pool:", { poolName, url });
+
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -49,11 +51,14 @@ export async function getWorkspaceFromPool(poolName: string, poolApiKey: string)
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Pool Manager API error: ${response.status} - ${errorText}`);
+    console.error(`❌ Pool Manager API error: ${response.status} - ${errorText}`);
+    console.error(`❌ URL: ${url}`);
+    console.error(`❌ Pool name: ${poolName}`);
     throw new Error(`Failed to get workspace from pool: ${response.status}`);
   }
 
   const data = await response.json();
+  console.log("✅ Got workspace from pool:", data.workspace?.id || "unknown");
   return data.workspace as PodWorkspace;
 }
 

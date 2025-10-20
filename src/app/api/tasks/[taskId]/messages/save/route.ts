@@ -67,16 +67,58 @@ export async function POST(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Create the chat message
-    const chatMessage = await db.chatMessage.create({
-      data: {
-        taskId,
-        message,
-        role: role as ChatRole,
-        contextTags: JSON.stringify([]),
-        status: ChatStatus.SENT,
-      },
-    });
+    // For ASSISTANT messages, check if one was already created by the streaming backend
+    // This prevents duplicate messages when backend saves incrementally during streaming
+    let chatMessage;
+
+    if (role === "ASSISTANT") {
+      // Find the most recent ASSISTANT message for this task
+      // This will be the one created by the streaming endpoint
+      const existingMessage = await db.chatMessage.findFirst({
+        where: {
+          taskId,
+          role: ChatRole.ASSISTANT,
+        },
+        orderBy: {
+          timestamp: 'desc',
+        },
+      });
+
+      if (existingMessage) {
+        // Update the existing message (backend already created it)
+        chatMessage = await db.chatMessage.update({
+          where: { id: existingMessage.id },
+          data: {
+            message, // Frontend has the complete message with rich formatting
+            status: ChatStatus.SENT,
+          },
+        });
+        console.log("✅ Updated existing assistant message from streaming:", chatMessage.id);
+      } else {
+        // No existing message found, create new one (shouldn't happen for agent mode)
+        chatMessage = await db.chatMessage.create({
+          data: {
+            taskId,
+            message,
+            role: ChatRole.ASSISTANT,
+            contextTags: JSON.stringify([]),
+            status: ChatStatus.SENT,
+          },
+        });
+        console.log("🆕 Created new assistant message:", chatMessage.id);
+      }
+    } else {
+      // For USER messages, always create new
+      chatMessage = await db.chatMessage.create({
+        data: {
+          taskId,
+          message,
+          role: role as ChatRole,
+          contextTags: JSON.stringify([]),
+          status: ChatStatus.SENT,
+        },
+      });
+    }
 
     return NextResponse.json(
       {

@@ -60,6 +60,9 @@ export default function TaskChatPage() {
   const [hasPod, setHasPod] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
 
+  // Track active stream abort controller
+  const currentStreamAbortRef = useRef<AbortController | null>(null);
+
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
@@ -101,6 +104,17 @@ export default function TaskChatPage() {
       }
     };
   }, [hasPod, dropPod]);
+
+  // Abort active stream when navigating away
+  useEffect(() => {
+    return () => {
+      if (currentStreamAbortRef.current) {
+        console.log("🛑 Aborting active stream due to navigation");
+        currentStreamAbortRef.current.abort();
+        currentStreamAbortRef.current = null;
+      }
+    };
+  }, []);
 
   // Drop pod when browser/tab closes or page refreshes
   useEffect(() => {
@@ -439,6 +453,10 @@ export default function TaskChatPage() {
     try {
       // Use agent mode streaming
       if (taskMode === "agent") {
+        // Create abort controller for this stream
+        const abortController = new AbortController();
+        currentStreamAbortRef.current = abortController;
+
         // Mark user message as sent
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
@@ -465,6 +483,7 @@ export default function TaskChatPage() {
             gooseUrl,
             artifacts: backendArtifacts,
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok) {
@@ -512,6 +531,9 @@ export default function TaskChatPage() {
           console.log("🤖 Final Assistant Message:", finalAssistantMessage);
           await saveAgentMessageToBackend(finalAssistantMessage, options?.taskId || currentTaskId || "", "assistant");
         }
+
+        // Clear the abort controller since streaming completed successfully
+        currentStreamAbortRef.current = null;
 
         return;
       }
@@ -572,6 +594,14 @@ export default function TaskChatPage() {
       // This prevents re-animation since React sees it as the same message
       setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)));
     } catch (error) {
+      // Handle abort error gracefully (user navigated away)
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log("🛑 Stream aborted - user navigated away");
+        // Don't show error toast for intentional aborts
+        // Backend will have saved progress incrementally
+        return;
+      }
+
       console.error("Error sending message:", error);
 
       // Update message status to ERROR

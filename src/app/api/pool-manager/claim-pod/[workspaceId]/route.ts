@@ -13,11 +13,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
+      console.error("❌ Claim pod: Unauthorized - no session");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
+      console.error("❌ Claim pod: Invalid user session - no userId");
       return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
@@ -25,6 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Validate required fields
     if (!workspaceId) {
+      console.error("❌ Claim pod: Missing workspaceId");
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
@@ -32,6 +35,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
     const shouldIncludeGoose = searchParams.get("goose") === "true";
+
+    console.log("🔍 Claiming pod for workspace:", workspaceId, { latest: shouldUpdateToLatest, goose: shouldIncludeGoose });
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -48,8 +53,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     if (!workspace) {
+      console.error("❌ Claim pod: Workspace not found:", workspaceId);
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
+
+    console.log("✅ Found workspace:", workspace.name, "| Swarm:", workspace.swarm?.id || "none");
 
     if (process.env.MOCK_BROWSER_URL) {
       return NextResponse.json(
@@ -62,16 +70,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const isMember = workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
+      console.error("❌ Claim pod: Access denied for user:", userId);
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
+      console.error("❌ Claim pod: No swarm found for workspace:", workspaceId);
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
     // Check if swarm has pool configuration
     if (!workspace.swarm.poolName || !workspace.swarm.poolApiKey) {
+      console.error("❌ Claim pod: Swarm not configured with pool info:", {
+        poolName: workspace.swarm.poolName,
+        hasPoolApiKey: !!workspace.swarm.poolApiKey,
+      });
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
@@ -81,7 +95,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
+    console.log("🚀 Calling claimPodAndGetFrontend for pool:", poolName);
+
     const { frontend, workspace: podWorkspace, processList } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
+
+    console.log("✅ Pod claimed successfully:", {
+      podId: podWorkspace.id,
+      frontend,
+      controlPort: podWorkspace.portMappings[POD_PORTS.CONTROL],
+      ideUrl: podWorkspace.url,
+    });
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
@@ -151,11 +174,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error claiming pod:", error);
+    console.error("❌ Error claiming pod - Full error:", error);
+
+    // Log error details for debugging
+    if (error instanceof Error) {
+      console.error("❌ Error name:", error.name);
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error stack:", error.stack);
+    }
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {
       const apiError = error as ApiError;
+      console.error("❌ ApiError from service:", {
+        service: apiError.service,
+        status: apiError.status,
+        message: apiError.message,
+        details: apiError.details,
+      });
       return NextResponse.json(
         {
           error: apiError.message,
