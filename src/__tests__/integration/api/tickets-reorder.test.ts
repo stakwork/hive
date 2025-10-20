@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/tickets/reorder/route";
 import { db } from "@/lib/db";
-import { TicketStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
@@ -43,7 +43,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 1",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -55,7 +55,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 2",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 1,
           createdById: user.id,
@@ -67,7 +67,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 3",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 2,
           createdById: user.id,
@@ -148,7 +148,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
           title: "Ticket 1",
           featureId: feature.id,
           phaseId: phase1.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -161,7 +161,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
           title: "Ticket 2",
           featureId: feature.id,
           phaseId: phase1.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 1,
           createdById: user.id,
@@ -232,7 +232,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Test Ticket",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: owner.id,
@@ -334,7 +334,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket in Feature 1",
           featureId: feature1.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -347,7 +347,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket in Feature 2",
           featureId: feature2.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -407,7 +407,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 1",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -419,7 +419,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 2",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 1,
           createdById: user.id,
@@ -479,7 +479,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 1",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -491,7 +491,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Ticket 2",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 1,
           createdById: user.id,
@@ -547,7 +547,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Test Ticket",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: user.id,
@@ -596,7 +596,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Test Ticket",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: owner.id,
@@ -655,7 +655,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
         data: {
           title: "Test Ticket",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           order: 0,
           createdById: owner.id,
@@ -705,7 +705,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
           title: "High Priority Ticket",
           description: "Important task",
           featureId: feature.id,
-          status: TicketStatus.IN_PROGRESS,
+          status: TaskStatus.IN_PROGRESS,
           priority: Priority.HIGH,
           order: 0,
           createdById: user.id,
@@ -718,7 +718,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
           title: "Low Priority Ticket",
           description: "Less important",
           featureId: feature.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.LOW,
           order: 1,
           createdById: user.id,
@@ -753,12 +753,12 @@ describe("Tickets Reorder API - Integration Tests", () => {
 
       expect(updatedTicket1?.order).toBe(1);
       expect(updatedTicket1?.title).toBe("High Priority Ticket");
-      expect(updatedTicket1?.status).toBe(TicketStatus.IN_PROGRESS);
+      expect(updatedTicket1?.status).toBe(TaskStatus.IN_PROGRESS);
       expect(updatedTicket1?.priority).toBe(Priority.HIGH);
 
       expect(updatedTicket2?.order).toBe(0);
       expect(updatedTicket2?.title).toBe("Low Priority Ticket");
-      expect(updatedTicket2?.status).toBe(TicketStatus.TODO);
+      expect(updatedTicket2?.status).toBe(TaskStatus.TODO);
       expect(updatedTicket2?.priority).toBe(Priority.LOW);
     });
   });

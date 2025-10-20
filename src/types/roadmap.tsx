@@ -1,4 +1,4 @@
-import type { Prisma, FeatureStatus, FeaturePriority, TicketStatus, Priority } from "@prisma/client";
+import type { Prisma, FeatureStatus, FeaturePriority, TaskStatus, Priority } from "@prisma/client";
 import type {
   ApiSuccessResponse,
   PaginatedApiResponse,
@@ -8,7 +8,10 @@ import { Inbox, Calendar, Loader2, CheckCircle, XCircle, Circle, Slash } from "l
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
-export type { FeatureStatus, FeaturePriority, TicketStatus, Priority };
+export type { FeatureStatus, FeaturePriority, TaskStatus, Priority };
+
+// Backwards compatibility alias
+export type { TaskStatus as TicketStatus };
 
 // Feature status labels
 export const FEATURE_STATUS_LABELS: Record<FeatureStatus, string> = {
@@ -67,21 +70,27 @@ export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
   },
 ];
 
-// Ticket status labels
-export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+// Task status labels (used for both standalone and roadmap tasks)
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   TODO: "To Do",
   IN_PROGRESS: "In Progress",
   DONE: "Done",
+  CANCELLED: "Cancelled",
   BLOCKED: "Blocked",
 };
 
-// Ticket status colors for badges
-export const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {
+// Task status colors for badges
+export const TASK_STATUS_COLORS: Record<TaskStatus, string> = {
   TODO: "bg-gray-100 text-gray-700 border-gray-200",
   IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
   DONE: "bg-green-50 text-green-700 border-green-200",
-  BLOCKED: "bg-red-50 text-red-700 border-red-200",
+  CANCELLED: "bg-red-50 text-red-700 border-red-200",
+  BLOCKED: "bg-orange-50 text-orange-700 border-orange-200",
 };
+
+// Backwards compatibility aliases
+export const TICKET_STATUS_LABELS = TASK_STATUS_LABELS;
+export const TICKET_STATUS_COLORS = TASK_STATUS_COLORS;
 
 // Priority labels
 export const PRIORITY_LABELS: Record<Priority, string> = {
@@ -167,7 +176,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
         updatedAt: true;
         _count: {
           select: {
-            tickets: true;
+            tasks: true;
           };
         };
       };
@@ -317,7 +326,7 @@ export type PhaseListItem = Prisma.PhaseGetPayload<{
     updatedAt: true;
     _count: {
       select: {
-        tickets: true;
+        tasks: true;
       };
     };
   };
@@ -335,8 +344,8 @@ export type PhaseWithDetails = Prisma.PhaseGetPayload<{
   };
 }>;
 
-// Phase with tickets for detail page
-export type PhaseWithTickets = Prisma.PhaseGetPayload<{
+// Phase with tasks for detail page
+export type PhaseWithTasks = Prisma.PhaseGetPayload<{
   select: {
     id: true;
     name: true;
@@ -353,7 +362,7 @@ export type PhaseWithTickets = Prisma.PhaseGetPayload<{
         workspaceId: true;
       };
     };
-    tickets: {
+    tasks: {
       select: {
         id: true;
         title: true;
@@ -363,7 +372,7 @@ export type PhaseWithTickets = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
-        dependsOnTicketIds: true;
+        dependsOnTaskIds: true;
         createdAt: true;
         updatedAt: true;
         assignee: {
@@ -384,6 +393,9 @@ export type PhaseWithTickets = Prisma.PhaseGetPayload<{
     };
   };
 }>;
+
+// Backwards compatibility alias
+export type PhaseWithTickets = PhaseWithTasks;
 
 export interface CreatePhaseRequest {
   name: string;
@@ -410,8 +422,8 @@ type AssigneeWithIcon = {
   icon?: string | null;
 };
 
-// Ticket types
-type TicketListItemBase = Prisma.TicketGetPayload<{
+// Roadmap Task types (tasks that are part of features/phases)
+type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
   select: {
     id: true;
     title: true;
@@ -421,7 +433,7 @@ type TicketListItemBase = Prisma.TicketGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
-    dependsOnTicketIds: true;
+    dependsOnTaskIds: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -441,14 +453,14 @@ type TicketListItemBase = Prisma.TicketGetPayload<{
   };
 }>;
 
-export type TicketListItem = Omit<TicketListItemBase, 'assignee'> & {
+export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, 'assignee'> & {
   assignee: AssigneeWithIcon | null;
 };
 
-export type TicketWithDetails = TicketListItem;
+export type RoadmapTaskWithDetails = RoadmapTaskListItem;
 
-// Ticket detail with full context for detail page
-type TicketDetailBase = Prisma.TicketGetPayload<{
+// Roadmap task detail with full context for detail page
+type RoadmapTaskDetailBase = Prisma.TaskGetPayload<{
   select: {
     id: true;
     title: true;
@@ -458,7 +470,7 @@ type TicketDetailBase = Prisma.TicketGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
-    dependsOnTicketIds: true;
+    dependsOnTaskIds: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -502,33 +514,43 @@ type TicketDetailBase = Prisma.TicketGetPayload<{
   };
 }>;
 
-export type TicketDetail = Omit<TicketDetailBase, 'assignee'> & {
+export type RoadmapTaskDetail = Omit<RoadmapTaskDetailBase, 'assignee'> & {
   assignee: AssigneeWithIcon | null;
 };
 
-export interface CreateTicketRequest {
+// Backwards compatibility aliases (Ticket -> RoadmapTask)
+export type TicketListItem = RoadmapTaskListItem;
+export type TicketWithDetails = RoadmapTaskWithDetails;
+export type TicketDetail = RoadmapTaskDetail;
+
+export interface CreateRoadmapTaskRequest {
   title: string;
   description?: string;
   phaseId?: string | null;
   assigneeId?: string | null;
-  status?: import("@prisma/client").TicketStatus;
+  status?: import("@prisma/client").TaskStatus;
   priority?: import("@prisma/client").Priority;
 }
 
-export interface UpdateTicketRequest {
+export interface UpdateRoadmapTaskRequest {
   title?: string;
   description?: string;
-  status?: import("@prisma/client").TicketStatus;
+  status?: import("@prisma/client").TaskStatus;
   priority?: import("@prisma/client").Priority;
   order?: number;
   phaseId?: string | null;
   assigneeId?: string | null;
-  dependsOnTicketIds?: string[];
+  dependsOnTaskIds?: string[];
 }
 
-export interface ReorderTicketsRequest {
-  tickets: { id: string; order: number; phaseId?: string | null }[];
+export interface ReorderRoadmapTasksRequest {
+  tasks: { id: string; order: number; phaseId?: string | null }[];
 }
+
+// Backwards compatibility aliases
+export type CreateTicketRequest = CreateRoadmapTaskRequest;
+export type UpdateTicketRequest = UpdateRoadmapTaskRequest;
+export type ReorderTicketsRequest = ReorderRoadmapTasksRequest;
 
 // Response type aliases using generic types
 export type FeatureListResponse = PaginatedApiResponse<FeatureWithDetails>;
@@ -537,29 +559,33 @@ export type UserStoryListResponse = ApiSuccessResponse<UserStoryListItem[]>;
 export type UserStoryResponse = ApiSuccessResponse<UserStoryWithDetails>;
 export type PhaseListResponse = ApiSuccessResponse<PhaseListItem[]>;
 export type PhaseResponse = ApiSuccessResponse<PhaseListItem>;
-export type TicketListResponse = ApiSuccessResponse<TicketListItem[]>;
-export type TicketResponse = ApiSuccessResponse<TicketWithDetails>;
+export type RoadmapTaskListResponse = ApiSuccessResponse<RoadmapTaskListItem[]>;
+export type RoadmapTaskResponse = ApiSuccessResponse<RoadmapTaskWithDetails>;
 
-// AI Generation types for phases and tickets
-export interface GeneratedTicket {
+// Backwards compatibility aliases
+export type TicketListResponse = RoadmapTaskListResponse;
+export type TicketResponse = RoadmapTaskResponse;
+
+// AI Generation types for phases and tasks
+export interface GeneratedTask {
   title: string;
   description?: string;
   priority: Priority;
   tempId: string; // Temporary ID for dependency mapping (e.g., "T1", "T2")
-  dependsOn?: string[]; // Array of tempIds this ticket depends on
+  dependsOn?: string[]; // Array of tempIds this task depends on
 }
 
 export interface GeneratedPhase {
   name: string;
   description?: string;
-  tickets: GeneratedTicket[];
+  tasks: GeneratedTask[];
 }
 
-export interface GeneratedPhasesAndTickets {
+export interface GeneratedPhasesAndTasks {
   phases: GeneratedPhase[];
 }
 
-// Request type for batch creating phases and tickets
+// Request type for batch creating phases and tasks
 export interface BatchCreatePhasesRequest {
   phases: GeneratedPhase[];
 }
@@ -567,10 +593,14 @@ export interface BatchCreatePhasesRequest {
 // Response type for batch creation
 export interface BatchCreatedPhase {
   phase: PhaseListItem;
-  tickets: TicketListItem[];
+  tasks: RoadmapTaskListItem[];
 }
 
 export interface BatchCreatePhasesResponse {
   success: boolean;
   data: BatchCreatedPhase[];
 }
+
+// Backwards compatibility aliases
+export type GeneratedTicket = GeneratedTask;
+export type GeneratedPhasesAndTickets = GeneratedPhasesAndTasks;

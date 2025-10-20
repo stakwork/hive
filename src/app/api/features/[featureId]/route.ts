@@ -88,7 +88,7 @@ export async function GET(
             order: "asc",
           },
           include: {
-            tickets: {
+            tasks: {
               where: {
                 deleted: false,
               },
@@ -108,7 +108,7 @@ export async function GET(
             },
           },
         },
-        tickets: {
+        tasks: {
           where: {
             phaseId: null,
             deleted: false,

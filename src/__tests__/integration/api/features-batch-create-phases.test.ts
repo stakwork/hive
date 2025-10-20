@@ -102,18 +102,18 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       const ticket1 = phase1.tickets[0];
       expect(ticket1.title).toBe("Setup database schema");
       expect(ticket1.priority).toBe("HIGH");
-      expect(ticket1.dependsOnTicketIds).toEqual([]);
+      expect(ticket1.dependsOnTaskIds).toEqual([]);
 
       const ticket2 = phase1.tickets[1];
       expect(ticket2.title).toBe("Build API endpoints");
-      expect(ticket2.dependsOnTicketIds).toHaveLength(1);
-      expect(ticket2.dependsOnTicketIds[0]).toBe(ticket1.id); // Real ID, not "T1"
+      expect(ticket2.dependsOnTaskIds).toHaveLength(1);
+      expect(ticket2.dependsOnTaskIds[0]).toBe(ticket1.id); // Real ID, not "T1"
 
       const ticket3 = phase2.tickets[0];
       expect(ticket3.title).toBe("Implement voice recognition");
-      expect(ticket3.dependsOnTicketIds).toHaveLength(2);
-      expect(ticket3.dependsOnTicketIds).toContain(ticket1.id);
-      expect(ticket3.dependsOnTicketIds).toContain(ticket2.id);
+      expect(ticket3.dependsOnTaskIds).toHaveLength(2);
+      expect(ticket3.dependsOnTaskIds).toContain(ticket1.id);
+      expect(ticket3.dependsOnTaskIds).toContain(ticket2.id);
 
       // Verify database persistence
       const phasesInDb = await db.phase.findMany({
@@ -173,19 +173,19 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       const tickets = data.data[0].tickets;
 
       // Verify T1 has no dependencies
-      expect(tickets[0].dependsOnTicketIds).toEqual([]);
+      expect(tickets[0].dependsOnTaskIds).toEqual([]);
 
       // Verify T2 depends on T1 (real ID)
-      expect(tickets[1].dependsOnTicketIds).toEqual([tickets[0].id]);
+      expect(tickets[1].dependsOnTaskIds).toEqual([tickets[0].id]);
 
       // Verify T3 depends on both T1 and T2 (real IDs)
-      expect(tickets[2].dependsOnTicketIds).toHaveLength(2);
-      expect(tickets[2].dependsOnTicketIds).toContain(tickets[0].id);
-      expect(tickets[2].dependsOnTicketIds).toContain(tickets[1].id);
+      expect(tickets[2].dependsOnTaskIds).toHaveLength(2);
+      expect(tickets[2].dependsOnTaskIds).toContain(tickets[0].id);
+      expect(tickets[2].dependsOnTaskIds).toContain(tickets[1].id);
 
       // Verify no tempIds remain in database
-      expect(tickets[2].dependsOnTicketIds).not.toContain("T1");
-      expect(tickets[2].dependsOnTicketIds).not.toContain("T2");
+      expect(tickets[2].dependsOnTaskIds).not.toContain("T1");
+      expect(tickets[2].dependsOnTaskIds).not.toContain("T2");
     });
 
     test("handles cross-phase dependencies", async () => {
@@ -238,7 +238,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       const phase2Ticket = data.data[1].tickets[0];
 
       // Phase 2 ticket depends on Phase 1 ticket (cross-phase dependency)
-      expect(phase2Ticket.dependsOnTicketIds).toEqual([phase1Ticket.id]);
+      expect(phase2Ticket.dependsOnTaskIds).toEqual([phase1Ticket.id]);
     });
 
     test("uses transaction (atomicity test)", async () => {
@@ -479,7 +479,7 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
       expect(tickets[2].order).toBe(2);
     });
 
-    test("verifies dependsOnTicketIds contains real IDs not tempIds", async () => {
+    test("verifies dependsOnTaskIds contains real IDs not tempIds", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -525,10 +525,10 @@ describe("Batch Create Phases and Tickets API - Integration Tests", () => {
         where: { title: "T2" },
       });
 
-      expect(ticketInDb?.dependsOnTicketIds).toHaveLength(1);
+      expect(ticketInDb?.dependsOnTaskIds).toHaveLength(1);
       // Should be a real database ID (cuid format), not tempId "T1"
-      expect(ticketInDb?.dependsOnTicketIds[0]).not.toBe("T1");
-      expect(ticketInDb?.dependsOnTicketIds[0]).toMatch(/^c[a-z0-9]{24}$/); // cuid format
+      expect(ticketInDb?.dependsOnTaskIds[0]).not.toBe("T1");
+      expect(ticketInDb?.dependsOnTaskIds[0]).toMatch(/^c[a-z0-9]{24}$/); // cuid format
     });
   });
 });

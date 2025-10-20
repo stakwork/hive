@@ -197,7 +197,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
           featureId: feature.id,
           createdById: user.id,
           updatedById: user.id,
-          dependsOnTicketIds: [ticket.id]  // Dependency on ticket to be deleted
+          dependsOnTaskIds: [ticket.id]  // Dependency on ticket to be deleted
         }
       });
       
@@ -211,14 +211,14 @@ describe('DELETE /api/tickets/[ticketId]', () => {
       await expectTicketDeleted(ticket.id);
       
       // 🔴 DOCUMENTS DATA INTEGRITY ISSUE:
-      // The dependent ticket still references the deleted ticket in dependsOnTicketIds
+      // The dependent ticket still references the deleted ticket in dependsOnTaskIds
       const updatedDependent = await db.ticket.findUnique({ 
         where: { id: dependentTicket.id }
       });
-      expect(updatedDependent?.dependsOnTicketIds).toContain(ticket.id);
+      expect(updatedDependent?.dependsOnTaskIds).toContain(ticket.id);
       
       // This test documents the current behavior where orphaned references are NOT cleaned up
-      // Future enhancement: Should implement cleanup logic to remove deleted ticket from dependsOnTicketIds
+      // Future enhancement: Should implement cleanup logic to remove deleted ticket from dependsOnTaskIds
     });
 
     test.skip('should NOT clean up multiple orphaned dependencies', async () => {
@@ -229,7 +229,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
           featureId: feature.id,
           createdById: user.id,
           updatedById: user.id,
-          dependsOnTicketIds: [ticket.id]
+          dependsOnTaskIds: [ticket.id]
         }
       });
       
@@ -239,7 +239,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
           featureId: feature.id,
           createdById: user.id,
           updatedById: user.id,
-          dependsOnTicketIds: [ticket.id]
+          dependsOnTaskIds: [ticket.id]
         }
       });
       
@@ -252,8 +252,8 @@ describe('DELETE /api/tickets/[ticketId]', () => {
       const updated1 = await db.ticket.findUnique({ where: { id: dependent1.id }});
       const updated2 = await db.ticket.findUnique({ where: { id: dependent2.id }});
       
-      expect(updated1?.dependsOnTicketIds).toContain(ticket.id);
-      expect(updated2?.dependsOnTicketIds).toContain(ticket.id);
+      expect(updated1?.dependsOnTaskIds).toContain(ticket.id);
+      expect(updated2?.dependsOnTaskIds).toContain(ticket.id);
     });
 
     test.skip('should NOT clean up mixed dependencies', async () => {
@@ -274,7 +274,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
           featureId: feature.id,
           createdById: user.id,
           updatedById: user.id,
-          dependsOnTicketIds: [ticket.id, anotherTicket.id]
+          dependsOnTaskIds: [ticket.id, anotherTicket.id]
         }
       });
       
@@ -286,9 +286,9 @@ describe('DELETE /api/tickets/[ticketId]', () => {
       
       // Verify dependent still has both references (one orphaned, one valid)
       const updated = await db.ticket.findUnique({ where: { id: dependentTicket.id }});
-      expect(updated?.dependsOnTicketIds).toContain(ticket.id);  // Orphaned
-      expect(updated?.dependsOnTicketIds).toContain(anotherTicket.id);  // Valid
-      expect(updated?.dependsOnTicketIds).toHaveLength(2);
+      expect(updated?.dependsOnTaskIds).toContain(ticket.id);  // Orphaned
+      expect(updated?.dependsOnTaskIds).toContain(anotherTicket.id);  // Valid
+      expect(updated?.dependsOnTaskIds).toHaveLength(2);
     });
   });
 

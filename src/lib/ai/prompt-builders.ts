@@ -49,13 +49,16 @@ Return the FULL final architecture (200-400 words) covering system design, compo
 ${context.architectureText ? 'Incorporate and enhance the existing architecture above.' : ''}`;
 }
 
-export function buildPhasesTicketsPrompt(context: FeatureContext): string {
-  return `Generate a complete project breakdown with phases and tickets for this feature (incorporating all context below):
+export function buildPhasesTasksPrompt(context: FeatureContext): string {
+  return `Generate a complete project breakdown with phases and tasks for this feature (incorporating all context below):
 
 Title: ${context.title}
 ${context.brief ? `Brief: ${context.brief}` : ''}${context.workspaceDesc}${context.personasText}${context.userStoriesText}${context.requirementsText ? `\n\nRequirements:\n${context.requirementsText}` : ''}${context.architectureText ? `\n\nArchitecture:\n${context.architectureText}` : ''}
 
-Break down the work into 1-5 logical phases (fewer for simpler features), with 2-8 actionable tickets per phase.
-Use tempIds (T1, T2, T3...) for dependency mapping between tickets.
+Break down the work into 1-5 logical phases (fewer for simpler features), with 2-8 actionable tasks per phase.
+Use tempIds (T1, T2, T3...) for dependency mapping between tasks.
 Return a structured breakdown developers can immediately start working from.`;
 }
+
+// Backwards compatibility alias
+export const buildPhasesTicketsPrompt = buildPhasesTasksPrompt;

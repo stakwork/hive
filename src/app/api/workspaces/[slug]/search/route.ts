@@ -60,8 +60,8 @@ export async function GET(
     }
 
     // Search across all entity types in parallel
-    const [tasks, features, tickets, phases] = await Promise.all([
-      // Search Tasks
+    const [tasks, features, phases] = await Promise.all([
+      // Search Tasks (both standalone and roadmap tasks)
       db.task.findMany({
         where: {
           workspaceId: workspace.id,
@@ -77,6 +77,7 @@ export async function GET(
           description: true,
           status: true,
           priority: true,
+          featureId: true,
           createdAt: true,
           updatedAt: true,
           assignee: {
@@ -85,6 +86,11 @@ export async function GET(
               name: true,
               email: true,
               image: true,
+            },
+          },
+          feature: {
+            select: {
+              title: true,
             },
           },
         },
@@ -119,47 +125,6 @@ export async function GET(
               name: true,
               email: true,
               image: true,
-            },
-          },
-        },
-        take: RESULTS_PER_TYPE,
-        orderBy: {
-          updatedAt: "desc",
-        },
-      }),
-
-      // Search Tickets
-      db.ticket.findMany({
-        where: {
-          deleted: false,
-          feature: {
-            workspaceId: workspace.id,
-            deleted: false,
-          },
-          OR: [
-            { title: { contains: searchQuery, mode: "insensitive" } },
-            { description: { contains: searchQuery, mode: "insensitive" } },
-          ],
-        },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          status: true,
-          priority: true,
-          createdAt: true,
-          updatedAt: true,
-          assignee: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              image: true,
-            },
-          },
-          feature: {
-            select: {
-              title: true,
             },
           },
         },
@@ -208,11 +173,12 @@ export async function GET(
       type: "task" as const,
       title: task.title,
       description: task.description,
-      url: `/w/${slug}/tasks`,
+      url: task.featureId ? `/w/${slug}/roadmap/${task.featureId}` : `/w/${slug}/tasks`,
       metadata: {
         status: task.status,
         priority: task.priority,
         assignee: task.assignee,
+        featureTitle: task.feature?.title,
         createdAt: task.createdAt.toISOString(),
         updatedAt: task.updatedAt.toISOString(),
       },
@@ -233,22 +199,6 @@ export async function GET(
       },
     }));
 
-    const ticketResults: SearchResult[] = tickets.map((ticket) => ({
-      id: ticket.id,
-      type: "ticket" as const,
-      title: ticket.title,
-      description: ticket.description,
-      url: `/w/${slug}/tickets/${ticket.id}`,
-      metadata: {
-        status: ticket.status,
-        priority: ticket.priority,
-        assignee: ticket.assignee,
-        featureTitle: ticket.feature.title,
-        createdAt: ticket.createdAt.toISOString(),
-        updatedAt: ticket.updatedAt.toISOString(),
-      },
-    }));
-
     const phaseResults: SearchResult[] = phases.map((phase) => ({
       id: phase.id,
       type: "phase" as const,
@@ -266,7 +216,6 @@ export async function GET(
     const total =
       taskResults.length +
       featureResults.length +
-      ticketResults.length +
       phaseResults.length;
 
     const response: SearchResponse = {
@@ -274,7 +223,6 @@ export async function GET(
       data: {
         tasks: taskResults,
         features: featureResults,
-        tickets: ticketResults,
         phases: phaseResults,
         total,
       },

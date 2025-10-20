@@ -20,7 +20,7 @@ import {
   XCircle
 } from "lucide-react";
 import type { SearchResponse, SearchResult } from "@/types/search";
-import type { TaskStatus, FeatureStatus, TicketStatus, PhaseStatus } from "@prisma/client";
+import type { TaskStatus, FeatureStatus, PhaseStatus } from "@prisma/client";
 
 const ENTITY_CONFIG = {
   task: {
@@ -38,7 +38,7 @@ const ENTITY_CONFIG = {
 };
 
 // Status icon and color mapping
-const getStatusIconAndColor = (status: TaskStatus | FeatureStatus | TicketStatus | PhaseStatus | undefined) => {
+const getStatusIconAndColor = (status: TaskStatus | FeatureStatus | PhaseStatus | undefined) => {
   if (!status) return { icon: Circle, color: "text-gray-400" };
 
   const statusStr = String(status);
@@ -164,7 +164,6 @@ export function GlobalSearch() {
   const hasResults = results && (
     results.tasks.length > 0 ||
     results.features.length > 0 ||
-    results.tickets.length > 0 ||
     results.phases.length > 0
   );
 
@@ -201,12 +200,6 @@ export function GlobalSearch() {
             {results.features.length > 0 && (
               <CommandGroup heading="Features">
                 {results.features.map(renderResultItem)}
-              </CommandGroup>
-            )}
-
-            {results.tickets.length > 0 && (
-              <CommandGroup heading="Tickets">
-                {results.tickets.map(renderResultItem)}
               </CommandGroup>
             )}
 

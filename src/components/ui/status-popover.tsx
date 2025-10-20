@@ -3,17 +3,17 @@
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusBadge, getAllStatusOptions, getStatusConfig } from "@/components/ui/status-badge";
-import type { FeatureStatus, PhaseStatus, TicketStatus } from "@prisma/client";
+import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
 
 type StatusType = "feature" | "phase" | "ticket";
 
-interface StatusPopoverProps<T extends FeatureStatus | PhaseStatus | TicketStatus> {
+interface StatusPopoverProps<T extends FeatureStatus | PhaseStatus | TaskStatus> {
   statusType: StatusType;
   currentStatus: T;
   onUpdate: (status: T) => Promise<void>;
 }
 
-export function StatusPopover<T extends FeatureStatus | PhaseStatus | TicketStatus>({
+export function StatusPopover<T extends FeatureStatus | PhaseStatus | TaskStatus>({
   statusType,
   currentStatus,
   onUpdate

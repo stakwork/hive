@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
 
     const body: ReorderTicketsRequest = await request.json();
 
-    const tickets = await reorderTickets(userOrResponse.id, body.tickets);
+    const tickets = await reorderTickets(userOrResponse.id, body.tasks);
 
     return NextResponse.json<TicketListResponse>(
       {

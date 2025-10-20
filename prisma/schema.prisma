@@ -80,9 +80,6 @@ model User {
   // Feature assignments
   assignedFeatures Feature[] @relation("FeatureAssignee")
 
-  // Ticket assignments
-  assignedTickets Ticket[] @relation("TicketAssignee")
-
   // Audit trail
   createdTasks       Task[]      @relation("TaskCreator")
   updatedTasks       Task[]      @relation("TaskUpdater")
@@ -90,8 +87,6 @@ model User {
   updatedFeatures    Feature[]   @relation("FeatureUpdater")
   createdUserStories UserStory[] @relation("UserStoryCreator")
   updatedUserStories UserStory[] @relation("UserStoryUpdater")
-  createdTickets     Ticket[]    @relation("TicketCreator")
-  updatedTickets     Ticket[]    @relation("TicketUpdater")
 
   // Janitor recommendations
   acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
@@ -340,16 +335,27 @@ model Task {
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  // Roadmap relationships (nullable for standalone tasks)
+  featureId String?  @map("feature_id")
+  feature   Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  phaseId   String?  @map("phase_id")
+  phase     Phase?   @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+
   // Assignment and repository linking
-  assigneeId   String?     @map("assignee_id")
-  assignee     User?       @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  repositoryId String?     @map("repository_id")
-  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  assigneeId         String?             @map("assignee_id")
+  assignee           User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  systemAssigneeType SystemAssigneeType? @map("system_assignee_type")
+  repositoryId       String?             @map("repository_id")
+  repository         Repository?         @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
 
   status         TaskStatus @default(TODO)
   priority       Priority   @default(MEDIUM)
   estimatedHours Int?       @map("estimated_hours")
   actualHours    Int?       @map("actual_hours")
+
+  // Ordering and dependencies (for roadmap tasks)
+  order            Int      @default(0)
+  dependsOnTaskIds String[] @default([]) @map("depends_on_task_ids")
 
   // Workflow status tracking
   workflowStatus      WorkflowStatus? @default(PENDING) @map("workflow_status")
@@ -382,6 +388,9 @@ model Task {
   @@index([assigneeId])
   @@index([status])
   @@index([deleted])
+  @@index([featureId])
+  @@index([phaseId])
+  @@index([systemAssigneeType])
   @@map("tasks")
 }
 
@@ -602,12 +611,6 @@ enum TaskStatus {
   IN_PROGRESS
   DONE
   CANCELLED
-}
-
-enum TicketStatus {
-  TODO
-  IN_PROGRESS
-  DONE
   BLOCKED
 }
 
@@ -732,7 +735,7 @@ model Feature {
   // Relationships
   userStories UserStory[]
   phases      Phase[]
-  tickets     Ticket[]
+  tasks       Task[]
 
   deleted     Boolean          @default(false)
   deletedAt   DateTime?        @map("deleted_at")
@@ -794,8 +797,8 @@ model Phase {
   order       Int         @default(0)
 
   // Relationships
-  feature Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  tickets Ticket[]
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  tasks   Task[]
 
   deleted   Boolean   @default(false)
   deletedAt DateTime? @map("deleted_at")
@@ -809,49 +812,3 @@ model Phase {
   @@map("phases")
 }
 
-model Ticket {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-
-  // Feature relationship (required)
-  featureId String  @map("feature_id")
-  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  // Phase relationship (optional)
-  phaseId String? @map("phase_id")
-  phase   Phase?  @relation(fields: [phaseId], references: [id], onDelete: SetNull)
-
-  // Task attributes
-  status   TicketStatus @default(TODO)
-  priority Priority     @default(MEDIUM)
-  order    Int          @default(0)
-
-  // Assignment (mutually exclusive: either a real user OR a system assignee)
-  assigneeId         String?              @map("assignee_id")
-  assignee           User?                @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  systemAssigneeType SystemAssigneeType?  @map("system_assignee_type")
-
-  // Dependencies - array of ticket IDs this ticket depends on
-  dependsOnTicketIds String[] @default([]) @map("depends_on_ticket_ids")
-
-  // Audit fields
-  createdById String @map("created_by_id")
-  createdBy   User   @relation("TicketCreator", fields: [createdById], references: [id])
-  updatedById String @map("updated_by_id")
-  updatedBy   User   @relation("TicketUpdater", fields: [updatedById], references: [id])
-
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-
-  @@index([featureId])
-  @@index([phaseId])
-  @@index([assigneeId])
-  @@index([systemAssigneeType])
-  @@index([status])
-  @@index([order])
-  @@index([deleted])
-  @@map("tickets")
-}

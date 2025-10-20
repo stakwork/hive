@@ -42,11 +42,11 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const ticket2 = result[0].tickets[1];
 
       // T1 has no dependencies
-      expect(ticket1.dependsOnTicketIds).toEqual([]);
+      expect(ticket1.dependsOnTaskIds).toEqual([]);
 
       // T2 depends on T1, should have real ID
-      expect(ticket2.dependsOnTicketIds).toHaveLength(1);
-      expect(ticket2.dependsOnTicketIds[0]).toBe(ticket1.id);
+      expect(ticket2.dependsOnTaskIds).toHaveLength(1);
+      expect(ticket2.dependsOnTaskIds[0]).toBe(ticket1.id);
     });
 
     test("handles cross-phase dependencies (T1 in phase 1 → T5 in phase 2)", async () => {
@@ -87,7 +87,7 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const featureTicket = result[1].tickets[0];
 
       // Feature ticket should depend on setup ticket (cross-phase)
-      expect(featureTicket.dependsOnTicketIds).toEqual([setupTicket.id]);
+      expect(featureTicket.dependsOnTaskIds).toEqual([setupTicket.id]);
     });
 
     test("handles multiple dependencies (T3 depends on [T1, T2])", async () => {
@@ -125,9 +125,9 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const ticketC = result[0].tickets[2];
 
       // C should depend on both A and B
-      expect(ticketC.dependsOnTicketIds).toHaveLength(2);
-      expect(ticketC.dependsOnTicketIds).toContain(ticketA.id);
-      expect(ticketC.dependsOnTicketIds).toContain(ticketB.id);
+      expect(ticketC.dependsOnTaskIds).toHaveLength(2);
+      expect(ticketC.dependsOnTaskIds).toContain(ticketA.id);
+      expect(ticketC.dependsOnTaskIds).toContain(ticketB.id);
     });
 
     test("handles no dependencies (empty dependsOn array)", async () => {
@@ -158,7 +158,7 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
 
       const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
 
-      expect(result[0].tickets[0].dependsOnTicketIds).toEqual([]);
+      expect(result[0].tickets[0].dependsOnTaskIds).toEqual([]);
     });
 
     test("handles undefined dependsOn (optional field)", async () => {
@@ -189,7 +189,7 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
 
       const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
 
-      expect(result[0].tickets[0].dependsOnTicketIds).toEqual([]);
+      expect(result[0].tickets[0].dependsOnTaskIds).toEqual([]);
     });
   });
 

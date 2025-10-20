@@ -22,7 +22,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useTicketMutations } from "@/hooks/useTicketMutations";
 import type { PhaseWithTickets, TicketListItem } from "@/types/roadmap";
-import type { PhaseStatus, TicketStatus, Priority } from "@prisma/client";
+import type { PhaseStatus, TaskStatus, Priority } from "@prisma/client";
 
 export default function PhaseDetailPage() {
   const router = useRouter();
@@ -56,7 +56,7 @@ export default function PhaseDetailPage() {
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
   const [newTicketTitle, setNewTicketTitle] = useState("");
   const [newTicketDescription, setNewTicketDescription] = useState("");
-  const [newTicketStatus, setNewTicketStatus] = useState<TicketStatus>("TODO");
+  const [newTicketStatus, setNewTicketStatus] = useState<TaskStatus>("TODO");
   const [newTicketPriority, setNewTicketPriority] = useState<Priority>("MEDIUM");
   const [newTicketAssigneeId, setNewTicketAssigneeId] = useState<string | null>(null);
   const [newTicketAssigneeData, setNewTicketAssigneeData] = useState<{
@@ -129,7 +129,7 @@ export default function PhaseDetailPage() {
       // Add new ticket to the list
       setPhase({
         ...phase,
-        tickets: [...phase.tickets, ticket],
+        tasks: [...phase.tasks, ticket],
       });
 
       // Reset form (focus handled by useEffect)
@@ -156,7 +156,7 @@ export default function PhaseDetailPage() {
     if (phase) {
       setPhase({
         ...phase,
-        tickets: reorderedTickets,
+        tasks: reorderedTickets,
       });
     }
   };
@@ -165,7 +165,7 @@ export default function PhaseDetailPage() {
     if (phase) {
       setPhase({
         ...phase,
-        tickets: phase.tickets.map((t) => (t.id === ticketId ? { ...t, ...updates } : t)),
+        tasks: phase.tasks.map((t) => (t.id === ticketId ? { ...t, ...updates } : t)),
       });
     }
   };
@@ -410,7 +410,7 @@ export default function PhaseDetailPage() {
                 <TicketsTable
                   phaseId={phaseId}
                   workspaceSlug={workspaceSlug}
-                  tickets={phase.tickets}
+                  tickets={phase.tasks}
                   onTicketsReordered={handleTicketsReordered}
                   onTicketUpdate={handleTicketUpdate}
                 />
@@ -418,8 +418,8 @@ export default function PhaseDetailPage() {
 
               <TabsContent value="graph" className="mt-4">
                 <DependencyGraph
-                  entities={phase.tickets}
-                  getDependencies={(ticket) => ticket.dependsOnTicketIds || []}
+                  entities={phase.tasks}
+                  getDependencies={(ticket) => ticket.dependsOnTaskIds || []}
                   renderNode={(ticket) => <TicketNode data={ticket} />}
                   onNodeClick={(ticketId) => {
                     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
