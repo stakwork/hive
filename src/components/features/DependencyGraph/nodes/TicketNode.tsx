@@ -31,6 +31,11 @@ export function TicketNode({ data }: TicketNodeProps) {
       bg: "bg-red-50 dark:bg-red-950",
       hover: "hover:border-red-700",
     },
+    CANCELLED: {
+      border: "border-slate-400",
+      bg: "bg-slate-50 dark:bg-slate-950",
+      hover: "hover:border-slate-600",
+    },
   };
 
   const colors = statusColors[data.status];

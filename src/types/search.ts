@@ -1,6 +1,6 @@
-import type { TaskStatus, Priority, FeaturePriority, FeatureStatus, TicketStatus, PhaseStatus } from "@prisma/client";
+import type { TaskStatus, Priority, FeaturePriority, FeatureStatus, PhaseStatus } from "@prisma/client";
 
-export type SearchEntityType = "task" | "feature" | "ticket" | "phase";
+export type SearchEntityType = "task" | "feature" | "phase";
 
 export interface SearchResult {
   id: string;
@@ -12,7 +12,7 @@ export interface SearchResult {
 }
 
 export interface SearchResultMetadata {
-  status?: TaskStatus | FeatureStatus | TicketStatus | PhaseStatus;
+  status?: TaskStatus | FeatureStatus | PhaseStatus;
   priority?: Priority | FeaturePriority;
   assignee?: {
     id: string;
@@ -20,7 +20,7 @@ export interface SearchResultMetadata {
     email: string | null;
     image: string | null;
   } | null;
-  featureTitle?: string; // For tickets/phases
+  featureTitle?: string; // For roadmap tasks and phases
   createdAt?: string;
   updatedAt?: string;
 }
@@ -30,7 +30,6 @@ export interface SearchResponse {
   data: {
     tasks: SearchResult[];
     features: SearchResult[];
-    tickets: SearchResult[];
     phases: SearchResult[];
     total: number;
   };

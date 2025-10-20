@@ -82,12 +82,12 @@ export async function validatePhaseAccess(phaseId: string, userId: string) {
 }
 
 /**
- * Validates that a user has access to a ticket through its feature's workspace
+ * Validates that a user has access to a roadmap task through its feature's workspace
  * Throws specific errors for not found vs access denied scenarios
  */
-export async function validateTicketAccess(ticketId: string, userId: string) {
-  const ticket = await db.ticket.findUnique({
-    where: { id: ticketId, deleted: false },
+export async function validateRoadmapTaskAccess(taskId: string, userId: string) {
+  const task = await db.task.findUnique({
+    where: { id: taskId, deleted: false },
     select: {
       id: true,
       featureId: true,
@@ -110,19 +110,22 @@ export async function validateTicketAccess(ticketId: string, userId: string) {
     },
   });
 
-  if (!ticket || ticket.feature.workspace.deleted) {
-    throw new Error("Ticket not found");
+  if (!task || !task.feature || task.feature.workspace.deleted) {
+    throw new Error("Task not found");
   }
 
-  const isOwner = ticket.feature.workspace.ownerId === userId;
-  const isMember = ticket.feature.workspace.members.length > 0;
+  const isOwner = task.feature.workspace.ownerId === userId;
+  const isMember = task.feature.workspace.members.length > 0;
 
   if (!isOwner && !isMember) {
     throw new Error("Access denied");
   }
 
-  return ticket;
+  return task;
 }
+
+// Backwards compatibility alias
+export const validateTicketAccess = validateRoadmapTaskAccess;
 
 /**
  * Validates that a user has access to a user story through its feature's workspace

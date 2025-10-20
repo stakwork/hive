@@ -16,7 +16,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import type { TicketDetail } from "@/types/roadmap";
-import type { TicketStatus, Priority } from "@prisma/client";
+import type { TaskStatus, Priority } from "@prisma/client";
 
 export default function TicketDetailPage() {
   const router = useRouter();
@@ -84,7 +84,7 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleUpdateStatus = async (status: TicketStatus) => {
+  const handleUpdateStatus = async (status: TaskStatus) => {
     await handleSave({ status });
     triggerSaved("title");
   };
@@ -173,9 +173,9 @@ export default function TicketDetailPage() {
             <>
               <span
                 className="hover:underline cursor-pointer"
-                onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${ticket.feature.id}`)}
+                onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${ticket.feature!.id}`)}
               >
-                {ticket.feature.title}
+                {ticket.feature!.title}
               </span>
               <span className="mx-2">›</span>
             </>

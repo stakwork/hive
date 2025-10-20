@@ -282,13 +282,13 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {phase.tickets.length} ticket{phase.tickets.length !== 1 ? 's' : ''}
+                        {phase.tasks.length} ticket{phase.tasks.length !== 1 ? 's' : ''}
                       </span>
                     </button>
 
                     {isExpanded && (
                       <div className="px-3 pb-3 space-y-2">
-                        {phase.tickets.map((ticket, ticketIndex) => (
+                        {phase.tasks.map((ticket, ticketIndex) => (
                           <div key={ticketIndex} className="pl-6 py-2 border-l-2 border-border/30">
                             <div className="flex items-start gap-2">
                               <span className="text-xs text-muted-foreground mt-0.5">{ticket.tempId}</span>

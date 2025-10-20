@@ -23,7 +23,7 @@ import { DependenciesCombobox } from "@/components/features/DependenciesCombobox
 import { useTicketMutations } from "@/hooks/useTicketMutations";
 import { useReorderTickets } from "@/hooks/useReorderTickets";
 import type { TicketListItem } from "@/types/roadmap";
-import type { TicketStatus, Priority } from "@prisma/client";
+import type { TaskStatus, Priority } from "@prisma/client";
 
 interface TicketsTableProps {
   phaseId: string;
@@ -50,7 +50,7 @@ function SortableTableRow({
   phaseId: string;
   allTickets: TicketListItem[];
   onClick: () => void;
-  onStatusUpdate: (status: TicketStatus) => Promise<void>;
+  onStatusUpdate: (status: TaskStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
   onDependenciesUpdate: (dependencyIds: string[]) => Promise<void>;
@@ -117,7 +117,7 @@ function SortableTableRow({
           currentTicketId={ticket.id}
           phaseId={phaseId}
           allTickets={allTickets}
-          selectedDependencyIds={ticket.dependsOnTicketIds}
+          selectedDependencyIds={ticket.dependsOnTaskIds}
           onUpdate={onDependenciesUpdate}
         />
       </TableCell>
@@ -155,7 +155,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
   };
 
-  const handleUpdateTicket = async (ticketId: string, updates: { status?: TicketStatus; priority?: Priority; assigneeId?: string | null; dependsOnTicketIds?: string[] }) => {
+  const handleUpdateTicket = async (ticketId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] }) => {
     const updatedTicket = await updateTicket({ ticketId, updates });
     if (updatedTicket && onTicketUpdate) {
       onTicketUpdate(ticketId, updatedTicket);
@@ -225,7 +225,7 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
                     onStatusUpdate={async (status) => handleUpdateTicket(ticket.id, { status })}
                     onPriorityUpdate={async (priority) => handleUpdateTicket(ticket.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTicket(ticket.id, { assigneeId })}
-                    onDependenciesUpdate={async (dependsOnTicketIds) => handleUpdateTicket(ticket.id, { dependsOnTicketIds })}
+                    onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTicket(ticket.id, { dependsOnTaskIds })}
                     onDelete={() => handleDeleteTicket(ticket.id)}
                   />
                 ))}

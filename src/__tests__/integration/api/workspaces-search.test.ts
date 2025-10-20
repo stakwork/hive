@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/[slug]/search/route";
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority, TaskStatus, Priority, TicketStatus, PhaseStatus } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, TaskStatus, Priority, TaskStatus, PhaseStatus } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
@@ -69,7 +69,7 @@ describe("Workspace Search API - Integration Tests", () => {
           description: "Implement call 4 feature",
           featureId: feature.id,
           phaseId: phase.id,
-          status: TicketStatus.TODO,
+          status: TaskStatus.TODO,
           priority: Priority.MEDIUM,
           createdById: user.id,
           updatedById: user.id,

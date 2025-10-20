@@ -1,12 +1,12 @@
 import { db } from "@/lib/db";
-import { TicketStatus, Priority, SystemAssigneeType } from "@prisma/client";
+import { TaskStatus, Priority, SystemAssigneeType } from "@prisma/client";
 import type {
-  CreateTicketRequest,
-  UpdateTicketRequest,
-  TicketWithDetails,
-  TicketDetail,
+  CreateRoadmapTaskRequest,
+  UpdateRoadmapTaskRequest,
+  RoadmapTaskWithDetails,
+  RoadmapTaskDetail,
 } from "@/types/roadmap";
-import { validateFeatureAccess, validateTicketAccess, calculateNextOrder } from "./utils";
+import { validateFeatureAccess, validateRoadmapTaskAccess, calculateNextOrder } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 
@@ -56,19 +56,19 @@ function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
 }
 
 /**
- * Gets a ticket with full context (feature, phase, creator, updater)
+ * Gets a roadmap task with full context (feature, phase, creator, updater)
  */
 export async function getTicket(
-  ticketId: string,
+  taskId: string,
   userId: string
-): Promise<TicketDetail> {
-  const ticket = await validateTicketAccess(ticketId, userId);
-  if (!ticket) {
-    throw new Error("Ticket not found or access denied");
+): Promise<RoadmapTaskDetail> {
+  const task = await validateRoadmapTaskAccess(taskId, userId);
+  if (!task) {
+    throw new Error("Task not found or access denied");
   }
 
-  const ticketDetail = await db.ticket.findUnique({
-    where: { id: ticketId },
+  const taskDetail = await db.task.findUnique({
+    where: { id: taskId },
     select: {
       id: true,
       title: true,
@@ -78,7 +78,7 @@ export async function getTicket(
       order: true,
       featureId: true,
       phaseId: true,
-      dependsOnTicketIds: true,
+      dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -108,33 +108,33 @@ export async function getTicket(
     },
   });
 
-  if (!ticketDetail) {
-    throw new Error("Ticket not found");
+  if (!taskDetail) {
+    throw new Error("Task not found");
   }
 
   // Convert system assignee type to virtual user object
-  if (ticketDetail.systemAssigneeType) {
-    const systemAssignee = getSystemAssigneeUser(ticketDetail.systemAssigneeType);
+  if (taskDetail.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(taskDetail.systemAssigneeType);
 
     if (systemAssignee) {
       return {
-        ...ticketDetail,
+        ...taskDetail,
         assignee: systemAssignee,
       };
     }
   }
 
-  return ticketDetail;
+  return taskDetail;
 }
 
 /**
- * Creates a new ticket for a feature
+ * Creates a new roadmap task for a feature
  */
 export async function createTicket(
   featureId: string,
   userId: string,
-  data: CreateTicketRequest
-): Promise<TicketWithDetails> {
+  data: CreateRoadmapTaskRequest
+): Promise<RoadmapTaskWithDetails> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
     throw new Error("Feature not found or access denied");
@@ -144,7 +144,7 @@ export async function createTicket(
     throw new Error("Title is required");
   }
 
-  validateEnum(data.status, TicketStatus, "status");
+  validateEnum(data.status, TaskStatus, "status");
   validateEnum(data.priority, Priority, "priority");
 
   if (data.phaseId) {
@@ -181,7 +181,7 @@ export async function createTicket(
     throw new Error("User not found");
   }
 
-  const nextOrder = await calculateNextOrder(db.ticket, {
+  const nextOrder = await calculateNextOrder(db.task, {
     featureId,
     phaseId: data.phaseId || null,
   });
@@ -194,13 +194,14 @@ export async function createTicket(
       : "BOUNTY_HUNTER"
     : null;
 
-  const ticket = await db.ticket.create({
+  const task = await db.task.create({
     data: {
       title: data.title.trim(),
       description: data.description?.trim() || null,
+      workspaceId: feature.workspaceId,
       featureId,
       phaseId: data.phaseId || null,
-      status: data.status || TicketStatus.TODO,
+      status: data.status || TaskStatus.TODO,
       priority: data.priority || Priority.MEDIUM,
       order: nextOrder,
       assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
@@ -217,7 +218,7 @@ export async function createTicket(
       order: true,
       featureId: true,
       phaseId: true,
-      dependsOnTicketIds: true,
+      dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -234,31 +235,31 @@ export async function createTicket(
   });
 
   // Convert system assignee type to virtual user object
-  if (ticket.systemAssigneeType) {
-    const systemAssignee = getSystemAssigneeUser(ticket.systemAssigneeType);
+  if (task.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(task.systemAssigneeType);
 
     if (systemAssignee) {
       return {
-        ...ticket,
+        ...task,
         assignee: systemAssignee,
       };
     }
   }
 
-  return ticket;
+  return task;
 }
 
 /**
- * Updates a ticket
+ * Updates a roadmap task
  */
 export async function updateTicket(
-  ticketId: string,
+  taskId: string,
   userId: string,
-  data: UpdateTicketRequest
-): Promise<TicketWithDetails> {
-  const ticket = await validateTicketAccess(ticketId, userId);
-  if (!ticket) {
-    throw new Error("Ticket not found or access denied");
+  data: UpdateRoadmapTaskRequest
+): Promise<RoadmapTaskWithDetails> {
+  const task = await validateRoadmapTaskAccess(taskId, userId);
+  if (!task) {
+    throw new Error("Task not found or access denied");
   }
 
   const updateData: any = {
@@ -277,7 +278,7 @@ export async function updateTicket(
   }
 
   if (data.status !== undefined) {
-    validateEnum(data.status, TicketStatus, "status");
+    validateEnum(data.status, TaskStatus, "status");
     updateData.status = data.status;
   }
 
@@ -288,10 +289,13 @@ export async function updateTicket(
 
   if (data.phaseId !== undefined) {
     if (data.phaseId !== null) {
+      if (!task.featureId) {
+        throw new Error("Cannot assign phase to task without a feature");
+      }
       const phase = await db.phase.findFirst({
         where: {
           id: data.phaseId,
-          featureId: ticket.featureId,
+          featureId: task.featureId,
         },
       });
 
@@ -336,21 +340,21 @@ export async function updateTicket(
     updateData.order = data.order;
   }
 
-  if (data.dependsOnTicketIds !== undefined) {
-    if (!Array.isArray(data.dependsOnTicketIds)) {
-      throw new Error("dependsOnTicketIds must be an array");
+  if (data.dependsOnTaskIds !== undefined) {
+    if (!Array.isArray(data.dependsOnTaskIds)) {
+      throw new Error("dependsOnTaskIds must be an array");
     }
 
-    // Prevent ticket from depending on itself
-    if (data.dependsOnTicketIds.includes(ticketId)) {
-      throw new Error("A ticket cannot depend on itself");
+    // Prevent task from depending on itself
+    if (data.dependsOnTaskIds.includes(taskId)) {
+      throw new Error("A task cannot depend on itself");
     }
 
-    // Validate all dependency tickets exist and belong to same feature
-    if (data.dependsOnTicketIds.length > 0) {
-      const dependencyTickets = await db.ticket.findMany({
+    // Validate all dependency tasks exist and belong to same feature
+    if (data.dependsOnTaskIds.length > 0) {
+      const dependencyTasks = await db.task.findMany({
         where: {
-          id: { in: data.dependsOnTicketIds },
+          id: { in: data.dependsOnTaskIds },
           deleted: false,
         },
         select: {
@@ -359,39 +363,39 @@ export async function updateTicket(
         },
       });
 
-      if (dependencyTickets.length !== data.dependsOnTicketIds.length) {
-        throw new Error("One or more dependency tickets not found");
+      if (dependencyTasks.length !== data.dependsOnTaskIds.length) {
+        throw new Error("One or more dependency tasks not found");
       }
 
-      // Check all dependency tickets belong to same feature
-      const invalidDependencies = dependencyTickets.filter(
-        (dep) => dep.featureId !== ticket.featureId
+      // Check all dependency tasks belong to same feature
+      const invalidDependencies = dependencyTasks.filter(
+        (dep) => dep.featureId !== task.featureId
       );
       if (invalidDependencies.length > 0) {
-        throw new Error("Dependencies must be tickets from the same feature");
+        throw new Error("Dependencies must be tasks from the same feature");
       }
 
       // Simple circular dependency check: prevent A->B and B->A
-      const existingDependents = await db.ticket.findMany({
+      const existingDependents = await db.task.findMany({
         where: {
-          id: { in: data.dependsOnTicketIds },
-          dependsOnTicketIds: { has: ticketId },
+          id: { in: data.dependsOnTaskIds },
+          dependsOnTaskIds: { has: taskId },
         },
         select: { id: true, title: true },
       });
 
       if (existingDependents.length > 0) {
         throw new Error(
-          `Circular dependency detected with ticket(s): ${existingDependents.map((t) => t.title).join(", ")}`
+          `Circular dependency detected with task(s): ${existingDependents.map((t) => t.title).join(", ")}`
         );
       }
     }
 
-    updateData.dependsOnTicketIds = data.dependsOnTicketIds;
+    updateData.dependsOnTaskIds = data.dependsOnTaskIds;
   }
 
-  const updatedTicket = await db.ticket.update({
-    where: { id: ticketId },
+  const updatedTask = await db.task.update({
+    where: { id: taskId },
     data: updateData,
     select: {
       id: true,
@@ -402,7 +406,7 @@ export async function updateTicket(
       order: true,
       featureId: true,
       phaseId: true,
-      dependsOnTicketIds: true,
+      dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -419,34 +423,34 @@ export async function updateTicket(
   });
 
   // Convert system assignee type to virtual user object
-  if (updatedTicket.systemAssigneeType) {
-    const systemAssignee = getSystemAssigneeUser(updatedTicket.systemAssigneeType);
+  if (updatedTask.systemAssigneeType) {
+    const systemAssignee = getSystemAssigneeUser(updatedTask.systemAssigneeType);
 
     if (systemAssignee) {
       return {
-        ...updatedTicket,
+        ...updatedTask,
         assignee: systemAssignee,
       };
     }
   }
 
-  return updatedTicket;
+  return updatedTask;
 }
 
 /**
- * Soft deletes a ticket
+ * Soft deletes a roadmap task
  */
 export async function deleteTicket(
-  ticketId: string,
+  taskId: string,
   userId: string
 ): Promise<void> {
-  const ticket = await validateTicketAccess(ticketId, userId);
-  if (!ticket) {
-    throw new Error("Ticket not found or access denied");
+  const task = await validateRoadmapTaskAccess(taskId, userId);
+  if (!task) {
+    throw new Error("Task not found or access denied");
   }
 
-  await db.ticket.update({
-    where: { id: ticketId },
+  await db.task.update({
+    where: { id: taskId },
     data: {
       deleted: true,
       deletedAt: new Date(),
@@ -455,45 +459,45 @@ export async function deleteTicket(
 }
 
 /**
- * Reorders tickets (within or across phases)
+ * Reorders roadmap tasks (within or across phases)
  */
 export async function reorderTickets(
   userId: string,
-  tickets: { id: string; order: number; phaseId?: string | null }[]
-): Promise<TicketWithDetails[]> {
-  if (!Array.isArray(tickets) || tickets.length === 0) {
-    throw new Error("Tickets must be a non-empty array");
+  tasks: { id: string; order: number; phaseId?: string | null }[]
+): Promise<RoadmapTaskWithDetails[]> {
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    throw new Error("Tasks must be a non-empty array");
   }
 
-  const firstTicket = await db.ticket.findUnique({
-    where: { id: tickets[0].id },
+  const firstTask = await db.task.findUnique({
+    where: { id: tasks[0].id },
     select: { featureId: true },
   });
 
-  if (!firstTicket) {
-    throw new Error("Ticket not found");
+  if (!firstTask) {
+    throw new Error("Task not found");
   }
 
-  const feature = await validateFeatureAccess(firstTicket.featureId, userId);
+  const feature = await validateFeatureAccess(firstTask.featureId!, userId);
   if (!feature) {
     throw new Error("Access denied");
   }
 
   await db.$transaction(
-    tickets.map((ticket) => {
-      const updateData: any = { order: ticket.order };
-      if (ticket.phaseId !== undefined) {
-        updateData.phaseId = ticket.phaseId;
+    tasks.map((task) => {
+      const updateData: any = { order: task.order };
+      if (task.phaseId !== undefined) {
+        updateData.phaseId = task.phaseId;
       }
-      return db.ticket.update({
-        where: { id: ticket.id },
+      return db.task.update({
+        where: { id: task.id },
         data: updateData,
       });
     })
   );
 
-  const updatedTickets = await db.ticket.findMany({
-    where: { featureId: firstTicket.featureId, deleted: false },
+  const updatedTasks = await db.task.findMany({
+    where: { featureId: firstTask.featureId, deleted: false },
     select: {
       id: true,
       title: true,
@@ -503,7 +507,7 @@ export async function reorderTickets(
       order: true,
       featureId: true,
       phaseId: true,
-      dependsOnTicketIds: true,
+      dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -521,17 +525,17 @@ export async function reorderTickets(
   });
 
   // Convert system assignee types to virtual user objects
-  return updatedTickets.map(ticket => {
-    if (ticket.systemAssigneeType) {
-      const systemAssignee = getSystemAssigneeUser(ticket.systemAssigneeType);
+  return updatedTasks.map(task => {
+    if (task.systemAssigneeType) {
+      const systemAssignee = getSystemAssigneeUser(task.systemAssigneeType);
 
       if (systemAssignee) {
         return {
-          ...ticket,
+          ...task,
           assignee: systemAssignee,
         };
       }
     }
-    return ticket;
+    return task;
   });
 }

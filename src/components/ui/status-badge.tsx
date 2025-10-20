@@ -10,7 +10,7 @@ import {
   Circle,
   AlertCircle
 } from "lucide-react";
-import type { FeatureStatus, PhaseStatus, TicketStatus } from "@prisma/client";
+import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
 
 type StatusType = "feature" | "phase" | "ticket";
 
@@ -71,7 +71,7 @@ const PHASE_STATUS_CONFIG: Record<PhaseStatus, StatusConfig> = {
   },
 };
 
-const TICKET_STATUS_CONFIG: Record<TicketStatus, StatusConfig> = {
+const TICKET_STATUS_CONFIG: Record<TaskStatus, StatusConfig> = {
   TODO: {
     icon: <Circle className="h-3 w-3" />,
     label: "To Do",
@@ -92,11 +92,16 @@ const TICKET_STATUS_CONFIG: Record<TicketStatus, StatusConfig> = {
     label: "Blocked",
     className: "bg-red-50 text-red-700 border-red-200",
   },
+  CANCELLED: {
+    icon: <XCircle className="h-3 w-3" />,
+    label: "Cancelled",
+    className: "bg-slate-100 text-slate-700 border-slate-200",
+  },
 };
 
 interface StatusBadgeProps {
   statusType: StatusType;
-  status: FeatureStatus | PhaseStatus | TicketStatus;
+  status: FeatureStatus | PhaseStatus | TaskStatus;
   className?: string;
 }
 
@@ -111,7 +116,7 @@ export function StatusBadge({ statusType, status, className }: StatusBadgeProps)
       config = PHASE_STATUS_CONFIG[status as PhaseStatus];
       break;
     case "ticket":
-      config = TICKET_STATUS_CONFIG[status as TicketStatus];
+      config = TICKET_STATUS_CONFIG[status as TaskStatus];
       break;
   }
 
@@ -136,7 +141,7 @@ export function getStatusConfig(statusType: StatusType, status: string): StatusC
     case "phase":
       return PHASE_STATUS_CONFIG[status as PhaseStatus] || null;
     case "ticket":
-      return TICKET_STATUS_CONFIG[status as TicketStatus] || null;
+      return TICKET_STATUS_CONFIG[status as TaskStatus] || null;
     default:
       return null;
   }
@@ -149,7 +154,7 @@ export function getAllStatusOptions(statusType: StatusType): string[] {
     case "phase":
       return Object.keys(PHASE_STATUS_CONFIG) as PhaseStatus[];
     case "ticket":
-      return Object.keys(TICKET_STATUS_CONFIG) as TicketStatus[];
+      return Object.keys(TICKET_STATUS_CONFIG) as TaskStatus[];
     default:
       return [];
   }

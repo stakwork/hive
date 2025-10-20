@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import type { TicketListItem } from "@/types/roadmap";
-import type { TicketStatus, Priority } from "@prisma/client";
+import type { TaskStatus, Priority } from "@prisma/client";
 
 interface CreateTicketParams {
   featureId: string;
   phaseId: string;
   title: string;
   description?: string;
-  status?: TicketStatus;
+  status?: TaskStatus;
   priority?: Priority;
   assigneeId?: string | null;
 }
@@ -19,10 +19,10 @@ interface UpdateTicketParams {
   updates: {
     title?: string;
     description?: string | null;
-    status?: TicketStatus;
+    status?: TaskStatus;
     priority?: Priority;
     assigneeId?: string | null;
-    dependsOnTicketIds?: string[];
+    dependsOnTaskIds?: string[];
   };
 }
 

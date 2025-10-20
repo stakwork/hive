@@ -5,23 +5,23 @@ import type {
   UpdatePhaseRequest,
   PhaseWithDetails,
   PhaseListItem,
-  PhaseWithTickets,
+  PhaseWithTasks,
 } from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
 
 /**
- * Gets a phase with its tickets and feature context
+ * Gets a phase with its tasks and feature context
  */
 export async function getPhase(
   phaseId: string,
   userId: string
-): Promise<PhaseWithTickets> {
+): Promise<PhaseWithTasks> {
   const phase = await validatePhaseAccess(phaseId, userId);
   if (!phase) {
     throw new Error("Phase not found or access denied");
   }
 
-  const phaseWithTickets = await db.phase.findUnique({
+  const phaseWithTasks = await db.phase.findUnique({
     where: { id: phaseId },
     select: {
       id: true,
@@ -39,7 +39,7 @@ export async function getPhase(
           workspaceId: true,
         },
       },
-      tickets: {
+      tasks: {
         where: {
           deleted: false,
         },
@@ -52,7 +52,7 @@ export async function getPhase(
           order: true,
           featureId: true,
           phaseId: true,
-          dependsOnTicketIds: true,
+          dependsOnTaskIds: true,
           createdAt: true,
           updatedAt: true,
           systemAssigneeType: true,
@@ -78,14 +78,14 @@ export async function getPhase(
     },
   });
 
-  if (!phaseWithTickets) {
+  if (!phaseWithTasks) {
     throw new Error("Phase not found");
   }
 
   // Convert system assignee types to virtual user objects
-  const ticketsWithConvertedAssignees = phaseWithTickets.tickets.map(ticket => {
-    if (ticket.systemAssigneeType) {
-      const systemAssignee = ticket.systemAssigneeType === "TASK_COORDINATOR"
+  const tasksWithConvertedAssignees = phaseWithTasks.tasks.map(task => {
+    if (task.systemAssigneeType) {
+      const systemAssignee = task.systemAssigneeType === "TASK_COORDINATOR"
         ? {
             id: "system:task-coordinator",
             name: "Task Coordinator",
@@ -100,16 +100,16 @@ export async function getPhase(
           };
 
       return {
-        ...ticket,
+        ...task,
         assignee: systemAssignee,
       };
     }
-    return ticket;
+    return task;
   });
 
   return {
-    ...phaseWithTickets,
-    tickets: ticketsWithConvertedAssignees,
+    ...phaseWithTasks,
+    tasks: tasksWithConvertedAssignees,
   };
 }
 
@@ -149,7 +149,7 @@ export async function createPhase(
       createdAt: true,
       updatedAt: true,
       _count: {
-        select: { tickets: true },
+        select: { tasks: true },
       },
     },
   });
@@ -207,7 +207,7 @@ export async function updatePhase(
       createdAt: true,
       updatedAt: true,
       _count: {
-        select: { tickets: true },
+        select: { tasks: true },
       },
     },
   });
@@ -277,7 +277,7 @@ export async function reorderPhases(
       createdAt: true,
       updatedAt: true,
       _count: {
-        select: { tickets: true },
+        select: { tasks: true },
       },
     },
     orderBy: { order: "asc" },
@@ -287,16 +287,16 @@ export async function reorderPhases(
 }
 
 /**
- * Batch creates phases with tickets from AI generation
- * Handles dependency mapping from tempIds to real ticket IDs
+ * Batch creates phases with tasks from AI generation
+ * Handles dependency mapping from tempIds to real task IDs
  */
-export async function batchCreatePhasesWithTickets(
+export async function batchCreatePhasesWithTasks(
   featureId: string,
   userId: string,
   phases: Array<{
     name: string;
     description?: string;
-    tickets: Array<{
+    tasks: Array<{
       title: string;
       description?: string;
       priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -304,7 +304,7 @@ export async function batchCreatePhasesWithTickets(
       dependsOn?: string[];
     }>;
   }>
-): Promise<Array<{ phase: PhaseListItem; tickets: any[] }>> {
+): Promise<Array<{ phase: PhaseListItem; tasks: any[] }>> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
     throw new Error("Feature not found or access denied");
@@ -320,7 +320,7 @@ export async function batchCreatePhasesWithTickets(
 
   // Use transaction to ensure atomicity
   return await db.$transaction(async (tx) => {
-    const result: Array<{ phase: PhaseListItem; tickets: any[] }> = [];
+    const result: Array<{ phase: PhaseListItem; tasks: any[] }> = [];
     const tempIdToRealId = new Map<string, string>();
 
     // Calculate starting order for phases
@@ -333,7 +333,7 @@ export async function batchCreatePhasesWithTickets(
 
     const basePhaseOrder = existingPhases.length > 0 ? existingPhases[0].order + 1 : 0;
 
-    // Create phases and tickets
+    // Create phases and tasks
     for (let phaseIndex = 0; phaseIndex < phases.length; phaseIndex++) {
       const phaseData = phases[phaseIndex];
 
@@ -355,32 +355,33 @@ export async function batchCreatePhasesWithTickets(
           createdAt: true,
           updatedAt: true,
           _count: {
-            select: { tickets: true },
+            select: { tasks: true },
           },
         },
       });
 
-      const tickets = [];
+      const tasks = [];
 
-      // Create tickets for this phase
-      for (let ticketIndex = 0; ticketIndex < phaseData.tickets.length; ticketIndex++) {
-        const ticketData = phaseData.tickets[ticketIndex];
+      // Create tasks for this phase
+      for (let taskIndex = 0; taskIndex < phaseData.tasks.length; taskIndex++) {
+        const taskData = phaseData.tasks[taskIndex];
 
         // Map dependsOn tempIds to real IDs (if dependencies are already created)
-        const dependsOnTicketIds = ticketData.dependsOn
-          ? ticketData.dependsOn.map((tempId) => tempIdToRealId.get(tempId)).filter(Boolean) as string[]
+        const dependsOnTaskIds = taskData.dependsOn
+          ? taskData.dependsOn.map((tempId) => tempIdToRealId.get(tempId)).filter(Boolean) as string[]
           : [];
 
-        const ticket = await tx.ticket.create({
+        const task = await tx.task.create({
           data: {
-            title: ticketData.title.trim(),
-            description: ticketData.description?.trim() || null,
+            title: taskData.title.trim(),
+            description: taskData.description?.trim() || null,
+            workspaceId: feature.workspaceId,
             featureId,
             phaseId: phase.id,
-            priority: ticketData.priority,
+            priority: taskData.priority,
             status: "TODO",
-            order: ticketIndex,
-            dependsOnTicketIds,
+            order: taskIndex,
+            dependsOnTaskIds,
             createdById: userId,
             updatedById: userId,
           },
@@ -393,7 +394,7 @@ export async function batchCreatePhasesWithTickets(
             order: true,
             featureId: true,
             phaseId: true,
-            dependsOnTicketIds: true,
+            dependsOnTaskIds: true,
             createdAt: true,
             updatedAt: true,
             systemAssigneeType: true,
@@ -415,16 +416,19 @@ export async function batchCreatePhasesWithTickets(
         });
 
         // Map tempId to real ID for dependency resolution
-        tempIdToRealId.set(ticketData.tempId, ticket.id);
-        tickets.push(ticket);
+        tempIdToRealId.set(taskData.tempId, task.id);
+        tasks.push(task);
       }
 
-      // Update ticket count for phase
-      phase._count.tickets = tickets.length;
+      // Update task count for phase
+      phase._count.tasks = tasks.length;
 
-      result.push({ phase, tickets });
+      result.push({ phase, tasks });
     }
 
     return result;
   });
 }
+
+// Backwards compatibility alias
+export const batchCreatePhasesWithTickets = batchCreatePhasesWithTasks;
