@@ -5,7 +5,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getLanguageFromFile } from "@/lib/syntax-utils";
 import { useDataStore } from "@/stores/useDataStore";
-import { useSchemaStore } from "@/stores/useSchemaStore";
+import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -29,16 +29,14 @@ interface ApiResponse {
   };
 }
 
+
 interface SchemaResponse {
   success: boolean;
-  data?: SchemaNode[];
+  data?: {
+    schemas: SchemaExtended[];
+  };
 }
 
-interface SchemaNode {
-  node_type: string;
-  description: string;
-  [key: string]: unknown;
-}
 
 interface D3Node extends d3.SimulationNodeDatum {
   id: string;
@@ -303,7 +301,23 @@ export const GraphComponent = () => {
         const data: ApiResponse = await response.json();
         if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
-          addNewNode({ nodes: data.data.nodes, edges: data.data.edges })
+          addNewNode({
+            nodes: data.data.nodes.map(node => ({
+              ...node,
+              ref_id: node.id,
+              node_type: node.type,
+              label: node.name,
+              x: 0,
+              y: 0,
+              z: 0,
+              edge_count: 0
+            })),
+            edges: (data.data.edges || []).map(edge => ({
+              ...edge,
+              ref_id: typeof edge.source === 'string' ? edge.source : (edge.source as any)?.ref_id || '',
+              edge_type: (edge as any).edge_type || 'default'
+            }))
+          })
 
 
           setNodes(

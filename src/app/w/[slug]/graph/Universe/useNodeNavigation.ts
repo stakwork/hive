@@ -10,8 +10,9 @@ export const useNodeNavigation = () => {
 
   return {
     navigateToNode: (id: string) => {
-      if (nodesNormalized.get(id)) {
-        setSelectedNode(nodesNormalized.get(id))
+      const node = nodesNormalized.get(id)
+      if (node) {
+        setSelectedNode(node)
       } else {
         setSelectedNode(null)
       }

@@ -145,8 +145,8 @@ export const Graph = () => {
         linksPositionRef.current.clear()
 
         dataInitial?.links.forEach((link) => {
-          const sourceId = typeof link.source === 'string' ? link.source : link.source?.ref_id
-          const targetId = typeof link.target === 'string' ? link.target : link.target?.ref_id
+          const sourceId = typeof link.source === 'string' ? link.source : (link.source as any)?.ref_id
+          const targetId = typeof link.target === 'string' ? link.target : (link.target as any)?.ref_id
           const sourceNode = sourceId ? nodesPositionRef.current.get(sourceId) : { x: 0, y: 0, z: 0 }
           const targetNode = targetId ? nodesPositionRef.current.get(targetId) : { x: 0, y: 0, z: 0 }
 
@@ -176,8 +176,8 @@ export const Graph = () => {
               const link = dataInitial?.links[i]
 
               if (link) {
-                const sourceNode = link.source.ref_id ? nodesPositionRef.current.get(link.source.ref_id as string) : { x: 0, y: 0, z: 0 }
-                const targetNode = link.target.ref_id ? nodesPositionRef.current.get(link.target.ref_id as string) : { x: 0, y: 0, z: 0 }
+                const sourceNode = (link.source as any).ref_id ? nodesPositionRef.current.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+                const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
                   console.warn(`Missing source or target node for link: ${link?.ref_id}`)
@@ -267,8 +267,8 @@ export const Graph = () => {
         linksPositionRef.current.clear()
 
         dataInitial?.links.forEach((link) => {
-          const sourceId = typeof link.source === 'string' ? link.source : link.source?.ref_id
-          const targetId = typeof link.target === 'string' ? link.target : link.target?.ref_id
+          const sourceId = typeof link.source === 'string' ? link.source : (link.source as any)?.ref_id
+          const targetId = typeof link.target === 'string' ? link.target : (link.target as any)?.ref_id
           const sourceNode = sourceId ? nodesPositionRef.current.get(sourceId) : { x: 0, y: 0, z: 0 }
           const targetNode = targetId ? nodesPositionRef.current.get(targetId) : { x: 0, y: 0, z: 0 }
 
@@ -297,8 +297,8 @@ export const Graph = () => {
               const link = dataInitial?.links[i]
 
               if (link) {
-                const sourceNode = link.source.ref_id ? nodesPositionRef.current.get(link.source.ref_id as string) : { x: 0, y: 0, z: 0 }
-                const targetNode = link.target.ref_id ? nodesPositionRef.current.get(link.target.ref_id as string) : { x: 0, y: 0, z: 0 }
+                const sourceNode = (link.source as any).ref_id ? nodesPositionRef.current.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+                const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
                   console.warn(`Missing source or target node for link: ${link?.ref_id}`)
