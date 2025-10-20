@@ -18,6 +18,7 @@ export interface ServiceConfig {
     preStart?: string;
     postStart?: string;
     rebuild?: string;
+    reset?: string;
   };
   env?: Record<string, string>; // Environment variables from stakgraph
 }

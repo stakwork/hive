@@ -85,6 +85,10 @@ export const generatePM2Apps = (
       appConfig.env.REBUILD_COMMAND = service.scripts.rebuild;
     }
 
+    if (service.scripts?.reset) {
+      appConfig.env.RESET_COMMAND = service.scripts.reset;
+    }
+
     return appConfig;
   });
 };
@@ -291,6 +295,7 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
       let preStartCmd: string | undefined;
       let postStartCmd: string | undefined;
       let rebuildCmd: string | undefined;
+      let resetCmd: string | undefined;
 
       if (envMatch) {
         const envContent = envMatch[1];
@@ -301,6 +306,7 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
         const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*["']([^"']+)["']/);
         const postStartMatch = envContent.match(/POST_START_COMMAND:\s*["']([^"']+)["']/);
         const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*["']([^"']+)["']/);
+        const resetMatch = envContent.match(/RESET_COMMAND:\s*["']([^"']+)["']/);
 
         if (portMatch) port = parseInt(portMatch[1]);
         if (installMatch) installCmd = installMatch[1];
@@ -309,6 +315,7 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
         if (preStartMatch) preStartCmd = preStartMatch[1];
         if (postStartMatch) postStartCmd = postStartMatch[1];
         if (rebuildMatch) rebuildCmd = rebuildMatch[1];
+        if (resetMatch) resetCmd = resetMatch[1];
       }
 
       if (nameMatch && scriptMatch) {
@@ -337,6 +344,7 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
             preStart: preStartCmd,
             postStart: postStartCmd,
             rebuild: rebuildCmd,
+            reset: resetCmd,
           }
         };
 

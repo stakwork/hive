@@ -73,6 +73,7 @@ const stakgraphSettingsSchema = z.object({
           preStart: z.string().optional(),
           postStart: z.string().optional(),
           rebuild: z.string().optional(),
+          reset: z.string().optional(),
         }),
         dev: z.boolean().optional(),
         env: z.record(z.string(), z.string()).optional(),

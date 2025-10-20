@@ -57,6 +57,7 @@ describe("DevContainer Utils - Unit Tests", () => {
             preStart: "npm run setup",
             postStart: "npm run seed",
             rebuild: "npm run clean && npm run build",
+            reset: "npm run db:reset",
           },
         },
       ];
@@ -82,6 +83,7 @@ describe("DevContainer Utils - Unit Tests", () => {
           PRE_START_COMMAND: "npm run setup",
           POST_START_COMMAND: "npm run seed",
           REBUILD_COMMAND: "npm run clean && npm run build",
+          RESET_COMMAND: "npm run db:reset",
         },
       });
     });
