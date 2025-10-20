@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { TicketListItem } from "@/types/roadmap";
 import type { TaskStatus, Priority } from "@prisma/client";
 
-interface CreateTicketParams {
+interface CreateRoadmapTaskParams {
   featureId: string;
   phaseId: string;
   title: string;
@@ -14,8 +14,8 @@ interface CreateTicketParams {
   assigneeId?: string | null;
 }
 
-interface UpdateTicketParams {
-  ticketId: string;
+interface UpdateRoadmapTaskParams {
+  taskId: string;
   updates: {
     title?: string;
     description?: string | null;
@@ -26,11 +26,11 @@ interface UpdateTicketParams {
   };
 }
 
-export function useTicketMutations() {
+export function useRoadmapTaskMutations() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createTicket = async (params: CreateTicketParams): Promise<TicketListItem | null> => {
+  const createTicket = async (params: CreateRoadmapTaskParams): Promise<TicketListItem | null> => {
     try {
       setLoading(true);
       setError(null);
@@ -50,7 +50,7 @@ export function useTicketMutations() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to create ticket");
+        throw new Error(data.error || "Failed to create roadmap task");
       }
 
       const result = await response.json();
@@ -58,23 +58,23 @@ export function useTicketMutations() {
         return result.data;
       }
 
-      throw new Error("Failed to create ticket");
+      throw new Error("Failed to create roadmap task");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      console.error("Failed to create ticket:", err);
+      console.error("Failed to create roadmap task:", err);
       return null;
     } finally {
       setLoading(false);
     }
   };
 
-  const updateTicket = async (params: UpdateTicketParams): Promise<TicketListItem | null> => {
+  const updateTicket = async (params: UpdateRoadmapTaskParams): Promise<TicketListItem | null> => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/tickets/${params.ticketId}`, {
+      const response = await fetch(`/api/tickets/${params.taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params.updates),
@@ -82,7 +82,7 @@ export function useTicketMutations() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to update ticket");
+        throw new Error(data.error || "Failed to update roadmap task");
       }
 
       const result = await response.json();
@@ -90,11 +90,11 @@ export function useTicketMutations() {
         return result.data;
       }
 
-      throw new Error("Failed to update ticket");
+      throw new Error("Failed to update roadmap task");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      console.error("Failed to update ticket:", err);
+      console.error("Failed to update roadmap task:", err);
       return null;
     } finally {
       setLoading(false);

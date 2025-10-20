@@ -20,24 +20,24 @@ import { StatusPopover } from "@/components/ui/status-popover";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
-import { useTicketMutations } from "@/hooks/useTicketMutations";
-import { useReorderTickets } from "@/hooks/useReorderTickets";
+import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import type { TicketListItem } from "@/types/roadmap";
 import type { TaskStatus, Priority } from "@prisma/client";
 
-interface TicketsTableProps {
+interface RoadmapTasksTableProps {
   phaseId: string;
   workspaceSlug: string;
-  tickets: TicketListItem[];
-  onTicketsReordered?: (tickets: TicketListItem[]) => void;
-  onTicketUpdate?: (ticketId: string, updates: Partial<TicketListItem>) => void;
+  tasks: TicketListItem[];
+  onTasksReordered?: (tasks: TicketListItem[]) => void;
+  onTaskUpdate?: (taskId: string, updates: Partial<TicketListItem>) => void;
 }
 
 function SortableTableRow({
-  ticket,
+  task,
   workspaceSlug,
   phaseId,
-  allTickets,
+  allTasks,
   onClick,
   onStatusUpdate,
   onPriorityUpdate,
@@ -45,10 +45,10 @@ function SortableTableRow({
   onDependenciesUpdate,
   onDelete,
 }: {
-  ticket: TicketListItem;
+  task: TicketListItem;
   workspaceSlug: string;
   phaseId: string;
-  allTickets: TicketListItem[];
+  allTasks: TicketListItem[];
   onClick: () => void;
   onStatusUpdate: (status: TaskStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
@@ -63,7 +63,7 @@ function SortableTableRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: ticket.id });
+  } = useSortable({ id: task.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -89,35 +89,35 @@ function SortableTableRow({
         </div>
       </TableCell>
       <TableCell className="w-[300px] font-medium truncate" onClick={onClick}>
-        {ticket.title}
+        {task.title}
       </TableCell>
       <TableCell className="w-[120px]">
         <StatusPopover
-          statusType="ticket"
-          currentStatus={ticket.status}
+          statusType="task"
+          currentStatus={task.status}
           onUpdate={onStatusUpdate}
         />
       </TableCell>
       <TableCell className="w-[120px]">
         <PriorityPopover
-          currentPriority={ticket.priority}
+          currentPriority={task.priority}
           onUpdate={onPriorityUpdate}
         />
       </TableCell>
       <TableCell className="w-[180px]">
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
-          currentAssignee={ticket.assignee}
+          currentAssignee={task.assignee}
           onSelect={onAssigneeUpdate}
           showSpecialAssignees={true}
         />
       </TableCell>
       <TableCell className="w-[200px]">
         <DependenciesCombobox
-          currentTicketId={ticket.id}
+          currentTicketId={task.id}
           phaseId={phaseId}
-          allTickets={allTickets}
-          selectedDependencyIds={ticket.dependsOnTaskIds}
+          allTickets={allTasks}
+          selectedDependencyIds={task.dependsOnTaskIds}
           onUpdate={onDependenciesUpdate}
         />
       </TableCell>
@@ -129,8 +129,8 @@ function SortableTableRow({
               icon: Trash2,
               variant: "destructive",
               confirmation: {
-                title: "Delete Ticket",
-                description: `Are you sure you want to delete "${ticket.title}"? This action cannot be undone.`,
+                title: "Delete Task",
+                description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
                 onConfirm: onDelete,
               },
             },
@@ -141,51 +141,51 @@ function SortableTableRow({
   );
 }
 
-export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReordered, onTicketUpdate }: TicketsTableProps) {
+export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReordered, onTaskUpdate }: RoadmapTasksTableProps) {
   const router = useRouter();
 
-  const { updateTicket } = useTicketMutations();
-  const { sensors, ticketIds, handleDragEnd, collisionDetection } = useReorderTickets({
-    tickets,
+  const { updateTicket } = useRoadmapTaskMutations();
+  const { sensors, taskIds, handleDragEnd, collisionDetection } = useReorderRoadmapTasks({
+    tasks,
     phaseId,
-    onOptimisticUpdate: onTicketsReordered,
+    onOptimisticUpdate: onTasksReordered,
   });
 
-  const handleRowClick = (ticketId: string) => {
-    router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
+  const handleRowClick = (taskId: string) => {
+    router.push(`/w/${workspaceSlug}/tickets/${taskId}`);
   };
 
-  const handleUpdateTicket = async (ticketId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] }) => {
-    const updatedTicket = await updateTicket({ ticketId, updates });
-    if (updatedTicket && onTicketUpdate) {
-      onTicketUpdate(ticketId, updatedTicket);
+  const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] }) => {
+    const updatedTask = await updateTicket({ taskId, updates });
+    if (updatedTask && onTaskUpdate) {
+      onTaskUpdate(taskId, updatedTask);
     }
   };
 
-  const handleDeleteTicket = async (ticketId: string) => {
+  const handleDeleteTask = async (taskId: string) => {
     try {
-      const response = await fetch(`/api/tickets/${ticketId}`, {
+      const response = await fetch(`/api/tickets/${taskId}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
-        throw new Error("Failed to delete ticket");
+        throw new Error("Failed to delete task");
       }
 
       // Remove from local state
-      if (onTicketsReordered) {
-        onTicketsReordered(tickets.filter((t) => t.id !== ticketId));
+      if (onTasksReordered) {
+        onTasksReordered(tasks.filter((t) => t.id !== taskId));
       }
     } catch (error) {
-      console.error("Failed to delete ticket:", error);
+      console.error("Failed to delete task:", error);
     }
   };
 
-  if (tickets.length === 0) {
+  if (tasks.length === 0) {
     return (
       <Empty className="h-[500px]">
         <EmptyHeader>
-          <EmptyDescription>No tickets in this phase yet.</EmptyDescription>
+          <EmptyDescription>No tasks in this phase yet.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -211,22 +211,22 @@ export function TicketsTable({ phaseId, workspaceSlug, tickets, onTicketsReorder
             </TableRow>
           </TableHeader>
           <TableBody>
-            <SortableContext items={ticketIds} strategy={verticalListSortingStrategy}>
-              {tickets
+            <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+              {tasks
                 .sort((a, b) => a.order - b.order)
-                .map((ticket) => (
+                .map((task) => (
                   <SortableTableRow
-                    key={ticket.id}
-                    ticket={ticket}
+                    key={task.id}
+                    task={task}
                     workspaceSlug={workspaceSlug}
                     phaseId={phaseId}
-                    allTickets={tickets}
-                    onClick={() => handleRowClick(ticket.id)}
-                    onStatusUpdate={async (status) => handleUpdateTicket(ticket.id, { status })}
-                    onPriorityUpdate={async (priority) => handleUpdateTicket(ticket.id, { priority })}
-                    onAssigneeUpdate={async (assigneeId) => handleUpdateTicket(ticket.id, { assigneeId })}
-                    onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTicket(ticket.id, { dependsOnTaskIds })}
-                    onDelete={() => handleDeleteTicket(ticket.id)}
+                    allTasks={tasks}
+                    onClick={() => handleRowClick(task.id)}
+                    onStatusUpdate={async (status) => handleUpdateTask(task.id, { status })}
+                    onPriorityUpdate={async (priority) => handleUpdateTask(task.id, { priority })}
+                    onAssigneeUpdate={async (assigneeId) => handleUpdateTask(task.id, { assigneeId })}
+                    onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTask(task.id, { dependsOnTaskIds })}
+                    onDelete={() => handleDeleteTask(task.id)}
                   />
                 ))}
             </SortableContext>

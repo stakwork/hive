@@ -10,25 +10,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useTicketMutations } from "@/hooks/useTicketMutations";
-import { useReorderTickets } from "@/hooks/useReorderTickets";
+import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import type { TicketListItem } from "@/types/roadmap";
 
-interface TicketListProps {
+interface RoadmapTaskListProps {
   phaseId: string;
   featureId: string;
   workspaceSlug: string;
-  tickets: TicketListItem[];
-  onTicketAdded: (ticket: TicketListItem) => void;
-  onTicketsReordered?: (tickets: TicketListItem[]) => void;
+  tasks: TicketListItem[];
+  onTaskAdded: (task: TicketListItem) => void;
+  onTasksReordered?: (tasks: TicketListItem[]) => void;
 }
 
-function SortableTicketItem({
-  ticket,
+function SortableRoadmapTaskItem({
+  task,
   workspaceSlug,
   onClick,
 }: {
-  ticket: TicketListItem;
+  task: TicketListItem;
   workspaceSlug: string;
   onClick: () => void;
 }) {
@@ -39,7 +39,7 @@ function SortableTicketItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: ticket.id });
+  } = useSortable({ id: task.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -63,29 +63,29 @@ function SortableTicketItem({
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </div>
 
-      {/* Clickable ticket content */}
+      {/* Clickable task content */}
       <div
         onClick={onClick}
         className="flex items-center gap-2 flex-1 cursor-pointer min-w-0"
       >
         {/* Title */}
         <span className="text-sm flex-1 truncate group-hover:text-primary">
-          {ticket.title}
+          {task.title}
         </span>
 
         {/* Status badge */}
-        <StatusBadge statusType="ticket" status={ticket.status} className="shrink-0" />
+        <StatusBadge statusType="task" status={task.status} className="shrink-0" />
 
         {/* Assignee avatar - always shown */}
         <Avatar className="h-5 w-5 shrink-0">
-          {ticket.assignee ? (
+          {task.assignee ? (
             <>
-              <AvatarImage src={ticket.assignee.image || undefined} />
+              <AvatarImage src={task.assignee.image || undefined} />
               <AvatarFallback className="text-[10px]">
-                {ticket.assignee.icon === "bot" ? (
+                {task.assignee.icon === "bot" ? (
                   <Bot className="h-3 w-3" />
                 ) : (
-                  ticket.assignee.name?.[0]?.toUpperCase() || <UserIcon className="h-3 w-3" />
+                  task.assignee.name?.[0]?.toUpperCase() || <UserIcon className="h-3 w-3" />
                 )}
               </AvatarFallback>
             </>
@@ -100,66 +100,66 @@ function SortableTicketItem({
   );
 }
 
-export function TicketList({
+export function RoadmapTaskList({
   phaseId,
   featureId,
   workspaceSlug,
-  tickets,
-  onTicketAdded,
-  onTicketsReordered,
-}: TicketListProps) {
+  tasks,
+  onTaskAdded,
+  onTasksReordered,
+}: RoadmapTaskListProps) {
   const router = useRouter();
-  const [newTicketTitle, setNewTicketTitle] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
 
-  const { createTicket, loading: creatingTicket } = useTicketMutations();
-  const { sensors, ticketIds, handleDragEnd, collisionDetection } = useReorderTickets({
-    tickets,
+  const { createTicket, loading: creatingTask } = useRoadmapTaskMutations();
+  const { sensors, taskIds, handleDragEnd, collisionDetection } = useReorderRoadmapTasks({
+    tasks,
     phaseId,
-    onOptimisticUpdate: onTicketsReordered,
+    onOptimisticUpdate: onTasksReordered,
   });
 
-  const handleAddTicket = async () => {
-    if (!newTicketTitle.trim()) return;
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim()) return;
 
-    const ticket = await createTicket({
+    const task = await createTicket({
       featureId,
       phaseId,
-      title: newTicketTitle,
+      title: newTaskTitle,
     });
 
-    if (ticket) {
-      onTicketAdded(ticket);
-      setNewTicketTitle("");
+    if (task) {
+      onTaskAdded(task);
+      setNewTaskTitle("");
     }
   };
 
-  const handleTicketClick = (ticketId: string) => {
-    router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
+  const handleTaskClick = (taskId: string) => {
+    router.push(`/w/${workspaceSlug}/tickets/${taskId}`);
   };
 
   return (
     <div className="space-y-2">
-      {/* Add ticket input */}
+      {/* Add task input */}
       <div className="flex gap-2">
         <Input
-          placeholder="Add a ticket..."
-          value={newTicketTitle}
-          onChange={(e) => setNewTicketTitle(e.target.value)}
+          placeholder="Add a task..."
+          value={newTaskTitle}
+          onChange={(e) => setNewTaskTitle(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !creatingTicket) {
-              handleAddTicket();
+            if (e.key === "Enter" && !creatingTask) {
+              handleAddTask();
             }
           }}
-          disabled={creatingTicket}
+          disabled={creatingTask}
           className="flex-1 h-8 text-sm"
         />
         <Button
           size="sm"
-          onClick={handleAddTicket}
-          disabled={creatingTicket || !newTicketTitle.trim()}
+          onClick={handleAddTask}
+          disabled={creatingTask || !newTaskTitle.trim()}
           className="h-8"
         >
-          {creatingTicket ? (
+          {creatingTask ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Plus className="h-3 w-3" />
@@ -167,23 +167,23 @@ export function TicketList({
         </Button>
       </div>
 
-      {/* Tickets list with drag and drop */}
-      {tickets.length > 0 ? (
+      {/* Tasks list with drag and drop */}
+      {tasks.length > 0 ? (
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext items={ticketIds} strategy={verticalListSortingStrategy}>
+          <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
             <div className="space-y-1">
-              {tickets
+              {tasks
                 .sort((a, b) => a.order - b.order)
-                .map((ticket) => (
-                  <SortableTicketItem
-                    key={ticket.id}
-                    ticket={ticket}
+                .map((task) => (
+                  <SortableRoadmapTaskItem
+                    key={task.id}
+                    task={task}
                     workspaceSlug={workspaceSlug}
-                    onClick={() => handleTicketClick(ticket.id)}
+                    onClick={() => handleTaskClick(task.id)}
                   />
                 ))}
             </div>
@@ -191,7 +191,7 @@ export function TicketList({
         </DndContext>
       ) : (
         <div className="text-center py-4 text-xs text-muted-foreground">
-          No tickets yet
+          No tasks yet
         </div>
       )}
     </div>
