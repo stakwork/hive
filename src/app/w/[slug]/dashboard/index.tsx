@@ -1,5 +1,4 @@
 import { RepositoryCard, TestCoverageCard } from "@/components/dashboard";
-import { RecentTasksCard } from "@/components/dashboard/recent-tasks-card";
 import { VMConfigSection } from "@/components/pool-status";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -29,8 +28,6 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
         <RepositoryCard />
         <TestCoverageCard />
       </div>
-
-      <RecentTasksCard />
 
       {repository?.status === 'SYNCED' || true ? <GraphComponent /> : <Gitsee />}
     </>
