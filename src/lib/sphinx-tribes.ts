@@ -5,6 +5,7 @@ interface HiveBountyPrefill {
   repositoryUrl?: string;
   source: "hive";
   hiveTaskId: string;
+  bountyCode?: string;
 }
 
 interface TaskData {
@@ -12,6 +13,7 @@ interface TaskData {
   title: string;
   description?: string;
   estimatedHours?: number;
+  bountyCode?: string;
   repository?: {
     repositoryUrl?: string;
   };
@@ -25,6 +27,7 @@ export function generateSphinxBountyUrl(task: TaskData): string {
     repositoryUrl: task.repository?.repositoryUrl,
     source: "hive",
     hiveTaskId: task.id,
+    bountyCode: task.bountyCode,
   };
 
   const encoded = btoa(JSON.stringify(prefillData));

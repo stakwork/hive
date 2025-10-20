@@ -42,6 +42,7 @@ interface AssigneeComboboxProps {
     title: string;
     description?: string | null;
     estimatedHours?: number | null;
+    bountyCode?: string | null;
     repository?: {
       repositoryUrl?: string | null;
     } | null;
@@ -94,6 +95,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
           ...ticketData,
           description: ticketData.description ?? undefined,
           estimatedHours: ticketData.estimatedHours ?? undefined,
+          bountyCode: ticketData.bountyCode ?? undefined,
           repository: ticketData.repository ? {
             repositoryUrl: ticketData.repository.repositoryUrl ?? undefined
           } : undefined,
