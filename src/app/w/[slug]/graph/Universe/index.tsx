@@ -10,7 +10,6 @@ import { Controls } from './Controls'
 import { initialCameraPosition } from './Controls/CameraAnimations/constants'
 import { CursorTooltip } from './CursorTooltip'
 import { Graph } from './Graph'
-import { GraphStyleSwitcher } from './Graph/UI/GraphStyleSwitcher'
 import { GraphSearch } from './GraphSearch'
 import { Overlay } from './Overlay'
 import { colors } from './utils/colors'
@@ -82,7 +81,7 @@ const _Universe = () => {
 
 
   return (
-    <Flex style={{ width: '100%', height: '600px' }}>
+    <Flex style={{ width: '100%', height: '600px', position: 'relative' }}>
       <Suspense fallback={null}>
 
         <Canvas
