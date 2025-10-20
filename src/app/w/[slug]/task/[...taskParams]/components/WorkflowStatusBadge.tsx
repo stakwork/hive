@@ -1,4 +1,4 @@
-import { WorkflowStatus, ChatMessage } from "@/lib/chat";
+import { WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -14,7 +14,6 @@ import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 interface WorkflowStatusBadgeProps {
   logs?: LogEntry[] | null;
   status: WorkflowStatus | null | undefined;
-  messages?: ChatMessage[];
   className?: string;
 }
 
@@ -60,7 +59,6 @@ const statusConfig = {
 export function WorkflowStatusBadge({
   logs = [],
   status,
-  messages = [],
   className,
 }: WorkflowStatusBadgeProps) {
   // Default to PENDING if no status provided
@@ -69,25 +67,17 @@ export function WorkflowStatusBadge({
   const config = statusConfig[effectiveStatus as keyof typeof statusConfig];
   const [isHovered, setIsHovered] = useState(false);
 
-  // Check if waiting for input: latest message has FORM artifacts AND status is IN_PROGRESS or PENDING
-  const isWaitingForInput = messages.length > 0 &&
-    (effectiveStatus === WorkflowStatus.IN_PROGRESS || effectiveStatus === WorkflowStatus.PENDING) &&
-    messages[messages.length - 1]?.artifacts?.some(artifact => artifact.type === 'FORM');
-
   if (!config) {
     return null;
   }
 
-  // Override icon and styling if waiting for input
-  const Icon = isWaitingForInput ? AlertCircle : config.icon;
-  const displayClassName = isWaitingForInput ? "text-amber-600" : config.className;
-  const iconClassName = isWaitingForInput ? "" : config.iconClassName;
+  const Icon = config.icon;
 
   return (
     <div
       className={cn(
         "flex items-center gap-1.5 text-sm",
-        displayClassName,
+        config.className,
         className,
       )}
       onMouseEnter={() => setIsHovered(true)}
@@ -110,9 +100,8 @@ export function WorkflowStatusBadge({
       )}
       {!isHovered && (
         <>
-          <span>Workflow |</span>
-          <Icon className={cn("h-3 w-3", iconClassName)} />
-          {isWaitingForInput && <span>Waiting for input</span>}
+          <Icon className={cn("h-3 w-3", config.iconClassName)} />
+          <span>{config.label}</span>
         </>
       )}
     </div>
