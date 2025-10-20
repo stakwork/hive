@@ -73,6 +73,15 @@ interface PaginationData {
   hasMore: boolean;
 }
 
+export interface TaskFilters {
+  sourceType?: string;
+  status?: string;
+  inputNeeded?: boolean;
+  userId?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
 interface UseWorkspaceTasksResult {
   tasks: TaskData[];
   loading: boolean;
@@ -80,13 +89,15 @@ interface UseWorkspaceTasksResult {
   pagination: PaginationData | null;
   loadMore: () => Promise<void>;
   refetch: (includeLatestMessage?: boolean) => Promise<void>;
+  filters: TaskFilters;
+  setFilters: (filters: TaskFilters) => void;
 }
 
 export function useWorkspaceTasks(
-  workspaceId: string | null, 
-  workspaceSlug?: string | null, 
+  workspaceId: string | null,
+  workspaceSlug?: string | null,
   includeNotifications: boolean = false,
-  pageLimit: number = 5
+  pageLimit: number = 20
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -95,6 +106,7 @@ export function useWorkspaceTasks(
   const [pagination, setPagination] = useState<PaginationData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
+  const [filters, setFiltersState] = useState<TaskFilters>({});
 
   // Handle real-time task title updates
   const handleTaskTitleUpdate = useCallback(
@@ -128,7 +140,42 @@ export function useWorkspaceTasks(
     setError(null);
 
     try {
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+      // Build URL with filters
+      const params = new URLSearchParams({
+        workspaceId,
+        page: page.toString(),
+        limit: pageLimit.toString(),
+      });
+
+      if (includeLatestMessage) {
+        params.append('includeLatestMessage', 'true');
+      }
+
+      if (filters.sourceType) {
+        params.append('sourceType', filters.sourceType);
+      }
+
+      if (filters.status) {
+        params.append('status', filters.status);
+      }
+
+      if (filters.inputNeeded) {
+        params.append('inputNeeded', 'true');
+      }
+
+      if (filters.userId) {
+        params.append('userId', filters.userId);
+      }
+
+      if (filters.sortBy) {
+        params.append('sortBy', filters.sortBy);
+      }
+
+      if (filters.sortOrder) {
+        params.append('sortOrder', filters.sortOrder);
+      }
+
+      const url = `/api/tasks?${params.toString()}`;
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -155,7 +202,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, filters]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -178,7 +225,42 @@ export function useWorkspaceTasks(
       let finalPagination: PaginationData | null = null;
 
       for (let page = 1; page <= storedPage; page++) {
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+        // Build URL with filters
+        const params = new URLSearchParams({
+          workspaceId,
+          page: page.toString(),
+          limit: pageLimit.toString(),
+        });
+
+        if (includeLatestMessage) {
+          params.append('includeLatestMessage', 'true');
+        }
+
+        if (filters.sourceType) {
+          params.append('sourceType', filters.sourceType);
+        }
+
+        if (filters.status) {
+          params.append('status', filters.status);
+        }
+
+        if (filters.inputNeeded) {
+          params.append('inputNeeded', 'true');
+        }
+
+        if (filters.userId) {
+          params.append('userId', filters.userId);
+        }
+
+        if (filters.sortBy) {
+          params.append('sortBy', filters.sortBy);
+        }
+
+        if (filters.sortOrder) {
+          params.append('sortOrder', filters.sortOrder);
+        }
+
+        const url = `/api/tasks?${params.toString()}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -214,7 +296,7 @@ export function useWorkspaceTasks(
       setLoading(false);
       setIsRestoringFromStorage(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks]);
+  }, [workspaceId, session?.user, includeNotifications, fetchTasks, filters, pageLimit]);
 
   const loadMore = useCallback(async () => {
     if (pagination?.hasMore && workspaceId) {
@@ -235,6 +317,14 @@ export function useWorkspaceTasks(
     await fetchTasks(1, true, includeLatestMessage);
   }, [fetchTasks, workspaceId]);
 
+  const setFilters = useCallback((newFilters: TaskFilters) => {
+    setFiltersState(newFilters);
+    setCurrentPage(1);
+    if (workspaceId) {
+      clearStoredPage(workspaceId);
+    }
+  }, [workspaceId]);
+
   useEffect(() => {
     // Use restoreFromStorage instead of refetch to maintain state across navigation
     restoreFromStorage();
@@ -249,5 +339,7 @@ export function useWorkspaceTasks(
     pagination,
     loadMore,
     refetch,
+    filters,
+    setFilters,
   };
 }

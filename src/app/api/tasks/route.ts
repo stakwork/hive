@@ -22,8 +22,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "5");
+    const limit = parseInt(searchParams.get("limit") || "20");
     const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
+
+    // Filter parameters
+    const sourceType = searchParams.get("sourceType");
+    const status = searchParams.get("status");
+    const inputNeeded = searchParams.get("inputNeeded") === "true";
+    const userId = searchParams.get("userId");
+
+    // Sort parameters
+    const sortBy = searchParams.get("sortBy") || "createdAt";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -81,12 +91,50 @@ export async function GET(request: NextRequest) {
     // Get tasks for the workspace with pagination
     const skip = (page - 1) * limit;
 
+    // Build where clause based on filters
+    const whereClause: any = {
+      workspaceId,
+      deleted: false,
+    };
+
+    // Filter by source type (trigger type: janitor, human/user, coordinator)
+    if (sourceType) {
+      whereClause.sourceType = sourceType;
+    }
+
+    // Filter by status
+    if (status) {
+      whereClause.status = status;
+    }
+
+    // Filter by input needed (tasks with HALTED workflow status)
+    if (inputNeeded) {
+      whereClause.workflowStatus = "HALTED";
+    }
+
+    // Filter by user (assignee or creator)
+    if (userId) {
+      whereClause.OR = [
+        { assigneeId: userId },
+        { createdById: userId },
+      ];
+    }
+
+    // Build orderBy clause
+    const orderByClause: any = {};
+    if (sortBy === "sourceType") {
+      orderByClause.sourceType = sortOrder;
+    } else if (sortBy === "status") {
+      orderByClause.status = sortOrder;
+    } else if (sortBy === "priority") {
+      orderByClause.priority = sortOrder;
+    } else {
+      orderByClause.createdAt = sortOrder;
+    }
+
     const [tasks, totalCount] = await Promise.all([
       db.task.findMany({
-        where: {
-          workspaceId,
-          deleted: false,
-        },
+        where: whereClause,
         select: {
           id: true,
           title: true,
@@ -149,17 +197,12 @@ export async function GET(request: NextRequest) {
             },
           }),
         },
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: orderByClause,
         skip,
         take: limit,
       }),
       db.task.count({
-        where: {
-          workspaceId,
-          deleted: false,
-        },
+        where: whereClause,
       }),
     ]);
 

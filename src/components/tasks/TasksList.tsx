@@ -17,6 +17,7 @@ import { TaskCard } from "./TaskCard";
 import { KanbanView } from "./KanbanView";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
+import { TaskFilters } from "./TaskFilters";
 import { useEffect, useState } from "react";
 
 interface TasksListProps {
@@ -36,12 +37,12 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     return "list";
   });
   
-  // Pass 100 limit for Kanban view, 5 for List view
-  const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
-    workspaceId, 
-    workspaceSlug, 
+  // Pass 100 limit for Kanban view, 20 for List view
+  const { tasks, loading, error, pagination, loadMore, refetch, filters, setFilters } = useWorkspaceTasks(
+    workspaceId,
+    workspaceSlug,
     true,
-    viewType === "kanban" ? 100 : 5
+    viewType === "kanban" ? 100 : 20
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -95,21 +96,26 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             <span className="font-normal text-muted-foreground">
               {stats?.total ?? pagination?.totalCount ?? tasks.length} task{(stats?.total ?? pagination?.totalCount ?? tasks.length) !== 1 ? 's' : ''}
             </span>
-            <ToggleGroup 
-              type="single" 
-              value={viewType} 
+            <TaskFilters
+              workspaceSlug={workspaceSlug}
+              filters={filters}
+              onFiltersChange={setFilters}
+            />
+            <ToggleGroup
+              type="single"
+              value={viewType}
               onValueChange={handleViewChange}
               className="ml-4"
             >
-              <ToggleGroupItem 
-                value="list" 
+              <ToggleGroupItem
+                value="list"
                 aria-label="List view"
                 className="h-8 px-2"
               >
                 <List className="h-4 w-4" />
               </ToggleGroupItem>
-              <ToggleGroupItem 
-                value="kanban" 
+              <ToggleGroupItem
+                value="kanban"
                 aria-label="Kanban view"
                 className="h-8 px-2"
               >
