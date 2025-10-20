@@ -59,6 +59,7 @@ export default function TaskChatPage() {
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [hasPod, setHasPod] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
+  const [isCommitting, setIsCommitting] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -612,6 +613,83 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleCommit = async () => {
+    if (!workspaceId || !claimedPodId || !currentTaskId) {
+      toast({
+        title: "Error",
+        description: "Missing required information to commit.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCommitting(true);
+
+    try {
+      const response = await fetch("/api/agent/commit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          podId: claimedPodId,
+          workspaceId: workspaceId,
+          taskId: currentTaskId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to commit");
+      }
+
+      const result = await response.json();
+
+      // Display success message
+      toast({
+        title: "Success",
+        description: "Changes committed successfully!",
+      });
+
+      // Save commit URLs as assistant message
+      if (result.data?.commits && result.data.commits.length > 0) {
+        const commitMessage = result.data.commits
+          .map((commitUrl: string) => `Commit created: ${commitUrl}`)
+          .join("\n");
+
+        // Save the commit URLs as an assistant message
+        await fetch(`/api/tasks/${currentTaskId}/messages/save`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: commitMessage,
+            role: "ASSISTANT",
+          }),
+        });
+
+        // Add the message to the UI immediately
+        const newMessage: ChatMessage = createChatMessage({
+          id: generateUniqueId(),
+          message: commitMessage,
+          role: ChatRole.ASSISTANT,
+          status: ChatStatus.SENT,
+        });
+        setMessages((msgs) => [...msgs, newMessage]);
+      }
+    } catch (error) {
+      console.error("Error committing:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to commit changes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCommitting(false);
+    }
+  };
+
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
@@ -661,6 +739,8 @@ export default function TaskChatPage() {
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
                     workspaceSlug={slug}
+                    onCommit={handleCommit}
+                    isCommitting={isCommitting}
                   />
                 </div>
               </ResizablePanel>
@@ -684,6 +764,8 @@ export default function TaskChatPage() {
                 workflowStatus={workflowStatus}
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
+                onCommit={handleCommit}
+                isCommitting={isCommitting}
               />
             </div>
           ) : hasNonFormArtifacts ? (
