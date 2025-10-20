@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
+import { Screenshot } from "@/types/common";
 
-export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement | null>) {
+export function usePlaywrightReplay(
+  iframeRef: React.RefObject<HTMLIFrameElement | null>,
+  onScreenshotError?: (message: string) => void,
+) {
   const [isPlaywrightReplaying, setIsPlaywrightReplaying] = useState(false);
   const [isPlaywrightPaused, setIsPlaywrightPaused] = useState(false);
   const [playwrightProgress, setPlaywrightProgress] = useState({ current: 0, total: 0 });
@@ -10,6 +14,8 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
   const [replayErrors, setReplayErrors] = useState<
     { message: string; actionIndex: number; action: string; timestamp: string }[]
   >([]);
+  const [replayScreenshots, setReplayScreenshots] = useState<Screenshot[]>([]);
+  const [replayActions, setReplayActions] = useState<any[]>([]);
 
   const startPlaywrightReplay = (testCode: string) => {
     if (!iframeRef?.current?.contentWindow) {
@@ -29,6 +35,8 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     setPlaywrightStatus("playing");
     setReplayErrors([]);
     setCurrentAction(null);
+    setReplayScreenshots([]);
+    setReplayActions([]);
 
     try {
       const container = document.querySelector(".iframe-container");
@@ -110,6 +118,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
       switch (data.type) {
         case "staktrak-playwright-replay-started":
           setPlaywrightProgress({ current: 0, total: data.totalActions || 0 });
+          setReplayActions(data.actions || []);
           break;
 
         case "staktrak-playwright-replay-progress":
@@ -169,6 +178,27 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
           }
           break;
 
+        case "staktrak-playwright-screenshot-captured":
+          setReplayScreenshots((prev) => [
+            ...prev,
+            {
+              id: data.id,
+              actionIndex: data.actionIndex,
+              dataUrl: data.screenshot,
+              timestamp: data.timestamp,
+              url: data.url,
+            },
+          ]);
+          break;
+
+        case "staktrak-playwright-screenshot-error":
+          console.warn(`Screenshot failed for action ${data.actionIndex}:`, data.error);
+          if (onScreenshotError) {
+            onScreenshotError(`Screenshot capture failed for action ${data.actionIndex}`);
+          }
+          // Error is logged but doesn't interrupt replay
+          break;
+
         default:
           break;
       }
@@ -176,7 +206,7 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [onScreenshotError]);
 
   return {
     isPlaywrightReplaying,
@@ -185,6 +215,8 @@ export function usePlaywrightReplay(iframeRef: React.RefObject<HTMLIFrameElement
     playwrightProgress,
     currentAction,
     replayErrors,
+    replayScreenshots,
+    replayActions,
     startPlaywrightReplay,
     pausePlaywrightReplay,
     resumePlaywrightReplay,

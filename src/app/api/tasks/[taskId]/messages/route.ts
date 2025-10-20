@@ -46,6 +46,7 @@ export async function GET(
         workspaceId: true,
         workflowStatus: true,
         stakworkProjectId: true,
+        mode: true,
         workspace: {
           select: {
             id: true,
@@ -95,14 +96,31 @@ export async function GET(
     });
 
     // Convert to client-side types with proper JSON parsing
-    const clientMessages: ChatMessage[] = chatMessages.map((msg) => ({
-      ...msg,
-      contextTags: JSON.parse(msg.contextTags as string) as ContextTag[],
-      artifacts: msg.artifacts.map((artifact) => ({
-        ...artifact,
-        content: artifact.content as unknown,
-      })) as Artifact[],
-    }));
+    const clientMessages: ChatMessage[] = chatMessages.map((msg) => {
+      let contextTags: ContextTag[] = [];
+
+      // Handle contextTags - may be string, object, or null
+      if (msg.contextTags) {
+        if (typeof msg.contextTags === 'string') {
+          try {
+            contextTags = JSON.parse(msg.contextTags) as ContextTag[];
+          } catch (error) {
+            console.error('Error parsing contextTags for message', msg.id, ':', error, 'value:', msg.contextTags);
+          }
+        } else if (Array.isArray(msg.contextTags)) {
+          contextTags = msg.contextTags as unknown as ContextTag[];
+        }
+      }
+
+      return {
+        ...msg,
+        contextTags,
+        artifacts: msg.artifacts.map((artifact) => ({
+          ...artifact,
+          content: artifact.content as unknown,
+        })) as Artifact[],
+      };
+    });
 
     return NextResponse.json(
       {
@@ -114,6 +132,7 @@ export async function GET(
             workspaceId: task.workspaceId,
             workflowStatus: task.workflowStatus,
             stakworkProjectId: task.stakworkProjectId,
+            mode: task.mode,
           },
           messages: clientMessages,
           count: clientMessages.length,

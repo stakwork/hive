@@ -238,6 +238,7 @@ export async function POST(request: NextRequest) {
       repositoryId,
       estimatedHours,
       actualHours,
+      mode,
     } = body;
 
     // Validate required fields
@@ -375,6 +376,7 @@ export async function POST(request: NextRequest) {
         repositoryId: repositoryId || null,
         estimatedHours: estimatedHours || null,
         actualHours: actualHours || null,
+        mode: mode || "live", // Save the task mode, default to "live"
         createdById: userId,
         updatedById: userId,
       },

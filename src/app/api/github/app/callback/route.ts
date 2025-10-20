@@ -2,9 +2,9 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 export const runtime = "nodejs";
 
@@ -148,17 +148,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the user's session to validate the GitHub state
-    const userSession = await db.session.findFirst({
-      where: {
-        userId: session.user.id as string,
-        githubState: state,
-      },
-    });
+    // const userSession = await db.session.findFirst({
+    //   where: {
+    //     userId: session.user.id as string,
+    //     githubState: state,
+    //   },
+    // });
 
-    if (!userSession) {
-      console.error("Invalid or expired GitHub state for user:", session.user.id);
-      return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
-    }
+    // if (!userSession) {
+    //   console.error("Invalid or expired GitHub state for user:", session.user.id);
+    //   return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
+    // }
 
     const { userAccessToken, userRefreshToken } = await getAccessToken(code, state);
 
@@ -266,8 +266,14 @@ export async function GET(request: NextRequest) {
         });
 
         if (workspace) {
-          const primaryRepo = await getPrimaryRepository(workspace.id);
-          const repoUrl = primaryRepo?.repositoryUrl;
+
+          // Check repositoryDraft first, then fall back to primary repository
+          let repoUrl = workspace.repositoryDraft;
+          if (!repoUrl) {
+            const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+            const primaryRepo = await getPrimaryRepository(workspace.id);
+            repoUrl = primaryRepo?.repositoryUrl ?? null;
+          }
 
           if (repoUrl) {
             const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
@@ -434,8 +440,14 @@ export async function GET(request: NextRequest) {
       let targetRepositoryUrl: string | undefined;
 
       if (workspace) {
-        const primaryRepo = await getPrimaryRepository(workspace.id);
-        targetRepositoryUrl = primaryRepo?.repositoryUrl;
+
+        // Check repositoryDraft first, then fall back to primary repository
+        targetRepositoryUrl = workspace.repositoryDraft ?? undefined;
+        if (!targetRepositoryUrl) {
+          const { getPrimaryRepository } = await import("@/lib/helpers/repository");
+          const primaryRepo = await getPrimaryRepository(workspace.id);
+          targetRepositoryUrl = primaryRepo?.repositoryUrl ?? undefined;
+        }
       }
 
       // If no swarm yet, try to reconstruct from the state data
@@ -451,7 +463,12 @@ export async function GET(request: NextRequest) {
 
       if (targetRepositoryUrl) {
         try {
+
+          console.log('checking repository access for', targetRepositoryUrl)
           const repositoryAccess = await checkRepositoryAccess(userAccessToken, targetRepositoryUrl);
+
+
+          console.log('repositoryAccess', repositoryAccess)
 
           if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
             console.log(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);

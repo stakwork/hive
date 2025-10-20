@@ -17,6 +17,7 @@ vi.mock("@/lib/db", () => ({
     },
     chatMessage: {
       create: vi.fn(),
+      findMany: vi.fn(),
     },
     workspace: {
       findUnique: vi.fn(),
@@ -150,6 +151,7 @@ const TestHelpers = {
 
   setupValidChatMessage: () => {
     mockDb.chatMessage.create.mockResolvedValue(TestDataFactory.createChatMessage() as any);
+    mockDb.chatMessage.findMany.mockResolvedValue([]);
   },
 
   setupValidGithubProfile: () => {

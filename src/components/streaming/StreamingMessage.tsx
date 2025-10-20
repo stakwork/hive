@@ -20,6 +20,12 @@ interface StreamingMessageProps {
    * Also controls "Thinking..." indicator - shown when streaming but this part doesn't exist yet
    */
   finalTextPartId?: string;
+  /**
+   * Whether tool outputs are expected to be streamed.
+   * If false, tool calls are considered complete once input is available.
+   * @default true
+   */
+  toolCallsExpectOutput?: boolean;
 }
 
 /**
@@ -38,6 +44,7 @@ export function StreamingMessage({
   textPartClassName,
   reasoningPartClassName,
   finalTextPartId,
+  toolCallsExpectOutput = true,
 }: StreamingMessageProps) {
   // Separate final text part from regular timeline
   const finalTextPart = finalTextPartId ? message.textParts?.find((part) => part.id === finalTextPartId) : undefined;
@@ -72,7 +79,7 @@ export function StreamingMessage({
     } else if (item.type === "toolCall") {
       return (
         <div key={key} className="bg-muted/50 border border-border/50 rounded-lg p-2 my-1">
-          <StreamToolCall toolCall={item.data as StreamToolCallType} />
+          <StreamToolCall toolCall={item.data as StreamToolCallType} expectsOutput={toolCallsExpectOutput} />
         </div>
       );
     }

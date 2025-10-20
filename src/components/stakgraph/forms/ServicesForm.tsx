@@ -13,6 +13,7 @@ import {
   Rewind,
   RefreshCw,
   Zap,
+  RotateCcw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -93,6 +94,13 @@ export default function ServicesForm({
       icon: <Hammer className="w-4 h-4 text-muted-foreground" />,
       placeholder: "npm run build",
       description: "build for production",
+    },
+    reset: {
+      key: "reset",
+      label: "Reset",
+      icon: <RotateCcw className="w-4 h-4 text-muted-foreground" />,
+      placeholder: "npm run db:reset",
+      description: "reset database or state",
     },
   };
 

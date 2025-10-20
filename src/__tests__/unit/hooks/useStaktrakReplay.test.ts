@@ -1041,4 +1041,476 @@ describe('usePlaywrightReplay', () => {
       });
     });
   });
+
+  describe('Screenshot Functionality', () => {
+    describe('staktrak-playwright-screenshot-captured', () => {
+      test('should add screenshot to replayScreenshots state', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'screenshot-1',
+            actionIndex: 0,
+            screenshot: 'data:image/jpeg;base64,/9j/4AAQSkZJRg...',
+            timestamp: 1234567890,
+            url: 'https://example.com/page1',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots).toHaveLength(1);
+          expect(result.current.replayScreenshots[0]).toEqual({
+            id: 'screenshot-1',
+            actionIndex: 0,
+            dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg...',
+            timestamp: 1234567890,
+            url: 'https://example.com/page1',
+          });
+        });
+      });
+
+      test('should map screenshot field to dataUrl', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        const dataUrl = 'data:image/jpeg;base64,testimage123';
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'test-id',
+            actionIndex: 2,
+            screenshot: dataUrl,
+            timestamp: Date.now(),
+            url: 'https://example.com',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots[0].dataUrl).toBe(dataUrl);
+        });
+      });
+
+      test('should accumulate multiple screenshots in order', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        const screenshots = [
+          {
+            id: 'screenshot-1',
+            actionIndex: 0,
+            screenshot: 'data:image/jpeg;base64,first',
+            timestamp: 1000,
+            url: 'https://example.com/page1',
+          },
+          {
+            id: 'screenshot-2',
+            actionIndex: 1,
+            screenshot: 'data:image/jpeg;base64,second',
+            timestamp: 2000,
+            url: 'https://example.com/page2',
+          },
+          {
+            id: 'screenshot-3',
+            actionIndex: 2,
+            screenshot: 'data:image/jpeg;base64,third',
+            timestamp: 3000,
+            url: 'https://example.com/page3',
+          },
+        ];
+
+        act(() => {
+          screenshots.forEach((screenshot) => {
+            TestUtils.simulateMessageEvent({
+              type: 'staktrak-playwright-screenshot-captured',
+              ...screenshot,
+            });
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots).toHaveLength(3);
+          expect(result.current.replayScreenshots[0].id).toBe('screenshot-1');
+          expect(result.current.replayScreenshots[1].id).toBe('screenshot-2');
+          expect(result.current.replayScreenshots[2].id).toBe('screenshot-3');
+        });
+      });
+
+      test('should maintain screenshots during replay progress', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        act(() => result.current.startPlaywrightReplay(validCode));
+
+        // Add screenshot
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'screenshot-1',
+            actionIndex: 0,
+            screenshot: 'data:image/jpeg;base64,test',
+            timestamp: Date.now(),
+            url: 'https://example.com',
+          });
+        });
+
+        // Trigger progress event
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-progress',
+            current: 1,
+            total: 5,
+            action: 'click',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots).toHaveLength(1);
+          expect(result.current.playwrightProgress.current).toBe(1);
+        });
+      });
+
+      test('should preserve screenshots when replay completes', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        act(() => result.current.startPlaywrightReplay(validCode));
+
+        // Add screenshots
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'screenshot-1',
+            actionIndex: 0,
+            screenshot: 'data:image/jpeg;base64,test1',
+            timestamp: Date.now(),
+            url: 'https://example.com/1',
+          });
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'screenshot-2',
+            actionIndex: 1,
+            screenshot: 'data:image/jpeg;base64,test2',
+            timestamp: Date.now(),
+            url: 'https://example.com/2',
+          });
+        });
+
+        expect(result.current.replayScreenshots).toHaveLength(2);
+
+        // Complete replay
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-completed',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots).toHaveLength(2);
+          expect(result.current.isPlaywrightReplaying).toBe(false);
+          expect(result.current.playwrightStatus).toBe('completed');
+        });
+      });
+    });
+
+    describe('staktrak-playwright-screenshot-error', () => {
+      test('should call onScreenshotError callback when provided', async () => {
+        const onScreenshotError = vi.fn();
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, onScreenshotError));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 5,
+            error: 'Failed to capture screenshot',
+          });
+        });
+
+        await waitFor(() => {
+          expect(onScreenshotError).toHaveBeenCalledWith('Screenshot capture failed for action 5');
+          expect(onScreenshotError).toHaveBeenCalledTimes(1);
+        });
+      });
+
+      test('should log warning to console when screenshot fails', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 3,
+            error: 'Screenshot timeout',
+          });
+        });
+
+        await waitFor(() => {
+          expect(consoleWarnSpy).toHaveBeenCalledWith(
+            'Screenshot failed for action 3:',
+            'Screenshot timeout'
+          );
+        });
+      });
+
+      test('should not call onScreenshotError if callback not provided', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 1,
+            error: 'Error',
+          });
+        });
+
+        await waitFor(() => {
+          expect(consoleWarnSpy).toHaveBeenCalled();
+        });
+      });
+
+      test('should not stop replay when screenshot error occurs', async () => {
+        const onScreenshotError = vi.fn();
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, onScreenshotError));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        act(() => result.current.startPlaywrightReplay(validCode));
+
+        expect(result.current.isPlaywrightReplaying).toBe(true);
+
+        // Trigger screenshot error
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 1,
+            error: 'Screenshot failed',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.isPlaywrightReplaying).toBe(true);
+          expect(onScreenshotError).toHaveBeenCalled();
+        });
+      });
+
+      test('should handle multiple screenshot errors', async () => {
+        const onScreenshotError = vi.fn();
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, onScreenshotError));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 1,
+            error: 'Error 1',
+          });
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 2,
+            error: 'Error 2',
+          });
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 3,
+            error: 'Error 3',
+          });
+        });
+
+        await waitFor(() => {
+          expect(onScreenshotError).toHaveBeenCalledTimes(3);
+          expect(onScreenshotError).toHaveBeenNthCalledWith(
+            1,
+            'Screenshot capture failed for action 1'
+          );
+          expect(onScreenshotError).toHaveBeenNthCalledWith(
+            2,
+            'Screenshot capture failed for action 2'
+          );
+          expect(onScreenshotError).toHaveBeenNthCalledWith(
+            3,
+            'Screenshot capture failed for action 3'
+          );
+        });
+      });
+    });
+
+    describe('Screenshot State Lifecycle', () => {
+      test('should initialize with empty screenshots array', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        expect(result.current.replayScreenshots).toEqual([]);
+        expect(result.current.replayActions).toEqual([]);
+      });
+
+      test('should clear screenshots when starting new replay', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        // Add screenshots
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'screenshot-1',
+            actionIndex: 0,
+            screenshot: 'data:image/jpeg;base64,test',
+            timestamp: Date.now(),
+            url: 'https://example.com',
+          });
+        });
+
+        expect(result.current.replayScreenshots).toHaveLength(1);
+
+        // Start new replay
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+        act(() => result.current.startPlaywrightReplay(validCode));
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots).toEqual([]);
+        });
+      });
+
+      test('should maintain screenshots after stopping replay', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        act(() => result.current.startPlaywrightReplay(validCode));
+
+        // Add screenshot
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-captured',
+            id: 'screenshot-1',
+            actionIndex: 0,
+            screenshot: 'data:image/jpeg;base64,test',
+            timestamp: Date.now(),
+            url: 'https://example.com',
+          });
+        });
+
+        // Stop replay
+        act(() => result.current.stopPlaywrightReplay());
+
+        await waitFor(() => {
+          expect(result.current.replayScreenshots).toHaveLength(1);
+          expect(result.current.isPlaywrightReplaying).toBe(false);
+        });
+      });
+
+      test('should clear actions when starting new replay', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        // Add actions via started message
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-started',
+            totalActions: 5,
+            actions: [{ type: 'click' }, { type: 'fill' }],
+          });
+        });
+
+        expect(result.current.replayActions).toHaveLength(2);
+
+        // Start new replay
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+        act(() => result.current.startPlaywrightReplay(validCode));
+
+        await waitFor(() => {
+          expect(result.current.replayActions).toEqual([]);
+        });
+      });
+    });
+
+    describe('Replay Actions State', () => {
+      test('should set replayActions when replay starts', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        const mockActions = [
+          { type: 'goto', url: 'https://example.com' },
+          { type: 'click', selector: '.button' },
+          { type: 'fill', selector: 'input', value: 'test' },
+        ];
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-started',
+            totalActions: 3,
+            actions: mockActions,
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayActions).toEqual(mockActions);
+          expect(result.current.playwrightProgress.total).toBe(3);
+        });
+      });
+
+      test('should handle empty actions array', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-started',
+            totalActions: 0,
+            actions: [],
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayActions).toEqual([]);
+        });
+      });
+
+      test('should default to empty array if actions not provided', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-started',
+            totalActions: 5,
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayActions).toEqual([]);
+        });
+      });
+    });
+
+    describe('Screenshot and Error Callback Dependencies', () => {
+      test('should re-register listener when onScreenshotError callback changes', async () => {
+        const callback1 = vi.fn();
+        const callback2 = vi.fn();
+
+        const { rerender } = renderHook(
+          ({ callback }) => usePlaywrightReplay(mockIframeRef, callback),
+          {
+            initialProps: { callback: callback1 },
+          }
+        );
+
+        // Trigger screenshot error with first callback
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 1,
+            error: 'Error 1',
+          });
+        });
+
+        await waitFor(() => {
+          expect(callback1).toHaveBeenCalledWith('Screenshot capture failed for action 1');
+        });
+
+        // Change callback
+        rerender({ callback: callback2 });
+
+        // Trigger screenshot error with second callback
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-screenshot-error',
+            actionIndex: 2,
+            error: 'Error 2',
+          });
+        });
+
+        await waitFor(() => {
+          expect(callback2).toHaveBeenCalledWith('Screenshot capture failed for action 2');
+        });
+      });
+    });
+  });
 });

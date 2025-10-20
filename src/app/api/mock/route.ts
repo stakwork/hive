@@ -6,7 +6,18 @@ export const fetchCache = "force-no-store";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, taskId, artifacts } = await req.json();
+    const { message, taskId, artifacts, history } = await req.json();
+
+    // Log history statistics
+    if (history && Array.isArray(history)) {
+      const totalArtifacts = history.reduce((sum: number, msg: Record<string, unknown>) => {
+        const artifacts = msg.artifacts as Array<unknown> | undefined;
+        return sum + (artifacts?.length || 0);
+      }, 0);
+      console.log(`📜 Chat history: ${history.length} messages, ${totalArtifacts} total artifacts`);
+    } else {
+      console.log('📜 Chat history: 0 messages');
+    }
 
     try {
       const host = req.headers.get("host") || "localhost:3000";

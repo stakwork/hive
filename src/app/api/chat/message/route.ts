@@ -26,6 +26,44 @@ interface AttachmentRequest {
   size: number;
 }
 
+async function fetchChatHistory(taskId: string, excludeMessageId: string): Promise<Record<string, unknown>[]> {
+  const chatHistory = await db.chatMessage.findMany({
+    where: {
+      taskId,
+      id: { not: excludeMessageId },
+    },
+    include: {
+      artifacts: true,
+      attachments: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  return chatHistory.map((msg) => ({
+    id: msg.id,
+    message: msg.message,
+    role: msg.role,
+    status: msg.status,
+    timestamp: msg.createdAt.toISOString(),
+    contextTags: msg.contextTags ? JSON.parse(msg.contextTags as string) : [],
+    artifacts: msg.artifacts.map((artifact) => ({
+      id: artifact.id,
+      type: artifact.type,
+      content: artifact.content,
+      icon: artifact.icon,
+    })),
+    attachments: msg.attachments?.map((attachment) => ({
+      id: attachment.id,
+      filename: attachment.filename,
+      path: attachment.path,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+    })) || [],
+  }));
+}
+
 export interface StakworkWorkflowPayload {
   name: string;
   workflow_id: number;
@@ -45,6 +83,7 @@ async function callMock(
   userId: string,
   artifacts: ArtifactRequest[],
   request?: NextRequest,
+  history?: Record<string, unknown>[],
 ) {
   const baseUrl = getBaseUrl(request?.headers.get("host"));
 
@@ -56,6 +95,7 @@ async function callMock(
         message,
         userId,
         artifacts,
+        history: history || [],
       }),
       headers: {
         "Content-Type": "application/json",
@@ -89,6 +129,7 @@ async function callStakwork(
   attachmentPaths: string[] = [],
   webhook?: string,
   mode?: string,
+  history?: Record<string, unknown>[],
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -128,6 +169,7 @@ async function callStakwork(
       repo2graph_url: repo2GraphUrl,
       attachments: attachmentUrls,
       taskMode: mode,
+      history: history || [],
     };
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -349,6 +391,9 @@ export async function POST(request: NextRequest) {
       // Extract attachment paths for Stakwork
       const attachmentPaths = chatMessage.attachments?.map((att) => att.path) || [];
 
+      // Fetch chat history for this task (excluding the current message)
+      const history = await fetchChatHistory(taskId, chatMessage.id);
+
       stakworkData = await callStakwork(
         taskId,
         message,
@@ -363,6 +408,7 @@ export async function POST(request: NextRequest) {
         attachmentPaths,
         webhook,
         mode,
+        history,
       );
 
       if (stakworkData.success) {
@@ -393,7 +439,10 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      stakworkData = await callMock(taskId, message, userId, artifacts, request);
+      // Fetch chat history for this task (excluding the current message)
+      const history = await fetchChatHistory(taskId, chatMessage.id);
+
+      stakworkData = await callMock(taskId, message, userId, artifacts, request, history);
     }
 
     return NextResponse.json(

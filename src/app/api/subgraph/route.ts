@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       nodesUrl += `?ref_id=${encodeURIComponent(refId)}`;
     }
 
-    console.log("Fetching nodes from:", nodesUrl);
+    // console.log("Fetching nodes from:", nodesUrl);
 
     // Fetch nodes from swarm
     const response = await fetch(nodesUrl, {

@@ -32,36 +32,38 @@ export function FormArtifact({
   };
 
   return (
-    <Card className="p-4 bg-card border rounded-lg">
-      <div className="text-sm font-medium mb-3">
-        <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
-      </div>
-
-      {/* Only show buttons for actionType="button" options */}
-      {buttonOptions.length > 0 && (
-        <div className="space-y-2">
-          {buttonOptions.map((option, index) => {
-            const isSelected =
-              selectedOption &&
-              option.optionResponse === selectedOption.optionResponse;
-
-            return (
-              <Button
-                key={index}
-                variant={isSelected ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleSubmit(option)}
-                className={`w-full justify-start ${
-                  isSelected ? "bg-primary text-primary-foreground" : ""
-                }`}
-                disabled={isDisabled}
-              >
-                {option.optionLabel}
-              </Button>
-            );
-          })}
+    <div className="relative">
+      <Card className={`p-4 bg-card rounded-lg relative ${!isDisabled ? "border border-primary/30" : "border"}`}>
+        <div className="text-sm font-medium mb-3">
+          <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
         </div>
-      )}
-    </Card>
+
+        {/* Only show buttons for actionType="button" options */}
+        {buttonOptions.length > 0 && (
+          <div className="space-y-2">
+            {buttonOptions.map((option, index) => {
+              const isSelected =
+                selectedOption &&
+                option.optionResponse === selectedOption.optionResponse;
+
+              return (
+                <Button
+                  key={index}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleSubmit(option)}
+                  className={`w-full justify-start ${
+                    isSelected ? "bg-primary text-primary-foreground" : ""
+                  }`}
+                  disabled={isDisabled}
+                >
+                  {option.optionLabel}
+                </Button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }

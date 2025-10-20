@@ -33,7 +33,7 @@ describe("updateWorkspaceSchema", () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0]?.message).toBe("Workspace name is required");
+        expect(result.error.issues[0]?.message).toBe("Workspace name is required");
       }
     });
 
@@ -45,7 +45,7 @@ describe("updateWorkspaceSchema", () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0]?.message).toBe("Workspace name must be 100 characters or less");
+        expect(result.error.issues[0]?.message).toBe("Workspace name must be 100 characters or less");
       }
     });
 
@@ -96,7 +96,7 @@ describe("updateWorkspaceSchema", () => {
         });
         expect(result.success).toBe(false);
         if (!result.success) {
-          expect(result.error.errors[0]?.message).toBe(WORKSPACE_ERRORS.SLUG_RESERVED);
+          expect(result.error.issues[0]?.message).toBe(WORKSPACE_ERRORS.SLUG_RESERVED);
         }
       });
     });
@@ -185,7 +185,7 @@ describe("updateWorkspaceSchema", () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0]?.message).toBe("Description must be 500 characters or less");
+        expect(result.error.issues[0]?.message).toBe("Description must be 500 characters or less");
       }
     });
 
@@ -239,7 +239,7 @@ describe("updateWorkspaceSchema", () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors).toHaveLength(3);
+        expect(result.error.issues).toHaveLength(3);
       }
     });
   });
