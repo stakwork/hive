@@ -51,12 +51,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    // If using custom local Goose URL, return mock URLs instead of claiming a real pod
+    if (process.env.CUSTOM_GOOSE_URL) {
+      const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Using local Goose instance (no pod claimed)",
+          podId: "local-dev",
+          frontend: mockFrontend,
+          control: null,
+          ide: null,
+          goose: process.env.CUSTOM_GOOSE_URL,
+        },
+        { status: 200 },
+      );
+    }
+
+    // Legacy mock for testing browser URL only
     if (process.env.MOCK_BROWSER_URL) {
       return NextResponse.json(
         { success: true, message: "Pod claimed successfully", frontend: process.env.MOCK_BROWSER_URL },
         { status: 200 },
       );
     }
+
+    console.log(
+      "🔍 Claim pod for real: workspaceId:",
+      workspaceId,
+      "shouldUpdateToLatest:",
+      shouldUpdateToLatest,
+      "shouldIncludeGoose:",
+      shouldIncludeGoose,
+    );
 
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
@@ -133,7 +160,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (!anthropicApiKey) {
           console.error("ANTHROPIC_API_KEY not found in environment");
         } else {
-          goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey, podWorkspace.portMappings);
+          goose = await startGoose(
+            control,
+            podWorkspace.password,
+            repoName,
+            anthropicApiKey,
+            podWorkspace.portMappings,
+          );
         }
       }
     }
