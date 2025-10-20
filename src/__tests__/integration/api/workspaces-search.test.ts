@@ -20,7 +20,7 @@ describe("Workspace Search API - Integration Tests", () => {
   });
 
   describe("GET /api/workspaces/[slug]/search", () => {
-    test("searches across tasks, features, tickets, and phases", async () => {
+    test("searches across tasks, features, and phases", async () => {
       // Setup
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
@@ -63,10 +63,11 @@ describe("Workspace Search API - Integration Tests", () => {
         },
       });
 
-      await db.ticket.create({
+      await db.task.create({
         data: {
           title: "Call 4 implementation",
           description: "Implement call 4 feature",
+          workspaceId: workspace.id,
           featureId: feature.id,
           phaseId: phase.id,
           status: TaskStatus.TODO,
@@ -89,13 +90,13 @@ describe("Workspace Search API - Integration Tests", () => {
       // Assert
       const data = await expectSuccess(response, 200);
       expect(data.data.total).toBe(4);
-      expect(data.data.tasks).toHaveLength(1);
+      expect(data.data.tasks).toHaveLength(2); // Both standalone and roadmap tasks
       expect(data.data.features).toHaveLength(1);
-      expect(data.data.tickets).toHaveLength(1);
       expect(data.data.phases).toHaveLength(1);
 
-      // Verify task result
-      expect(data.data.tasks[0]).toMatchObject({
+      // Verify standalone task result
+      const standaloneTask = data.data.tasks.find((t: any) => t.title === "Call API integration");
+      expect(standaloneTask).toMatchObject({
         type: "task",
         title: "Call API integration",
         url: "/w/test-workspace/tasks",
@@ -116,9 +117,10 @@ describe("Workspace Search API - Integration Tests", () => {
         },
       });
 
-      // Verify ticket result
-      expect(data.data.tickets[0]).toMatchObject({
-        type: "ticket",
+      // Verify roadmap task result (previously called "ticket")
+      const roadmapTask = data.data.tasks.find((t: any) => t.title === "Call 4 implementation");
+      expect(roadmapTask).toMatchObject({
+        type: "task",
         title: "Call 4 implementation",
         metadata: {
           featureTitle: "Call Recording Feature",
@@ -407,7 +409,6 @@ describe("Workspace Search API - Integration Tests", () => {
       expect(data.data.total).toBe(0);
       expect(data.data.tasks).toHaveLength(0);
       expect(data.data.features).toHaveLength(0);
-      expect(data.data.tickets).toHaveLength(0);
       expect(data.data.phases).toHaveLength(0);
     });
   });

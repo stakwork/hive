@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { batchCreatePhasesWithTickets } from "@/services/roadmap/phases";
+import { batchCreatePhasesWithTasks } from "@/services/roadmap/phases";
 import { db } from "@/lib/db";
 import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 
-describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
+describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
   beforeEach(() => {
     // Tests run in isolation with database cleanup
   });
@@ -29,17 +29,17 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "Task A", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
             { title: "Task B", priority: "MEDIUM" as const, tempId: "T2", dependsOn: ["T1"] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      const ticket1 = result[0].tickets[0];
-      const ticket2 = result[0].tickets[1];
+      const ticket1 = result[0].tasks[0];
+      const ticket2 = result[0].tasks[1];
 
       // T1 has no dependencies
       expect(ticket1.dependsOnTaskIds).toEqual([]);
@@ -69,24 +69,24 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Setup",
-          tickets: [
+          tasks: [
             { title: "Database", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
           ],
         },
         {
           name: "Features",
-          tickets: [
+          tasks: [
             { title: "Feature X", priority: "MEDIUM" as const, tempId: "T5", dependsOn: ["T1"] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      const setupTicket = result[0].tickets[0];
-      const featureTicket = result[1].tickets[0];
+      const setupTicket = result[0].tasks[0];
+      const featureTicket = result[1].tasks[0];
 
-      // Feature ticket should depend on setup ticket (cross-phase)
+      // Feature task should depend on setup task (cross-phase)
       expect(featureTicket.dependsOnTaskIds).toEqual([setupTicket.id]);
     });
 
@@ -110,7 +110,7 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "A", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
             { title: "B", priority: "HIGH" as const, tempId: "T2", dependsOn: [] },
             { title: "C", priority: "MEDIUM" as const, tempId: "T3", dependsOn: ["T1", "T2"] },
@@ -118,11 +118,11 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      const ticketA = result[0].tickets[0];
-      const ticketB = result[0].tickets[1];
-      const ticketC = result[0].tickets[2];
+      const ticketA = result[0].tasks[0];
+      const ticketB = result[0].tasks[1];
+      const ticketC = result[0].tasks[2];
 
       // C should depend on both A and B
       expect(ticketC.dependsOnTaskIds).toHaveLength(2);
@@ -150,15 +150,15 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "Independent Task", priority: "LOW" as const, tempId: "T1", dependsOn: [] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      expect(result[0].tickets[0].dependsOnTaskIds).toEqual([]);
+      expect(result[0].tasks[0].dependsOnTaskIds).toEqual([]);
     });
 
     test("handles undefined dependsOn (optional field)", async () => {
@@ -181,20 +181,20 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "Task", priority: "MEDIUM" as const, tempId: "T1" }, // No dependsOn field
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      expect(result[0].tickets[0].dependsOnTaskIds).toEqual([]);
+      expect(result[0].tasks[0].dependsOnTaskIds).toEqual([]);
     });
   });
 
-  describe("Ticket Creation", () => {
-    test("creates tickets with correct order within each phase", async () => {
+  describe("Task Creation", () => {
+    test("creates tasks with correct order within each phase", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -214,7 +214,7 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "First", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
             { title: "Second", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
             { title: "Third", priority: "LOW" as const, tempId: "T3", dependsOn: [] },
@@ -222,14 +222,14 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      expect(result[0].tickets[0].order).toBe(0);
-      expect(result[0].tickets[1].order).toBe(1);
-      expect(result[0].tickets[2].order).toBe(2);
+      expect(result[0].tasks[0].order).toBe(0);
+      expect(result[0].tasks[1].order).toBe(1);
+      expect(result[0].tasks[2].order).toBe(2);
     });
 
-    test("assigns correct phaseId to tickets", async () => {
+    test("assigns correct phaseId to tasks", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -249,28 +249,28 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "P1 Task", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
           ],
         },
         {
           name: "Phase 2",
-          tickets: [
+          tasks: [
             { title: "P2 Task", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
       const phase1Id = result[0].phase.id;
       const phase2Id = result[1].phase.id;
 
-      expect(result[0].tickets[0].phaseId).toBe(phase1Id);
-      expect(result[1].tickets[0].phaseId).toBe(phase2Id);
+      expect(result[0].tasks[0].phaseId).toBe(phase1Id);
+      expect(result[1].tasks[0].phaseId).toBe(phase2Id);
     });
 
-    test("sets ticket count on phase (_count.tickets)", async () => {
+    test("sets task count on phase (_count.tasks)", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -290,26 +290,26 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
             { title: "T2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
           ],
         },
         {
           name: "Phase 2",
-          tickets: [
+          tasks: [
             { title: "T3", priority: "MEDIUM" as const, tempId: "T3", dependsOn: [] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      expect(result[0].phase._count.tickets).toBe(2);
-      expect(result[1].phase._count.tickets).toBe(1);
+      expect(result[0].phase._count.tasks).toBe(2);
+      expect(result[1].phase._count.tasks).toBe(1);
     });
 
-    test("creates tickets with all required fields", async () => {
+    test("creates tasks with all required fields", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -330,7 +330,7 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
         {
           name: "Phase 1",
           description: "Test phase",
-          tickets: [
+          tasks: [
             {
               title: "Ticket with description",
               description: "Detailed description here",
@@ -342,14 +342,14 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
-      const ticket = result[0].tickets[0];
-      expect(ticket.title).toBe("Ticket with description");
-      expect(ticket.description).toBe("Detailed description here");
-      expect(ticket.priority).toBe("CRITICAL");
-      expect(ticket.status).toBe("TODO"); // Default status
-      expect(ticket.featureId).toBe(feature.id);
+      const task = result[0].tasks[0];
+      expect(task.title).toBe("Ticket with description");
+      expect(task.description).toBe("Detailed description here");
+      expect(task.priority).toBe("CRITICAL");
+      expect(task.status).toBe("TODO"); // Default status
+      expect(task.featureId).toBe(feature.id);
     });
   });
 
@@ -374,25 +374,25 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Setup",
-          tickets: [
+          tasks: [
             { title: "T1", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
           ],
         },
         {
           name: "Build",
-          tickets: [
+          tasks: [
             { title: "T2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
           ],
         },
         {
           name: "Deploy",
-          tickets: [
+          tasks: [
             { title: "T3", priority: "LOW" as const, tempId: "T3", dependsOn: [] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
       expect(result[0].phase.name).toBe("Setup");
       expect(result[0].phase.order).toBe(0);
@@ -433,13 +433,13 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "New Phase",
-          tickets: [
+          tasks: [
             { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
           ],
         },
       ];
 
-      const result = await batchCreatePhasesWithTickets(feature.id, user.id, phases);
+      const result = await batchCreatePhasesWithTasks(feature.id, user.id, phases);
 
       // Should start at order 1 (after existing phase at order 0)
       expect(result[0].phase.order).toBe(1);
@@ -468,14 +468,14 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
           ],
         },
       ];
 
       await expect(
-        batchCreatePhasesWithTickets(feature.id, nonMember.id, phases)
+        batchCreatePhasesWithTasks(feature.id, nonMember.id, phases)
       ).rejects.toThrow("Access denied");
     });
 
@@ -499,14 +499,14 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
           ],
         },
       ];
 
       await expect(
-        batchCreatePhasesWithTickets(feature.id, "non-existent-user-id", phases)
+        batchCreatePhasesWithTasks(feature.id, "non-existent-user-id", phases)
       ).rejects.toThrow("Access denied");
     });
 
@@ -516,14 +516,14 @@ describe("batchCreatePhasesWithTickets Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tickets: [
+          tasks: [
             { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
           ],
         },
       ];
 
       await expect(
-        batchCreatePhasesWithTickets("non-existent-feature-id", user.id, phases)
+        batchCreatePhasesWithTasks("non-existent-feature-id", user.id, phases)
       ).rejects.toThrow("Feature not found");
     });
   });
