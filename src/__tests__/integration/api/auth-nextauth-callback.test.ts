@@ -57,7 +57,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     const axios = await import("axios");
     vi.clearAllMocks();
     mockFetch.mockClear();
-    (axios.default.get as any).mockClear();
+    (axios.default.get as vi.Mock).mockClear();
   });
 
   describe("OAuth Callback Handling", () => {
@@ -578,7 +578,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
       // Mock axios GitHub profile fetch (session callback uses axios)
       const axios = await import("axios");
-      (axios.default.get as any).mockResolvedValueOnce({
+      (axios.default.get as vi.Mock).mockResolvedValueOnce({
         data: mockGitHubProfile,
       });
 

@@ -7,7 +7,6 @@ import {
   mockUnauthenticatedSession,
   expectSuccess,
   expectUnauthorized,
-  expectError,
   generateUniqueId,
   getMockedSession,
 } from "@/__tests__/support/helpers";

@@ -373,7 +373,6 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
     test("endpoint should use constant-time comparison for password validation", async () => {
       // This test verifies the endpoint behavior remains consistent
       // regardless of password similarity (preventing timing attacks)
-      const correctPassword = "test-password-123";
       const veryClosePassword = "test-password-12X"; // Only last char different
       const veryDifferentPassword = "zzzzzzzzzzzzzzzzz";
 
@@ -409,7 +408,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
         body: "invalid-json{",
       });
 
-      const response = await POST(request as any);
+      const response = await POST(request as Request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
