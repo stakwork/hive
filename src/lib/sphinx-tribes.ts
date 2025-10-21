@@ -31,7 +31,7 @@ export function generateSphinxBountyUrl(task: TaskData): string {
   };
 
   const encoded = btoa(JSON.stringify(prefillData));
-  const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://community.sphinx.chat";
+  const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://bounties.sphinx.chat";
 
   return `${sphinxUrl}/bounties?action=create&prefill=${encoded}`;
 }
