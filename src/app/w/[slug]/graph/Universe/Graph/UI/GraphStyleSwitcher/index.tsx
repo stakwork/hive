@@ -6,15 +6,13 @@ import { useMemo } from 'react'
 const graphStyleLabels: Record<GraphStyle, string> = {
   sphere: 'Sphere',
   force: 'Force',
-  split: 'Split',
-  earth: 'Earth',
+  split: 'Layered',
 }
 
 const graphStyleDescriptions: Record<GraphStyle, string> = {
   sphere: 'Spherical layout with radial forces',
   force: 'Clustered layout grouped by neighborhoods',
-  split: 'Split layout based on node types',
-  earth: 'Earth-like layout',
+  split: 'Layered layout based on node types',
 }
 
 export const GraphStyleSwitcher = () => {
