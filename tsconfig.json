@@ -20,7 +20,7 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@Universe/*": ["src/components/knowledge-graph/Universe/*"]
+      "@Universe/*": ["./src/components/knowledge-graph/Universe/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next-env.d.ts", ".next-dev/types/**/*.ts"],
