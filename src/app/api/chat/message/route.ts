@@ -4,11 +4,10 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { ChatRole, ChatStatus, ArtifactType, type ContextTag, type Artifact, type ChatMessage } from "@/lib/chat";
-import { WorkflowStatus, TaskStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
-import { buildFeatureContext, type FeatureContext } from "@/services/task-coordinator";
 
 export const runtime = "nodejs";
 
@@ -131,8 +130,6 @@ async function callStakwork(
   webhook?: string,
   mode?: string,
   history?: Record<string, unknown>[],
-  generateChatTitle?: boolean,
-  featureContext?: FeatureContext,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -158,7 +155,7 @@ async function callStakwork(
     );
 
     // stakwork workflow vars
-    const vars: Record<string, unknown> = {
+    const vars = {
       taskId,
       message,
       contextTags,
@@ -174,14 +171,6 @@ async function callStakwork(
       taskMode: mode,
       history: history || [],
     };
-
-    // Add optional parameters if provided
-    if (generateChatTitle !== undefined) {
-      vars.generate_chat_title = generateChatTitle;
-    }
-    if (featureContext !== undefined) {
-      vars.feature_context = featureContext;
-    }
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
@@ -255,8 +244,6 @@ export async function POST(request: NextRequest) {
       webhook,
       replyId,
       mode,
-      generateChatTitle,
-      featureContext: providedFeatureContext,
     } = body;
 
     // Validate required fields
@@ -275,8 +262,6 @@ export async function POST(request: NextRequest) {
       },
       select: {
         workspaceId: true,
-        featureId: true,
-        phaseId: true,
         workspace: {
           select: {
             ownerId: true,
@@ -409,23 +394,6 @@ export async function POST(request: NextRequest) {
       // Fetch chat history for this task (excluding the current message)
       const history = await fetchChatHistory(taskId, chatMessage.id);
 
-      // Build feature context if task has featureId and phaseId and context not already provided
-      let featureContext = providedFeatureContext;
-      let shouldGenerateChatTitle = generateChatTitle;
-
-      if (!featureContext && task.featureId && task.phaseId) {
-        try {
-          featureContext = await buildFeatureContext(task.featureId, task.phaseId);
-          // Don't generate chat title if we have feature context (task already has a title)
-          if (shouldGenerateChatTitle === undefined) {
-            shouldGenerateChatTitle = false;
-          }
-        } catch (error) {
-          console.error("Error building feature context:", error);
-          // Continue without feature context if it fails
-        }
-      }
-
       stakworkData = await callStakwork(
         taskId,
         message,
@@ -441,8 +409,6 @@ export async function POST(request: NextRequest) {
         webhook,
         mode,
         history,
-        shouldGenerateChatTitle,
-        featureContext,
       );
 
       if (stakworkData.success) {
@@ -450,7 +416,6 @@ export async function POST(request: NextRequest) {
           workflowStatus: WorkflowStatus;
           workflowStartedAt: Date;
           stakworkProjectId?: number;
-          status?: TaskStatus;
         } = {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
@@ -459,16 +424,6 @@ export async function POST(request: NextRequest) {
         // Store the Stakwork project ID if available
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
-        }
-
-        // Update task status to IN_PROGRESS if it's currently TODO
-        const currentTask = await db.task.findUnique({
-          where: { id: taskId },
-          select: { status: true },
-        });
-
-        if (currentTask?.status === TaskStatus.TODO) {
-          updateData.status = TaskStatus.IN_PROGRESS;
         }
 
         await db.task.update({

@@ -329,7 +329,7 @@ const MockSetup = {
     } as Response);
   },
 
-  setupTaskCreationWorkflow: (projectId = 123) => {
+  setupTaskCreationWorkflow: (sourceType: TaskSourceType = "USER", projectId = 123) => {
     TestHelpers.setupTaskCreate();
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
@@ -887,7 +887,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       expect(result.stakworkResult).toBeDefined();
     });
 
-    test("should pass initial message to chat creation", async () => {
+    test("should build message from task title and description", async () => {
       MockSetup.setupTaskCreationWorkflow();
 
       await createTaskWithStakworkWorkflow({
@@ -896,13 +896,12 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         workspaceId: "test-workspace-id",
         priority: "HIGH" as Priority,
         userId: "test-user-id",
-        initialMessage: "Start coding",
       });
 
       expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            message: "Start coding",
+            message: "New Task\n\nTask Description",
           }),
         })
       );
@@ -917,7 +916,6 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         workspaceId: "test-workspace-id",
         priority: "LOW" as Priority,
         userId: "test-user-id",
-        initialMessage: "Initial message",
         status: "IN_PROGRESS" as TaskStatus,
       });
 
@@ -1033,7 +1031,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
 
   describe("Source Type Handling", () => {
     test("should include sourceType in Stakwork payload", async () => {
-      MockSetup.setupTaskCreationWorkflow();
+      MockSetup.setupTaskCreationWorkflow("JANITOR" as TaskSourceType);
 
       await createTaskWithStakworkWorkflow({
         title: "New Task",
@@ -1042,7 +1040,6 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         priority: "MEDIUM" as Priority,
         sourceType: "JANITOR" as TaskSourceType,
         userId: "test-user-id",
-        initialMessage: "Initial message",
       });
 
       TestHelpers.expectStakworkCalledWithVars({
@@ -1059,7 +1056,6 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         workspaceId: "test-workspace-id",
         priority: "MEDIUM" as Priority,
         userId: "test-user-id",
-        initialMessage: "Initial message",
       });
 
       expect(mockDb.task.create).toHaveBeenCalledWith(

@@ -3,6 +3,7 @@ import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/cl
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { buildFeatureContext } from "@/services/task-coordinator";
 
 /**
  * Create a task and immediately trigger Stakwork workflow
@@ -18,7 +19,6 @@ export async function createTaskWithStakworkWorkflow(params: {
   priority: Priority;
   sourceType?: TaskSourceType;
   userId: string;
-  initialMessage: string;
   status?: TaskStatus;
   mode?: string;
 }) {
@@ -31,8 +31,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     priority,
     sourceType = "USER",
     userId,
-    initialMessage,
-    status = "IN_PROGRESS",  // Default to IN_PROGRESS since workflow starts immediately
+    status = TaskStatus.IN_PROGRESS,  // Default to IN_PROGRESS since workflow starts immediately
     mode = "default",
   } = params;
 
@@ -97,13 +96,28 @@ export async function createTaskWithStakworkWorkflow(params: {
     },
   });
 
-  // Step 2: Create chat message and trigger Stakwork (replicating POST /api/chat/message logic)
+  // Step 2: Build message and trigger Stakwork workflow
+  const message = `${task.title}\n\n${task.description || ""}`.trim();
+
+  // Build feature context if task is linked to a feature and phase
+  let featureContext;
+  if (task.featureId && task.phaseId) {
+    try {
+      featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+    } catch (error) {
+      console.error("Error building feature context:", error);
+      // Continue without feature context if it fails
+    }
+  }
+
   const stakworkResult = await createChatMessageAndTriggerStakwork({
     taskId: task.id,
-    message: initialMessage,
-    userId: userId,
-    task: task,
-    mode: mode,
+    message,
+    userId,
+    task,
+    mode,
+    generateChatTitle: false, // Don't generate title - task already has one
+    featureContext,
   });
 
   return {
@@ -164,6 +178,79 @@ export async function sendMessageToStakwork(params: {
     contextTags,
     attachments,
     generateChatTitle,
+    featureContext,
+  });
+}
+
+/**
+ * Start Stakwork workflow for an existing task
+ * Used by: Task Coordinator cron, "Start Task" button, PATCH /api/tasks/[taskId]
+ * Automatically uses task description as message and builds feature context
+ */
+export async function startTaskWorkflow(params: {
+  taskId: string;
+  userId: string;
+  mode?: string;
+}) {
+  const { taskId, userId, mode = "live" } = params;
+
+  // Get task with workspace and swarm details
+  const task = await db.task.findFirst({
+    where: {
+      id: taskId,
+      deleted: false,
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      featureId: true,
+      phaseId: true,
+      sourceType: true,
+      workspace: {
+        select: {
+          slug: true,
+          swarm: {
+            select: {
+              swarmUrl: true,
+              swarmSecretAlias: true,
+              poolName: true,
+              name: true,
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    throw new Error("Task not found");
+  }
+
+  // Build message from task title and description
+  const message = `${task.title}\n\n${task.description || ""}`.trim();
+
+  // Build feature context if task is linked to a feature and phase
+  let featureContext;
+  if (task.featureId && task.phaseId) {
+    try {
+      featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+    } catch (error) {
+      console.error("Error building feature context:", error);
+      // Continue without feature context if it fails
+    }
+  }
+
+  return await createChatMessageAndTriggerStakwork({
+    taskId,
+    message,
+    userId,
+    task,
+    contextTags: [],
+    attachments: [],
+    mode,
+    generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
   });
 }

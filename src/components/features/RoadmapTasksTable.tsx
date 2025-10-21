@@ -194,16 +194,14 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     setStartingTaskId(task.id);
 
     try {
-      // Send message to Stakwork with task description
-      const response = await fetch("/api/chat/message", {
-        method: "POST",
+      // Start workflow for this task
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          taskId: task.id,
-          message: task.description || task.title,
-          contextTags: [],
+          startWorkflow: true,
         }),
       });
 
