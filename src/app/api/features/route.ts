@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
+import { FeatureStatus } from "@prisma/client";
 import type {
   CreateFeatureRequest,
   FeatureListResponse,
@@ -17,6 +18,33 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
+
+    // Filter params
+    const statusParam = searchParams.get("status") || undefined;
+    let statuses: FeatureStatus[] | undefined;
+
+    if (statusParam) {
+      const statusValues = statusParam.split(',').filter(Boolean);
+      const validStatuses = Object.values(FeatureStatus);
+
+      // Validate all status values
+      const invalidStatuses = statusValues.filter(s => !validStatuses.includes(s as FeatureStatus));
+      if (invalidStatuses.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid status values: ${invalidStatuses.join(', ')}` },
+          { status: 400 },
+        );
+      }
+
+      statuses = statusValues as FeatureStatus[];
+    }
+
+    // Keep "UNASSIGNED" as string - service layer will convert to null for Prisma
+    const assigneeId = searchParams.get("assigneeId") || undefined;
+
+    // Sort params
+    const sortBy = searchParams.get("sortBy") as "title" | "createdAt" | undefined;
+    const sortOrder = searchParams.get("sortOrder") as "asc" | "desc" | undefined;
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -35,7 +63,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await listFeatures(workspaceId, userOrResponse.id, page, limit);
+    // Validate sortBy if provided
+    if (sortBy && !["title", "createdAt"].includes(sortBy)) {
+      return NextResponse.json(
+        { error: "Invalid sortBy parameter. Must be 'title' or 'createdAt'" },
+        { status: 400 },
+      );
+    }
+
+    // Validate sortOrder if provided
+    if (sortOrder && !["asc", "desc"].includes(sortOrder)) {
+      return NextResponse.json(
+        { error: "Invalid sortOrder parameter. Must be 'asc' or 'desc'" },
+        { status: 400 },
+      );
+    }
+
+    const result = await listFeatures({
+      workspaceId,
+      userId: userOrResponse.id,
+      page,
+      limit,
+      statuses,
+      assigneeId,
+      sortBy,
+      sortOrder,
+    });
 
     return NextResponse.json<FeatureListResponse>(
       {
