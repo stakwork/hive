@@ -26,6 +26,7 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useTheme } from "@/hooks/use-theme";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -38,6 +39,7 @@ export default function TaskChatPage() {
   const { toast } = useToast();
   const params = useParams();
   const { id: workspaceId } = useWorkspace();
+  const { resolvedTheme } = useTheme();
 
   const { taskMode, setTaskMode } = useTaskMode();
 
@@ -716,8 +718,10 @@ export default function TaskChatPage() {
 
       // Save PR URLs as assistant message
       if (result.data?.prUrls && result.data.prUrls.length > 0) {
+        const isDark = resolvedTheme === "dark";
+        const iconPath = isDark ? "/svg-icons/Github-dark.svg" : "/svg-icons/Github-light.svg";
         const prMessageText = result.data.prUrls
-          .map((prUrl: string) => `[Open PR](${prUrl})`)
+          .map((prUrl: string) => `![GitHub](${iconPath}) [Open PR](${prUrl})`)
           .join("\n\n");
 
         // Save the PR URLs as an assistant message
