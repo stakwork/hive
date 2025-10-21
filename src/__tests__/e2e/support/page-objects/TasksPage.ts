@@ -57,7 +57,7 @@ export class TasksPage {
    * Navigate to new task page directly
    */
   async goToNewTask(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`/w/${workspaceSlug}/task/new`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/task/new`);
     await this.waitForTaskInput();
   }
 
