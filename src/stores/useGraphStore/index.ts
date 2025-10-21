@@ -223,7 +223,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
 
         set({
           hoveredNode: null,
-          selectedNode: { ...selectedNodeWithCoordinates, ...(normalizedNode || {}) },
+          selectedNode: { ...selectedNodeWithCoordinates, ...(normalizedNode || {}), x: selectedNodeWithCoordinates.x, y: selectedNodeWithCoordinates.y, z: selectedNodeWithCoordinates.z },
           disableCameraRotation: true,
           selectionPath: [...selectionPath, selectedNodeWithCoordinates.ref_id],
           selectedNodeType: '',

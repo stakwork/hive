@@ -1,14 +1,12 @@
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
+import { useSelectedNode } from '@/stores/useGraphStore'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { ActionDetail } from '@Universe/types'
 import { useNodeNavigation } from '@Universe/useNodeNavigation'
-import { Edit, GitBranch, GitMerge, Loader2, Plus, TestTube, X } from 'lucide-react'
+import { GitBranch, GitMerge, Loader2, TestTube, X } from 'lucide-react'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { Group, Vector3 } from 'three'
 
@@ -17,12 +15,9 @@ const reuseableVector3 = new Vector3()
 export const NodeControls = memo(() => {
   const ref = useRef<Group | null>(null)
   const { normalizedSchemasByType, setSelectedActionDetail } = useSchemaStore((s) => s)
-  const { selectionGraphData } = useGraphStore((s) => s)
   const [popoverOpen, setPopoverOpen] = useState(false)
-  const [nodeActions, setNodeActions] = useState<ActionDetail[]>([])
   const [nodeActionLoading, setLoadActionLoading] = useState<boolean>(false)
 
-  const { addNewNode } = useDataStore((s) => s)
   const selectedNode = useSelectedNode()
   const { navigateToNode } = useNodeNavigation()
 
@@ -35,16 +30,6 @@ export const NodeControls = memo(() => {
     action = normalizedSchemasByType[nodeType!].action
   }
 
-  const getChildren = useCallback(async () => {
-    try {
-      if (selectedNode?.ref_id) {
-        console.log('fetching children')
-
-      }
-    } catch (error) {
-      console.error(error)
-    }
-  }, [addNewNode, selectedNode?.ref_id, selectionGraphData?.nodes?.length])
 
   useFrame(() => {
     setPosition()
@@ -53,32 +38,15 @@ export const NodeControls = memo(() => {
   const setPosition = useCallback(() => {
 
     if (ref.current && selectedNode) {
-      const { x, y, z } = selectedNode
-      const newPosition = reuseableVector3.set(x, y, z)
+      const { x, y, z, fx, fy, fz } = selectedNode
+      console.log(x, y, z)
+      const newPosition = reuseableVector3.set(x || fx || 0, y || fy || 0, z || fz || 0)
       ref.current.position.copy(newPosition)
     }
   }, [selectedNode])
 
   const buttons = useMemo(() => {
     return [
-      {
-        key: 'control-key-1',
-        icon: <Plus size={14} />,
-        className: 'add',
-        variant: 'secondary' as const,
-        onClick: () => {
-          setPopoverOpen(true)
-        },
-      },
-      {
-        key: 'control-key-2',
-        icon: <Edit size={14} />,
-        className: 'edit',
-        variant: 'default' as const,
-        onClick: () => {
-          console.log('edit')
-        },
-      },
       {
         key: 'control-key-3',
         icon: <X size={14} />,
@@ -98,12 +66,6 @@ export const NodeControls = memo(() => {
 
   const handleClose = () => {
     setPopoverOpen(false)
-  }
-
-
-  const handleNodeAction = (actionDetails: ActionDetail) => {
-    setSelectedActionDetail(actionDetails)
-    handleClose()
   }
 
   const mergeTopicModal = () => {
@@ -131,7 +93,7 @@ export const NodeControls = memo(() => {
         zIndexRange={[16777271, 16777272]}
       >
         <div className="flex items-center gap-3 -translate-y-20">
-          {buttons.map((b, index) => {
+          {buttons.map((b) => {
             // For the add button, wrap it in a Popover
             if (b.className === 'add') {
               return (
@@ -166,18 +128,6 @@ export const NodeControls = memo(() => {
                                 <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
                               </div>
                             )}
-                            {nodeActions.map((actionDetail) => (
-                              <button
-                                key={actionDetail.name}
-                                data-testid={actionDetail.name}
-                                className="flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-gray-800/80 transition-all duration-200 cursor-pointer w-full text-left first:rounded-t-xl last:rounded-b-xl hover:translate-x-1"
-                                onClick={() => {
-                                  handleNodeAction(actionDetail)
-                                }}
-                              >
-                                {actionDetail.display_name}
-                              </button>
-                            ))}
                           </>
                         ) : (
                           <>
