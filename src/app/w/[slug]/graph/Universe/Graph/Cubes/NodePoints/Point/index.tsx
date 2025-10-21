@@ -18,10 +18,10 @@ export const Point = memo(({ color, node, scale }: Props) => {
   const newColor = generatePalette(color, 3, 10)
 
   return (
-    <Billboard ref={nodeRef} follow lockX={false} lockY={false} lockZ={false} name="group-name" visible={false}>
+    <Billboard ref={nodeRef} follow lockX={false} lockY={false} lockZ={false} name="group-name">
       <mesh ref={helperRef} name="instance-helper" userData={node}>
         <sphereGeometry args={[nodeSize / 2, 16, 16]} />
-        <meshBasicMaterial color="white" opacity={1} transparent={false} />
+        <meshBasicMaterial color={newColor.at(3)} opacity={1} transparent={false} />
       </mesh>
       <Instance color={newColor.at(3)} name="instance" scale={scale} />
     </Billboard>

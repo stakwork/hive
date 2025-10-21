@@ -2,9 +2,7 @@ import { memo } from 'react'
 import { NodeControls } from './NodeControls'
 
 export const NodeDetailsPanel = memo(() => (
-  <>
-    <NodeControls />
-  </>
+  <NodeControls />
 ))
 
 NodeDetailsPanel.displayName = 'NodeDetailsPanel'
