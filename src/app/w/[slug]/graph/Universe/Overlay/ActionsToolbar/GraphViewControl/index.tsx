@@ -22,7 +22,6 @@ const graphStyleLabels: Record<GraphStyle, string> = {
   sphere: 'Sphere',
   force: 'Force',
   split: 'Layered',
-  earth: 'Earth',
 }
 
 const styleOrder: GraphStyle[] = ['split', 'sphere', 'force']
