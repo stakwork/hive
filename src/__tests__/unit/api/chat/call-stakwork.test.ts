@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     task: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     user: {
@@ -149,6 +150,10 @@ const TestHelpers = {
     mockDb.workspace.findUnique.mockResolvedValue(TestDataFactory.createValidWorkspace() as any);
   },
 
+  setupTaskStatusCheck: (status: string = "TODO") => {
+    mockDb.task.findUnique.mockResolvedValue({ status } as any);
+  },
+
   setupValidChatMessage: () => {
     mockDb.chatMessage.create.mockResolvedValue(TestDataFactory.createChatMessage() as any);
     mockDb.chatMessage.findMany.mockResolvedValue([]);
@@ -223,6 +228,7 @@ const MockSetup = {
     TestHelpers.setupValidGithubProfile();
     TestHelpers.setupS3Service();
     TestHelpers.setupSwarmUrlTransform();
+    TestHelpers.setupTaskStatusCheck("TODO");
     mockDb.task.update.mockResolvedValue({} as any);
 
     // Ensure all required configs are set to trigger Stakwork path
@@ -243,6 +249,7 @@ const MockSetup = {
     TestHelpers.setupValidGithubProfile();
     TestHelpers.setupS3Service();
     TestHelpers.setupSwarmUrlTransform();
+    TestHelpers.setupTaskStatusCheck("TODO");
     mockDb.task.update.mockResolvedValue({} as any);
 
     // Ensure all required configs are set to trigger Stakwork path

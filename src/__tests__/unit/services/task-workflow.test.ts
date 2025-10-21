@@ -7,6 +7,7 @@ vi.mock("@/lib/db", () => ({
     task: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     user: {
@@ -164,6 +165,10 @@ const TestHelpers = {
     mockDb.task.update.mockResolvedValue({} as any);
   },
 
+  setupTaskStatusCheck: (status: TaskStatus = "TODO") => {
+    mockDb.task.findUnique.mockResolvedValue({ status } as any);
+  },
+
   setupTaskCreate: () => {
     // Mock task.create to return task with sourceType from actual call
     mockDb.task.create.mockImplementation((params: any) => {
@@ -301,6 +306,7 @@ const MockSetup = {
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
     TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
     TestHelpers.setupTaskUpdate();
 
     mockFetch.mockResolvedValue({
@@ -314,6 +320,7 @@ const MockSetup = {
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
     TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
     TestHelpers.setupTaskUpdate();
 
     mockFetch.mockResolvedValue({
@@ -327,6 +334,7 @@ const MockSetup = {
     TestHelpers.setupValidUser();
     TestHelpers.setupValidChatMessage();
     TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
     TestHelpers.setupTaskUpdate();
 
     mockFetch.mockResolvedValue({
@@ -700,6 +708,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       TestHelpers.expectTaskStatusUpdated("IN_PROGRESS", {
         workflowStartedAt: expect.any(Date),
         stakworkProjectId: 456,
+        status: "IN_PROGRESS",
       });
     });
 
@@ -720,6 +729,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       TestHelpers.setupValidUser();
       TestHelpers.setupValidChatMessage();
       TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
       TestHelpers.setupTaskUpdate();
 
       mockFetch.mockRejectedValue(new Error("Network error"));
