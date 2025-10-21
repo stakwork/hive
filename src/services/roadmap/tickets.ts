@@ -9,6 +9,7 @@ import type {
 import { validateFeatureAccess, validateRoadmapTaskAccess, calculateNextOrder } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
+import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 
 // System assignee configuration
 const SYSTEM_ASSIGNEE_CONFIG = {
@@ -39,9 +40,7 @@ function getSystemAssigneeEnum(id: string): SystemAssigneeType | null {
 }
 
 function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
-  const entry = Object.entries(SYSTEM_ASSIGNEE_CONFIG).find(
-    ([_, config]) => config.enumValue === enumValue
-  );
+  const entry = Object.entries(SYSTEM_ASSIGNEE_CONFIG).find(([, config]) => config.enumValue === enumValue);
 
   if (!entry) return null;
 
@@ -78,6 +77,7 @@ export async function getTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      bountyCode: true,
       dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
@@ -194,6 +194,8 @@ export async function createTicket(
       : "BOUNTY_HUNTER"
     : null;
 
+  const bountyCode = await ensureUniqueBountyCode();
+
   const task = await db.task.create({
     data: {
       title: data.title.trim(),
@@ -206,6 +208,7 @@ export async function createTicket(
       order: nextOrder,
       assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
       systemAssigneeType: systemAssigneeType,
+      bountyCode: bountyCode,
       createdById: userId,
       updatedById: userId,
     },
@@ -218,6 +221,7 @@ export async function createTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      bountyCode: true,
       dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
@@ -406,6 +410,7 @@ export async function updateTicket(
       order: true,
       featureId: true,
       phaseId: true,
+      bountyCode: true,
       dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,
@@ -507,6 +512,7 @@ export async function reorderTickets(
       order: true,
       featureId: true,
       phaseId: true,
+      bountyCode: true,
       dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,

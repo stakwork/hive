@@ -371,6 +371,9 @@ model Task {
   // Task mode (live, test, agent, etc.)
   mode String @default("live")
 
+  // Bounty code for external bounty platforms
+  bountyCode String? @unique @map("bounty_code")
+
   // Audit fields
   createdById String @map("created_by_id")
   createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id])
@@ -391,6 +394,7 @@ model Task {
   @@index([featureId])
   @@index([phaseId])
   @@index([systemAssigneeType])
+  @@index([bountyCode])
   @@map("tasks")
 }
 

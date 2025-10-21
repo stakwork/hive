@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Check, User as UserIcon, Bot } from "lucide-react";
+import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -36,9 +37,19 @@ interface AssigneeComboboxProps {
     assigneeData?: { id: string; name: string | null; email: string | null; image: string | null; icon?: string | null } | null
   ) => Promise<void>;
   showSpecialAssignees?: boolean;
+  ticketData?: {
+    id: string;
+    title: string;
+    description?: string | null;
+    estimatedHours?: number | null;
+    bountyCode?: string | null;
+    repository?: {
+      repositoryUrl?: string | null;
+    } | null;
+  };
 }
 
-export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, showSpecialAssignees = false }: AssigneeComboboxProps) {
+export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, showSpecialAssignees = false, ticketData }: AssigneeComboboxProps) {
   const [open, setOpen] = useState(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [systemAssignees, setSystemAssignees] = useState<WorkspaceMember[]>([]);
@@ -78,6 +89,19 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
       setUpdating(true);
       await onSelect(memberId, memberData);
       setOpen(false);
+      
+      if (memberId === "system:bounty-hunter" && ticketData) {
+        const bountyUrl = generateSphinxBountyUrl({
+          ...ticketData,
+          description: ticketData.description ?? undefined,
+          estimatedHours: ticketData.estimatedHours ?? undefined,
+          bountyCode: ticketData.bountyCode ?? undefined,
+          repository: ticketData.repository ? {
+            repositoryUrl: ticketData.repository.repositoryUrl ?? undefined
+          } : undefined,
+        });
+        window.open(bountyUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (error) {
       console.error("Failed to update assignee:", error);
     } finally {
