@@ -479,7 +479,6 @@ describe("POST /api/chat/message", () => {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 123,
-          status: "IN_PROGRESS",
         },
       });
     });

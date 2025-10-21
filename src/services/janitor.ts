@@ -514,8 +514,6 @@ export async function acceptJanitorRecommendation(
   });
 
   // Create task and trigger Stakwork workflow using shared service
-  const message = `${recommendation.title}\n\n${recommendation.description}\n\n`;
-
   const taskResult = await createTaskWithStakworkWorkflow({
     title: recommendation.title,
     description: recommendation.description,
@@ -525,7 +523,6 @@ export async function acceptJanitorRecommendation(
     priority: recommendation.priority,
     sourceType: sourceType,
     userId: userId,
-    initialMessage: message,
     mode: "live"  // Use production workflow for janitor-created tasks
   });
 

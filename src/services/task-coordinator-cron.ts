@@ -1,8 +1,7 @@
 import { db } from "@/lib/db";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
-import { sendMessageToStakwork } from "@/services/task-workflow";
-import { buildFeatureContext, type FeatureContext } from "@/services/task-coordinator";
+import { startTaskWorkflow } from "@/services/task-workflow";
 
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
@@ -72,24 +71,11 @@ async function processTicketSweep(
   console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
   try {
-    // Build feature context if task is linked to a feature and phase
-    let featureContext: FeatureContext | undefined;
-    if (task.featureId && task.phaseId) {
-      featureContext = await buildFeatureContext(task.featureId, task.phaseId);
-    }
-
-    // Build message from task title and description
-    const message = `${task.title}\n\n${task.description || ""}`.trim();
-
-    // Send message to Stakwork with special parameters
-    await sendMessageToStakwork({
+    // Start workflow for this task (automatically builds message and feature context)
+    await startTaskWorkflow({
       taskId: task.id,
-      message,
       userId: ownerId,
-      contextTags: [],
-      attachments: [],
-      generateChatTitle: false, // Don't generate chat title for ticket sweep
-      featureContext, // Pass feature context if available
+      mode: "live", // Use production workflow for automated task coordinator
     });
 
     console.log(`[TaskCoordinator] Successfully processed ticket ${task.id}`);

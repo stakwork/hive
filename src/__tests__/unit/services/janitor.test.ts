@@ -695,7 +695,6 @@ describe("Janitor Service", () => {
         priority: mockRecommendation.priority,
         sourceType: "JANITOR",
         userId: "user-1",
-        initialMessage: expect.stringContaining(mockRecommendation.title),
         mode: "live",
       });
       expect(result.recommendation.status).toBe("ACCEPTED");
