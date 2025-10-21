@@ -14,9 +14,9 @@ export type Neighbourhood = {
   ref_id: string
 }
 
-export type GraphStyle = 'sphere' | 'force' | 'split' | 'earth'
+export type GraphStyle = 'sphere' | 'force' | 'split'
 
-export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split', 'earth']
+export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split']
 
 export type GraphStore = {
   graphRadius: number
