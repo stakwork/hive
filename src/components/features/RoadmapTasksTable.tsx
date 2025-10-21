@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { GripVertical, Trash2, ExternalLink } from "lucide-react";
+import { GripVertical, Trash2, ExternalLink, Play } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -43,6 +44,7 @@ function SortableTableRow({
   onAssigneeUpdate,
   onDependenciesUpdate,
   onDelete,
+  onStartTask,
 }: {
   task: TicketListItem;
   workspaceSlug: string;
@@ -54,6 +56,7 @@ function SortableTableRow({
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
   onDependenciesUpdate: (dependencyIds: string[]) => Promise<void>;
   onDelete: () => void;
+  onStartTask: () => void;
 }) {
   const {
     attributes,
@@ -129,6 +132,16 @@ function SortableTableRow({
       <TableCell className="w-[50px]">
         <ActionMenu
           actions={[
+            ...(task.status === "TODO"
+              ? [
+                  {
+                    label: "Start Task",
+                    icon: Play,
+                    variant: "default" as const,
+                    onClick: onStartTask,
+                  },
+                ]
+              : []),
             ...(task.assignee?.id === "system:bounty-hunter" && task.bountyCode
               ? [
                   {
@@ -162,6 +175,7 @@ function SortableTableRow({
 
 export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReordered, onTaskUpdate }: RoadmapTasksTableProps) {
   const router = useRouter();
+  const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
 
   const { updateTicket } = useRoadmapTaskMutations();
   const { sensors, taskIds, handleDragEnd, collisionDetection } = useReorderRoadmapTasks({
@@ -172,6 +186,37 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
 
   const handleRowClick = (taskId: string) => {
     router.push(`/w/${workspaceSlug}/tickets/${taskId}`);
+  };
+
+  const handleStartTask = async (task: TicketListItem) => {
+    if (startingTaskId) return; // Prevent multiple simultaneous starts
+
+    setStartingTaskId(task.id);
+
+    try {
+      // Send message to Stakwork with task description
+      const response = await fetch("/api/chat/message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          taskId: task.id,
+          message: task.description || task.title,
+          contextTags: [],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start task");
+      }
+
+      // Navigate to task page
+      router.push(`/w/${workspaceSlug}/task/${task.id}`);
+    } catch (error) {
+      console.error("Failed to start task:", error);
+      setStartingTaskId(null);
+    }
   };
 
   const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] }) => {
@@ -246,6 +291,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTask(task.id, { assigneeId })}
                     onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTask(task.id, { dependsOnTaskIds })}
                     onDelete={() => handleDeleteTask(task.id)}
+                    onStartTask={() => handleStartTask(task)}
                   />
                 ))}
             </SortableContext>

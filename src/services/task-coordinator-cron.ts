@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import { buildFeatureContext, type FeatureContext } from "@/services/task-coordinator";
 
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
@@ -13,78 +14,6 @@ export interface TaskCoordinatorExecutionResult {
     error: string;
   }>;
   timestamp: string;
-}
-
-interface FeatureContext {
-  feature: {
-    title: string;
-    brief: string | null;
-    userStories: string[];
-    requirements: string | null;
-    architecture: string | null;
-  };
-  currentPhase: {
-    name: string;
-    description: string | null;
-    tickets: Array<{
-      id: string;
-      title: string;
-      description: string | null;
-      status: string;
-    }>;
-  };
-}
-
-/**
- * Build feature context JSON for Stakwork workflow
- */
-async function buildFeatureContext(
-  featureId: string,
-  phaseId: string
-): Promise<FeatureContext> {
-  const feature = await db.feature.findUnique({
-    where: { id: featureId },
-    include: {
-      userStories: {
-        orderBy: { order: "asc" },
-      },
-    },
-  });
-
-  const phase = await db.phase.findUnique({
-    where: { id: phaseId },
-    include: {
-      tasks: {
-        where: { deleted: false },
-        orderBy: { order: "asc" },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          status: true,
-        },
-      },
-    },
-  });
-
-  if (!feature || !phase) {
-    throw new Error(`Feature or Phase not found: ${featureId}, ${phaseId}`);
-  }
-
-  return {
-    feature: {
-      title: feature.title,
-      brief: feature.brief,
-      userStories: feature.userStories.map((us) => us.title),
-      requirements: feature.requirements,
-      architecture: feature.architecture,
-    },
-    currentPhase: {
-      name: phase.name,
-      description: phase.description,
-      tickets: phase.tasks,
-    },
-  };
 }
 
 /**
@@ -161,12 +90,6 @@ async function processTicketSweep(
       attachments: [],
       generateChatTitle: false, // Don't generate chat title for ticket sweep
       featureContext, // Pass feature context if available
-    });
-
-    // Update task status to IN_PROGRESS so it won't be picked up again
-    await db.task.update({
-      where: { id: task.id },
-      data: { status: "IN_PROGRESS" }
     });
 
     console.log(`[TaskCoordinator] Successfully processed ticket ${task.id}`);
