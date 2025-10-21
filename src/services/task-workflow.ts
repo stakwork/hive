@@ -351,10 +351,10 @@ export async function callStakworkAPI(params: {
 
   // Add optional parameters if provided
   if (generateChatTitle !== undefined) {
-    vars.generate_chat_title = generateChatTitle;
+    vars.generateChatTitle = generateChatTitle;
   }
   if (featureContext !== undefined) {
-    vars.feature_context = featureContext;
+    vars.featureContext = featureContext;
   }
 
   // Get workflow ID (replicating workflow selection logic)
