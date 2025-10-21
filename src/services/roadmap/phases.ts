@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import type { CreatePhaseRequest, UpdatePhaseRequest, PhaseListItem, PhaseWithTasks } from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
+import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 
 /**
  * Gets a phase with its tasks and feature context
@@ -42,6 +43,7 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
           order: true,
           featureId: true,
           phaseId: true,
+          bountyCode: true,
           dependsOnTaskIds: true,
           createdAt: true,
           updatedAt: true,
@@ -351,6 +353,8 @@ export async function batchCreatePhasesWithTasks(
           ? (taskData.dependsOn.map((tempId) => tempIdToRealId.get(tempId)).filter(Boolean) as string[])
           : [];
 
+        const bountyCode = await ensureUniqueBountyCode();
+
         const task = await tx.task.create({
           data: {
             title: taskData.title.trim(),
@@ -361,6 +365,7 @@ export async function batchCreatePhasesWithTasks(
             priority: taskData.priority,
             status: "TODO",
             order: taskIndex,
+            bountyCode: bountyCode,
             dependsOnTaskIds,
             createdById: userId,
             updatedById: userId,
@@ -374,6 +379,7 @@ export async function batchCreatePhasesWithTasks(
             order: true,
             featureId: true,
             phaseId: true,
+            bountyCode: true,
             dependsOnTaskIds: true,
             createdAt: true,
             updatedAt: true,

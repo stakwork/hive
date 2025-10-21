@@ -372,6 +372,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
+        bountyCode: true;
         dependsOnTaskIds: true;
         createdAt: true;
         updatedAt: true;
