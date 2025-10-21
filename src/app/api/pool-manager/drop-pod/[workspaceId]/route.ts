@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { dropPod, getWorkspaceFromPool, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { dropPod, getPodFromPool, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
       // Fetch workspace details to get port mappings and password
-      const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
+      const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
       const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
