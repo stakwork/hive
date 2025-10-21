@@ -181,6 +181,8 @@ export const useDataStore = create<DataStore>()(
           }
 
           nodeLinksNormalized[pairKey].push(link.ref_id)
+        } else {
+          console.log('link already exists', link)
         }
       })
 
