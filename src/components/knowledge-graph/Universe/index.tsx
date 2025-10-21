@@ -37,7 +37,6 @@ const Content = () => {
 let wheelEventTimeout: ReturnType<typeof setTimeout> | null = null
 
 const cameraProps = {
-  aspect: window.innerWidth / window.innerHeight,
   far: 30000,
   near: 1,
   position: [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z],
