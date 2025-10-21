@@ -1,4 +1,4 @@
-import { GraphData, Link, NodeExtended } from '@Universe/types'
+import { GraphData, Link, NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { create } from 'zustand'
 import { useDataStore } from '../useDataStore'
 import { useSimulationStore } from '../useSimulationStore'

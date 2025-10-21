@@ -1,11 +1,11 @@
 "use client";
 
+import { Link, Node } from "@/components/knowledge-graph/Universe/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useEffect, useState } from "react";
-import { Universe } from "../../app/w/[slug]/graph/Universe";
-import { Node } from "../../app/w/[slug]/graph/Universe/types";
+import { Universe } from "./Universe";
 
 // --- TYPE DEFINITIONS ---
 
@@ -13,7 +13,7 @@ interface ApiResponse {
   success: boolean;
   data?: {
     nodes?: Node[];
-    edges?: { source: string; target: string;[key: string]: unknown }[];
+    edges?: Link[];
   };
 }
 
@@ -82,11 +82,7 @@ export const GraphComponent = ({ endpoint: propEndpoint }: GraphComponentProps =
               z: 0,
               edge_count: 0
             })),
-            edges: (data.data.edges || []).map(edge => ({
-              ...edge,
-              ref_id: typeof edge.source === 'string' ? edge.source : (edge.source as any)?.ref_id || '',
-              edge_type: (edge as any).edge_type || 'default'
-            }))
+            edges: data.data.edges || []
           })
 
 
