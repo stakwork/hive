@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getPodFromPool, POD_PORTS } from "@/lib/pods";
+import { getUserAppTokens } from "@/lib/githubApp";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -56,7 +57,14 @@ export async function POST(request: NextRequest) {
         },
         swarm: true,
         repositories: true,
+        sourceControlOrg: true,
       },
+    });
+
+    // Get user's GitHub auth info for username
+    const userGithubAuth = await db.gitHubAuth.findUnique({
+      where: { userId },
+      select: { githubUsername: true },
     });
 
     if (!workspace) {
@@ -104,6 +112,39 @@ export async function POST(request: NextRequest) {
     console.log(">>> Using commit message:", commitMessage);
     console.log(">>> Using branch name:", branchName);
 
+    // Get GitHub access token for authentication
+    let githubToken: string | undefined;
+    if (workspace.sourceControlOrg) {
+      console.log(
+        ">>> Getting user app token for workspace source control org:",
+        userGithubAuth?.githubUsername,
+        ",",
+        workspace.sourceControlOrg.githubLogin,
+      );
+      const tokens = await getUserAppTokens(userId, workspace.sourceControlOrg.githubLogin);
+      githubToken = tokens?.accessToken;
+
+      if (!githubToken) {
+        console.warn("No GitHub access token found for workspace source control org");
+        return NextResponse.json(
+          { error: "GitHub authentication required. Please reconnect your GitHub account." },
+          { status: 401 },
+        );
+      }
+    } else {
+      console.warn("Workspace has no source control org linked");
+      return NextResponse.json({ error: "No GitHub organization linked to this workspace" }, { status: 400 });
+    }
+
+    // Get GitHub username
+    if (!userGithubAuth?.githubUsername) {
+      console.warn("No GitHub username found for user");
+      return NextResponse.json(
+        { error: "GitHub username not found. Please reconnect your GitHub account." },
+        { status: 401 },
+      );
+    }
+
     const repositories = workspace.repositories.map((repo) => ({
       url: repo.repositoryUrl,
       commit_name: commitMessage,
@@ -112,6 +153,14 @@ export async function POST(request: NextRequest) {
 
     const commitPayload = {
       repos: repositories,
+      git_credentials: {
+        provider: "github",
+        auth_type: "app",
+        auth_data: {
+          token: githubToken,
+          username: userGithubAuth.githubUsername,
+        },
+      },
     };
 
     console.log(">>> Commit payload:", commitPayload);
