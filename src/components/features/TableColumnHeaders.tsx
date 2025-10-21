@@ -27,6 +27,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import type { FeatureStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { User as UserIcon } from "lucide-react";
 
 interface SortableColumnHeaderProps {
   label: string;
@@ -74,6 +76,8 @@ export function SortableColumnHeader({
 interface FilterOption {
   value: string;
   label: string;
+  image?: string | null;
+  name?: string | null;
 }
 
 interface FilterDropdownHeaderProps {
@@ -84,6 +88,7 @@ interface FilterDropdownHeaderProps {
   showSearch?: boolean;
   multiSelect?: boolean;
   showStatusBadges?: boolean; // New prop to render StatusBadge
+  showAvatars?: boolean; // New prop to render user avatars
 }
 
 export function FilterDropdownHeader({
@@ -94,6 +99,7 @@ export function FilterDropdownHeader({
   showSearch = false,
   multiSelect = false,
   showStatusBadges = false,
+  showAvatars = false,
 }: FilterDropdownHeaderProps) {
   const [open, setOpen] = useState(false);
 
@@ -168,6 +174,17 @@ export function FilterDropdownHeader({
                         !multiSelect && value === option.value ? "opacity-100" : "opacity-0"
                       )}
                     />
+                    {showAvatars && (
+                      <Avatar className="h-5 w-5 mr-2">
+                        {option.image ? (
+                          <AvatarImage src={option.image} />
+                        ) : (
+                          <AvatarFallback className="text-xs">
+                            {option.name?.charAt(0) || <UserIcon className="h-3 w-3" />}
+                          </AvatarFallback>
+                        )}
+                      </Avatar>
+                    )}
                     {option.label}
                   </CommandItem>
                 ))}
