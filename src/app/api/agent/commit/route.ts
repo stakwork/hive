@@ -163,33 +163,21 @@ export async function POST(request: NextRequest) {
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
 
-    // Extract commits array from response
-    // The control port /push endpoint returns { commits: string[] }
-    // where each string is a GitHub commit URL with embedded token
-    const rawCommits = Array.isArray(pushData.commits) ? pushData.commits : [];
-
-    // Transform commit URLs into PR comparison URLs
-    // Input: https://ghu_token@github.com/owner/repo/commit/hash
-    // Output: https://github.com/owner/repo/compare/main...branchName
-    const prUrls = rawCommits
-      .map((commitUrl: string) => {
+    // Create PR URLs directly from workspace repositories
+    // Format: https://github.com/owner/repo/pull/new/branchName
+    const prUrls = workspace.repositories
+      .map((repo) => {
         try {
-          // Remove token from URL
-          const cleanUrl = commitUrl.replace(/https:\/\/[^@]+@/, "https://");
-          // Parse the URL to extract owner/repo
-          // Format: https://github.com/owner/repo/commit/hash
-          const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/commit/);
+          // Parse repositoryUrl to extract owner/repo
+          // Format: https://github.com/owner/repo or https://github.com/owner/repo.git
+          const match = repo.repositoryUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
           if (match) {
-            const [, owner, repo] = match;
-            // Get the base branch from the repository (default to 'main')
-            const repository = workspace.repositories.find((r) => r.repositoryUrl.includes(`${owner}/${repo}`));
-            const baseBranch = repository?.branch || "main";
-            // Create PR comparison URL
-            return `https://github.com/${owner}/${repo}/compare/${baseBranch}...${branchName}`;
+            const [, owner, repoName] = match;
+            return `https://github.com/${owner}/${repoName}/pull/new/${branchName}`;
           }
           return null;
         } catch (error) {
-          console.error("Error parsing commit URL:", commitUrl, error);
+          console.error("Error constructing PR URL from repository:", repo.repositoryUrl, error);
           return null;
         }
       })
