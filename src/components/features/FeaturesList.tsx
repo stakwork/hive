@@ -513,11 +513,13 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   ];
 
   const assigneeOptions = [
-    { value: "ALL", label: "All Assignees" },
-    { value: "UNASSIGNED", label: "Unassigned" },
+    { value: "ALL", label: "All Assignees", image: null, name: null },
+    { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
     ...members.map((member) => ({
       value: member.user.id,
       label: member.user.name || member.user.email || "Unknown",
+      image: member.user.image,
+      name: member.user.name,
     })),
   ];
 
@@ -662,6 +664,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                     value={assigneeFilter}
                     onChange={handleAssigneeFilterChange}
                     showSearch={true}
+                    showAvatars={true}
                   />
                 </TableHead>
                 <TableHead className="w-[150px] text-right">
