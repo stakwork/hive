@@ -1,4 +1,4 @@
-import { Guests, NodeExtended } from '@/components/knowledge-graph/Universe/types'
+import { Guests, NodeExtended } from '@Universe/types'
 import { Vector3 } from 'three'
 
 export const variableVector3 = new Vector3(0, 0, 0)

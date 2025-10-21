@@ -1,4 +1,4 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
+import { NodeExtended } from '@Universe/types'
 import * as THREE from 'three'
 
 const createRoundedBoxGeometry = (width: number, height: number, depth: number, radius: number, segments: number) => {

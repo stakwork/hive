@@ -1,4 +1,4 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
+import { NodeExtended } from '@Universe/types'
 import { memo } from 'react'
 import { TextNode } from '../Text/index'
 

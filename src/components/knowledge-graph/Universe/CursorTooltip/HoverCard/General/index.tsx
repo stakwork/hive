@@ -1,6 +1,6 @@
-import { Node } from '@/components/knowledge-graph/Universe/types'
-import { truncateText } from '@/components/knowledge-graph/Universe/utils/truncateText'
 import { useSchemaStore } from '@/stores/useSchemaStore'
+import { Node } from '@Universe/types'
+import { truncateText } from '@Universe/utils/truncateText'
 import { Avatar, TooltipContainer } from '../index'
 
 type Props = {

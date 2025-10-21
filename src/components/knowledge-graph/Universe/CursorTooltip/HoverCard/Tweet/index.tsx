@@ -1,6 +1,6 @@
 import CheckIcon from '@/components/Icons/CheckIcon'
 import PersonIcon from '@/components/Icons/PersonIcon'
-import { Node } from '@/components/knowledge-graph/Universe/types'
+import { Node } from '@Universe/types'
 import { FaBookmark, FaChartBar, FaComment, FaHeart, FaQuoteRight, FaRetweet } from 'react-icons/fa'
 import { TooltipContainer } from '../index'
 

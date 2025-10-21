@@ -1,4 +1,4 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
+import { NodeExtended } from '@Universe/types'
 
 export const nodesMatchesDateRangeFilter = (targetNode: NodeExtended, value: string | null): boolean => {
   if (!value || targetNode.date_added_to_graph === undefined) {

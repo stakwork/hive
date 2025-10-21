@@ -1,4 +1,4 @@
-import { truncateText } from '@/components/knowledge-graph/Universe/utils/truncateText'
+import { truncateText } from '@Universe/utils/truncateText'
 import { Html } from '@react-three/drei'
 import { BadgeProps } from '../types'
 

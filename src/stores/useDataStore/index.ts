@@ -1,4 +1,4 @@
-import { FetchDataResponse, FilterParams, Link, Node, NodeExtended, NodeType, Sources, Trending, TStats } from '@/components/knowledge-graph/Universe/types'
+import { FetchDataResponse, FilterParams, Link, Node, NodeExtended, NodeType, Sources, Trending, TStats } from '@Universe/types'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 

@@ -1,5 +1,5 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { useSchemaStore } from '@/stores/useSchemaStore'
+import { NodeExtended } from '@Universe/types'
 import { NodeDetail } from './NodeDetail'
 
 interface NodeCardProps {

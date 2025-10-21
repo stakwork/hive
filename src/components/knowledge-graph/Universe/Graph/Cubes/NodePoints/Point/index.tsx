@@ -1,5 +1,5 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
-import { generatePalette } from '@/components/knowledge-graph/Universe/utils/palleteGenerator'
+import { NodeExtended } from '@Universe/types'
+import { generatePalette } from '@Universe/utils/palleteGenerator'
 import { Billboard, Instance } from '@react-three/drei'
 import { memo, useRef } from 'react'
 import { Group, Mesh } from 'three'

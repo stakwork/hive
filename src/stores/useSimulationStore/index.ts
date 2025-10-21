@@ -1,4 +1,4 @@
-import { Link, Node, NodeExtended } from '@/components/knowledge-graph/Universe/types'
+import { Link, Node, NodeExtended } from '@Universe/types'
 import {
   forceCenter,
   forceCollide,
