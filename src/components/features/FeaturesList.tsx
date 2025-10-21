@@ -235,19 +235,22 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
   };
 
+  // Check if any filters are active
+  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null;
+
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, viewType, page, statusFilters, assigneeFilter, sortBy, sortOrder]);
 
-  // Auto-open creation form when no features exist
+  // Auto-open creation form when no features exist AND no filters are active
   useEffect(() => {
-    if (!loading && features.length === 0 && !isCreating) {
+    if (!loading && features.length === 0 && !isCreating && !hasActiveFilters) {
       setIsCreating(true);
       setViewType("list");
       localStorage.setItem("features-view-preference", "list");
     }
-  }, [loading, features.length, isCreating]);
+  }, [loading, features.length, isCreating, hasActiveFilters]);
 
   // Auto-focus after feature creation completes
   useEffect(() => {
@@ -313,10 +316,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setSortOrder("asc");
     setPage(1);
   };
-
-  // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null;
-
 
   const handleUpdateStatus = async (featureId: string, status: FeatureStatus) => {
     try {
@@ -522,8 +521,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     })),
   ];
 
-  // Always show table if creating or have features
-  const showTable = features.length > 0 || isCreating;
+  // Always show table if creating, have features, or filters are active
+  const showTable = features.length > 0 || isCreating || hasActiveFilters;
 
   return showTable ? (
     <Card>
@@ -678,17 +677,25 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {features.map((feature) => (
-                <FeatureRow
-                  key={feature.id}
-                  feature={feature}
-                  workspaceSlug={workspaceSlug}
-                  onStatusUpdate={handleUpdateStatus}
-                  onAssigneeUpdate={handleUpdateAssignee}
-                  onDelete={handleDeleteFeature}
-                  onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                />
-              ))}
+              {features.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-32 text-center">
+                    <p className="text-muted-foreground">No features match your filters</p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                features.map((feature) => (
+                  <FeatureRow
+                    key={feature.id}
+                    feature={feature}
+                    workspaceSlug={workspaceSlug}
+                    onStatusUpdate={handleUpdateStatus}
+                    onAssigneeUpdate={handleUpdateAssignee}
+                    onDelete={handleDeleteFeature}
+                    onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                  />
+                ))
+              )}
             </TableBody>
           </Table>
           </div>
