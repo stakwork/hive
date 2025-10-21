@@ -12,6 +12,8 @@ export const JanitorTestDataFactory = {
     janitorConfig: {
       id: "config-1",
       taskCoordinatorEnabled: true,
+      recommendationSweepEnabled: true,
+      ticketSweepEnabled: false,
       unitTestsEnabled: false,
       integrationTestsEnabled: false,
       e2eTestsEnabled: false,
@@ -43,6 +45,8 @@ export const JanitorTestDataFactory = {
     janitorConfig: {
       id: "config-2",
       taskCoordinatorEnabled: true,
+      recommendationSweepEnabled: true,
+      ticketSweepEnabled: false,
       unitTestsEnabled: false,
       integrationTestsEnabled: false,
       e2eTestsEnabled: false,
@@ -66,6 +70,8 @@ export const JanitorTestDataFactory = {
     janitorConfig: {
       id: "config-3",
       taskCoordinatorEnabled: true,
+      recommendationSweepEnabled: true,
+      ticketSweepEnabled: false,
       unitTestsEnabled: false,
       integrationTestsEnabled: false,
       e2eTestsEnabled: false,

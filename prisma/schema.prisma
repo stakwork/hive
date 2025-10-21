@@ -504,7 +504,9 @@ model JanitorConfig {
   securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
 
   // Task Coordinator automation
-  taskCoordinatorEnabled  Boolean @default(false) @map("task_coordinator_enabled")
+  taskCoordinatorEnabled     Boolean @default(false) @map("task_coordinator_enabled")
+  recommendationSweepEnabled Boolean @default(false) @map("recommendation_sweep_enabled")
+  ticketSweepEnabled         Boolean @default(false) @map("ticket_sweep_enabled")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

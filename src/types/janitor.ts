@@ -13,6 +13,8 @@ export interface JanitorConfigUpdate {
   e2eTestsEnabled?: boolean;
   securityReviewEnabled?: boolean;
   taskCoordinatorEnabled?: boolean;
+  recommendationSweepEnabled?: boolean;
+  ticketSweepEnabled?: boolean;
 }
 
 export interface AcceptRecommendationRequest {

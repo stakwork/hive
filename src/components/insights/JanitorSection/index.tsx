@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
+import { JanitorType } from "@prisma/client";
 import { Clock, Loader2, LucideIcon, Play } from "lucide-react";
 import { ReactNode, useEffect } from "react";
 
@@ -31,6 +32,10 @@ const getStatusBadge = (isOn: boolean, itemComingSoon: boolean, sectionComingSoo
   if (itemComingSoon || sectionComingSoon) return <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>;
   if (isOn) return <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge>;
   return <Badge variant="outline" className="text-gray-600 border-gray-300">Idle</Badge>;
+};
+
+const canManuallyRun = (janitorId: string): boolean => {
+  return Object.values(JanitorType).includes(janitorId as JanitorType);
 };
 
 export function JanitorSection({
@@ -159,7 +164,7 @@ export function JanitorSection({
                   {isItemComingSoon ? (
                     <Clock className="h-4 w-4 text-gray-400" />
                   ) : (
-                    isOn && (
+                    isOn && canManuallyRun(janitor.id) && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
