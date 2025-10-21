@@ -232,6 +232,7 @@ export const useDataStore = create<DataStore>()(
         nodeTypes: [],
         nodesNormalized: new Map<string, NodeExtended>(),
         linksNormalized: new Map<string, Link>(),
+        nodeLinksNormalized: {},
       })
     },
 
