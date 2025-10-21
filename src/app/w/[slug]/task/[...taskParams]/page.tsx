@@ -714,20 +714,20 @@ export default function TaskChatPage() {
         description: "Changes committed and pushed successfully!",
       });
 
-      // Save commit URLs as assistant message
-      if (result.data?.commits && result.data.commits.length > 0) {
-        const commitMessageText = result.data.commits
-          .map((commitUrl: string) => `Commit created: ${commitUrl}`)
-          .join("\n");
+      // Save PR URLs as assistant message
+      if (result.data?.prUrls && result.data.prUrls.length > 0) {
+        const prMessageText = result.data.prUrls
+          .map((prUrl: string) => `[Open PR](${prUrl})`)
+          .join("\n\n");
 
-        // Save the commit URLs as an assistant message
+        // Save the PR URLs as an assistant message
         await fetch(`/api/tasks/${currentTaskId}/messages/save`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: commitMessageText,
+            message: prMessageText,
             role: "ASSISTANT",
           }),
         });
@@ -735,7 +735,7 @@ export default function TaskChatPage() {
         // Add the message to the UI immediately
         const newMessage: ChatMessage = createChatMessage({
           id: generateUniqueId(),
-          message: commitMessageText,
+          message: prMessageText,
           role: ChatRole.ASSISTANT,
           status: ChatStatus.SENT,
         });

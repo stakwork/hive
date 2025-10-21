@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getWorkspaceFromPool, POD_PORTS } from "@/lib/pods";
+import { getPodFromPool, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -82,17 +82,16 @@ export async function POST(request: NextRequest) {
     const poolApiKey = workspace.swarm.poolApiKey;
 
     // Check if swarm has pool configuration
-    if (!workspace.swarm.poolName || !poolApiKey) {
+    if (!poolApiKey) {
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
-    const poolName = workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    console.log(">>> Getting workspace from pool for commit operation");
+    console.log(">>> Getting pod from pool for commit operation");
 
-    // Fetch workspace details to get port mappings and password
-    const podWorkspace = await getWorkspaceFromPool(poolName, poolApiKeyPlain);
+    // Fetch pod details to get port mappings and password
+    const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
     const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
     if (!controlPortUrl) {
@@ -165,18 +164,43 @@ export async function POST(request: NextRequest) {
     console.log(">>> Push successful:", pushData);
 
     // Extract commits array from response
-    // The control port /push endpoint should return { commits: string[] }
-    // where each string is a GitHub commit URL
-    const commits = Array.isArray(pushData.commits) ? pushData.commits : [];
+    // The control port /push endpoint returns { commits: string[] }
+    // where each string is a GitHub commit URL with embedded token
+    const rawCommits = Array.isArray(pushData.commits) ? pushData.commits : [];
+
+    // Transform commit URLs into PR comparison URLs
+    // Input: https://ghu_token@github.com/owner/repo/commit/hash
+    // Output: https://github.com/owner/repo/compare/main...branchName
+    const prUrls = rawCommits
+      .map((commitUrl: string) => {
+        try {
+          // Remove token from URL
+          const cleanUrl = commitUrl.replace(/https:\/\/[^@]+@/, "https://");
+          // Parse the URL to extract owner/repo
+          // Format: https://github.com/owner/repo/commit/hash
+          const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/commit/);
+          if (match) {
+            const [, owner, repo] = match;
+            // Get the base branch from the repository (default to 'main')
+            const repository = workspace.repositories.find((r) => r.repositoryUrl.includes(`${owner}/${repo}`));
+            const baseBranch = repository?.branch || "main";
+            // Create PR comparison URL
+            return `https://github.com/${owner}/${repo}/compare/${baseBranch}...${branchName}`;
+          }
+          return null;
+        } catch (error) {
+          console.error("Error parsing commit URL:", commitUrl, error);
+          return null;
+        }
+      })
+      .filter((url: string | null): url is string => url !== null);
 
     return NextResponse.json(
       {
         success: true,
         message: "Commit and push successful",
         data: {
-          commits,
-          commit: commitData,
-          push: pushData,
+          prUrls,
         },
       },
       { status: 200 },

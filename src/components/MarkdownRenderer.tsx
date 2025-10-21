@@ -230,7 +230,7 @@ const createComponents = (
 
   a: ({ children, href, ...props }) => (
     <a
-      className={cn(styleConfig.link, styles.link)}
+      className={cn(styleConfig.link, styles.link, "break-all")}
       href={href}
       target={href?.startsWith("http") ? "_blank" : undefined}
       rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
@@ -300,7 +300,7 @@ export function MarkdownRenderer({
       : children;
 
   return (
-    <div className={cn("prose dark:prose-invert max-w-full", className)}>
+    <div className={cn("prose dark:prose-invert max-w-full overflow-wrap-anywhere", className)}>
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
