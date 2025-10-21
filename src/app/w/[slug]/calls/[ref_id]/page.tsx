@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { GraphComponent } from "@/components/knowledge-graph";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { Graph } from "@/components/graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CallRecording } from "@/types/calls";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function CallPage() {
   const params = useParams();
@@ -161,17 +161,7 @@ export default function CallPage() {
       {/* Episode Knowledge Graph */}
       <Card>
         <CardContent className="pt-6">
-          <Graph
-            endpoint="/api/subgraph"
-            params={{
-              workspace: slug,
-              ref_id: call.ref_id,
-            }}
-            height={600}
-            title="Graph View"
-            showStats={true}
-            layout="layered"
-          />
+          <GraphComponent endpoint={`/graph/subgraph?include_properties=true&start_node=${call.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`} />
         </CardContent>
       </Card>
     </div>
