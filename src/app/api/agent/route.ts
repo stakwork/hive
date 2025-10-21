@@ -33,6 +33,12 @@ export async function POST(request: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!message) {
+    return NextResponse.json({ error: "message" }, { status: 400 });
+  }
+  if (!taskId) {
+    return NextResponse.json({ error: "taskId" }, { status: 400 });
+  }
 
   // Load chat history from database
   let chatHistory: {
