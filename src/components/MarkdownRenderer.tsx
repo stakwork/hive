@@ -18,6 +18,7 @@ interface MarkdownRendererProps {
   className?: string;
   variant?: "user" | "assistant";
   size?: "default" | "compact";
+  inlineIconPattern?: RegExp;
 }
 
 const createStyles = (isUser: boolean) => ({
@@ -89,6 +90,7 @@ const createComponents = (
   styles: ReturnType<typeof createStyles>,
   styleConfig: typeof baseStyles | typeof compactStyles,
   codeInlineClass: string,
+  inlineIconPattern?: RegExp,
 ): Components => ({
   h1: ({ children, ...props }) => (
     <h1
@@ -239,16 +241,34 @@ const createComponents = (
       {children}
     </a>
   ),
-  img: ({ src, alt, ...props }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      className={cn(`${(styleConfig.image, styles.border)} rounded-md`)}
-      src={src ?? ""}
-      alt={alt || "Image"}
-      loading="lazy"
-      {...props}
-    />
-  ),
+  img: ({ src, alt, ...props }) => {
+    // Check if this is an inline icon by matching against the pattern
+    const srcString = typeof src === "string" ? src : "";
+    const isInlineIcon = inlineIconPattern ? inlineIconPattern.test(srcString) : false;
+
+    if (isInlineIcon) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="inline-block w-4 h-4 mr-1 align-text-bottom !my-0 !border-0 !rounded-none !shadow-none"
+          src={src ?? ""}
+          alt={alt || "Icon"}
+          {...props}
+        />
+      );
+    }
+
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        className={cn(`${(styleConfig.image, styles.border)} rounded-md`)}
+        src={src ?? ""}
+        alt={alt || "Image"}
+        loading="lazy"
+        {...props}
+      />
+    );
+  },
   hr: ({ ...props }) => (
     <hr className={cn(styleConfig.hr, styles.border)} {...props} />
   ),
@@ -281,6 +301,7 @@ export function MarkdownRenderer({
   className,
   variant = "assistant",
   size = "default",
+  inlineIconPattern = /svg-icons/,
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
   const styles = createStyles(isUser);
@@ -288,7 +309,7 @@ export function MarkdownRenderer({
   const isDarkTheme = resolvedTheme === "dark";
   const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
   const styleConfig = size === "compact" ? compactStyles : baseStyles;
-  const components = createComponents(styles, styleConfig, codeInlineClass);
+  const components = createComponents(styles, styleConfig, codeInlineClass, inlineIconPattern);
 
   const processedContent =
     typeof children === "string"
