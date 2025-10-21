@@ -46,8 +46,8 @@ export function AgentChatArea({
   useEffect(() => {
     const scrollToBottom = () => {
       const ref = messagesEndRef.current;
-      if (ref && typeof ref.scrollIntoView === 'function') {
-        ref.scrollIntoView({ behavior: 'smooth' });
+      if (ref && typeof ref.scrollIntoView === "function") {
+        ref.scrollIntoView({ behavior: "smooth" });
       }
     };
 
@@ -114,7 +114,7 @@ export function AgentChatArea({
                   className="flex-shrink-0 gap-1"
                 >
                   <GitCommit className="w-3 h-3" />
-                  {isCommitting ? "Committing..." : "Commit"}
+                  {isCommitting ? "Generating..." : "Commit"}
                 </Button>
               )}
             </div>

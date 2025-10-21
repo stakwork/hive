@@ -5,7 +5,6 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getWorkspaceFromPool, POD_PORTS } from "@/lib/pods";
-import { generateCommitMessage } from "@/lib/ai/commit-msg";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -23,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { podId, workspaceId, taskId } = body;
+    const { podId, workspaceId, taskId, commitMessage, branchName } = body;
 
     // Validate required fields
     if (!podId) {
@@ -36,6 +35,14 @@ export async function POST(request: NextRequest) {
 
     if (!taskId) {
       return NextResponse.json({ error: "Missing required field: taskId" }, { status: 400 });
+    }
+
+    if (!commitMessage) {
+      return NextResponse.json({ error: "Missing required field: commitMessage" }, { status: 400 });
+    }
+
+    if (!branchName) {
+      return NextResponse.json({ error: "Missing required field: branchName" }, { status: 400 });
     }
 
     // Verify user has access to the workspace
@@ -95,18 +102,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(">>> Generating commit message and branch name from conversation");
-
-    // Generate commit message and branch name using AI from task conversation
-    const { commit_message, branch_name } = await generateCommitMessage(taskId);
-
-    console.log(">>> Generated commit message:", commit_message);
-    console.log(">>> Generated branch name:", branch_name);
+    console.log(">>> Using commit message:", commitMessage);
+    console.log(">>> Using branch name:", branchName);
 
     const repositories = workspace.repositories.map((repo) => ({
       url: repo.repositoryUrl,
-      commit_name: commit_message,
-      branch_name: branch_name,
+      commit_name: commitMessage,
+      branch_name: branchName,
     }));
 
     const commitPayload = {

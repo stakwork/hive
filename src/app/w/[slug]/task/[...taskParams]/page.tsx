@@ -20,7 +20,7 @@ import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from 
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
-import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel } from "./components";
+import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
@@ -60,6 +60,10 @@ export default function TaskChatPage() {
   const [hasPod, setHasPod] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
+  const [showCommitModal, setShowCommitModal] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [branchName, setBranchName] = useState("");
+  const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -353,16 +357,16 @@ export default function TaskChatPage() {
           setTaskTitle(msg); // Use the initial message as title fallback
         }
 
-      const newUrl = `/w/${slug}/task/${newTaskId}`;
-      // this updates the URL WITHOUT reloading the page
-      window.history.replaceState({}, "", newUrl);
+        const newUrl = `/w/${slug}/task/${newTaskId}`;
+        // this updates the URL WITHOUT reloading the page
+        window.history.replaceState({}, "", newUrl);
 
-      setStarted(true);
-      await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
-    } else {
-      setStarted(true);
-      await sendMessage(msg);
-    }
+        setStarted(true);
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+      } else {
+        setStarted(true);
+        await sendMessage(msg);
+      }
     } catch (error) {
       console.error("Error in handleStart:", error);
       setIsLoading(false);
@@ -614,12 +618,66 @@ export default function TaskChatPage() {
   };
 
   const handleCommit = async () => {
-    if (!workspaceId || !claimedPodId || !currentTaskId) {
+    if (!workspaceId || !currentTaskId) {
+      console.error("Missing commit requirements:", { workspaceId, claimedPodId, currentTaskId });
       toast({
         title: "Error",
-        description: "Missing required information to commit.",
+        description: `Missing required information to commit. workspaceId: ${!!workspaceId}, taskId: ${!!currentTaskId}`,
         variant: "destructive",
       });
+      return;
+    }
+
+    setIsGeneratingCommitInfo(true);
+
+    try {
+      // First, generate commit message and branch name
+      const branchResponse = await fetch("/api/agent/branch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          taskId: currentTaskId,
+        }),
+      });
+
+      if (!branchResponse.ok) {
+        const errorData = await branchResponse.json();
+        throw new Error(errorData.error || "Failed to generate commit information");
+      }
+
+      const branchResult = await branchResponse.json();
+
+      // Set the generated values and show the modal
+      setCommitMessage(branchResult.data.commit_message);
+      setBranchName(branchResult.data.branch_name);
+      setShowCommitModal(true);
+    } catch (error) {
+      console.error("Error generating commit information:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate commit information.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingCommitInfo(false);
+    }
+  };
+
+  const handleConfirmCommit = async (finalCommitMessage: string, finalBranchName: string) => {
+    if (!workspaceId || !currentTaskId) {
+      return;
+    }
+    console.log("🔍 Claimed pod ID:", claimedPodId);
+    // Block actual commit in local dev without a pod
+    if (!claimedPodId) {
+      toast({
+        title: "Local Development",
+        description: "Commit & Push is not available - no pod claimed",
+        variant: "default",
+      });
+      setShowCommitModal(false);
       return;
     }
 
@@ -635,6 +693,8 @@ export default function TaskChatPage() {
           podId: claimedPodId,
           workspaceId: workspaceId,
           taskId: currentTaskId,
+          commitMessage: finalCommitMessage,
+          branchName: finalBranchName,
         }),
       });
 
@@ -645,15 +705,18 @@ export default function TaskChatPage() {
 
       const result = await response.json();
 
+      // Close modal
+      setShowCommitModal(false);
+
       // Display success message
       toast({
         title: "Success",
-        description: "Changes committed successfully!",
+        description: "Changes committed and pushed successfully!",
       });
 
       // Save commit URLs as assistant message
       if (result.data?.commits && result.data.commits.length > 0) {
-        const commitMessage = result.data.commits
+        const commitMessageText = result.data.commits
           .map((commitUrl: string) => `Commit created: ${commitUrl}`)
           .join("\n");
 
@@ -664,7 +727,7 @@ export default function TaskChatPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: commitMessage,
+            message: commitMessageText,
             role: "ASSISTANT",
           }),
         });
@@ -672,7 +735,7 @@ export default function TaskChatPage() {
         // Add the message to the UI immediately
         const newMessage: ChatMessage = createChatMessage({
           id: generateUniqueId(),
-          message: commitMessage,
+          message: commitMessageText,
           role: ChatRole.ASSISTANT,
           status: ChatStatus.SENT,
         });
@@ -740,7 +803,7 @@ export default function TaskChatPage() {
                     taskTitle={taskTitle}
                     workspaceSlug={slug}
                     onCommit={handleCommit}
-                    isCommitting={isCommitting}
+                    isCommitting={isGeneratingCommitInfo || isCommitting}
                   />
                 </div>
               </ResizablePanel>
@@ -765,7 +828,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
                 onCommit={handleCommit}
-                isCommitting={isCommitting}
+                isCommitting={isGeneratingCommitInfo || isCommitting}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -821,6 +884,16 @@ export default function TaskChatPage() {
           )}
         </motion.div>
       )}
+
+      {/* Commit Modal */}
+      <CommitModal
+        isOpen={showCommitModal}
+        onClose={() => setShowCommitModal(false)}
+        onConfirm={handleConfirmCommit}
+        initialCommitMessage={commitMessage}
+        initialBranchName={branchName}
+        isCommitting={isCommitting}
+      />
     </AnimatePresence>
   );
 }
