@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, GitCommit } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -22,6 +22,8 @@ interface AgentChatAreaProps {
   workflowStatus?: WorkflowStatus | null;
   taskTitle?: string | null;
   workspaceSlug?: string;
+  onCommit?: () => Promise<void>;
+  isCommitting?: boolean;
 }
 
 export function AgentChatArea({
@@ -35,6 +37,8 @@ export function AgentChatArea({
   workflowStatus,
   taskTitle,
   workspaceSlug,
+  onCommit,
+  isCommitting = false,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -42,8 +46,8 @@ export function AgentChatArea({
   useEffect(() => {
     const scrollToBottom = () => {
       const ref = messagesEndRef.current;
-      if (ref && typeof ref.scrollIntoView === 'function') {
-        ref.scrollIntoView({ behavior: 'smooth' });
+      if (ref && typeof ref.scrollIntoView === "function") {
+        ref.scrollIntoView({ behavior: "smooth" });
       }
     };
 
@@ -99,6 +103,20 @@ export function AgentChatArea({
                   </motion.h2>
                 </AnimatePresence>
               </div>
+
+              {/* Commit Button */}
+              {onCommit && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onCommit}
+                  disabled={isCommitting}
+                  className="flex-shrink-0 gap-1"
+                >
+                  <GitCommit className="w-3 h-3" />
+                  {isCommitting ? "Generating..." : "Commit"}
+                </Button>
+              )}
             </div>
           </motion.div>
         )}
