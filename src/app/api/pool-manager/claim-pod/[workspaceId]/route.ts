@@ -160,13 +160,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (!anthropicApiKey) {
           console.error("ANTHROPIC_API_KEY not found in environment");
         } else {
-          goose = await startGoose(
-            control,
-            podWorkspace.password,
-            repoName,
-            anthropicApiKey,
-            podWorkspace.portMappings,
-          );
+          goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey);
         }
       }
     }
