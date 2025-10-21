@@ -10,6 +10,8 @@ const updateJanitorConfigSchema = z.object({
   e2eTestsEnabled: z.boolean().optional(),
   securityReviewEnabled: z.boolean().optional(),
   taskCoordinatorEnabled: z.boolean().optional(),
+  recommendationSweepEnabled: z.boolean().optional(),
+  ticketSweepEnabled: z.boolean().optional(),
 });
 
 export async function GET(
