@@ -21,6 +21,7 @@ import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
 import type { PhaseWithTickets, TicketListItem } from "@/types/roadmap";
 import type { PhaseStatus, TaskStatus, Priority } from "@prisma/client";
 
@@ -30,16 +31,13 @@ export default function PhaseDetailPage() {
   const { slug: workspaceSlug } = useWorkspace();
   const phaseId = params.phaseId as string;
 
-  const fetchPhase = useCallback(
-    async (id: string) => {
-      const response = await fetch(`/api/phases/${id}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch phase");
-      }
-      return response.json();
-    },
-    []
-  );
+  const fetchPhase = useCallback(async (id: string) => {
+    const response = await fetch(`/api/phases/${id}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch phase");
+    }
+    return response.json();
+  }, []);
 
   const {
     data: phase,
@@ -131,6 +129,15 @@ export default function PhaseDetailPage() {
         ...phase,
         tasks: [...phase.tasks, ticket],
       });
+
+      if (newTicketAssigneeId === "system:bounty-hunter") {
+        const bountyUrl = generateSphinxBountyUrl({
+          id: ticket.id,
+          title: ticket.title,
+          description: ticket.description ?? undefined,
+        });
+        window.open(bountyUrl, "_blank", "noopener,noreferrer");
+      }
 
       // Reset form (focus handled by useEffect)
       setNewTicketTitle("");
@@ -270,11 +277,7 @@ export default function PhaseDetailPage() {
 
             {/* Status & Actions */}
             <div className="flex items-center gap-4">
-              <StatusPopover
-                statusType="phase"
-                currentStatus={phase.status}
-                onUpdate={handleUpdateStatus}
-              />
+              <StatusPopover statusType="phase" currentStatus={phase.status} onUpdate={handleUpdateStatus} />
 
               {/* Actions Menu */}
               <ActionMenu
@@ -301,10 +304,7 @@ export default function PhaseDetailPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Tickets</h3>
               {!isCreatingTicket && (
-                <Button
-                  onClick={() => setIsCreatingTicket(true)}
-                  size="sm"
-                >
+                <Button onClick={() => setIsCreatingTicket(true)} size="sm">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Ticket
                 </Button>
@@ -365,12 +365,7 @@ export default function PhaseDetailPage() {
                     />
                   </div>
                   <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCancelCreateTicket}
-                      disabled={creatingTicket}
-                    >
+                    <Button variant="ghost" size="sm" onClick={handleCancelCreateTicket} disabled={creatingTicket}>
                       Cancel
                     </Button>
                     <Button

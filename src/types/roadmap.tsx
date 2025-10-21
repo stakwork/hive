@@ -4,7 +4,7 @@ import type {
   PaginatedApiResponse,
 } from "./common";
 import React from "react";
-import { Inbox, Calendar, Loader2, CheckCircle, XCircle, Circle, Slash } from "lucide-react";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
@@ -372,6 +372,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
+        bountyCode: true;
         dependsOnTaskIds: true;
         createdAt: true;
         updatedAt: true;
@@ -433,6 +434,7 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    bountyCode: true;
     dependsOnTaskIds: true;
     createdAt: true;
     updatedAt: true;
@@ -470,6 +472,7 @@ type RoadmapTaskDetailBase = Prisma.TaskGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    bountyCode: true;
     dependsOnTaskIds: true;
     createdAt: true;
     updatedAt: true;
