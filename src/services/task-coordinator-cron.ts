@@ -163,6 +163,12 @@ async function processTicketSweep(
       featureContext, // Pass feature context if available
     });
 
+    // Update task status to IN_PROGRESS so it won't be picked up again
+    await db.task.update({
+      where: { id: task.id },
+      data: { status: "IN_PROGRESS" }
+    });
+
     console.log(`[TaskCoordinator] Successfully processed ticket ${task.id}`);
     return true;
   } catch (error) {
