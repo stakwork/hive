@@ -3,7 +3,6 @@
 import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { JanitorItem, JanitorSection } from "@/components/insights/JanitorSection";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
-import { TaskCoordinatorCard } from "@/components/insights/TaskCoordinatorCard";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
@@ -13,7 +12,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { getAllJanitorItems } from "@/lib/constants/janitor";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useInsightsStore } from "@/stores/useInsightsStore";
-import { BookOpen, GitPullRequest, Package, Shield, TestTube, Type, Wrench } from "lucide-react";
+import { BookOpen, Bot, CheckCircle2, GitPullRequest, ListTodo, Package, Shield, TestTube, Type, Wrench } from "lucide-react";
 import { redirect } from "next/navigation";
 import { useCallback, useEffect } from "react";
 
@@ -47,6 +46,24 @@ const securityJanitors: JanitorItem[] = [
     icon: Package,
     description: "Check dependencies risk.",
     comingSoon: true,
+  },
+];
+
+// Task Coordinator janitors
+const taskCoordinatorJanitors: JanitorItem[] = [
+  {
+    id: "ticket-sweep",
+    name: "Ticket Sweep",
+    icon: ListTodo,
+    description: "Automatically process tasks assigned to the Task Coordinator",
+    configKey: "ticketSweepEnabled",
+  },
+  {
+    id: "recommendation-sweep",
+    name: "Recommendation Sweep",
+    icon: CheckCircle2,
+    description: "Automatically accept janitor recommendations",
+    configKey: "recommendationSweepEnabled",
   },
 ];
 
@@ -125,7 +142,12 @@ export default function InsightsPage() {
 
         <RecommendationsSection />
 
-        <TaskCoordinatorCard />
+        <JanitorSection
+          title="Task Coordinator"
+          description="Automate task creation from recommendations and tickets"
+          icon={<Bot className="h-5 w-5 text-blue-500" />}
+          janitors={taskCoordinatorJanitors}
+        />
 
         <JanitorSection
           title="Testing"
