@@ -14,9 +14,19 @@ export function deepEqual(a: any, b: any): boolean {
     return a.getTime() === b.getTime();
   }
 
+  // Check if one is Date and the other is not
+  if (a instanceof Date || b instanceof Date) {
+    return false;
+  }
+
   // Check if both are regular expressions
   if (a instanceof RegExp && b instanceof RegExp) {
     return a.toString() === b.toString();
+  }
+
+  // Check if one is RegExp and the other is not
+  if (a instanceof RegExp || b instanceof RegExp) {
+    return false;
   }
 
   // Check if types are different
