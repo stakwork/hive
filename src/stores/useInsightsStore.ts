@@ -21,7 +21,8 @@ const initialState = {
   dismissedSuggestions: new Set<string>(),
   showAll: false,
   runningJanitors: new Set<string>(),
-  taskCoordinatorEnabled: false,
+  recommendationSweepEnabled: false,
+  ticketSweepEnabled: false,
 };
 
 type InsightsStore = {
@@ -33,13 +34,15 @@ type InsightsStore = {
   dismissedSuggestions: Set<string>;
   showAll: boolean;
   runningJanitors: Set<string>;
-  taskCoordinatorEnabled: boolean;
+  recommendationSweepEnabled: boolean;
+  ticketSweepEnabled: boolean;
 
   // Actions
   fetchRecommendations: (slug: string) => Promise<void>;
   fetchJanitorConfig: (slug: string) => Promise<void>;
   toggleJanitor: (slug: string, configKey: string) => Promise<void>;
-  toggleTaskCoordinator: (slug: string) => Promise<void>;
+  toggleRecommendationSweep: (slug: string) => Promise<void>;
+  toggleTicketSweep: (slug: string) => Promise<void>;
   runJanitor: (slug: string, janitorId: string) => Promise<void>;
   acceptRecommendation: (id: string) => Promise<any>;
   dismissRecommendation: (id: string) => Promise<void>;
@@ -81,7 +84,8 @@ export const useInsightsStore = create<InsightsStore>()(
           const data = await response.json();
           set({
             janitorConfig: data.config,
-            taskCoordinatorEnabled: data.config.taskCoordinatorEnabled || false
+            recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false
           });
         }
       } catch (error) {
@@ -95,7 +99,7 @@ export const useInsightsStore = create<InsightsStore>()(
     toggleJanitor: async (slug: string, configKey: string) => {
       const state = get();
       if (!slug || !state.janitorConfig) return;
-      
+
       try {
         const response = await fetch(`/api/workspaces/${slug}/janitors/config`, {
           method: "PUT",
@@ -104,12 +108,13 @@ export const useInsightsStore = create<InsightsStore>()(
             [configKey]: !state.janitorConfig[configKey]
           }),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           set({
             janitorConfig: data.config,
-            taskCoordinatorEnabled: data.config.taskCoordinatorEnabled || false
+            recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false
           });
         }
       } catch (error) {
@@ -118,8 +123,8 @@ export const useInsightsStore = create<InsightsStore>()(
       }
     },
 
-    // Toggle Task Coordinator
-    toggleTaskCoordinator: async (slug: string) => {
+    // Toggle Recommendation Sweep
+    toggleRecommendationSweep: async (slug: string) => {
       const state = get();
       if (!slug) return;
 
@@ -128,7 +133,7 @@ export const useInsightsStore = create<InsightsStore>()(
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            taskCoordinatorEnabled: !state.taskCoordinatorEnabled
+            recommendationSweepEnabled: !state.recommendationSweepEnabled
           }),
         });
 
@@ -136,11 +141,40 @@ export const useInsightsStore = create<InsightsStore>()(
           const data = await response.json();
           set({
             janitorConfig: data.config,
-            taskCoordinatorEnabled: data.config.taskCoordinatorEnabled || false
+            recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false
           });
         }
       } catch (error) {
-        console.error("Error toggling Task Coordinator:", error);
+        console.error("Error toggling Recommendation Sweep:", error);
+        throw error;
+      }
+    },
+
+    // Toggle Ticket Sweep
+    toggleTicketSweep: async (slug: string) => {
+      const state = get();
+      if (!slug) return;
+
+      try {
+        const response = await fetch(`/api/workspaces/${slug}/janitors/config`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticketSweepEnabled: !state.ticketSweepEnabled
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          set({
+            janitorConfig: data.config,
+            recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false
+          });
+        }
+      } catch (error) {
+        console.error("Error toggling Ticket Sweep:", error);
         throw error;
       }
     },

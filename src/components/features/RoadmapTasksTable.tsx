@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Trash2, ExternalLink } from "lucide-react";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -113,6 +113,7 @@ function SortableTableRow({
             id: task.id,
             title: task.title,
             description: task.description,
+            bountyCode: task.bountyCode,
           }}
         />
       </TableCell>
@@ -128,16 +129,30 @@ function SortableTableRow({
       <TableCell className="w-[50px]">
         <ActionMenu
           actions={[
-            {
-              label: "Delete",
-              icon: Trash2,
-              variant: "destructive",
-              confirmation: {
-                title: "Delete Task",
-                description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
-                onConfirm: onDelete,
-              },
-            },
+            ...(task.assignee?.id === "system:bounty-hunter" && task.bountyCode
+              ? [
+                  {
+                    label: "View Bounty",
+                    icon: ExternalLink,
+                    variant: "default" as const,
+                    onClick: () => {
+                      const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://bounties.sphinx.chat";
+                      window.open(`${sphinxUrl}/bounty/${task.bountyCode}`, "_blank");
+                    },
+                  },
+                ]
+              : [
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "destructive" as const,
+                    confirmation: {
+                      title: "Delete Task",
+                      description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
+                      onConfirm: onDelete,
+                    },
+                  },
+                ]),
           ]}
         />
       </TableCell>

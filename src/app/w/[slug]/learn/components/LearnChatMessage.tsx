@@ -1,19 +1,18 @@
 "use client";
 
+import { GraphComponent } from "@/components/knowledge-graph";
+import { StreamErrorBoundary, StreamingMessage } from "@/components/streaming";
+import type { LearnMessage } from "@/types/learn";
 import { motion } from "framer-motion";
 import { BookOpen, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import type { LearnMessage } from "@/types/learn";
-import { StreamingMessage, StreamErrorBoundary } from "@/components/streaming";
 import { FINAL_ANSWER_ID } from "../lib/streaming-config";
-import { Graph } from "@/components/graph";
 
 interface LearnChatMessageProps {
   message: LearnMessage;
-  workspaceSlug?: string;
 }
 
-export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessageProps) {
+export function LearnChatMessage({ message }: LearnChatMessageProps) {
   const isUser = message.role === "user";
 
   // Check if this is a streaming message (Chat mode) or a regular message (Learn mode)
@@ -33,9 +32,8 @@ export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessagePro
         className={`flex ${isUser ? "justify-end" : "justify-start"}`}
       >
         <div
-          className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm overflow-hidden ${
-            isUser ? "bg-primary text-primary-foreground ml-12" : "bg-muted mr-12"
-          }`}
+          className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm overflow-hidden ${isUser ? "bg-primary text-primary-foreground ml-12" : "bg-muted mr-12"
+            }`}
         >
           {!isUser && (
             <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">
@@ -73,17 +71,7 @@ export function LearnChatMessage({ message, workspaceSlug }: LearnChatMessagePro
           transition={{ duration: 0.3, delay: 0.2 }}
           className="max-w-[85%] mr-12"
         >
-          <Graph
-            endpoint="/api/subgraph"
-            params={{
-              ref_id: message.ref_id!,
-              workspace: workspaceSlug || "",
-            }}
-            height={400}
-            title="Related Knowledge"
-            showStats={true}
-            emptyMessage="No related knowledge graph available"
-          />
+          <GraphComponent title="Related Knowledge" endpoint={`/graph/subgraph?include_properties=true&start_node=${message.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`} />
         </motion.div>
       )}
     </div>

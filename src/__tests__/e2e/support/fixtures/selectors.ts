@@ -19,6 +19,7 @@ export const selectors = {
     insightsLink: '[data-testid="nav-insights"]',
     learnLink: '[data-testid="nav-learn"]',
     userJourneysLink: '[data-testid="nav-user-journeys"]',
+    roadmapLink: '[data-testid="nav-roadmap"]',
   },
 
   // Page titles
@@ -131,6 +132,30 @@ export const selectors = {
     backButton: 'button:has-text("Back"), button:has-text("Previous")',
     nameInput: 'input[name="name"], input[placeholder*="workspace" i]',
     createButton: 'button:has-text("Create")',
+  },
+
+  // Roadmap & Features
+  roadmap: {
+    featureInput: '[data-testid="feature-title-input"]',
+    featureCard: '[data-testid="feature-card"]',
+    addFeatureButton: '[data-testid="add-feature-button"]',
+  },
+
+  feature: {
+    briefInput: '[data-testid="feature-brief-input"]',
+    requirementsInput: '[data-testid="feature-requirements-input"]',
+    architectureInput: '[data-testid="feature-architecture-input"]',
+    userStoryInput: '[data-testid="user-story-input"]',
+    addUserStoryButton: '[data-testid="add-user-story-button"]',
+    phaseInput: '[data-testid="phase-name-input"]',
+    addPhaseButton: '[data-testid="add-phase-button"]',
+    phaseCard: '[data-testid="phase-card"]',
+  },
+
+  phase: {
+    ticketInput: '[data-testid="ticket-title-input"]',
+    addTicketButton: '[data-testid="add-ticket-button"]',
+    ticketRow: '[data-testid="ticket-row"]',
   },
 
   // Common UI elements

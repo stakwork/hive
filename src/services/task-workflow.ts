@@ -124,8 +124,10 @@ export async function sendMessageToStakwork(params: {
   userId: string;
   contextTags?: any[];
   attachments?: string[];
+  generateChatTitle?: boolean;
+  featureContext?: object;
 }) {
-  const { taskId, message, userId, contextTags = [], attachments = [] } = params;
+  const { taskId, message, userId, contextTags = [], attachments = [], generateChatTitle, featureContext } = params;
 
   // Get task with workspace and swarm details
   const task = await db.task.findFirst({
@@ -161,6 +163,8 @@ export async function sendMessageToStakwork(params: {
     task,
     contextTags,
     attachments,
+    generateChatTitle,
+    featureContext,
   });
 }
 
@@ -175,8 +179,10 @@ async function createChatMessageAndTriggerStakwork(params: {
   contextTags?: any[];
   attachments?: string[];
   mode?: string;
+  generateChatTitle?: boolean;
+  featureContext?: object;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default" } = params;
+  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -238,6 +244,8 @@ async function createChatMessageAndTriggerStakwork(params: {
         attachments,
         mode,
         taskSource: task.sourceType,
+        generateChatTitle,
+        featureContext,
       });
 
       if (stakworkData.success) {
@@ -294,6 +302,8 @@ export async function callStakworkAPI(params: {
   attachments?: string[];
   mode?: string;
   taskSource?: string;
+  generateChatTitle?: boolean;
+  featureContext?: object;
 }) {
   const {
     taskId,
@@ -308,6 +318,8 @@ export async function callStakworkAPI(params: {
     attachments = [],
     mode = "default",
     taskSource = "USER",
+    generateChatTitle,
+    featureContext,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -320,7 +332,7 @@ export async function callStakworkAPI(params: {
   const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
   // Build vars object (replicating the vars structure from chat/message route)
-  const vars = {
+  const vars: Record<string, any> = {
     taskId,
     message,
     contextTags,
@@ -336,6 +348,14 @@ export async function callStakworkAPI(params: {
     taskMode: mode,
     taskSource: taskSource.toLowerCase(),
   };
+
+  // Add optional parameters if provided
+  if (generateChatTitle !== undefined) {
+    vars.generateChatTitle = generateChatTitle;
+  }
+  if (featureContext !== undefined) {
+    vars.featureContext = featureContext;
+  }
 
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
