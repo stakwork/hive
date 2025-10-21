@@ -6,14 +6,27 @@ import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 
 /**
- * Lists features for a workspace with pagination
+ * Lists features for a workspace with pagination, filtering, and sorting
  */
-export async function listFeatures(
-  workspaceId: string,
-  userId: string,
-  page: number = 1,
-  limit: number = 10
-) {
+export async function listFeatures({
+  workspaceId,
+  userId,
+  page = 1,
+  limit = 10,
+  statuses,
+  assigneeId,
+  sortBy,
+  sortOrder,
+}: {
+  workspaceId: string;
+  userId: string;
+  page?: number;
+  limit?: number;
+  statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
+  assigneeId?: string; // String including "UNASSIGNED" special value
+  sortBy?: "title" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}) {
   const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
   if (!workspaceAccess.hasAccess) {
     throw new Error("Access denied");
@@ -21,9 +34,34 @@ export async function listFeatures(
 
   const skip = (page - 1) * limit;
 
+  // Build where clause with filters
+  const whereClause: any = {
+    workspaceId,
+    deleted: false,
+  };
+
+  // Handle multiple statuses with Prisma 'in' clause
+  if (statuses && statuses.length > 0) {
+    whereClause.status = { in: statuses };
+  }
+
+  // Handle assigneeId - convert "UNASSIGNED" to null for Prisma query
+  if (assigneeId !== undefined) {
+    if (assigneeId === "UNASSIGNED") {
+      whereClause.assigneeId = null;
+    } else {
+      whereClause.assigneeId = assigneeId;
+    }
+  }
+
+  // Build orderBy clause
+  const orderByClause: any = sortBy
+    ? { [sortBy]: sortOrder || "asc" }
+    : { createdAt: "desc" };
+
   const [features, totalCount] = await Promise.all([
     db.feature.findMany({
-      where: { workspaceId, deleted: false },
+      where: whereClause,
       select: {
         id: true,
         title: true,
@@ -43,14 +81,12 @@ export async function listFeatures(
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: orderByClause,
       skip,
       take: limit,
     }),
     db.feature.count({
-      where: { workspaceId, deleted: false },
+      where: whereClause,
     }),
   ]);
 

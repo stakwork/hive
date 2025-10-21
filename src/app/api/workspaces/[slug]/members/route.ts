@@ -31,7 +31,11 @@ export async function GET(
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
-    const result = await getWorkspaceMembers(workspace.id);
+    // Check if system assignees should be included (defaults to false)
+    const url = new URL(request.url);
+    const includeSystemAssignees = url.searchParams.get("includeSystemAssignees") === "true";
+
+    const result = await getWorkspaceMembers(workspace.id, includeSystemAssignees);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching workspace members:", error);

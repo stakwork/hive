@@ -833,7 +833,7 @@ export function validateWorkspaceSlug(slug: string): {
 /**
  * Gets all members and owner information for a workspace
  */
-export async function getWorkspaceMembers(workspaceId: string) {
+export async function getWorkspaceMembers(workspaceId: string, includeSystemAssignees = false) {
   // Get regular members from workspace_members table
   const members = await getActiveWorkspaceMembers(workspaceId);
 
@@ -884,7 +884,7 @@ export async function getWorkspaceMembers(workspaceId: string) {
     },
   };
 
-  // System assignees (always included for tickets)
+  // System assignees (only included when explicitly requested)
   const systemAssignees = [
     {
       id: "system:task-coordinator",
@@ -918,7 +918,7 @@ export async function getWorkspaceMembers(workspaceId: string) {
   return {
     members: mapWorkspaceMembers(members),
     owner,
-    systemAssignees,
+    ...(includeSystemAssignees && { systemAssignees }),
   };
 }
 

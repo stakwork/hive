@@ -15,9 +15,11 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
-    // const nodeType = searchParams.get("node_type");
+    const endpoint = searchParams.get("endpoint") || "graph/search/latest?limit=1000&top_node_count=500";
 
-    // console.log("workspaceId", workspaceId, nodeType);
+    console.log('endpoint');
+    console.log(endpoint);
+    console.log('endpoint-end');
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
@@ -30,15 +32,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
-    let stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:8444`;
+    const vanityAddress = getSwarmVanityAddress(swarm.name);
+
+    let jarvisUrl = `https://${vanityAddress}:8444`;
     let apiKey = swarm.swarmApiKey;
-    if (process.env.CUSTOM_SWARM_URL) stakgraphUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
+    if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
     if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
-    // console.log("stakgraphUrl", stakgraphUrl);
+    console.log(jarvisUrl);
+    console.log(endpoint);
+
+    // console.log("jarvisUrl", jarvisUrl);
     const apiResult = await swarmApiRequest({
-      swarmUrl: stakgraphUrl,
-      endpoint: `graph/search/latest?limit=1000&top_node_count=500`,
+      swarmUrl: jarvisUrl,
+      endpoint,
       method: "GET",
       apiKey,
     });

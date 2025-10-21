@@ -1,8 +1,8 @@
 import { RepositoryCard, TestCoverageCard } from "@/components/dashboard";
+import { GraphComponent } from "@/components/knowledge-graph";
 import { VMConfigSection } from "@/components/pool-status";
 import { PageHeader } from "@/components/ui/page-header";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { GraphComponent } from "../graph";
 import { Gitsee } from "../graph/gitsee";
 
 interface DashboardProps {

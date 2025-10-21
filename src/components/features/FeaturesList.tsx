@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Plus, List, LayoutGrid, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Plus, List, LayoutGrid, Trash2, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -17,6 +17,7 @@ import { StatusPopover } from "@/components/ui/status-popover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { KanbanView } from "@/components/ui/kanban-view";
 import {
   Pagination,
@@ -24,6 +25,8 @@ import {
   PaginationEllipsis,
   PaginationItem,
 } from "@/components/ui/pagination";
+import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
+import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 
 interface FeaturesListProps {
   workspaceId: string;
@@ -90,11 +93,76 @@ function FeatureRow({
 export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const router = useRouter();
   const { slug: workspaceSlug } = useWorkspace();
+
+  // Fetch workspace members (no system assignees for features)
+  const { members } = useWorkspaceMembers(workspaceSlug, { includeSystemAssignees: false });
+
   const [features, setFeatures] = useState<FeatureWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+
+  // Filter and sort state with localStorage persistence
+  const [statusFilters, setStatusFilters] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.statusFilters || [];
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.assigneeFilter || "ALL";
+        } catch {
+          return "ALL";
+        }
+      }
+    }
+    return "ALL";
+  });
+
+  const [sortBy, setSortBy] = useState<"title" | "createdAt" | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.sortBy || null;
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  });
+
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.sortOrder || "asc";
+        } catch {
+          return "asc";
+        }
+      }
+    }
+    return "asc";
+  });
 
   // New feature creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -124,7 +192,29 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       setLoading(true);
       // Fetch more items for kanban view, fewer for list view
       const limit = viewType === "kanban" ? 100 : 10;
-      const response = await fetch(`/api/features?workspaceId=${workspaceId}&page=${pageNum}&limit=${limit}`);
+
+      // Build query params
+      const params = new URLSearchParams({
+        workspaceId,
+        page: pageNum.toString(),
+        limit: limit.toString(),
+      });
+
+      // Add filter params
+      if (statusFilters.length > 0) {
+        params.append("status", statusFilters.join(','));
+      }
+      if (assigneeFilter !== "ALL") {
+        params.append("assigneeId", assigneeFilter);
+      }
+
+      // Add sort params if set
+      if (sortBy) {
+        params.append("sortBy", sortBy);
+        params.append("sortOrder", sortOrder);
+      }
+
+      const response = await fetch(`/api/features?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch features");
@@ -145,19 +235,22 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
   };
 
+  // Check if any filters are active
+  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null;
+
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page]);
+  }, [workspaceId, viewType, page, statusFilters, assigneeFilter, sortBy, sortOrder]);
 
-  // Auto-open creation form when no features exist
+  // Auto-open creation form when no features exist AND no filters are active
   useEffect(() => {
-    if (!loading && features.length === 0 && !isCreating) {
+    if (!loading && features.length === 0 && !isCreating && !hasActiveFilters) {
       setIsCreating(true);
       setViewType("list");
       localStorage.setItem("features-view-preference", "list");
     }
-  }, [loading, features.length, isCreating]);
+  }, [loading, features.length, isCreating, hasActiveFilters]);
 
   // Auto-focus after feature creation completes
   useEffect(() => {
@@ -165,6 +258,19 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       featureInputRef.current?.focus();
     }
   }, [creating, newFeatureTitle, isCreating]);
+
+  // Save filter and sort preferences to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const preferences = {
+        statusFilters,
+        assigneeFilter,
+        sortBy,
+        sortOrder,
+      };
+      localStorage.setItem("features-filters-sort-preference", JSON.stringify(preferences));
+    }
+  }, [statusFilters, assigneeFilter, sortBy, sortOrder]);
 
   // Save view preference to localStorage
   const handleViewChange = (value: string) => {
@@ -175,6 +281,41 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
   };
 
+  // Handle filter changes - reset to page 1
+  const handleStatusFiltersChange = (statuses: string | string[]) => {
+    const statusArray = Array.isArray(statuses) ? statuses : [statuses];
+    setStatusFilters(statusArray);
+    setPage(1);
+  };
+
+  const handleAssigneeFilterChange = (value: string | string[]) => {
+    // Assignee filter is single-select, so always get first value if array
+    const assigneeId = Array.isArray(value) ? value[0] : value;
+    setAssigneeFilter(assigneeId);
+    setPage(1);
+  };
+
+  // Handle sort changes - reset to page 1 when changing sort field
+  const handleSort = (field: "title" | "createdAt", order: "asc" | "desc" | null) => {
+    if (order === null) {
+      setSortBy(null);
+    } else {
+      setSortBy(field);
+      setSortOrder(order);
+      if (sortBy !== field) {
+        setPage(1);
+      }
+    }
+  };
+
+  // Clear all filters and sort
+  const handleClearFilters = () => {
+    setStatusFilters([]);
+    setAssigneeFilter("ALL");
+    setSortBy(null);
+    setSortOrder("asc");
+    setPage(1);
+  };
 
   const handleUpdateStatus = async (featureId: string, status: FeatureStatus) => {
     try {
@@ -362,8 +503,28 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     );
   }
 
-  // Always show table if creating or have features
-  const showTable = features.length > 0 || isCreating;
+  // Prepare filter options
+  const statusOptions = [
+    { value: "ALL", label: "All Statuses" },
+    ...Object.entries(FEATURE_STATUS_LABELS).map(([value, label]) => ({
+      value,
+      label,
+    })),
+  ];
+
+  const assigneeOptions = [
+    { value: "ALL", label: "All Assignees", image: null, name: null },
+    { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
+    ...members.map((member) => ({
+      value: member.user.id,
+      label: member.user.name || member.user.email || "Unknown",
+      image: member.user.image,
+      name: member.user.name,
+    })),
+  ];
+
+  // Always show table if creating, have features, or filters are active
+  const showTable = features.length > 0 || isCreating || hasActiveFilters;
 
   return showTable ? (
     <Card>
@@ -397,11 +558,17 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       </CardHeader>
       <CardContent>
         {!isCreating && (
-          <div className="mb-4">
+          <div className="mb-4 flex items-center justify-between">
             <Button variant="default" size="sm" onClick={() => setIsCreating(true)}>
               <Plus className="h-4 w-4 mr-2" />
               New feature
             </Button>
+            {hasActiveFilters && viewType === "list" && (
+              <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                <X className="h-4 w-4 mr-2" />
+                Clear filters
+              </Button>
+            )}
           </div>
         )}
 
@@ -471,25 +638,67 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           <Table className="table-fixed">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="w-[300px]">Title</TableHead>
-                <TableHead className="w-[120px]">Status</TableHead>
-                <TableHead className="w-[180px]">Assigned</TableHead>
-                <TableHead className="w-[150px] text-right">Created</TableHead>
+                <TableHead className="w-[300px]">
+                  <SortableColumnHeader
+                    label="Title"
+                    field="title"
+                    currentSort={sortBy === "title" ? sortOrder : null}
+                    onSort={(order) => handleSort("title", order)}
+                  />
+                </TableHead>
+                <TableHead className="w-[120px]">
+                  <FilterDropdownHeader
+                    label="Status"
+                    options={statusOptions}
+                    value={statusFilters}
+                    onChange={handleStatusFiltersChange}
+                    showSearch={false}
+                    multiSelect={true}
+                    showStatusBadges={true}
+                  />
+                </TableHead>
+                <TableHead className="w-[180px]">
+                  <FilterDropdownHeader
+                    label="Assigned"
+                    options={assigneeOptions}
+                    value={assigneeFilter}
+                    onChange={handleAssigneeFilterChange}
+                    showSearch={true}
+                    showAvatars={true}
+                  />
+                </TableHead>
+                <TableHead className="w-[150px] text-right">
+                  <SortableColumnHeader
+                    label="Created"
+                    field="createdAt"
+                    currentSort={sortBy === "createdAt" ? sortOrder : null}
+                    onSort={(order) => handleSort("createdAt", order)}
+                    align="right"
+                  />
+                </TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {features.map((feature) => (
-                <FeatureRow
-                  key={feature.id}
-                  feature={feature}
-                  workspaceSlug={workspaceSlug}
-                  onStatusUpdate={handleUpdateStatus}
-                  onAssigneeUpdate={handleUpdateAssignee}
-                  onDelete={handleDeleteFeature}
-                  onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                />
-              ))}
+              {features.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-32 text-center">
+                    <p className="text-muted-foreground">No features match your filters</p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                features.map((feature) => (
+                  <FeatureRow
+                    key={feature.id}
+                    feature={feature}
+                    workspaceSlug={workspaceSlug}
+                    onStatusUpdate={handleUpdateStatus}
+                    onAssigneeUpdate={handleUpdateAssignee}
+                    onDelete={handleDeleteFeature}
+                    onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                  />
+                ))
+              )}
             </TableBody>
           </Table>
           </div>
