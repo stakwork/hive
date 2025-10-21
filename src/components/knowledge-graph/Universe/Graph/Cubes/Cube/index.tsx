@@ -1,6 +1,6 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
 import { useFrame } from '@react-three/fiber'
+import { NodeExtended } from '@Universe/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Mesh } from 'three'
 import { boxGeometry } from '../constants'

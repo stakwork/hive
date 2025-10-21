@@ -1,7 +1,7 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { useDataStore } from '@/stores/useDataStore'
 import { useGraphStore, useHoveredNode, useSelectedNode } from '@/stores/useGraphStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
+import { NodeExtended } from '@Universe/types'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { memo, useCallback, useRef } from 'react'
 import { Group, Mesh, MeshStandardMaterial } from 'three'

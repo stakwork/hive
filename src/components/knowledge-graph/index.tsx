@@ -1,9 +1,9 @@
 "use client";
 
-import { Link, Node } from "@/components/knowledge-graph/Universe/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
+import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
 

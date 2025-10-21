@@ -1,8 +1,8 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
-import { useNodeNavigation } from '@/components/knowledge-graph/Universe/useNodeNavigation'
 import { useDataStore } from '@/stores/useDataStore'
 import { useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useGraphStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
+import { NodeExtended } from '@Universe/types'
+import { useNodeNavigation } from '@Universe/useNodeNavigation'
 import { useCallback } from 'react'
 import { NodeCard } from './NodeCard'
 

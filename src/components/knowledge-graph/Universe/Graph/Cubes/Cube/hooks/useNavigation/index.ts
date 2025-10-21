@@ -1,8 +1,8 @@
 
-import { variableVector3 } from '@/components/knowledge-graph/Universe/constants'
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { useSelectedNode } from '@/stores/useGraphStore'
 import { useFrame } from '@react-three/fiber'
+import { variableVector3 } from '@Universe/constants'
+import { NodeExtended } from '@Universe/types'
 import { RefObject, useCallback, useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
 

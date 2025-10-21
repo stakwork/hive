@@ -1,5 +1,5 @@
-import { NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { Camera } from '@react-three/fiber'
+import { NodeExtended } from '@Universe/types'
 import { variableVector3 } from '../constants'
 import { meshRenderLimit, meshRenderRadius } from '../Graph/Cubes/constants'
 
