@@ -132,14 +132,8 @@ const TestDataFactories = {
     const mockLinks: Link<NodeExtended>[] = [];
     const mockForces = new Map<string, any>();
 
-    return {
-      nodes: vi.fn((newNodes?: NodeExtended[]) => {
-        if (newNodes !== undefined) {
-          mockNodes.splice(0, mockNodes.length, ...newNodes);
-          return mockSimulation;
-        }
-        return mockNodes;
-      }),
+    const mockSimulation: any = {
+      nodes: vi.fn(),
       force: vi.fn((name: string, forceConfig?: any) => {
         if (forceConfig !== undefined) {
           mockForces.set(name, forceConfig);
@@ -153,6 +147,17 @@ const TestDataFactories = {
       stop: vi.fn(() => mockSimulation),
       on: vi.fn(() => mockSimulation),
     };
+
+    // Set up nodes function implementation
+    mockSimulation.nodes.mockImplementation((newNodes?: NodeExtended[]) => {
+      if (newNodes !== undefined) {
+        mockNodes.splice(0, mockNodes.length, ...newNodes);
+        return mockSimulation;
+      }
+      return mockNodes;
+    });
+
+    return mockSimulation;
   },
 };
 
@@ -163,7 +168,7 @@ describe("useSimulationStore - addClusterForce", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    // Reset mock implementations
+    // Reset mock implementations  - create a fresh simulation mock for each test
     mockSimulation = TestDataFactories.mockSimulation();
 
     // Setup force method mocks with chainable API
