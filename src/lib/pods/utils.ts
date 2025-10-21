@@ -75,7 +75,7 @@ export async function getPodFromPool(podId: string, poolApiKey: string): Promise
   }
 
   const data = await response.json();
-  return data.workspace as PodWorkspace;
+  return data as PodWorkspace;
 }
 
 async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
