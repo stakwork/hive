@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Plus, List, LayoutGrid, Trash2 } from "lucide-react";
+import { FileText, Plus, List, LayoutGrid, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -18,6 +18,12 @@ import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { KanbanView } from "@/components/ui/kanban-view";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+} from "@/components/ui/pagination";
 
 interface FeaturesListProps {
   workspaceId: string;
@@ -89,7 +95,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
 
   // New feature creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -114,7 +119,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     return "list";
   });
 
-  const fetchFeatures = async (pageNum: number, append = false) => {
+  const fetchFeatures = async (pageNum: number) => {
     try {
       setLoading(true);
       // Fetch more items for kanban view, fewer for list view
@@ -128,13 +133,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       const data: FeatureListResponse = await response.json();
 
       if (data.success) {
-        if (append) {
-          setFeatures((prev) => [...prev, ...data.data]);
-        } else {
-          setFeatures(data.data);
-        }
+        setFeatures(data.data);
         setHasMore(data.pagination.hasMore);
-        setTotalCount(data.pagination.totalCount);
       } else {
         throw new Error("Failed to fetch features");
       }
@@ -146,9 +146,9 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   };
 
   useEffect(() => {
-    fetchFeatures(1);
+    fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType]);
+  }, [workspaceId, viewType, page]);
 
   // Auto-open creation form when no features exist
   useEffect(() => {
@@ -170,15 +170,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const handleViewChange = (value: string) => {
     if (value === "list" || value === "kanban") {
       setViewType(value);
+      setPage(1); // Reset to first page when switching views
       localStorage.setItem("features-view-preference", value);
     }
   };
 
-  const handleLoadMore = () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchFeatures(nextPage, true);
-  };
 
   const handleUpdateStatus = async (featureId: string, status: FeatureStatus) => {
     try {
@@ -296,7 +292,6 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
       // Remove from local state
       setFeatures((prev) => prev.filter((f) => f.id !== featureId));
-      setTotalCount((prev) => prev - 1);
     } catch (error) {
       console.error("Failed to delete feature:", error);
     }
@@ -378,32 +373,26 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             <FileText className="h-5 w-5" />
             Features
           </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="font-normal text-muted-foreground">
-              {totalCount} feature{totalCount !== 1 ? "s" : ""}
-            </span>
-            <ToggleGroup
-              type="single"
-              value={viewType}
-              onValueChange={handleViewChange}
-              className="ml-4"
+          <ToggleGroup
+            type="single"
+            value={viewType}
+            onValueChange={handleViewChange}
+          >
+            <ToggleGroupItem
+              value="list"
+              aria-label="List view"
+              className="h-8 px-2"
             >
-              <ToggleGroupItem
-                value="list"
-                aria-label="List view"
-                className="h-8 px-2"
-              >
-                <List className="h-4 w-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="kanban"
-                aria-label="Kanban view"
-                className="h-8 px-2"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
+              <List className="h-4 w-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="kanban"
+              aria-label="Kanban view"
+              className="h-8 px-2"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -524,18 +513,71 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
           />
         )}
 
-        {hasMore && viewType === "list" && (
-          <div className="pt-4 flex justify-center">
-            <Button variant="outline" onClick={handleLoadMore} disabled={loading} size="sm">
-              {loading ? (
-                <>
-                  <Spinner className="h-4 w-4 mr-2" />
-                  Loading...
-                </>
-              ) : (
-                "Load More"
-              )}
-            </Button>
+        {viewType === "list" && features.length > 0 && (
+          <div className="pt-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <Button
+                    variant="ghost"
+                    size="default"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="gap-1 pl-2.5"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span>Previous</span>
+                  </Button>
+                </PaginationItem>
+
+                {page > 1 && (
+                  <PaginationItem>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setPage(1)}
+                    >
+                      1
+                    </Button>
+                  </PaginationItem>
+                )}
+
+                {page > 2 && (
+                  <PaginationItem>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                )}
+
+                <PaginationItem>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled
+                  >
+                    {page}
+                  </Button>
+                </PaginationItem>
+
+                {hasMore && (
+                  <>
+                    <PaginationItem>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                    <PaginationItem>
+                      <Button
+                        variant="ghost"
+                        size="default"
+                        onClick={() => setPage((p) => p + 1)}
+                        className="gap-1 pr-2.5"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </PaginationItem>
+                  </>
+                )}
+              </PaginationContent>
+            </Pagination>
           </div>
         )}
       </CardContent>
