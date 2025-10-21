@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Priority, TaskStatus, TaskSourceType } from "@prisma/client";
+import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/client";
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -249,8 +249,13 @@ async function createChatMessageAndTriggerStakwork(params: {
       });
 
       if (stakworkData.success) {
-        const updateData: any = {
-          workflowStatus: "IN_PROGRESS",
+        const updateData: {
+          workflowStatus: WorkflowStatus;
+          workflowStartedAt: Date;
+          stakworkProjectId?: number;
+          status?: TaskStatus;
+        } = {
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
         };
 
@@ -261,6 +266,16 @@ async function createChatMessageAndTriggerStakwork(params: {
           console.warn("No project_id found in Stakwork response:", stakworkData);
         }
 
+        // Update task status to IN_PROGRESS if it's currently TODO
+        const currentTask = await db.task.findUnique({
+          where: { id: taskId },
+          select: { status: true },
+        });
+
+        if (currentTask?.status === TaskStatus.TODO) {
+          updateData.status = TaskStatus.IN_PROGRESS;
+        }
+
         await db.task.update({
           where: { id: taskId },
           data: updateData,
@@ -268,7 +283,7 @@ async function createChatMessageAndTriggerStakwork(params: {
       } else {
         await db.task.update({
           where: { id: taskId },
-          data: { workflowStatus: "FAILED" },
+          data: { workflowStatus: WorkflowStatus.FAILED },
         });
       }
     } catch (error) {
