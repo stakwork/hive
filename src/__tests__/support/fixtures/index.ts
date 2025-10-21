@@ -6,3 +6,4 @@ export * from "./database";
 export * from "./static-fixtures";
 export * from "./task";
 export * from "./janitor";
+export * from "./roadmap";
