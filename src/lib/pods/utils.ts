@@ -57,6 +57,27 @@ export async function getWorkspaceFromPool(poolName: string, poolApiKey: string)
   return data.workspace as PodWorkspace;
 }
 
+export async function getPodFromPool(podId: string, poolApiKey: string): Promise<PodWorkspace> {
+  const url = `${config.POOL_MANAGER_BASE_URL}/workspaces/${podId}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${poolApiKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Pool Manager API error: ${response.status} - ${errorText}`);
+    throw new Error(`Failed to get workspace from pool: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data as PodWorkspace;
+}
+
 async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
   const markUsedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
 
