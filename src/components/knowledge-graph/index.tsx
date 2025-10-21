@@ -31,9 +31,10 @@ interface SchemaResponse {
 // --- MAIN COMPONENT ---
 interface GraphComponentProps {
   endpoint?: string;
+  title?: string;
 }
 
-export const GraphComponent = ({ endpoint: propEndpoint }: GraphComponentProps = {}) => {
+export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe" }: GraphComponentProps = {}) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
 
@@ -100,7 +101,7 @@ export const GraphComponent = ({ endpoint: propEndpoint }: GraphComponentProps =
   return (
     <div className="dark h-auto w-full border rounded-lg p-4 relative bg-card">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-white">Code Universe</h3>
+        <h3 className="text-lg font-semibold text-white">{title}</h3>
         <div className="flex items-center gap-2">
           {dataInitial?.nodes && dataInitial.nodes.length > 0 && (
             <div className="text-sm text-gray-400">
