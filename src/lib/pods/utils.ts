@@ -296,8 +296,8 @@ export async function startGoose(
       try {
         const processList = await getProcessList(controlPortUrl, password);
         if (checkGooseRunning(processList)) {
-          // Goose is always on the designated port - replace 15552 with 15551 in controlPortUrl
-          const gooseUrl = controlPortUrl.replace("15552", "15551");
+          // Goose is always on the designated port - replace control port with goose port in controlPortUrl
+          const gooseUrl = controlPortUrl.replace(POD_PORTS.CONTROL, POD_PORTS.GOOSE);
           console.log(
             `✅ Goose service is now available on port ${POD_PORTS.GOOSE} after ${attempt} attempt(s):`,
             gooseUrl,
