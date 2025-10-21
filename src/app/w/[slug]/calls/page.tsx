@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CallRecording, CallsResponse } from "@/types/calls";
 import { CallsTable } from "@/components/calls/CallsTable";
@@ -24,9 +24,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSearchParams } from "next/navigation";
 
-export default function CallsPage() {
+// Utility to detect Safari browser
+function isSafari(): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const isSafariBrowser = /^((?!chrome|android).)*safari/i.test(userAgent);
+  
+  return isSafariBrowser;
+}
+
+function CallsContent() {
   const { workspace, slug } = useWorkspace();
+  const searchParams = useSearchParams();
   const [calls, setCalls] = useState<CallRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +62,17 @@ export default function CallsPage() {
       }
 
       const data = await response.json();
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      const callUrl = data.url;
+
+      // On Safari, use the browser link directly (universal links)
+      // On other browsers, use the deeplink scheme
+      if (isSafari()) {
+        window.open(callUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        // Create deeplink URL: sphinx.chat://?action=call&link=<FULL_CALL_URL>
+        const deeplinkUrl = `sphinx.chat://?action=call&link=${encodeURIComponent(callUrl)}`;
+        window.location.href = deeplinkUrl;
+      }
     } catch (err) {
       console.error('Error generating call link:', err);
       alert(err instanceof Error ? err.message : 'Failed to start call');
@@ -58,6 +80,18 @@ export default function CallsPage() {
       setGeneratingLink(false);
     }
   };
+
+  // Handle deeplink parameters
+  useEffect(() => {
+    const action = searchParams.get('action');
+    const link = searchParams.get('link');
+
+    // If this is a deeplink to start a call, trigger it automatically
+    if (action === 'call' && link) {
+      // Open the call link directly
+      window.open(link, '_blank', 'noopener,noreferrer');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!slug || !workspace?.isCodeGraphSetup) {
@@ -248,5 +282,51 @@ export default function CallsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function CallsPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-40" />
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Date Added</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Skeleton className="h-5 w-full max-w-xs" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <CallsContent />
+    </Suspense>
   );
 }
