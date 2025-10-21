@@ -195,7 +195,10 @@ export async function claimPodAndGetFrontend(
     // Get the frontend URL from port mappings
     frontend = getFrontendUrl(processList, workspace.portMappings);
   } catch (error) {
-    console.error(`>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`, error);
+    console.error(
+      `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
+      error,
+    );
 
     // Fallback to port 3000 if process discovery fails
     frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
@@ -257,7 +260,7 @@ export async function startGoose(
   password: string,
   repoName: string,
   anthropicApiKey: string,
-  portMappings: Record<string, string>,
+  // portMappings: Record<string, string>,
 ): Promise<string | null> {
   console.log(`🚀 Starting Goose service via control port (${POD_PORTS.CONTROL})...`);
 
@@ -293,12 +296,13 @@ export async function startGoose(
       try {
         const processList = await getProcessList(controlPortUrl, password);
         if (checkGooseRunning(processList)) {
-          // Goose is always on the designated port
-          const gooseUrl = portMappings[POD_PORTS.GOOSE];
-          if (gooseUrl) {
-            console.log(`✅ Goose service is now available on port ${POD_PORTS.GOOSE} after ${attempt} attempt(s):`, gooseUrl);
-            return gooseUrl;
-          }
+          // Goose is always on the designated port - replace 15552 with 15551 in controlPortUrl
+          const gooseUrl = controlPortUrl.replace("15552", "15551");
+          console.log(
+            `✅ Goose service is now available on port ${POD_PORTS.GOOSE} after ${attempt} attempt(s):`,
+            gooseUrl,
+          );
+          return gooseUrl;
         }
       } catch (error) {
         console.error(`Error checking process list on attempt ${attempt}:`, error);
