@@ -10,7 +10,6 @@ import { Controls } from './Controls'
 import { initialCameraPosition } from './Controls/CameraAnimations/constants'
 import { CursorTooltip } from './CursorTooltip'
 import { Graph } from './Graph'
-import { GraphSearch } from './GraphSearch'
 import { Overlay } from './Overlay'
 import { colors } from './utils/colors'
 
@@ -102,7 +101,6 @@ const _Universe = () => {
             <Content />
           </Suspense>
         </Canvas>
-        <GraphSearch />
         <CursorTooltip />
       </Suspense>
       <Overlay />
