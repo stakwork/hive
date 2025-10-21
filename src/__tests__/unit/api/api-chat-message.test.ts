@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     task: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     user: {
@@ -106,6 +107,7 @@ describe("POST /api/chat/message", () => {
     // Setup default mocks
     mockGetServerSession.mockResolvedValue(mockSession);
     mockDb.task.findFirst.mockResolvedValue(mockTask as any);
+    mockDb.task.findUnique.mockResolvedValue({ status: "TODO" } as any);
     mockDb.user.findUnique.mockResolvedValue(mockUser as any);
     mockDb.chatMessage.create.mockResolvedValue(mockChatMessage as any);
     mockDb.chatMessage.findMany.mockResolvedValue([]);
@@ -477,6 +479,7 @@ describe("POST /api/chat/message", () => {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 123,
+          status: "IN_PROGRESS",
         },
       });
     });

@@ -14,6 +14,7 @@ vi.mock("@/lib/db", () => ({
       create: vi.fn(),
       update: vi.fn(),
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
     workspace: {
       findUnique: vi.fn(),
@@ -117,6 +118,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
     mockDb.task.create.mockResolvedValue(createMockTask() as any);
     mockDb.task.update.mockResolvedValue({} as any);
     mockDb.task.findFirst = vi.fn().mockResolvedValue(createMockTask() as any);
+    mockDb.task.findUnique.mockResolvedValue({ status: "TODO" } as any);
     mockDb.workspace.findUnique = vi.fn().mockResolvedValue({
       id: "test-workspace-id",
       name: "Test Workspace",
@@ -351,6 +353,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           workflowStatus: "IN_PROGRESS",
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 12345,
+          status: "IN_PROGRESS",
         },
       });
     });
@@ -398,6 +401,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
         data: {
           workflowStatus: "IN_PROGRESS",
           workflowStartedAt: expect.any(Date),
+          status: "IN_PROGRESS",
         },
       });
     });
