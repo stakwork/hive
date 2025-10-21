@@ -66,7 +66,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
   const fetchMembers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/workspaces/${workspaceSlug}/members`);
+      const response = await fetch(`/api/workspaces/${workspaceSlug}/members${showSpecialAssignees ? '?includeSystemAssignees=true' : ''}`);
       if (response.ok) {
         const data = await response.json();
         // Combine owner and members into a single array
