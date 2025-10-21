@@ -71,7 +71,10 @@ const TestHelpers = {
     expect(mockDb.workspace.findMany).toHaveBeenCalledWith({
       where: {
         janitorConfig: {
-          taskCoordinatorEnabled: true,
+          OR: [
+            { recommendationSweepEnabled: true },
+            { ticketSweepEnabled: true },
+          ],
         },
       },
       include: {
@@ -917,7 +920,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[TaskCoordinator] Found 2 workspaces with Task Coordinator enabled")
+        expect.stringContaining("[TaskCoordinator] Found 2 workspaces with Task Coordinator Sweeps enabled")
       );
 
       consoleLogSpy.mockRestore();
@@ -966,20 +969,25 @@ describe("executeTaskCoordinatorRuns", () => {
   });
 
   describe("Edge Cases", () => {
-    test("should handle workspace with taskCoordinatorEnabled false", async () => {
+    test("should handle workspace with both sweeps disabled", async () => {
       // This shouldn't happen due to query filter, but test defensive behavior
       const workspace = JanitorTestDataFactory.createValidWorkspace({
         janitorConfig: {
           taskCoordinatorEnabled: false,
+          recommendationSweepEnabled: false,
+          ticketSweepEnabled: false,
         },
       });
       // Override mock to return workspace despite filter
       vi.mocked(mockDb.workspace.findMany).mockResolvedValue([workspace] as any);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
 
       const result = await executeTaskCoordinatorRuns();
 
       // Should still process (query filter failed), but this tests defensive code
       expect(result.workspacesProcessed).toBe(1);
+      expect(result.tasksCreated).toBe(0); // No sweeps enabled, so no tasks created
     });
 
     test("should handle empty errors array when all succeed", async () => {
