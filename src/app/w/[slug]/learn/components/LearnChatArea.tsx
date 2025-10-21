@@ -1,15 +1,15 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { BookOpen, Download, Loader2 } from "lucide-react";
-import { LearnChatMessage } from "./LearnChatMessage";
-import { LearnChatInput } from "./LearnChatInput";
 import { ModeToggle } from "@/components/ModeToggle";
-import type { LearnMessage } from "@/types/learn";
-import { generateConversationPDF } from "@/lib/pdf-utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { generateConversationPDF } from "@/lib/pdf-utils";
+import type { LearnMessage } from "@/types/learn";
+import { motion } from "framer-motion";
+import { BookOpen, Download, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { LearnChatInput } from "./LearnChatInput";
+import { LearnChatMessage } from "./LearnChatMessage";
 
 interface LearnChatAreaProps {
   messages: LearnMessage[];
@@ -112,7 +112,7 @@ export function LearnChatArea({
           transition={{ duration: 0.3 }}
         >
           {messages.map((message) => (
-            <LearnChatMessage key={message.id} message={message} workspaceSlug={workspaceSlug} />
+            <LearnChatMessage key={message.id} message={message} />
           ))}
 
           {isLoading && (
