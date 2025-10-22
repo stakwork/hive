@@ -379,10 +379,10 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       const response = await POST(request);
 
-      // Service should fail - tasks must belong to same feature
-      expect(response.status).toBeGreaterThanOrEqual(400);
+      // Service should reject with 400 error for cross-feature reordering
+      await expectError(response, "All tasks must belong to the same feature", 400);
 
-      // Verify original order is preserved (transaction rolled back)
+      // Verify original order is preserved (no changes made)
       const task1Check = await db.task.findUnique({
         where: { id: task1.id },
       });
