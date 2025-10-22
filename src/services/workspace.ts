@@ -411,6 +411,7 @@ export async function getUserWorkspaces(
       updatedAt: workspace.updatedAt.toISOString(),
       userRole: "OWNER",
       memberCount: memberCount + 1, // +1 for owner
+      logoKey: workspace.logoKey,
     });
   }
 
@@ -428,6 +429,7 @@ export async function getUserWorkspaces(
         updatedAt: membership.workspace.updatedAt.toISOString(),
         userRole: membership.role as WorkspaceRole,
         memberCount: memberCount + 1, // +1 for owner
+        logoKey: membership.workspace.logoKey,
       });
     }
   }
