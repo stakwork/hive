@@ -244,17 +244,7 @@ export function WorkspaceProvider({
     }
   }, [pathname, workspace?.slug, status, fetchTaskNotifications]);
 
-  // Refresh notification count when window regains focus
-  useEffect(() => {
-    if (!workspace?.slug || status !== "authenticated") return;
-
-    const handleFocus = () => {
-      fetchTaskNotifications(workspace.slug);
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [workspace?.slug, status, fetchTaskNotifications]);
+  // Removed window focus listener to prevent excessive re-renders and component unmounting
 
   // Computed values
   const slug = workspace?.slug || "";
