@@ -294,6 +294,128 @@ describe("chat", () => {
       expect(artifact.content).toEqual(longformContent);
     });
 
+    it("should create artifact with IDE content", () => {
+      const ideContent = {
+        url: "https://ide.example.com/project/123",
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.IDE,
+        content: ideContent,
+      });
+
+      expect(artifact.content).toEqual(ideContent);
+    });
+
+    it("should create artifact with BUG_REPORT content", () => {
+      const bugReportContent = {
+        bugDescription: "Button does not respond to click events",
+        iframeUrl: "https://app.example.com/page",
+        method: "click" as const,
+        sourceFiles: [
+          {
+            file: "src/components/Button.tsx",
+            lines: [42, 43, 44],
+            context: "Button click handler",
+            message: "Event handler not firing",
+            componentNames: [
+              {
+                name: "Button",
+                level: 1,
+                type: "component",
+                element: "button",
+              },
+            ],
+          },
+        ],
+        coordinates: {
+          x: 100,
+          y: 200,
+          width: 150,
+          height: 50,
+        },
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.BUG_REPORT,
+        content: bugReportContent,
+      });
+
+      expect(artifact.content).toEqual(bugReportContent);
+    });
+
+    it("should create artifact with GRAPH content", () => {
+      const graphContent = {
+        ref_id: "graph-ref-123",
+        depth: 2,
+        cluster_title: "User Authentication Flow",
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.GRAPH,
+        content: graphContent,
+      });
+
+      expect(artifact.content).toEqual(graphContent);
+    });
+
+    it("should create artifact with WORKFLOW content", () => {
+      const workflowContent = {
+        projectId: "workflow-project-456",
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.WORKFLOW,
+        content: workflowContent,
+      });
+
+      expect(artifact.content).toEqual(workflowContent);
+    });
+
+    it("should create artifact with MEDIA type", () => {
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.MEDIA,
+      });
+
+      expect(artifact).toMatchObject({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.MEDIA,
+        content: undefined,
+        icon: null,
+      });
+      expect(artifact.createdAt).toBeInstanceOf(Date);
+      expect(artifact.updatedAt).toBeInstanceOf(Date);
+    });
+
+    it("should create artifact with STREAM type", () => {
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.STREAM,
+      });
+
+      expect(artifact).toMatchObject({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.STREAM,
+        content: undefined,
+        icon: null,
+      });
+      expect(artifact.createdAt).toBeInstanceOf(Date);
+      expect(artifact.updatedAt).toBeInstanceOf(Date);
+    });
+
     it("should create artifact with icon", () => {
       const artifact = createArtifact({
         id: "artifact-1",
@@ -310,7 +432,13 @@ describe("chat", () => {
         ArtifactType.CODE,
         ArtifactType.FORM,
         ArtifactType.BROWSER,
+        ArtifactType.IDE,
+        ArtifactType.MEDIA,
+        ArtifactType.STREAM,
         ArtifactType.LONGFORM,
+        ArtifactType.BUG_REPORT,
+        ArtifactType.GRAPH,
+        ArtifactType.WORKFLOW,
       ];
 
       types.forEach((type) => {
