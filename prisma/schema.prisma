@@ -315,7 +315,10 @@ model Repository {
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")
 
-  ignoreDirs String? @default("") @map("ignore_dirs")
+  ignoreDirs      String? @default("") @map("ignore_dirs")
+  unitGlob        String? @default("") @map("unit_glob")
+  integrationGlob String? @default("") @map("integration_glob")
+  e2eGlob         String? @default("") @map("e2e_glob")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
