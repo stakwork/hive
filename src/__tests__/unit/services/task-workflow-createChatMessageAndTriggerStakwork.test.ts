@@ -650,5 +650,325 @@ describe("createChatMessageAndTriggerStakwork", () => {
         })
       );
     });
+
+    test("should handle very long contextTags array", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const largeContextTags = Array.from({ length: 100 }, (_, i) => ({
+        type: "file",
+        value: `file${i}.ts`,
+      }));
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        contextTags: largeContextTags,
+      });
+
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contextTags: JSON.stringify(largeContextTags),
+          }),
+        })
+      );
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      expect(payload.workflow_params.set_var.attributes.vars.contextTags).toEqual(largeContextTags);
+    });
+
+    test("should handle empty string message", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: "",
+          }),
+        })
+      );
+    });
+
+    test("should handle whitespace-only message", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "   \n\t  ",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            message: "   \n\t  ",
+          }),
+        })
+      );
+    });
+  });
+
+  describe("Optional Parameters", () => {
+    test("should pass generateChatTitle parameter to Stakwork API", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        generateChatTitle: true,
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      expect(payload.workflow_params.set_var.attributes.vars.generateChatTitle).toBe(true);
+    });
+
+    test("should pass featureContext parameter to Stakwork API", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const featureContext = {
+        featureId: "feature-123",
+        phaseName: "Implementation",
+        phaseDescription: "Core functionality",
+      };
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        featureContext: featureContext,
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      expect(payload.workflow_params.set_var.attributes.vars.featureContext).toEqual(featureContext);
+    });
+
+    test("should omit generateChatTitle from payload when undefined", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      expect(payload.workflow_params.set_var.attributes.vars).not.toHaveProperty("generateChatTitle");
+    });
+
+    test("should omit featureContext from payload when undefined", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      expect(payload.workflow_params.set_var.attributes.vars).not.toHaveProperty("featureContext");
+    });
+  });
+
+  describe("Task Status Transition Edge Cases", () => {
+    test("should not update task status when already IN_PROGRESS", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockDb.task.findUnique.mockResolvedValue({ status: "IN_PROGRESS" } as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "IN_PROGRESS",
+          workflowStartedAt: expect.any(Date),
+          stakworkProjectId: 12345,
+          // Note: status field should NOT be included when already IN_PROGRESS
+        },
+      });
+
+      const updateCall = mockDb.task.update.mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("status");
+    });
+
+    test("should not update task status when task is COMPLETED", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockDb.task.findUnique.mockResolvedValue({ status: "COMPLETED" } as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const updateCall = mockDb.task.update.mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("status");
+    });
+
+    test("should not update task status when task is FAILED", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockDb.task.findUnique.mockResolvedValue({ status: "FAILED" } as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const updateCall = mockDb.task.update.mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("status");
+    });
+
+    test("should handle task status check database error gracefully", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockDb.task.findUnique.mockRejectedValue(new Error("Database connection lost"));
+
+      // The function should catch the error and update task to FAILED
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      // Should still create the chat message
+      expect(mockDb.chatMessage.create).toHaveBeenCalled();
+
+      // Should update task to FAILED status when an error occurs
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "FAILED",
+        },
+      });
+    });
+  });
+
+  describe("Stakwork API Response Variations", () => {
+    test("should handle Stakwork API response with extra unexpected fields", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            project_id: 999,
+            unexpected_field: "value",
+            extra_data: { foo: "bar" },
+          },
+        }),
+      } as Response);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "IN_PROGRESS",
+          workflowStartedAt: expect.any(Date),
+          stakworkProjectId: 999,
+          status: "IN_PROGRESS",
+        },
+      });
+    });
+
+    test("should handle Stakwork API success response with null data object", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: null,
+        }),
+      } as Response);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "IN_PROGRESS",
+          workflowStartedAt: expect.any(Date),
+          status: "IN_PROGRESS",
+          // stakworkProjectId should NOT be included when data is null
+        },
+      });
+
+      const updateCall = mockDb.task.update.mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty("stakworkProjectId");
+    });
+
+    test("should handle Stakwork API response with string project_id", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            project_id: "12345", // String instead of number
+          },
+        }),
+      } as Response);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "IN_PROGRESS",
+          workflowStartedAt: expect.any(Date),
+          stakworkProjectId: "12345", // Should pass through as-is
+          status: "IN_PROGRESS",
+        },
+      });
+    });
   });
 });
