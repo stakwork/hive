@@ -2,7 +2,7 @@ import { serviceConfigs } from "@/config/services";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
-import { poolManagerService } from "@/lib/service-factory";
+import { PoolManagerService } from "@/services";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { EnvironmentVariable, type ApiError } from "@/types";
@@ -133,13 +133,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    //const poolManager = new PoolManagerService({
-    //  ...serviceConfigs.poolManager,
-    //  headers: {
-    //    Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
-    //  },
-    //});
-    const poolManager = poolManagerService();
+    const poolManager = new PoolManagerService({
+      ...serviceConfigs.poolManager,
+      headers: {
+        Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
+      },
+    });
 
     let envVars: EnvironmentVariable[] = [
       {
