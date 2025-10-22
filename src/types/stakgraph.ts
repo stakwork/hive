@@ -70,3 +70,12 @@ export interface CoverageNodesResponse {
   message?: string;
   details?: unknown;
 }
+
+export interface StakgraphProgressEvent {
+  step: number;
+  total_steps: number;
+  progress: number;
+  message: string;
+  step_description?: string;
+  stats?: Record<string, number>;
+}
