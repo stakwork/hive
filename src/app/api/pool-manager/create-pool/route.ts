@@ -4,7 +4,8 @@ import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { poolManagerService } from "@/lib/service-factory";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { EnvironmentVariable, type ApiError } from "@/types";
+import { EnvironmentVariable } from "@/types";
+import { isApiError } from "@/types/errors";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -210,15 +211,13 @@ export async function POST(request: NextRequest) {
     });
 
     // Handle ApiError specifically
-    if (error && typeof error === "object" && "status" in error) {
-      const apiError = error as ApiError;
+    if (isApiError(error)) {
       return NextResponse.json(
         {
-          error: apiError.message,
-          service: apiError.service,
-          details: apiError.details,
+          error: error.message,
+          details: error.details,
         },
-        { status: apiError.status },
+        { status: error.statusCode },
       );
     }
 
