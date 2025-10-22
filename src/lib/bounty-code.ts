@@ -1,10 +1,16 @@
 import { db } from "@/lib/db";
-import { randomUUID } from "crypto";
 
 const MAX_RETRIES = 10;
+const LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const CODE_LENGTH = 6;
 
 export function generateBountyCode(): string {
-  return randomUUID();
+  let result = "";
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    const randomIndex = Math.floor(Math.random() * LETTERS.length);
+    result += LETTERS[randomIndex];
+  }
+  return result;
 }
 
 export async function ensureUniqueBountyCode(): Promise<string> {
