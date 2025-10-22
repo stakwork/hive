@@ -7,6 +7,13 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { awsCredentialsProvider } from '@vercel/functions/oidc'
 
+const IMAGE_MAGIC_NUMBERS: Record<string, number[]> = {
+  'image/jpeg': [0xff, 0xd8, 0xff],
+  'image/png': [0x89, 0x50, 0x4e, 0x47],
+  'image/gif': [0x47, 0x49, 0x46],
+  'image/webp': [0x52, 0x49, 0x46, 0x46],
+}
+
 export class S3Service {
   private client: S3Client
   private bucketName: string
@@ -131,6 +138,30 @@ export class S3Service {
   validateFileSize(size: number, maxSize?: number): boolean {
     const limit = maxSize || 10 * 1024 * 1024 // Default 10MB
     return size <= limit
+  }
+
+  validateImageBuffer(buffer: Buffer, expectedType: string): boolean {
+    try {
+      const magicNumbers = IMAGE_MAGIC_NUMBERS[expectedType]
+
+      if (!magicNumbers) {
+        return false
+      }
+
+      if (buffer.length < magicNumbers.length) {
+        return false
+      }
+
+      for (let i = 0; i < magicNumbers.length; i++) {
+        if (buffer[i] !== magicNumbers[i]) {
+          return false
+        }
+      }
+
+      return true
+    } catch {
+      return false
+    }
   }
 }
 

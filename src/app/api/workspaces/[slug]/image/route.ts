@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/nextauth'
-import { getS3Service } from '@/services/s3'
-import { getWorkspaceBySlug } from '@/services/workspace'
+import { getMiddlewareContext, requireAuth } from '@/lib/middleware/utils'
+import { getWorkspaceLogoService } from '@/services/workspace-logo'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
-    const userId = (session?.user as { id?: string })?.id
-
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const context = getMiddlewareContext(request)
+    const user = requireAuth(context)
+    if (user instanceof NextResponse) return user
 
     const { slug } = await params
 
@@ -26,28 +20,8 @@ export async function GET(
       )
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId)
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: 'Workspace not found or access denied' },
-        { status: 404 }
-      )
-    }
-
-    if (!workspace.logoKey) {
-      return NextResponse.json(
-        { error: 'Workspace has no logo' },
-        { status: 404 }
-      )
-    }
-
-    const s3Service = getS3Service()
-
-    const presignedUrl = await s3Service.generatePresignedDownloadUrl(
-      workspace.logoKey,
-      3600
-    )
+    const logoService = getWorkspaceLogoService()
+    const presignedUrl = await logoService.getLogoUrl(slug, user.id)
 
     return NextResponse.json({
       presignedUrl,
@@ -56,9 +30,26 @@ export async function GET(
   } catch (error) {
     console.error('Error retrieving workspace logo:', error)
 
-    const message =
-      error instanceof Error ? error.message : 'Internal server error'
+    if (error instanceof Error) {
+      if (error.message.includes('not found')) {
+        return NextResponse.json(
+          { error: 'Workspace not found or access denied' },
+          { status: 404 }
+        )
+      }
+      if (error.message.includes('has no logo')) {
+        return NextResponse.json(
+          { error: 'Workspace has no logo' },
+          { status: 404 }
+        )
+      }
 
-    return NextResponse.json({ error: message }, { status: 500 })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
