@@ -99,12 +99,12 @@ describe("Workspace Search API - Integration Tests", () => {
       expect(standaloneTask).toMatchObject({
         type: "task",
         title: "Call API integration",
-        url: "/w/test-workspace/tasks",
         metadata: {
           status: TaskStatus.TODO,
           priority: Priority.HIGH,
         },
       });
+      expect(standaloneTask.url).toMatch(/^\/w\/test-workspace\/task\/.+/);
 
       // Verify feature result
       expect(data.data.features[0]).toMatchObject({
