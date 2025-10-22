@@ -52,6 +52,8 @@ export interface CoverageNodeConcise {
   covered: boolean;
   body_length: number | null;
   line_count: number | null;
+  verb?: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface CoverageNodesResponse {
