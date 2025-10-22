@@ -10,6 +10,7 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
     select: {
       id: true,
       workspaceId: true,
+      deleted: true,
       workspace: {
         select: {
           id: true,
@@ -24,8 +25,8 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
     },
   });
 
-  if (!feature || feature.workspace.deleted) {
-    throw new Error("Feature not found");
+  if (!feature || feature.deleted || feature.workspace.deleted) {
+    throw new Error("Feature not found or access denied");
   }
 
   const isOwner = feature.workspace.ownerId === userId;
@@ -175,21 +176,30 @@ export async function validateUserStoryAccess(storyId: string, userId: string) {
  *
  * Finds the maximum order value in the collection and returns the next order.
  * Returns 0 if no items exist in the collection.
+ * Automatically filters out soft-deleted items for models that support soft deletion (Phase, Feature).
+ * For models without soft deletion (Task, UserStory), uses the where clause as-is.
  *
- * @param model - Prisma model delegate (e.g., db.phase, db.ticket)
+ * @param model - Prisma model delegate (e.g., db.phase, db.task, db.userStory)
  * @param where - Filter conditions for the query
+ * @param includeDeletedFilter - Whether to include deleted=false filter (default: false)
  * @returns The next order value to use
  *
  * @example
- * const nextOrder = await calculateNextOrder(db.phase, { featureId });
- * const nextOrder = await calculateNextOrder(db.ticket, { featureId, phaseId });
+ * const nextOrder = await calculateNextOrder(db.phase, { featureId }, true);
+ * const nextOrder = await calculateNextOrder(db.task, { featureId, phaseId });
+ * const nextOrder = await calculateNextOrder(db.userStory, { featureId });
  */
 export async function calculateNextOrder(
   model: any,
-  where: Record<string, any>
+  where: Record<string, any>,
+  includeDeletedFilter: boolean = false
 ): Promise<number> {
+  const whereClause = includeDeletedFilter 
+    ? { ...where, deleted: false } 
+    : where;
+
   const maxOrderItem = await model.findFirst({
-    where,
+    where: whereClause,
     orderBy: { order: "desc" },
     select: { order: true },
   });

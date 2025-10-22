@@ -152,6 +152,7 @@ export async function createTicket(
       where: {
         id: data.phaseId,
         featureId: featureId,
+        deleted: false,
       },
     });
 
@@ -184,7 +185,7 @@ export async function createTicket(
   const nextOrder = await calculateNextOrder(db.task, {
     featureId,
     phaseId: data.phaseId || null,
-  });
+  }, true);
 
   // Determine if assignee is a system assignee
   const isSystemAssignee = data.assigneeId?.startsWith("system:");

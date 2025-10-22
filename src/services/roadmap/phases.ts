@@ -119,7 +119,7 @@ export async function createPhase(featureId: string, userId: string, data: Creat
     throw new Error("Name is required");
   }
 
-  const nextOrder = await calculateNextOrder(db.phase, { featureId });
+  const nextOrder = await calculateNextOrder(db.phase, { featureId }, true);
 
   const phase = await db.phase.create({
     data: {

@@ -27,7 +27,9 @@ export async function POST(
   } catch (error) {
     console.error("Error creating ticket:", error);
     const message = error instanceof Error ? error.message : "Failed to create ticket";
-    const status = message.includes("not found") ? 404 :
+    const status = message.includes("Assignee not found") || 
+                   message.includes("Phase not found") ? 400 :
+                   message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :
                    message.includes("required") || message.includes("Invalid") ? 400 : 500;
 
