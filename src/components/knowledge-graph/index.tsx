@@ -1,9 +1,11 @@
 "use client";
 
+import { useIngestStatus } from "@/hooks/useIngestStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { Link, Node } from "@Universe/types";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
 
@@ -37,6 +39,7 @@ interface GraphComponentProps {
 export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe" }: GraphComponentProps = {}) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
+  const { isIngesting } = useIngestStatus();
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -112,7 +115,15 @@ export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe"
       </div>
 
       <div className="border rounded overflow-hidden bg-card">
-        {nodesLoading ? (
+        {isIngesting ? (
+          <div className="flex h-96 flex-col items-center justify-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-lg text-gray-300">Ingesting your codebase...</div>
+              <div className="text-sm text-gray-500">This usually takes a few minutes</div>
+            </div>
+          </div>
+        ) : nodesLoading ? (
           <div className="flex h-96 items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
           </div>
