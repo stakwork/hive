@@ -24,20 +24,41 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const swarmId = workspace?.swarmId;
   const setupServicesDone = useRef(false);
   const lastSwarmId = useRef<string | null>(null);
+  const lastWorkspaceId = useRef<string | null>(null);
   const swarmCreationStarted = useRef(false);
   const ingestionStarted = useRef(false);
   const customerCreationStarted = useRef(false);
   console.log('workspace', workspace);
 
+  // Log component mount/unmount for debugging
+  useEffect(() => {
+    console.log('WorkspaceSetup component mounted');
+    return () => {
+      console.log('WorkspaceSetup component unmounted');
+    };
+  }, []);
+
   // Step 1: Create swarm
   const createSwarm = useCallback(async () => {
-    if (!workspaceId || !slug || swarmId || swarmCreationStarted.current) return;
+
+    // Primary guard: check workspace state (persists across remounts)
+    if (!workspaceId || !slug || swarmId) {
+      console.log('createSwarm skipped (state):', { workspaceId: !!workspaceId, slug: !!slug, swarmId: !!swarmId });
+      return;
+    }
+
+    // Secondary guard: prevent duplicate calls within same lifecycle
+    if (swarmCreationStarted.current) {
+      console.log('createSwarm skipped (already started)');
+      return;
+    }
 
     swarmCreationStarted.current = true;
 
     try {
       setIsLoading(true);
       console.log("Creating swarm for:", repositoryUrl);
+
 
       const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
       if (!repoInfo) {
@@ -80,7 +101,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       });
     } catch (error) {
       console.error("Failed to create swarm:", error);
-      setError(error instanceof Error ? error.message : "Failed to create swarm");
+      // setError(error instanceof Error ? error.message : "Failed to create swarm");
       toast({
         title: "Swarm Creation Error",
         description: error instanceof Error ? error.message : "Failed to create swarm",
@@ -93,7 +114,17 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Step 2: Start code ingestion
   const startIngestion = useCallback(async () => {
-    if (!workspaceId || !swarmId || ingestRefId || ingestionStarted.current) return;
+    // Primary guard: check workspace state (persists across remounts)
+    if (!workspaceId || !swarmId || ingestRefId) {
+      console.log('startIngestion skipped (state):', { workspaceId: !!workspaceId, swarmId: !!swarmId, ingestRefId: !!ingestRefId });
+      return;
+    }
+
+    // Secondary guard: prevent duplicate calls within same lifecycle
+    if (ingestionStarted.current) {
+      console.log('startIngestion skipped (already started)');
+      return;
+    }
 
     ingestionStarted.current = true;
 
@@ -128,7 +159,17 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Step 3: Create Stakwork customer
   const createStakworkCustomer = useCallback(async () => {
-    if (!workspaceId || hasStakworkCustomer || customerCreationStarted.current) return;
+    // Primary guard: check workspace state (persists across remounts)
+    if (!workspaceId || hasStakworkCustomer) {
+      console.log('createStakworkCustomer skipped (state):', { workspaceId: !!workspaceId, hasStakworkCustomer });
+      return;
+    }
+
+    // Secondary guard: prevent duplicate calls within same lifecycle
+    if (customerCreationStarted.current) {
+      console.log('createStakworkCustomer skipped (already started)');
+      return;
+    }
 
     customerCreationStarted.current = true;
 
@@ -160,24 +201,26 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Step 1: Create swarm when component mounts
   useEffect(() => {
-    if (workspaceId && slug && !swarmId) {
+    console.log('createSwarm useEffect triggered:', { workspace: !!workspace, workspaceId: !!workspaceId, slug: !!slug, swarmId: !!swarmId });
+    // Only proceed if workspace data is loaded and we don't have a swarm yet
+    if (workspace && workspaceId && slug && !swarmId) {
       createSwarm();
     }
-  }, [workspaceId, slug, swarmId, createSwarm]);
+  }, [workspace, workspaceId, slug, swarmId, createSwarm]);
 
   // Step 2: Start ingestion when swarm is ready
   useEffect(() => {
-    if (workspaceId && swarmId && !ingestRefId) {
+    if (workspace && workspaceId && swarmId && !ingestRefId) {
       startIngestion();
     }
-  }, [workspaceId, swarmId, ingestRefId, startIngestion]);
+  }, [workspace, workspaceId, swarmId, ingestRefId, startIngestion]);
 
-  // Step 3: Create customer when needed
+  // Step 3: Create customer when swarm is ready
   useEffect(() => {
-    if (workspaceId && !hasStakworkCustomer) {
+    if (workspace && workspaceId && swarmId && !hasStakworkCustomer) {
       createStakworkCustomer();
     }
-  }, [workspaceId, hasStakworkCustomer, createStakworkCustomer]);
+  }, [workspace, workspaceId, swarmId, hasStakworkCustomer, createStakworkCustomer]);
 
   // Reset guards when workspace or conditions change
   useEffect(() => {
@@ -188,21 +231,25 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [swarmId]);
 
-  // Reset guards when workspace changes
+  // Reset guards only when workspaceId actually changes (not just re-renders)
   useEffect(() => {
-    if (workspaceId) {
-      swarmCreationStarted.current = false;
-      ingestionStarted.current = false;
-      customerCreationStarted.current = false;
+    if (workspaceId && workspaceId !== lastWorkspaceId.current) {
+      console.log('WorkspaceId changed from', lastWorkspaceId.current, 'to', workspaceId, '- resetting guards');
+      // Only reset swarm creation guard if we don't have a swarm yet
+      if (!swarmId) {
+        swarmCreationStarted.current = false;
+      }
+      // Only reset ingestion guard if we don't have ingestion running yet
+      if (!ingestRefId) {
+        ingestionStarted.current = false;
+      }
+      // Only reset customer creation guard if we don't have a customer yet
+      if (!hasStakworkCustomer) {
+        customerCreationStarted.current = false;
+      }
+      lastWorkspaceId.current = workspaceId;
     }
-  }, [workspaceId]);
-
-  // Reset ingestion guard when swarmId becomes available
-  useEffect(() => {
-    if (swarmId) {
-      ingestionStarted.current = false;
-    }
-  }, [swarmId]);
+  }, [workspaceId, swarmId, ingestRefId, hasStakworkCustomer]);
 
   // Handle services setup when swarmId becomes available
   useEffect(() => {
