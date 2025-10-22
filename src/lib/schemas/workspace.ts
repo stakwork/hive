@@ -32,3 +32,19 @@ export const updateWorkspaceSchema = z.object({
 });
 
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;
+
+export const workspaceLogoUploadRequestSchema = z.object({
+  filename: z.string().min(1, 'Filename is required'),
+  contentType: z.string().min(1, 'Content type is required'),
+  size: z.number().min(1, 'File size must be greater than 0').max(1024 * 1024, 'File size must not exceed 1MB'),
+});
+
+export const workspaceLogoConfirmSchema = z.object({
+  s3Path: z.string().min(1, 'S3 path is required'),
+  filename: z.string().min(1, 'Filename is required'),
+  mimeType: z.string().min(1, 'MIME type is required'),
+  size: z.number().min(1, 'File size must be greater than 0'),
+});
+
+export type WorkspaceLogoUploadRequest = z.infer<typeof workspaceLogoUploadRequestSchema>;
+export type WorkspaceLogoConfirm = z.infer<typeof workspaceLogoConfirmSchema>;
