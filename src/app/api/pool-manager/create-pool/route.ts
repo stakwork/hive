@@ -1,11 +1,11 @@
-import { serviceConfigs } from "@/config/services";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { poolManagerService } from "@/lib/service-factory";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { EnvironmentVariable, type ApiError } from "@/types";
+import { EnvironmentVariable } from "@/types";
+import { isApiError } from "@/types/errors";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -133,13 +133,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    //const poolManager = new PoolManagerService({
-    //  ...serviceConfigs.poolManager,
-    //  headers: {
-    //    Authorization: `Bearer ${encryptionService.decryptField("poolApiKey", poolApiKey)}`,
-    //  },
-    //});
     const poolManager = poolManagerService();
+    poolManager.updateApiKey(encryptionService.decryptField("poolApiKey", poolApiKey));
 
     let envVars: EnvironmentVariable[] = [
       {
@@ -215,16 +210,26 @@ export async function POST(request: NextRequest) {
       poolState: 'FAILED',
     });
 
-    // Handle ApiError specifically
-    if (error && typeof error === "object" && "status" in error) {
-      const apiError = error as ApiError;
+    // Handle ApiError specifically (two different formats)
+    if (isApiError(error)) {
       return NextResponse.json(
         {
-          error: apiError.message,
-          service: apiError.service,
-          details: apiError.details,
+          error: error.message,
+          details: error.details,
         },
-        { status: apiError.status },
+        { status: error.statusCode },
+      );
+    }
+
+    // Handle HttpClient ApiError format (has status instead of statusCode)
+    if (error && typeof error === "object" && "status" in error && "message" in error) {
+      const httpError = error as { status: number; message: string; details?: unknown };
+      return NextResponse.json(
+        {
+          error: httpError.message,
+          details: httpError.details,
+        },
+        { status: httpError.status },
       );
     }
 
