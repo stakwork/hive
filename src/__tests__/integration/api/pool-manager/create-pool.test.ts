@@ -689,6 +689,7 @@ describe("POST /api/pool-manager/create-pool", () => {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
