@@ -78,6 +78,16 @@ export async function POST(
       },
     });
 
+    // Check if message contains [Open PR] to auto-complete task
+    if (message.includes("[Open PR]")) {
+      await db.task.update({
+        where: { id: taskId },
+        data: {
+          status: "DONE",
+        },
+      });
+    }
+
     return NextResponse.json(
       {
         success: true,

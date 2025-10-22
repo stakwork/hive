@@ -103,6 +103,7 @@ export async function GET(request: NextRequest) {
           priority: true,
           workflowStatus: true,
           sourceType: true,
+          mode: true,
           stakworkProjectId: true,
           createdAt: true,
           updatedAt: true,
