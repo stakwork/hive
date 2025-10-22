@@ -8,7 +8,7 @@ import { Building2, Plus, ArrowRight, Lock } from "lucide-react";
 import Link from "next/link";
 import { LogoutButton } from "./LogoutButton";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
-import { WorkspacesList } from "@/components/WorkspacesList";
+import { WorkspacesPageContent } from "@/components/WorkspacesPageContent";
 
 export default async function WorkspacesPage() {
   const session = await getServerSession(authOptions);
@@ -54,7 +54,7 @@ export default async function WorkspacesPage() {
               </div>
             </>
           )}
-          <WorkspacesList workspaces={userWorkspaces} />
+          <WorkspacesPageContent workspaces={userWorkspaces} />
 
           {/* Create New Workspace Card */}
           <Card className={`group transition-all duration-200 border-dashed border-2 ${
