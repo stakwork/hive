@@ -22,128 +22,185 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const hasStakworkCustomer = workspace?.hasKey;
   const containerFilesSetUp = workspace?.containerFilesSetUp;
   const swarmId = workspace?.swarmId;
-  const setupIsDone = useRef(false);
   const setupServicesDone = useRef(false);
   const lastSwarmId = useRef<string | null>(null);
+  const swarmCreationStarted = useRef(false);
+  const ingestionStarted = useRef(false);
+  const customerCreationStarted = useRef(false);
   console.log('workspace', workspace);
 
-  const completeWorkspaceSetup = useCallback(async () => {
-    if (!workspaceId || !slug) return;
+  // Step 1: Create swarm
+  const createSwarm = useCallback(async () => {
+    if (!workspaceId || !slug || swarmId || swarmCreationStarted.current) return;
+
+    swarmCreationStarted.current = true;
 
     try {
-      // Access check is already done, so proceed directly
-      console.log("Proceeding with workspace setup for:", repositoryUrl);
+      setIsLoading(true);
+      console.log("Creating swarm for:", repositoryUrl);
 
-
-      // Extract repository info from URL
       const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
-
       if (!repoInfo) {
         throw new Error("Invalid repository URL format");
       }
 
-      // Fetch repository default branch
       const defaultBranch = await getRepositoryDefaultBranch(repositoryUrl, slug);
-
       if (!defaultBranch) {
-        throw new Error("Could not determine repository default branch - setup cannot continue");
+        throw new Error("Could not determine repository default branch");
       }
 
+      console.log('About to call /api/swarm - creating new swarm');
+      const swarmRes = await fetch("/api/swarm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspaceId,
+          repositoryName: repoInfo.name,
+          repositoryUrl: repositoryUrl,
+          repositoryDefaultBranch: defaultBranch,
+        }),
+      });
 
-      if (!swarmId) {
-        setIsLoading(true);
-        const swarmRes = await fetch("/api/swarm", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            workspaceId: workspaceId,
-            repositoryName: repoInfo.name,
-            repositoryUrl: repositoryUrl,
-            repositoryDefaultBranch: defaultBranch,
-          }),
-        });
-
-        const swarmData = await swarmRes.json();
-        if (!swarmRes.ok || !swarmData.success) {
-          throw new Error(swarmData.message || "Failed to create swarm");
-        }
-
-        updateWorkspace({
-          repositories: [{
-            id: `repo-${Date.now()}`, // temporary ID
-            name: repoInfo.name,
-            repositoryUrl: repositoryUrl,
-            branch: defaultBranch,
-            status: "PENDING", // Initially pending, will become SYNCED after ingestion
-            updatedAt: new Date().toISOString(),
-          }],
-          swarmId: swarmData.data.id,
-          swarmStatus: "ACTIVE",
-        });
+      const swarmData = await swarmRes.json();
+      if (!swarmRes.ok || !swarmData.success) {
+        throw new Error(swarmData.message || "Failed to create swarm");
       }
 
-      if (!ingestRefId) {
-        setIsLoading(true);
-        const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId }),
-        });
-
-
-        console.log('ingestRes', ingestRes);
-        if (!ingestRes.ok) {
-          throw new Error("Failed to start code ingestion");
-        }
-
-        const ingestData = await ingestRes.json();
-
-        console.log('ingestData', ingestData);
-        updateWorkspace({ ingestRefId: ingestData.data.request_id });
-      }
-
-      if (!hasStakworkCustomer) {
-        setIsLoading(true);
-        const customerRes = await fetch("/api/stakwork/create-customer", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId }),
-        });
-
-        if (!customerRes.ok) {
-          throw new Error("Failed to create Stakwork customer");
-        }
-      }
-
+      updateWorkspace({
+        repositories: [{
+          id: `repo-${Date.now()}`,
+          name: repoInfo.name,
+          repositoryUrl: repositoryUrl,
+          branch: defaultBranch,
+          status: "PENDING",
+          updatedAt: new Date().toISOString(),
+        }],
+        swarmId: swarmData.data.id,
+        swarmStatus: "ACTIVE",
+      });
     } catch (error) {
-      console.error("Failed to complete workspace setup:", error);
-      setError(error instanceof Error ? error.message : "Failed to complete workspace setup");
+      console.error("Failed to create swarm:", error);
+      setError(error instanceof Error ? error.message : "Failed to create swarm");
       toast({
-        title: "Setup Error",
-        description: error instanceof Error ? error.message : "Failed to complete workspace setup",
+        title: "Swarm Creation Error",
+        description: error instanceof Error ? error.message : "Failed to create swarm",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId, slug, repositoryUrl, swarmId, ingestRefId, hasStakworkCustomer, toast, updateWorkspace]);
+  }, [workspaceId, slug, repositoryUrl, swarmId, toast, updateWorkspace]);
 
-  // Start setup automatically when component mounts
-  useEffect(() => {
-    if (!setupIsDone.current) {
-      setupIsDone.current = true;
-      completeWorkspaceSetup();
+  // Step 2: Start code ingestion
+  const startIngestion = useCallback(async () => {
+    if (!workspaceId || !swarmId || ingestRefId || ingestionStarted.current) return;
+
+    ingestionStarted.current = true;
+
+    try {
+      setIsLoading(true);
+      console.log("Starting code ingestion for workspace:", workspaceId);
+
+      const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (!ingestRes.ok) {
+        throw new Error("Failed to start code ingestion");
+      }
+
+      const ingestData = await ingestRes.json();
+      updateWorkspace({ ingestRefId: ingestData.data.request_id });
+    } catch (error) {
+      console.error("Failed to start ingestion:", error);
+      setError(error instanceof Error ? error.message : "Failed to start code ingestion");
+      toast({
+        title: "Ingestion Error",
+        description: error instanceof Error ? error.message : "Failed to start code ingestion",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
-  }, [completeWorkspaceSetup]);
+  }, [workspaceId, swarmId, ingestRefId, toast, updateWorkspace]);
 
-  // Reset services setup flag only when swarmId actually changes to a different value
+  // Step 3: Create Stakwork customer
+  const createStakworkCustomer = useCallback(async () => {
+    if (!workspaceId || hasStakworkCustomer || customerCreationStarted.current) return;
+
+    customerCreationStarted.current = true;
+
+    try {
+      setIsLoading(true);
+      console.log("Creating Stakwork customer for workspace:", workspaceId);
+
+      const customerRes = await fetch("/api/stakwork/create-customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (!customerRes.ok) {
+        throw new Error("Failed to create Stakwork customer");
+      }
+    } catch (error) {
+      console.error("Failed to create customer:", error);
+      setError(error instanceof Error ? error.message : "Failed to create customer");
+      toast({
+        title: "Customer Creation Error",
+        description: error instanceof Error ? error.message : "Failed to create customer",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workspaceId, hasStakworkCustomer, toast]);
+
+  // Step 1: Create swarm when component mounts
+  useEffect(() => {
+    if (workspaceId && slug && !swarmId) {
+      createSwarm();
+    }
+  }, [workspaceId, slug, swarmId, createSwarm]);
+
+  // Step 2: Start ingestion when swarm is ready
+  useEffect(() => {
+    if (workspaceId && swarmId && !ingestRefId) {
+      startIngestion();
+    }
+  }, [workspaceId, swarmId, ingestRefId, startIngestion]);
+
+  // Step 3: Create customer when needed
+  useEffect(() => {
+    if (workspaceId && !hasStakworkCustomer) {
+      createStakworkCustomer();
+    }
+  }, [workspaceId, hasStakworkCustomer, createStakworkCustomer]);
+
+  // Reset guards when workspace or conditions change
   useEffect(() => {
     if (swarmId && swarmId !== lastSwarmId.current) {
       console.log('SwarmId changed from', lastSwarmId.current, 'to', swarmId, '- resetting services setup');
       setupServicesDone.current = false;
       lastSwarmId.current = swarmId;
+    }
+  }, [swarmId]);
+
+  // Reset guards when workspace changes
+  useEffect(() => {
+    if (workspaceId) {
+      swarmCreationStarted.current = false;
+      ingestionStarted.current = false;
+      customerCreationStarted.current = false;
+    }
+  }, [workspaceId]);
+
+  // Reset ingestion guard when swarmId becomes available
+  useEffect(() => {
+    if (swarmId) {
+      ingestionStarted.current = false;
     }
   }, [swarmId]);
 
