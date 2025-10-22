@@ -40,6 +40,7 @@ export interface TaskData {
   priority: "LOW" | "MEDIUM" | "HIGH";
   workflowStatus: WorkflowStatus | null;
   sourceType: "USER" | "JANITOR" | "TASK_COORDINATOR" | "SYSTEM";
+  mode: string;
   stakworkProjectId?: number | null;
   createdAt: string;
   updatedAt: string;

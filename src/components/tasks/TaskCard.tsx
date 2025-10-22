@@ -54,6 +54,12 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
           )}
         </div>
         <div className="flex items-center gap-2">
+          {!hideWorkflowStatus && task.mode === "agent" && (
+            <Badge variant="secondary" className="gap-1">
+              <Bot className="w-3 h-3" />
+              Agent
+            </Badge>
+          )}
           {!hideWorkflowStatus && task.sourceType === "JANITOR" && (
             <Badge variant="secondary" className="gap-1">
               <Sparkles className="w-3 h-3" />
@@ -87,7 +93,12 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false }: Ta
       </div>
       
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        {hideWorkflowStatus && task.sourceType === "JANITOR" ? (
+        {hideWorkflowStatus && task.mode === "agent" ? (
+          <Badge variant="secondary" className="gap-1">
+            <Bot className="w-3 h-3" />
+            Agent
+          </Badge>
+        ) : hideWorkflowStatus && task.sourceType === "JANITOR" ? (
           <Badge variant="secondary" className="gap-1">
             <Sparkles className="w-3 h-3" />
             Janitor
