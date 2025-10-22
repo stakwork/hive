@@ -1,5 +1,6 @@
 "use client";
 
+import { useGraphPolling } from "@/hooks/useGraphPolling";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
@@ -32,9 +33,10 @@ interface SchemaResponse {
 interface GraphComponentProps {
   endpoint?: string;
   title?: string;
+  enablePolling?: boolean;
 }
 
-export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe" }: GraphComponentProps = {}) => {
+export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe", enablePolling = false }: GraphComponentProps = {}) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
 
@@ -43,6 +45,14 @@ export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe"
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
 
+  // Use polling hook only if enabled
+  const { isPolling, isPollingActive } = useGraphPolling({
+    endpoint: propEndpoint,
+    enabled: enablePolling
+  });
+
+  console.log("isPolling", isPolling);
+  console.log("isPollingActive", isPollingActive);
 
 
   useEffect(() => {
@@ -94,9 +104,9 @@ export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe"
         setNodesLoading(false);
       }
     };
+
     fetchNodes();
   }, [workspaceId, addNewNode, resetData, propEndpoint]);
-
 
   return (
     <div className="dark h-auto w-full border rounded-lg p-4 relative bg-card">

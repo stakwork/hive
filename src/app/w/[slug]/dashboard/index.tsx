@@ -50,7 +50,7 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
           </div>
         </div>
       ) : repository?.status === 'SYNCED' || true ? (
-        <GraphComponent />
+        <GraphComponent enablePolling={true} />
       ) : (
         <Gitsee />
       )}
