@@ -24,11 +24,16 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const swarmId = workspace?.swarmId;
   const setupServicesDone = useRef(false);
   const lastSwarmId = useRef<string | null>(null);
+  const swarmCreationStarted = useRef(false);
+  const ingestionStarted = useRef(false);
+  const customerCreationStarted = useRef(false);
   console.log('workspace', workspace);
 
   // Step 1: Create swarm
   const createSwarm = useCallback(async () => {
-    if (!workspaceId || !slug || swarmId) return;
+    if (!workspaceId || !slug || swarmId || swarmCreationStarted.current) return;
+
+    swarmCreationStarted.current = true;
 
     try {
       setIsLoading(true);
@@ -88,7 +93,9 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Step 2: Start code ingestion
   const startIngestion = useCallback(async () => {
-    if (!workspaceId || !swarmId || ingestRefId) return;
+    if (!workspaceId || !swarmId || ingestRefId || ingestionStarted.current) return;
+
+    ingestionStarted.current = true;
 
     try {
       setIsLoading(true);
@@ -121,7 +128,9 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Step 3: Create Stakwork customer
   const createStakworkCustomer = useCallback(async () => {
-    if (!workspaceId || hasStakworkCustomer) return;
+    if (!workspaceId || hasStakworkCustomer || customerCreationStarted.current) return;
+
+    customerCreationStarted.current = true;
 
     try {
       setIsLoading(true);
@@ -170,12 +179,28 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspaceId, hasStakworkCustomer, createStakworkCustomer]);
 
-  // Reset services setup flag only when swarmId actually changes to a different value
+  // Reset guards when workspace or conditions change
   useEffect(() => {
     if (swarmId && swarmId !== lastSwarmId.current) {
       console.log('SwarmId changed from', lastSwarmId.current, 'to', swarmId, '- resetting services setup');
       setupServicesDone.current = false;
       lastSwarmId.current = swarmId;
+    }
+  }, [swarmId]);
+
+  // Reset guards when workspace changes
+  useEffect(() => {
+    if (workspaceId) {
+      swarmCreationStarted.current = false;
+      ingestionStarted.current = false;
+      customerCreationStarted.current = false;
+    }
+  }, [workspaceId]);
+
+  // Reset ingestion guard when swarmId becomes available
+  useEffect(() => {
+    if (swarmId) {
+      ingestionStarted.current = false;
     }
   }, [swarmId]);
 
