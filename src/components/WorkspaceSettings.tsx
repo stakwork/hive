@@ -4,8 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { Edit3, Loader2, Upload, X, ImageIcon } from "lucide-react";
+import { Edit3, Loader2, X, Building2, Edit } from "lucide-react";
 
 import {
   Card,
@@ -20,12 +19,17 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
@@ -271,82 +275,6 @@ export function WorkspaceSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {canAccessWorkspaceLogo && (
-          <div className="mb-8 pb-8 border-b">
-            <h3 className="text-lg font-medium mb-4">Workspace Logo</h3>
-            <div className="flex items-start gap-6">
-              <div className="flex-shrink-0">
-                {logoPreview || logoUrl ? (
-                  <div className="relative w-32 h-32 rounded-lg overflow-hidden border-2 border-gray-200">
-                    <img
-                      src={logoPreview || logoUrl || ""}
-                      alt="Workspace logo"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-32 h-32 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50">
-                    <ImageIcon className="w-12 h-12 text-gray-400" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Upload a logo for your workspace. Recommended size: 1200x400px. Max file size: 1MB.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploadingLogo || isDeletingLogo}
-                  >
-                    {isUploadingLogo ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload Logo
-                      </>
-                    )}
-                  </Button>
-                  {(workspace?.logoKey || logoPreview) && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleLogoDelete}
-                      disabled={isUploadingLogo || isDeletingLogo}
-                    >
-                      {isDeletingLogo ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Removing...
-                        </>
-                      ) : (
-                        <>
-                          <X className="w-4 h-4 mr-2" />
-                          Remove Logo
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  className="hidden"
-                  onChange={handleLogoUpload}
-                />
-              </div>
-            </div>
-          </div>
-        )}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
@@ -356,12 +284,73 @@ export function WorkspaceSettings() {
                 <FormItem>
                   <FormLabel>Workspace Name</FormLabel>
                   <FormControl>
-                    <Input 
-                      data-testid="workspace-settings-name-input"
-                      placeholder="The display name for your workspace" 
-                      {...field} 
-                      disabled={isSubmitting}
-                    />
+                    <div className="flex items-center gap-3">
+                      {canAccessWorkspaceLogo && (
+                        <div className="relative flex-shrink-0">
+                          {logoPreview || logoUrl ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <div className="relative w-12 h-12 rounded-lg overflow-hidden border group cursor-pointer">
+                                  {isUploadingLogo || isDeletingLogo ? (
+                                    <div className="w-full h-full flex items-center justify-center bg-muted">
+                                      <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <img
+                                        src={logoPreview || logoUrl || ""}
+                                        alt="Logo"
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <Edit className="w-4 h-4 text-white" />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                                  <Edit className="w-4 h-4" />
+                                  Change logo
+                                </DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onClick={handleLogoDelete}>
+                                  <X className="w-4 h-4" />
+                                  Remove logo
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={isUploadingLogo || isDeletingLogo}
+                              className="w-12 h-12 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 cursor-pointer flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors group"
+                            >
+                              {isUploadingLogo ? (
+                                <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+                              ) : (
+                                <Building2 className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                              )}
+                            </button>
+                          )}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/gif,image/webp"
+                            className="hidden"
+                            onChange={handleLogoUpload}
+                          />
+                        </div>
+                      )}
+                      <Input
+                        data-testid="workspace-settings-name-input"
+                        placeholder="The display name for your workspace"
+                        {...field}
+                        disabled={isSubmitting}
+                        className="flex-1"
+                      />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
