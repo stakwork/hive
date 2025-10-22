@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Plus, List, LayoutGrid, Trash2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Lightbulb, Plus, List, LayoutGrid, Trash2, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -531,7 +531,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+            <Lightbulb className="h-5 w-5" />
             Features
           </div>
           <ToggleGroup
