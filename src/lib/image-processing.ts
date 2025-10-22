@@ -11,13 +11,6 @@ const SUPPORTED_IMAGE_TYPES = [
   'image/webp',
 ] as const
 
-const IMAGE_MAGIC_NUMBERS: Record<string, number[]> = {
-  'image/jpeg': [0xff, 0xd8, 0xff],
-  'image/png': [0x89, 0x50, 0x4e, 0x47],
-  'image/gif': [0x47, 0x49, 0x46],
-  'image/webp': [0x52, 0x49, 0x46, 0x46],
-}
-
 export type SupportedImageType = (typeof SUPPORTED_IMAGE_TYPES)[number]
 
 export interface ProcessedImage {
@@ -71,33 +64,6 @@ export async function resizeWorkspaceLogo(
       throw new Error(`Failed to process image: ${error.message}`)
     }
     throw new Error('Failed to process image: Unknown error')
-  }
-}
-
-export function validateImageBuffer(
-  buffer: Buffer,
-  expectedType: string
-): boolean {
-  try {
-    const magicNumbers = IMAGE_MAGIC_NUMBERS[expectedType]
-
-    if (!magicNumbers) {
-      return false
-    }
-
-    if (buffer.length < magicNumbers.length) {
-      return false
-    }
-
-    for (let i = 0; i < magicNumbers.length; i++) {
-      if (buffer[i] !== magicNumbers[i]) {
-        return false
-      }
-    }
-
-    return true
-  } catch {
-    return false
   }
 }
 
