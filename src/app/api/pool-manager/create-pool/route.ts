@@ -215,15 +215,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Handle ApiError specifically
-    if (error && typeof error === "object" && "status" in error) {
+    if (error && typeof error === "object" && "statusCode" in error) {
       const apiError = error as ApiError;
       return NextResponse.json(
         {
           error: apiError.message,
-          service: apiError.service,
           details: apiError.details,
         },
-        { status: apiError.status },
+        { status: apiError.statusCode },
       );
     }
 
