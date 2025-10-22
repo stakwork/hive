@@ -14,28 +14,34 @@ interface WorkspacesPageContentProps {
 }
 
 export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps) {
-  const { logoUrls } = useWorkspaceLogos(workspaces);
+  const { logoUrls, loading } = useWorkspaceLogos(workspaces);
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
   return (
     <>
-      {workspaces.map((workspace) => (
-        <Card key={workspace.id} className="group hover:shadow-md transition-all duration-200">
-          <Link href={`/w/${workspace.slug}`} className="block">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                {/* Workspace Icon */}
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground overflow-hidden">
-                  {canAccessWorkspaceLogo && logoUrls[workspace.id] ? (
-                    <img
-                      src={logoUrls[workspace.id]}
-                      alt={workspace.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Building2 className="w-5 h-5" />
-                  )}
-                </div>
+      {workspaces.map((workspace) => {
+        const hasLogo = canAccessWorkspaceLogo && logoUrls[workspace.id];
+        const isLogoLoading = canAccessWorkspaceLogo && workspace.logoKey && !logoUrls[workspace.id] && loading;
+
+        return (
+          <Card key={workspace.id} className="group hover:shadow-md transition-all duration-200">
+            <Link href={`/w/${workspace.slug}`} className="block">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  {/* Workspace Icon */}
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground overflow-hidden">
+                    {isLogoLoading ? (
+                      <div className="w-full h-full bg-muted animate-pulse" />
+                    ) : hasLogo ? (
+                      <img
+                        src={logoUrls[workspace.id]}
+                        alt={workspace.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Building2 className="w-5 h-5" />
+                    )}
+                  </div>
 
                 {/* Workspace Info */}
                 <div className="flex-1 min-w-0">
@@ -85,7 +91,8 @@ export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps
             </CardContent>
           </Link>
         </Card>
-      ))}
+        );
+      })}
     </>
   );
 }

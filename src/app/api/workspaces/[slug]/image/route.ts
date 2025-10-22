@@ -20,6 +20,14 @@ export async function GET(
       )
     }
 
+    // TEMPORARY: Mock for testing without AWS
+    if (process.env.NODE_ENV === 'development') {
+      return NextResponse.json({
+        presignedUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${slug}`,
+        expiresIn: 3600,
+      })
+    }
+
     const logoService = getWorkspaceLogoService()
     const presignedUrl = await logoService.getLogoUrl(slug, user.id)
 

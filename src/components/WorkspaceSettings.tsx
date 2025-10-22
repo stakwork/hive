@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -33,6 +33,7 @@ import {
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
 import { useToast } from "@/components/ui/use-toast";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -46,32 +47,14 @@ export function WorkspaceSettings() {
   const { toast } = useToast();
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
+  // Use shared logo cache
+  const { logoUrls, refreshLogo } = useWorkspaceLogos(workspace ? [workspace] : []);
+  const logoUrl = workspace ? logoUrls[workspace.id] : null;
+
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const fetchLogoUrl = async () => {
-      if (!workspace?.logoKey || !workspace?.slug) {
-        setLogoUrl(null);
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
-        if (response.ok) {
-          const data = await response.json();
-          setLogoUrl(data.presignedUrl);
-        }
-      } catch (error) {
-        console.error("Error fetching logo URL:", error);
-      }
-    };
-
-    fetchLogoUrl();
-  }, [workspace?.logoKey, workspace?.slug]);
 
   const form = useForm<UpdateWorkspaceInput>({
     resolver: zodResolver(updateWorkspaceSchema),
@@ -159,19 +142,13 @@ export function WorkspaceSettings() {
       // Update UI immediately to avoid page refresh
       setLogoPreview(URL.createObjectURL(file));
 
-      // Fetch the new presigned URL to replace preview with actual URL
-      const imageResponse = await fetch(`/api/workspaces/${workspace.slug}/image`);
-      if (imageResponse.ok) {
-        const imageData = await imageResponse.json();
-        setLogoUrl(imageData.presignedUrl);
-      }
-
       toast({
         title: "Success",
         description: "Workspace logo updated successfully",
       });
 
-      // Refresh workspace data in background (no await to prevent page flash)
+      // Refresh logo cache and workspace data in background
+      refreshLogo(workspace.id);
       refreshCurrentWorkspace();
     } catch (error) {
       console.error("Error uploading logo:", error);
@@ -208,14 +185,14 @@ export function WorkspaceSettings() {
 
       // Update UI immediately to avoid page refresh
       setLogoPreview(null);
-      setLogoUrl(null);
 
       toast({
         title: "Success",
         description: "Workspace logo removed successfully",
       });
 
-      // Refresh workspace data in background (no await to prevent page flash)
+      // Refresh logo cache and workspace data in background
+      refreshLogo(workspace.id);
       refreshCurrentWorkspace();
     } catch (error) {
       console.error("Error deleting logo:", error);
