@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
       poolState: 'FAILED',
     });
 
-    // Handle ApiError specifically
+    // Handle ApiError specifically (two different formats)
     if (isApiError(error)) {
       return NextResponse.json(
         {
@@ -218,6 +218,18 @@ export async function POST(request: NextRequest) {
           details: error.details,
         },
         { status: error.statusCode },
+      );
+    }
+
+    // Handle HttpClient ApiError format (has status instead of statusCode)
+    if (error && typeof error === "object" && "status" in error && "message" in error) {
+      const httpError = error as { status: number; message: string; details?: unknown };
+      return NextResponse.json(
+        {
+          error: httpError.message,
+          details: httpError.details,
+        },
+        { status: httpError.status },
       );
     }
 
