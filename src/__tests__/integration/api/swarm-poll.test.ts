@@ -397,7 +397,7 @@ describe("Swarm Poll API Integration Tests", () => {
       expect(decryptedKey).toBe(newApiKey);
 
       // Verify swarmSecretAlias was updated
-      expect(updatedSwarm?.swarmSecretAlias).toMatch(/^{{SWARM_\d+_API_KEY}}$/);
+      expect(updatedSwarm?.swarmSecretAlias).toMatch(/^{{.+_API_KEY}}$/);
     });
 
     it("should return immediately for ACTIVE swarms without polling", async () => {
@@ -743,8 +743,8 @@ describe("Swarm Poll API Integration Tests", () => {
         where: { id: swarm.id },
       });
 
-      // Verify pattern: {{SWARM_{numeric}_API_KEY}}
-      expect(updatedSwarm?.swarmSecretAlias).toBe("{{SWARM_456_API_KEY}}");
+      // Verify pattern uses swarm_id directly: {{swarm_id_API_KEY}}
+      expect(updatedSwarm?.swarmSecretAlias).toBe("{{test-swarm-456_API_KEY}}");
     });
 
     it("should persist all aggregated data fields", async () => {
@@ -778,7 +778,7 @@ describe("Swarm Poll API Integration Tests", () => {
       // Verify all critical fields were updated
       expect(updatedSwarm?.status).toBe(SwarmStatus.ACTIVE);
       expect(updatedSwarm?.swarmApiKey).toBeTruthy();
-      expect(updatedSwarm?.swarmSecretAlias).toMatch(/^{{SWARM_\d+_API_KEY}}$/);
+      expect(updatedSwarm?.swarmSecretAlias).toMatch(/^{{.+_API_KEY}}$/);
 
       // Verify API key decrypts correctly
       const decryptedKey = EncryptionService.getInstance().decryptField(
