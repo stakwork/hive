@@ -118,11 +118,8 @@ export async function POST(request: NextRequest) {
       const xApiKey = details.data?.x_api_key;
       const swarm_id =
         (swarm as { swarmId?: string; id: string }).swarmId || swarm.id;
-      // Extract the numeric part from swarm_id using regex
-      const match =
-        typeof swarm_id === "string" ? swarm_id.match(/(\d+)/) : null;
-      const swarm_id_num = match ? match[1] : swarm_id;
-      const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
+      // Use swarm_id directly for secret alias - works with any format
+      const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
@@ -246,11 +243,8 @@ export async function GET(request: NextRequest) {
       const xApiKey = details.data?.x_api_key;
       const swarm_id =
         (swarm as { swarmId?: string; id: string }).swarmId || swarm.id;
-      // Extract the numeric part from swarm_id using regex
-      const match =
-        typeof swarm_id === "string" ? swarm_id.match(/(\d+)/) : null;
-      const swarm_id_num = match ? match[1] : swarm_id;
-      const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
+      // Use swarm_id directly for secret alias - works with any format
+      const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
