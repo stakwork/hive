@@ -810,6 +810,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
       expect(mockDb.task.update).toHaveBeenCalledWith({
         where: { id: "test-task-id" },
         data: {
+          status: "IN_PROGRESS",
           workflowStatus: "IN_PROGRESS",
           workflowStartedAt: expect.any(Date),
         },
