@@ -172,12 +172,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "sensitive-api-key-789",
         },
       });
@@ -244,12 +244,12 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should generate secure password for swarm", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "sensitive-api-key-789",
         },
       });
@@ -269,12 +269,12 @@ describe("POST /api/swarm - Unit Tests", () => {
     test("should handle API key securely", async () => {
       const sensitiveApiKey = "very-sensitive-api-key-123";
 
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: sensitiveApiKey,
         },
       });
@@ -290,7 +290,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(JSON.stringify(data)).not.toContain(sensitiveApiKey);
       expect(data.data).toEqual({
         id: "final-swarm",
-        swarmId: "swarm-456",
+        swarmId: "swarm2bCar4",
       });
 
       // Verify API key was saved to database securely
@@ -304,12 +304,12 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should create secure secret alias", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "api-key-123",
         },
       });
@@ -318,7 +318,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       await POST(request);
 
       const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
-      expect(saveCall.swarmSecretAlias).toBe("{{SWARM_456_API_KEY}}");
+      expect(saveCall.swarmSecretAlias).toBe("{{swarm2bCar4_API_KEY}}");
     });
   });
 
@@ -370,7 +370,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should handle malformed external service responses", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
 
       // Malformed response missing required fields
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
@@ -390,7 +390,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         workspaceId: "workspace-123",
         swarmUrl: "https://undefined/api", // undefined address becomes "undefined"
         swarmApiKey: undefined,
-        swarmSecretAlias: "{{SWARM_undefined_API_KEY}}", // undefined swarm_id becomes "undefined"
+        swarmSecretAlias: undefined, // undefined swarm_id results in undefined
       });
     });
   });
@@ -411,8 +411,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "final-swarm" });
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "api-key-123",
           ec2_id: "i-1234567890abcdef0",
         },
@@ -423,14 +423,14 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
         workspaceId: "workspace-123",
-        name: "swarm-456", // Uses swarm_id as name
+        name: "swarm2bCar4", // Uses swarm_id as name
         instanceType: "m6i.xlarge",
         status: SwarmStatus.ACTIVE,
-        swarmUrl: "https://test-swarm.sphinx.chat/api",
+        swarmUrl: "https://swarm2bCar4.sphinx.chat/api",
         ec2Id: "i-1234567890abcdef0",
         swarmApiKey: "api-key-123",
-        swarmSecretAlias: "{{SWARM_456_API_KEY}}",
-        swarmId: "swarm-456",
+        swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
+        swarmId: "swarm2bCar4",
         swarmPassword: "secure-test-password-123",
       });
     });
@@ -438,8 +438,8 @@ describe("POST /api/swarm - Unit Tests", () => {
     test("should handle database save failure after service creation", async () => {
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "api-key-123",
         },
       });
@@ -459,8 +459,8 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "api-key-123",
         },
       });
@@ -486,12 +486,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm-456" });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
-          swarm_id: "swarm-456",
-          address: "test-swarm.sphinx.chat",
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
           x_api_key: "api-key-123",
         },
       });
@@ -507,7 +507,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         message: "Swarm was created successfully",
         data: {
           id: "final-swarm",
-          swarmId: "swarm-456",
+          swarmId: "swarm2bCar4",
         },
       });
 

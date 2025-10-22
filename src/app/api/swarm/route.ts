@@ -77,9 +77,8 @@ export async function POST(request: NextRequest) {
     const x_api_key = apiResponse?.data?.x_api_key;
     const ec2_id = apiResponse?.data?.ec2_id;
 
-    const match = typeof swarm_id === "string" ? swarm_id.match(/(\d+)/) : null;
-    const swarm_id_num = match ? match[1] : swarm_id;
-    const swarmSecretAlias = `{{SWARM_${swarm_id_num}_API_KEY}}`;
+    // Use swarm_id directly for secret alias - works with any format
+    const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
     // Create the swarm record in database only after successful external service creation
     const createdSwarm = await saveOrUpdateSwarm({
