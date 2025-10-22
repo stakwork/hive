@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Edit3, Loader2, X, Building2, Edit } from "lucide-react";
+import { Edit3, Loader2, X, Upload, Edit } from "lucide-react";
 
 import {
   Card,
@@ -267,8 +267,7 @@ export function WorkspaceSettings() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Edit3 className="w-5 h-5" />
-          Workspace Details
+          Details
         </CardTitle>
         <CardDescription>
           Update your workspace name, URL, and description
@@ -282,7 +281,7 @@ export function WorkspaceSettings() {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Workspace Name</FormLabel>
+                  <FormLabel>Name</FormLabel>
                   <FormControl>
                     <div className="flex items-center gap-3">
                       {canAccessWorkspaceLogo && (
@@ -330,7 +329,7 @@ export function WorkspaceSettings() {
                               {isUploadingLogo ? (
                                 <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
                               ) : (
-                                <Building2 className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                                <Upload className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                               )}
                             </button>
                           )}
@@ -362,7 +361,7 @@ export function WorkspaceSettings() {
               name="slug"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Workspace URL</FormLabel>
+                  <FormLabel>URL</FormLabel>
                   <FormControl>
                     <div className="flex items-center">
                       <span className="text-sm text-muted-foreground mr-1">
@@ -386,7 +385,7 @@ export function WorkspaceSettings() {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea 
                       data-testid="workspace-settings-description-input"
