@@ -192,17 +192,20 @@ export function CoverageInsights() {
 
   const rows = useMemo(
     () =>
-      (items as CoverageNodeConcise[]).map((item) => ({
-        key: `${item.name}-${item.file}`,
-        name: item.name,
-        file: item.file,
-        coverage: item.test_count,
-        weight: item.weight,
-        covered: (item.test_count || 0) > 0,
-        bodyLength: item.body_length,
-        lineCount: item.line_count,
-      })),
-    [items],
+      (items as CoverageNodeConcise[]).map((item) => {
+        const displayName = item.verb && params.nodeType === "endpoint" ? `${item.verb} ${item.name}` : item.name;
+        return {
+          key: `${item.name}-${item.file}`,
+          name: displayName,
+          file: item.file,
+          coverage: item.test_count,
+          weight: item.weight,
+          covered: (item.test_count || 0) > 0,
+          bodyLength: item.body_length,
+          lineCount: item.line_count,
+        };
+      }),
+    [items, params.nodeType],
   );
 
   return (

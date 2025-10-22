@@ -128,7 +128,8 @@ function normalizeResponse(
     const covered = typeof o?.covered === "boolean" ? (o?.covered as boolean) : testCount > 0;
     const body_length = typeof o?.body_length === "number" ? (o?.body_length as number) : null;
     const line_count = typeof o?.line_count === "number" ? (o?.line_count as number) : null;
-    return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count };
+    const verb = (o?.verb as string | undefined) || undefined;
+    return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count, verb };
   };
 
     if (isItemsOrNodes(payload)) {
