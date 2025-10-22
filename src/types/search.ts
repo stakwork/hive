@@ -21,6 +21,7 @@ export interface SearchResultMetadata {
     image: string | null;
   } | null;
   featureTitle?: string; // For roadmap tasks and phases
+  stakworkProjectId?: number | null; // For tasks - used to determine navigation
   createdAt?: string;
   updatedAt?: string;
 }

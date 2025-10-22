@@ -57,6 +57,14 @@ interface SidebarProps {
   };
 }
 
+interface SidebarContentProps {
+  navigationItems: typeof baseNavigationItems;
+  pathname: string;
+  handleNavigate: (href: string) => void;
+  tasksWaitingForInputCount: number;
+  user: SidebarProps['user'];
+}
+
 const baseNavigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
@@ -68,46 +76,14 @@ const baseNavigationItems = [
   // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
-export function Sidebar({ user }: SidebarProps) {
-  const router = useRouter();
-  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
-
-  // Use global notification count from WorkspaceContext (not affected by pagination)
-  const tasksWaitingForInputCount = waitingForInputCount;
-
-  const canAccessInsights = useFeatureFlag(
-    FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
-  );
-
-  const excludeLabels: string[] = [];
-  if (!canAccessInsights) excludeLabels.push("Insights");
-
-  const navigationItems = baseNavigationItems.filter(
-    (item) => !excludeLabels.includes(item.label),
-  );
-
-  const [isOpen, setIsOpen] = useState(false);
-  const pathname = usePathname();
-  const isTaskPage = pathname.includes("/task/");
-
-  const handleNavigate = (href: string) => {
-    // Refresh notification count when user clicks Tasks menu item
-    if (href === "/tasks") {
-      refreshTaskNotifications();
-    }
-
-    if (workspaceSlug) {
-      const fullPath =
-        href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
-      router.push(fullPath);
-    } else {
-      // Fallback to workspaces page if no workspace detected
-      router.push("/workspaces");
-    }
-    setIsOpen(false);
-  };
-
-  const SidebarContent = () => (
+function SidebarContent({
+  navigationItems,
+  pathname,
+  handleNavigate,
+  tasksWaitingForInputCount,
+  user,
+}: SidebarContentProps) {
+  return (
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
       <WorkspaceSwitcher onWorkspaceChange={() => null} />
@@ -170,6 +146,46 @@ export function Sidebar({ user }: SidebarProps) {
       </div>
     </div>
   );
+}
+
+export function Sidebar({ user }: SidebarProps) {
+  const router = useRouter();
+  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+
+  // Use global notification count from WorkspaceContext (not affected by pagination)
+  const tasksWaitingForInputCount = waitingForInputCount;
+
+  const canAccessInsights = useFeatureFlag(
+    FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
+  );
+
+  const excludeLabels: string[] = [];
+  if (!canAccessInsights) excludeLabels.push("Insights");
+
+  const navigationItems = baseNavigationItems.filter(
+    (item) => !excludeLabels.includes(item.label),
+  );
+
+  const [isOpen, setIsOpen] = useState(false);
+  const pathname = usePathname();
+  const isTaskPage = pathname.includes("/task/");
+
+  const handleNavigate = (href: string) => {
+    // Refresh notification count when user clicks Tasks menu item
+    if (href === "/tasks") {
+      refreshTaskNotifications();
+    }
+
+    if (workspaceSlug) {
+      const fullPath =
+        href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
+      router.push(fullPath);
+    } else {
+      // Fallback to workspaces page if no workspace detected
+      router.push("/workspaces");
+    }
+    setIsOpen(false);
+  };
 
   return (
     <>
@@ -186,7 +202,13 @@ export function Sidebar({ user }: SidebarProps) {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-80 p-0">
-            <SidebarContent />
+            <SidebarContent
+              navigationItems={navigationItems}
+              pathname={pathname}
+              handleNavigate={handleNavigate}
+              tasksWaitingForInputCount={tasksWaitingForInputCount}
+              user={user}
+            />
           </SheetContent>
         </Sheet>
       )}
@@ -195,7 +217,13 @@ export function Sidebar({ user }: SidebarProps) {
         className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
-          <SidebarContent />
+          <SidebarContent
+            navigationItems={navigationItems}
+            pathname={pathname}
+            handleNavigate={handleNavigate}
+            tasksWaitingForInputCount={tasksWaitingForInputCount}
+            user={user}
+          />
         </div>
       </div>
     </>
