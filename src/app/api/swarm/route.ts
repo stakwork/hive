@@ -57,6 +57,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const existingSwarm = await db.swarm.findFirst({
+      where: {
+        workspaceId: workspaceId,
+      },
+      orderBy: {
+        createdAt: 'desc' // Get the most recent one
+      }
+    });
+
+    if (existingSwarm) {
+      console.log('Swarm already exists for workspace:', workspaceId, 'Swarm ID:', existingSwarm.swarmId);
+      return NextResponse.json({
+        success: true,
+        message: "Swarm already exists for this workspace",
+        data: { id: existingSwarm.id, swarmId: existingSwarm.swarmId },
+      }, { status: 200 })
+    }
+
     // const vanity_address = getSwarmVanityAddress(name);
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
     // const env = SWARM_DEFAULT_ENV_VARS;
