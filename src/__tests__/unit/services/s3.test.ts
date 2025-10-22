@@ -1,9 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import sharp from 'sharp'
 import { getS3Service } from '@/services/s3'
 
 describe('S3 Service', () => {
-  const s3Service = getS3Service()
+  let s3Service: ReturnType<typeof getS3Service>
+
+  beforeAll(() => {
+    // Mock AWS environment variables for testing
+    vi.stubEnv('AWS_ROLE_ARN', 'arn:aws:iam::123456789012:role/test-role')
+    vi.stubEnv('S3_BUCKET_NAME', 'test-bucket')
+    vi.stubEnv('AWS_REGION', 'us-east-1')
+    s3Service = getS3Service()
+  })
 
   describe('validateImageBuffer', () => {
     it('should validate JPEG magic numbers', async () => {
