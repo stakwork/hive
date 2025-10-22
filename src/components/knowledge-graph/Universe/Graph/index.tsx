@@ -112,8 +112,6 @@ export const Graph = () => {
     const grConnections = groupRef.current.getObjectByName('simulation-3d-group__connections') as Group
 
     simulation.on('tick', () => {
-      console.log(linksPositionRef.current)
-      console.log(nodesPositionRef.current)
       if (groupRef?.current) {
         if (gr && grPoints) {
           const nodes = simulation.nodes()
@@ -139,8 +137,6 @@ export const Graph = () => {
           }
         }
 
-        console.log('[GRAPH] nodesPositionRef size:', nodesPositionRef.current.size)
-        console.log('[GRAPH] First few node keys:', Array.from(nodesPositionRef.current.keys()).slice(0, 5))
 
         linksPositionRef.current.clear()
 
