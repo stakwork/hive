@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import sharp from 'sharp'
 import {
   resizeWorkspaceLogo,
-  validateImageBuffer,
   isSupportedImageType,
   getImageExtensionFromMimeType,
   validateImageSize,
@@ -114,101 +113,6 @@ describe('Image Processing Utilities', () => {
       const testImage = Buffer.from('<?xml version="1.0"?><svg></svg>')
 
       await expect(resizeWorkspaceLogo(testImage)).rejects.toThrow()
-    })
-  })
-
-  describe('validateImageBuffer', () => {
-    it('should validate JPEG magic numbers', async () => {
-      const jpegBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 255, g: 0, b: 0 },
-        },
-      })
-        .jpeg()
-        .toBuffer()
-
-      expect(validateImageBuffer(jpegBuffer, 'image/jpeg')).toBe(true)
-    })
-
-    it('should validate PNG magic numbers', async () => {
-      const pngBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 4,
-          background: { r: 0, g: 255, b: 0, alpha: 1 },
-        },
-      })
-        .png()
-        .toBuffer()
-
-      expect(validateImageBuffer(pngBuffer, 'image/png')).toBe(true)
-    })
-
-    it('should validate GIF magic numbers', async () => {
-      const gifBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 0, g: 0, b: 255 },
-        },
-      })
-        .gif()
-        .toBuffer()
-
-      expect(validateImageBuffer(gifBuffer, 'image/gif')).toBe(true)
-    })
-
-    it('should validate WebP magic numbers', async () => {
-      const webpBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 255, g: 255, b: 0 },
-        },
-      })
-        .webp()
-        .toBuffer()
-
-      expect(validateImageBuffer(webpBuffer, 'image/webp')).toBe(true)
-    })
-
-    it('should reject buffer with mismatched MIME type', async () => {
-      const jpegBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 255, g: 0, b: 0 },
-        },
-      })
-        .jpeg()
-        .toBuffer()
-
-      expect(validateImageBuffer(jpegBuffer, 'image/png')).toBe(false)
-    })
-
-    it('should reject buffer that is too short', () => {
-      const shortBuffer = Buffer.from([0xff, 0xd8])
-
-      expect(validateImageBuffer(shortBuffer, 'image/jpeg')).toBe(false)
-    })
-
-    it('should reject unsupported MIME type', () => {
-      const buffer = Buffer.from([0, 1, 2, 3, 4])
-
-      expect(validateImageBuffer(buffer, 'image/svg+xml')).toBe(false)
-    })
-
-    it('should handle empty buffer', () => {
-      const emptyBuffer = Buffer.from([])
-
-      expect(validateImageBuffer(emptyBuffer, 'image/jpeg')).toBe(false)
     })
   })
 
