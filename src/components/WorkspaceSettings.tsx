@@ -156,13 +156,23 @@ export function WorkspaceSettings() {
         throw new Error(error.error || "Failed to confirm upload");
       }
 
+      // Update UI immediately to avoid page refresh
+      setLogoPreview(URL.createObjectURL(file));
+
+      // Fetch the new presigned URL to replace preview with actual URL
+      const imageResponse = await fetch(`/api/workspaces/${workspace.slug}/image`);
+      if (imageResponse.ok) {
+        const imageData = await imageResponse.json();
+        setLogoUrl(imageData.presignedUrl);
+      }
+
       toast({
         title: "Success",
         description: "Workspace logo updated successfully",
       });
 
-      await refreshCurrentWorkspace();
-      setLogoPreview(URL.createObjectURL(file));
+      // Refresh workspace data in background (no await to prevent page flash)
+      refreshCurrentWorkspace();
     } catch (error) {
       console.error("Error uploading logo:", error);
       toast({
@@ -196,14 +206,17 @@ export function WorkspaceSettings() {
         throw new Error(error.error || "Failed to delete logo");
       }
 
+      // Update UI immediately to avoid page refresh
+      setLogoPreview(null);
+      setLogoUrl(null);
+
       toast({
         title: "Success",
         description: "Workspace logo removed successfully",
       });
 
-      await refreshCurrentWorkspace();
-      setLogoPreview(null);
-      setLogoUrl(null);
+      // Refresh workspace data in background (no await to prevent page flash)
+      refreshCurrentWorkspace();
     } catch (error) {
       console.error("Error deleting logo:", error);
       toast({

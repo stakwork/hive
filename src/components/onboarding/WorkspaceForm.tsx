@@ -31,8 +31,8 @@ export function WorkspaceForm() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <FormField
             id="name"
-            label="Workspace Name"
-            placeholder="e.g., My Company, Product Team, Personal Projects"
+            label="Name"
+            placeholder="e.g., My Company"
             value={formData.name}
             onChange={updateName}
             error={errors.name}
@@ -42,7 +42,7 @@ export function WorkspaceForm() {
 
           <FormField
             id="slug"
-            label="Workspace URL"
+            label="Slug"
             placeholder="my-workspace"
             value={formData.slug}
             onChange={(value) => updateField("slug", value.toLowerCase())}
@@ -54,7 +54,7 @@ export function WorkspaceForm() {
 
           <FormField
             id="description"
-            label="Description (Optional)"
+            label="Description"
             type="textarea"
             placeholder="Describe what this workspace will be used for..."
             value={formData.description}
