@@ -534,4 +534,239 @@ describe('pdf-utils', () => {
       expect(allCalls.length).toBeGreaterThan(0);
     });
   });
+
+  describe('addConversationAsText - Enhanced Edge Cases', () => {
+    it('should handle exact page height boundary condition', async () => {
+      // Create message that will hit exact boundary (currentY + 20 == pageHeight - margin)
+      const messages = Array(30).fill(null).map((_, i) => 
+        TestDataFactories.userMessage({ 
+          id: `msg-${i}`,
+          content: 'Boundary test message' 
+        })
+      );
+      mockSplitTextToSize.mockReturnValue(['Boundary test message']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Verify page break logic handles exact boundary
+      expect(mockAddPage).toHaveBeenCalled();
+      expect(mockText).toHaveBeenCalledWith('You:', expect.any(Number), expect.any(Number));
+    });
+
+    it('should track y-position increments correctly between messages', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'First message' }),
+        TestDataFactories.assistantMessage({ content: 'Second message' }),
+      ];
+      mockSplitTextToSize.mockReturnValue(['First message']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Get all text calls with y-coordinates
+      const yCoordinates = mockText.mock.calls.map(call => call[2]);
+      
+      // Verify y-coordinates are incrementing (each subsequent call should have higher or equal y)
+      for (let i = 1; i < yCoordinates.length; i++) {
+        expect(yCoordinates[i]).toBeGreaterThanOrEqual(yCoordinates[i - 1]);
+      }
+    });
+
+    it('should maintain font state consistency across multiple messages', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'Message 1' }),
+        TestDataFactories.assistantMessage({ content: 'Message 2' }),
+        TestDataFactories.userMessage({ content: 'Message 3' }),
+      ];
+      mockSplitTextToSize.mockReturnValue(['text']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Verify font switches between bold (labels) and normal (content)
+      const fontCalls = mockSetFont.mock.calls;
+      const boldCalls = fontCalls.filter(call => call[1] === 'bold');
+      const normalCalls = fontCalls.filter(call => call[1] === 'normal');
+
+      // Should have at least one bold call per message (for role label)
+      expect(boldCalls.length).toBeGreaterThanOrEqual(messages.length);
+      // Should have at least one normal call per message (for content)
+      expect(normalCalls.length).toBeGreaterThanOrEqual(messages.length);
+    });
+
+    it('should handle multiple consecutive empty messages', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: '' }),
+        TestDataFactories.assistantMessage({ content: '' }),
+        TestDataFactories.userMessage({ content: '' }),
+      ];
+      mockSplitTextToSize.mockReturnValue(['']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Verify all role labels rendered even with empty content
+      const labelCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'You:' || call[0] === 'Learning Assistant:'
+      );
+      expect(labelCalls).toHaveLength(3);
+    });
+
+    it('should handle content with only markdown syntax characters', async () => {
+      const messages = [
+        TestDataFactories.messageWithMarkdown('```'),
+        TestDataFactories.messageWithMarkdown('**'),
+        TestDataFactories.messageWithMarkdown('# # #'),
+        TestDataFactories.messageWithMarkdown('* * *'),
+      ];
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Should not throw error and should process all messages
+      expect(mockSplitTextToSize).toHaveBeenCalled();
+      const labelCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'Learning Assistant:'
+      );
+      expect(labelCalls).toHaveLength(4);
+    });
+
+    it('should handle mixed complex content with markdown, unicode, and special characters', async () => {
+      const complexContent = '**Bold 🚀** with `code` and special !@#$%\n* Bullet émoji ✨\n## Header 中文';
+      const messages = [TestDataFactories.messageWithMarkdown(complexContent)];
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const contentCall = mockSplitTextToSize.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('Bold')
+      );
+      
+      expect(contentCall).toBeDefined();
+      // Verify markdown stripped but unicode/special chars preserved
+      expect(contentCall![0]).not.toContain('**');
+      expect(contentCall![0]).not.toContain('`');
+      expect(contentCall![0]).not.toContain('##');
+      expect(contentCall![0]).toContain('🚀');
+      expect(contentCall![0]).toContain('!@#$%');
+      expect(contentCall![0]).toContain('中文');
+    });
+
+    it('should handle very long unbreakable word', async () => {
+      // Create a single word longer than typical line width
+      const longWord = 'a'.repeat(500);
+      const messages = [TestDataFactories.userMessage({ content: longWord })];
+      mockSplitTextToSize.mockReturnValue([longWord.substring(0, 100), longWord.substring(100, 200)]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      expect(mockSplitTextToSize).toHaveBeenCalledWith(longWord, expect.any(Number));
+      expect(mockText).toHaveBeenCalled();
+    });
+
+    it('should handle alternating long and short messages for pagination', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'Short' }),
+        TestDataFactories.assistantMessage({ content: 'x'.repeat(1000) }),
+        TestDataFactories.userMessage({ content: 'Short again' }),
+        TestDataFactories.assistantMessage({ content: 'y'.repeat(1000) }),
+      ];
+      mockSplitTextToSize.mockImplementation((text: string) => {
+        if (text.length > 100) {
+          // Simulate wrapping long text into multiple lines
+          return Array(30).fill('wrapped line');
+        }
+        return [text];
+      });
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // Verify all messages processed regardless of length variation
+      const labelCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'You:' || call[0] === 'Learning Assistant:'
+      );
+      expect(labelCalls).toHaveLength(4);
+    });
+
+    it('should handle messages with mixed newline styles (\\n vs \\r\\n)', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: 'Unix\\nstyle\\nlines' }),
+        TestDataFactories.assistantMessage({ content: 'Windows\\r\\nstyle\\r\\nlines' }),
+      ];
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      // The content is passed through as-is with escaped characters
+      expect(mockSplitTextToSize).toHaveBeenCalledWith('Unix\\nstyle\\nlines', expect.any(Number));
+      expect(mockSplitTextToSize).toHaveBeenCalledWith('Windows\\r\\nstyle\\r\\nlines', expect.any(Number));
+    });
+
+    it('should handle nested markdown with multiple levels', async () => {
+      const nestedContent = '* **Bold bullet** with `code`\n* Another **bold** item\n  * Nested **bold** `code`';
+      const messages = [TestDataFactories.messageWithMarkdown(nestedContent)];
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const contentCall = mockSplitTextToSize.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('Bold bullet')
+      );
+      
+      expect(contentCall).toBeDefined();
+      expect(contentCall![0]).not.toContain('**');
+      expect(contentCall![0]).not.toContain('`');
+      expect(contentCall![0]).toContain('•');
+    });
+
+    it('should handle content with leading and trailing whitespace preservation', async () => {
+      const messages = [TestDataFactories.userMessage({ content: '   Leading and trailing   ' })];
+      mockSplitTextToSize.mockReturnValue(['   Leading and trailing   ']);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      expect(mockSplitTextToSize).toHaveBeenCalledWith('   Leading and trailing   ', expect.any(Number));
+    });
+
+    it('should handle messages with only line breaks', async () => {
+      const messages = [
+        TestDataFactories.userMessage({ content: '\n\n\n' }),
+        TestDataFactories.assistantMessage({ content: '\r\n\r\n' }),
+      ];
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      expect(mockSplitTextToSize).toHaveBeenCalledWith('\n\n\n', expect.any(Number));
+      expect(mockSplitTextToSize).toHaveBeenCalledWith('\r\n\r\n', expect.any(Number));
+    });
+
+    it('should handle rapid role alternation in conversation', async () => {
+      const messages = Array(20).fill(null).map((_, i) => 
+        i % 2 === 0 
+          ? TestDataFactories.userMessage({ id: `msg-${i}`, content: `User ${i}` })
+          : TestDataFactories.assistantMessage({ id: `msg-${i}`, content: `Assistant ${i}` })
+      );
+      mockSplitTextToSize.mockImplementation((text: string) => [text]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      const labelCalls = mockText.mock.calls.filter(
+        (call) => call[0] === 'You:' || call[0] === 'Learning Assistant:'
+      );
+      
+      // Verify correct alternation
+      expect(labelCalls).toHaveLength(20);
+      expect(labelCalls[0][0]).toBe('You:');
+      expect(labelCalls[1][0]).toBe('Learning Assistant:');
+      expect(labelCalls[2][0]).toBe('You:');
+    });
+
+    it('should handle content with escaped characters', async () => {
+      const escapedContent = 'Escaped: \\n \\t \\r \\\\ \\" \\\'';
+      const messages = [TestDataFactories.userMessage({ content: escapedContent })];
+      mockSplitTextToSize.mockReturnValue([escapedContent]);
+
+      await generateConversationPDF({ messages, timestamp: new Date() });
+
+      expect(mockSplitTextToSize).toHaveBeenCalledWith(escapedContent, expect.any(Number));
+    });
+  });
 });
