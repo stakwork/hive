@@ -78,6 +78,7 @@ export async function GET(
           status: true,
           priority: true,
           featureId: true,
+          stakworkProjectId: true,
           createdAt: true,
           updatedAt: true,
           assignee: {
@@ -168,21 +169,40 @@ export async function GET(
     ]);
 
     // Transform results into unified format
-    const taskResults: SearchResult[] = tasks.map((task) => ({
-      id: task.id,
-      type: "task" as const,
-      title: task.title,
-      description: task.description,
-      url: task.featureId ? `/w/${slug}/roadmap/${task.featureId}` : `/w/${slug}/tasks`,
-      metadata: {
-        status: task.status,
-        priority: task.priority,
-        assignee: task.assignee,
-        featureTitle: task.feature?.title,
-        createdAt: task.createdAt.toISOString(),
-        updatedAt: task.updatedAt.toISOString(),
-      },
-    }));
+    const taskResults: SearchResult[] = tasks.map((task) => {
+      // Determine the correct URL based on task type and status
+      let url: string;
+      if (task.featureId) {
+        // Roadmap task
+        if (task.status === 'TODO' && !task.stakworkProjectId) {
+          // Not being worked on yet - use legacy ticket page
+          url = `/w/${slug}/tickets/${task.id}`;
+        } else {
+          // In progress, done, or has stakwork project - use task detail page
+          url = `/w/${slug}/task/${task.id}`;
+        }
+      } else {
+        // Standalone task - use task detail page
+        url = `/w/${slug}/task/${task.id}`;
+      }
+
+      return {
+        id: task.id,
+        type: "task" as const,
+        title: task.title,
+        description: task.description,
+        url,
+        metadata: {
+          status: task.status,
+          priority: task.priority,
+          assignee: task.assignee,
+          featureTitle: task.feature?.title,
+          stakworkProjectId: task.stakworkProjectId,
+          createdAt: task.createdAt.toISOString(),
+          updatedAt: task.updatedAt.toISOString(),
+        },
+      };
+    });
 
     const featureResults: SearchResult[] = features.map((feature) => ({
       id: feature.id,

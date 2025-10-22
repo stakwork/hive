@@ -14,6 +14,8 @@ export interface WorkspaceResponse {
   description?: string | null;
   slug: string;
   ownerId: string;
+  logoUrl?: string | null;
+  logoKey?: string | null;
   createdAt: string;
   updatedAt: string;
 }

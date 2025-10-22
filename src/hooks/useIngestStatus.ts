@@ -8,6 +8,7 @@ export function useIngestStatus() {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRequestPendingRef = useRef(false);
   const [ingestError, setIngestError] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
 
   const ingestRefId = workspace?.ingestRefId;
   console.log(workspace?.repositories);
@@ -20,6 +21,7 @@ export function useIngestStatus() {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
+      setIsIngesting(false);
 
       console.log('codeIsSynced', codeIsSynced);
       console.log('ingestRefId', ingestRefId);
@@ -35,6 +37,7 @@ export function useIngestStatus() {
     }
 
     let isCancelled = false;
+    setIsIngesting(true);
 
     const getIngestStatus = async () => {
       if (isCancelled || isRequestPendingRef.current) return;
@@ -50,6 +53,7 @@ export function useIngestStatus() {
 
         if (!apiResult.ok) {
           setIngestError(true);
+          setIsIngesting(false);
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
@@ -64,6 +68,7 @@ export function useIngestStatus() {
               status: "SYNCED",
             })),
           });
+          setIsIngesting(false);
           // Stop polling
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
@@ -77,6 +82,7 @@ export function useIngestStatus() {
             description: "There was an error ingesting your codebase. Please try again.",
             variant: "destructive",
           });
+          setIsIngesting(false);
           // Stop polling on failure
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
@@ -88,6 +94,7 @@ export function useIngestStatus() {
       } catch (error) {
         console.error("Failed to get ingest status:", error);
         setIngestError(true);
+        setIsIngesting(false);
         // Don't retry on error, let the interval handle it
       } finally {
         isRequestPendingRef.current = false;
@@ -103,6 +110,7 @@ export function useIngestStatus() {
     return () => {
       isCancelled = true;
       isRequestPendingRef.current = false;
+      setIsIngesting(false);
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -110,5 +118,5 @@ export function useIngestStatus() {
     };
   }, [ingestRefId, workspaceId, codeIsSynced, ingestError, updateWorkspace, workspace?.repositories, toast]);
 
-  return { ingestError };
+  return { ingestError, isIngesting };
 }

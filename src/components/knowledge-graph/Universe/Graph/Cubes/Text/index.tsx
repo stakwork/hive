@@ -51,7 +51,6 @@ export const TextNode = memo(
     // Load SVG icon as texture
     useEffect(() => {
 
-      console.log('iconName', iconName)
       const loader = new TextureLoader()
 
       loader.load(`/svg-icons/${iconName}.svg`, setIconTexture, undefined, (error) => {

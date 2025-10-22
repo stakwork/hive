@@ -223,6 +223,10 @@ model Workspace {
   // Temporary storage for repository URL during setup
   repositoryDraft String? @map("repository_draft")
 
+  // Workspace logo/image
+  logoUrl String? @map("logo_url")
+  logoKey String? @map("logo_key") // S3 path for deletion/updates
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])

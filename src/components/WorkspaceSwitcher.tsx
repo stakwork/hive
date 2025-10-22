@@ -12,10 +12,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import type { WorkspaceWithRole } from "@/types/workspace";
 import { Building2, ChevronsUpDown, Plus, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
 interface WorkspaceSwitcherProps {
   // Legacy props for backward compatibility
@@ -36,6 +39,8 @@ export function WorkspaceSwitcher({
     switchWorkspace,
   } = useWorkspace();
   const router = useRouter();
+  const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
+  const { logoUrls } = useWorkspaceLogos(workspaces);
 
   // Handle workspace selection with navigation
   const handleWorkspaceSelect = (targetWorkspace: WorkspaceWithRole) => {
@@ -112,9 +117,15 @@ export function WorkspaceSwitcher({
             disabled={loading}
           >
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground overflow-hidden">
                 {loading ? (
                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : canAccessWorkspaceLogo && logoUrls[activeWorkspace.id] ? (
+                  <img
+                    src={logoUrls[activeWorkspace.id]}
+                    alt={activeWorkspace.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <Building2 className="w-4 h-4" />
                 )}
@@ -141,8 +152,16 @@ export function WorkspaceSwitcher({
 
           {/* Current Workspace */}
           <DropdownMenuItem className="flex items-center gap-2 p-2 bg-accent/50">
-            <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary text-primary-foreground">
-              <Building2 className="w-3.5 h-3.5" />
+            <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary text-primary-foreground overflow-hidden">
+              {canAccessWorkspaceLogo && logoUrls[activeWorkspace.id] ? (
+                <img
+                  src={logoUrls[activeWorkspace.id]}
+                  alt={activeWorkspace.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Building2 className="w-3.5 h-3.5" />
+              )}
             </div>
             <div className="flex-1">
               <div className="font-medium text-sm">{activeWorkspace.name}</div>
@@ -163,8 +182,16 @@ export function WorkspaceSwitcher({
                       onClick={() => handleWorkspaceSelect(workspace)}
                       className="flex items-center gap-2 p-2"
                     >
-                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
-                        <Building2 className="w-3.5 h-3.5" />
+                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted overflow-hidden">
+                        {canAccessWorkspaceLogo && logoUrls[workspace.id] ? (
+                          <img
+                            src={logoUrls[workspace.id]}
+                            alt={workspace.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Building2 className="w-3.5 h-3.5" />
+                        )}
                       </div>
                       <div className="flex-1">
                         <div className="font-medium text-sm">
