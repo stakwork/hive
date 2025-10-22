@@ -193,6 +193,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockResolvedValue(mockPool),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -232,6 +233,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockResolvedValue(mockPool),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -269,6 +271,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       const mockCreatePool = vi.fn().mockResolvedValue(mockPool);
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -331,6 +334,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       const mockCreatePool = vi.fn().mockResolvedValue(mockPool);
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -366,6 +370,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockResolvedValue(mockPool),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -413,6 +418,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       const mockCreatePool = vi.fn().mockResolvedValue(mockPool);
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -450,6 +456,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockRejectedValue(apiError),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -481,6 +488,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockRejectedValue(apiError),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -512,6 +520,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockRejectedValue(apiError),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -538,6 +547,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockRejectedValue(apiError),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -558,6 +568,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockRejectedValue(new Error("Network timeout")),
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -599,6 +610,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -642,6 +654,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -707,6 +720,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -748,6 +762,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
@@ -783,6 +798,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockPoolManagerService.mockReturnValue({
         createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
       } as any);
 
       const request = createPostRequest(
