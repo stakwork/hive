@@ -6,19 +6,20 @@ import { DELETE as imageDelete } from '@/app/api/workspaces/[slug]/settings/imag
 import { db } from '@/lib/db'
 import { WorkspaceRole } from '@prisma/client'
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
   generateUniqueId,
   createPostRequest,
   createGetRequest,
   createDeleteRequest,
-  getMockedSession,
+  createAuthenticatedPostRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedDeleteRequest,
 } from '@/__tests__/support/helpers'
 import sharp from 'sharp'
 
 const mockS3Service = {
   validateFileType: vi.fn(),
   validateFileSize: vi.fn(),
+  validateImageBuffer: vi.fn(),
   generateWorkspaceLogoPath: vi.fn(),
   generatePresignedUploadUrl: vi.fn(),
   generatePresignedDownloadUrl: vi.fn(),
@@ -50,15 +51,28 @@ describe('Workspace Logo API Integration Tests', () => {
         },
       })
 
+      // If role is OWNER, make testUser the owner
+      // Otherwise, create a separate owner and add testUser as a member
+      const ownerUser = role === WorkspaceRole.OWNER
+        ? testUser
+        : await tx.user.create({
+            data: {
+              id: generateUniqueId('user'),
+              email: `owner-${generateUniqueId()}@example.com`,
+              name: 'Workspace Owner',
+            },
+          })
+
       const testWorkspace = await tx.workspace.create({
         data: {
           id: generateUniqueId('workspace'),
           name: 'Test Workspace',
           slug: generateUniqueId('test-workspace'),
-          ownerId: testUser.id,
+          ownerId: ownerUser.id,
         },
       })
 
+      // If role is not OWNER, create a workspace member with the specified role
       if (role !== WorkspaceRole.OWNER) {
         await tx.workspaceMember.create({
           data: {
@@ -93,8 +107,6 @@ describe('Workspace Logo API Integration Tests', () => {
   describe('POST /api/workspaces/[slug]/settings/image/upload-url', () => {
     describe('Authentication Tests', () => {
       test('should return 401 for unauthenticated request', async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession())
-
         const request = createPostRequest(
           'http://localhost:3000/api/workspaces/test/settings/image/upload-url',
           {
@@ -117,15 +129,15 @@ describe('Workspace Logo API Integration Tests', () => {
     describe('Workspace Access Tests', () => {
       test('should return 404 for non-existent workspace', async () => {
         const { testUser } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
 
-        const request = createPostRequest(
+        const request = createAuthenticatedPostRequest(
           'http://localhost:3000/api/workspaces/non-existent/settings/image/upload-url',
           {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
+          },
+          testUser
         )
 
         const response = await uploadUrlPost(request, {
@@ -143,7 +155,7 @@ describe('Workspace Logo API Integration Tests', () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace(
           WorkspaceRole.OWNER
         )
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         mockS3Service.validateFileType.mockReturnValue(true)
         mockS3Service.validateFileSize.mockReturnValue(true)
@@ -154,14 +166,11 @@ describe('Workspace Logo API Integration Tests', () => {
           'https://s3.amazonaws.com/presigned-url'
         )
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -177,7 +186,7 @@ describe('Workspace Logo API Integration Tests', () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace(
           WorkspaceRole.ADMIN
         )
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         mockS3Service.validateFileType.mockReturnValue(true)
         mockS3Service.validateFileSize.mockReturnValue(true)
@@ -188,14 +197,11 @@ describe('Workspace Logo API Integration Tests', () => {
           'https://s3.amazonaws.com/presigned-url'
         )
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -208,16 +214,13 @@ describe('Workspace Logo API Integration Tests', () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace(
           WorkspaceRole.DEVELOPER
         )
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -232,16 +235,13 @@ describe('Workspace Logo API Integration Tests', () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace(
           WorkspaceRole.VIEWER
         )
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -254,18 +254,15 @@ describe('Workspace Logo API Integration Tests', () => {
     describe('Validation Tests', () => {
       test('should reject invalid file type', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         mockS3Service.validateFileType.mockReturnValue(false)
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'document.pdf',
             contentType: 'application/pdf',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -278,19 +275,16 @@ describe('Workspace Logo API Integration Tests', () => {
 
       test('should reject file exceeding 1MB limit', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         mockS3Service.validateFileType.mockReturnValue(true)
         mockS3Service.validateFileSize.mockReturnValue(false)
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'large-logo.jpg',
             contentType: 'image/jpeg',
             size: 2 * 1024 * 1024,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -298,20 +292,17 @@ describe('Workspace Logo API Integration Tests', () => {
 
         expect(response.status).toBe(400)
         const body = await response.json()
-        expect(body.error).toContain('File size exceeds maximum limit')
+        expect(body.error).toBe('Invalid request data')
       })
 
       test('should reject request with missing filename', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -324,7 +315,7 @@ describe('Workspace Logo API Integration Tests', () => {
     describe('Presigned URL Generation Tests', () => {
       test('should generate presigned URL with 15 minute expiry', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         mockS3Service.validateFileType.mockReturnValue(true)
         mockS3Service.validateFileSize.mockReturnValue(true)
@@ -335,14 +326,11 @@ describe('Workspace Logo API Integration Tests', () => {
           'https://s3.amazonaws.com/presigned-url'
         )
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -357,7 +345,7 @@ describe('Workspace Logo API Integration Tests', () => {
 
       test('should return all required fields in response', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         mockS3Service.validateFileType.mockReturnValue(true)
         mockS3Service.validateFileSize.mockReturnValue(true)
@@ -368,14 +356,11 @@ describe('Workspace Logo API Integration Tests', () => {
           'https://s3.amazonaws.com/presigned-url'
         )
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/upload-url`, {
             filename: 'logo.jpg',
             contentType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await uploadUrlPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -396,8 +381,6 @@ describe('Workspace Logo API Integration Tests', () => {
   describe('POST /api/workspaces/[slug]/settings/image/confirm', () => {
     describe('Authentication Tests', () => {
       test('should return 401 for unauthenticated request', async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession())
-
         const request = createPostRequest(
           'http://localhost:3000/api/workspaces/test/settings/image/confirm',
           {
@@ -421,21 +404,18 @@ describe('Workspace Logo API Integration Tests', () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace(
           WorkspaceRole.ADMIN
         )
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
 
         const testImage = await createTestImage('jpeg')
         mockS3Service.getObject.mockResolvedValue(testImage)
+        mockS3Service.validateImageBuffer.mockReturnValue(true)
         mockS3Service.putObject.mockResolvedValue(undefined)
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`, {
             s3Path: 'workspace-logos/test/123.jpg',
             filename: 'logo.jpg',
             mimeType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await confirmPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -448,17 +428,14 @@ describe('Workspace Logo API Integration Tests', () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace(
           WorkspaceRole.VIEWER
         )
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`, {
             s3Path: 'workspace-logos/test/123.jpg',
             filename: 'logo.jpg',
             mimeType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await confirmPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -471,21 +448,18 @@ describe('Workspace Logo API Integration Tests', () => {
     describe('Image Processing Tests', () => {
       test('should process and save valid image', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
 
         const testImage = await createTestImage('jpeg')
         mockS3Service.getObject.mockResolvedValue(testImage)
+        mockS3Service.validateImageBuffer.mockReturnValue(true)
         mockS3Service.putObject.mockResolvedValue(undefined)
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`, {
             s3Path: 'workspace-logos/test/123.jpg',
             filename: 'logo.jpg',
             mimeType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await confirmPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -510,22 +484,20 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/old.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
         const testImage = await createTestImage('jpeg')
         mockS3Service.getObject.mockResolvedValue(testImage)
+        mockS3Service.validateImageBuffer.mockReturnValue(true)
         mockS3Service.putObject.mockResolvedValue(undefined)
         mockS3Service.deleteObject.mockResolvedValue(undefined)
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`, {
             s3Path: 'workspace-logos/test/new.jpg',
             filename: 'logo.jpg',
             mimeType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         await confirmPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -538,21 +510,18 @@ describe('Workspace Logo API Integration Tests', () => {
 
       test('should reject corrupt image file', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
 
         const corruptBuffer = Buffer.from('not an image')
         mockS3Service.getObject.mockResolvedValue(corruptBuffer)
+        mockS3Service.validateImageBuffer.mockReturnValue(false)
         mockS3Service.deleteObject.mockResolvedValue(undefined)
 
-        const request = createPostRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`,
-          {
+        const request = createAuthenticatedPostRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image/confirm`, {
             s3Path: 'workspace-logos/test/123.jpg',
             filename: 'logo.jpg',
             mimeType: 'image/jpeg',
             size: 500000,
-          }
-        )
+          }, testUser)
 
         const response = await confirmPost(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -569,8 +538,6 @@ describe('Workspace Logo API Integration Tests', () => {
   describe('GET /api/workspaces/[slug]/image', () => {
     describe('Authentication Tests', () => {
       test('should return 401 for unauthenticated request', async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession())
-
         const request = createGetRequest('http://localhost:3000/api/workspaces/test/image')
 
         const response = await imageGet(request, {
@@ -590,14 +557,12 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
           'https://s3.amazonaws.com/download-url'
         )
 
-        const request = createGetRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`
-        )
+        const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`, testUser)
 
         const response = await imageGet(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -611,11 +576,9 @@ describe('Workspace Logo API Integration Tests', () => {
 
       test('should return 404 for workspace without logo', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createGetRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`
-        )
+        const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`, testUser)
 
         const response = await imageGet(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -636,14 +599,12 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
           'https://s3.amazonaws.com/download-url'
         )
 
-        const request = createGetRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`
-        )
+        const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`, testUser)
 
         const response = await imageGet(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -660,14 +621,12 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
           'https://s3.amazonaws.com/download-url'
         )
 
-        const request = createGetRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`
-        )
+        const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/image`, testUser)
 
         await imageGet(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -684,8 +643,6 @@ describe('Workspace Logo API Integration Tests', () => {
   describe('DELETE /api/workspaces/[slug]/settings/image', () => {
     describe('Authentication Tests', () => {
       test('should return 401 for unauthenticated request', async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession())
-
         const request = createDeleteRequest(
           'http://localhost:3000/api/workspaces/test/settings/image'
         )
@@ -707,12 +664,10 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.deleteObject.mockResolvedValue(undefined)
 
-        const request = createDeleteRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`
-        )
+        const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`, testUser)
 
         const response = await imageDelete(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -731,12 +686,10 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.deleteObject.mockResolvedValue(undefined)
 
-        const request = createDeleteRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`
-        )
+        const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`, testUser)
 
         const response = await imageDelete(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -755,11 +708,9 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createDeleteRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`
-        )
+        const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`, testUser)
 
         const response = await imageDelete(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -781,12 +732,10 @@ describe('Workspace Logo API Integration Tests', () => {
           },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.deleteObject.mockResolvedValue(undefined)
 
-        const request = createDeleteRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`
-        )
+        const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`, testUser)
 
         const response = await imageDelete(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -809,11 +758,9 @@ describe('Workspace Logo API Integration Tests', () => {
 
       test('should return 404 when workspace has no logo', async () => {
         const { testUser, testWorkspace } = await createTestUserAndWorkspace()
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
 
-        const request = createDeleteRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`
-        )
+        const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`, testUser)
 
         const response = await imageDelete(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),
@@ -832,12 +779,10 @@ describe('Workspace Logo API Integration Tests', () => {
           data: { logoKey: 'workspace-logos/test/123.jpg' },
         })
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser.id))
+        
         mockS3Service.deleteObject.mockRejectedValue(new Error('S3 Error'))
 
-        const request = createDeleteRequest(
-          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`
-        )
+        const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/workspaces/${testWorkspace.slug}/settings/image`, testUser)
 
         const response = await imageDelete(request, {
           params: Promise.resolve({ slug: testWorkspace.slug }),

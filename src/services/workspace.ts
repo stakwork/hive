@@ -293,6 +293,8 @@ export async function getWorkspaceBySlug(
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
       swarmUrl: workspace.swarm?.swarmUrl || null,
+      logoKey: workspace.logoKey,
+      logoUrl: workspace.logoUrl,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -333,6 +335,8 @@ export async function getWorkspaceBySlug(
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
     swarmUrl: workspace.swarm?.swarmUrl || null,
+    logoKey: workspace.logoKey,
+    logoUrl: workspace.logoUrl,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
