@@ -23,7 +23,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const containerFilesSetUp = workspace?.containerFilesSetUp;
   const swarmId = workspace?.swarmId;
   const setupServicesDone = useRef(false);
-  const lastSwarmId = useRef<string | null>(null);
   const lastWorkspaceId = useRef<string | null>(null);
   const swarmCreationStarted = useRef(false);
   const ingestionStarted = useRef(false);
@@ -87,18 +86,22 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         throw new Error(swarmData.message || "Failed to create swarm");
       }
 
-      updateWorkspace({
-        repositories: [{
-          id: `repo-${Date.now()}`,
-          name: repoInfo.name,
-          repositoryUrl: repositoryUrl,
-          branch: defaultBranch,
-          status: "PENDING",
-          updatedAt: new Date().toISOString(),
-        }],
-        swarmId: swarmData.data.id,
-        swarmStatus: "ACTIVE",
-      });
+      if (swarmData.data.id && swarmData.data.swarmId) {
+        updateWorkspace({
+          repositories: [{
+            id: `repo-${Date.now()}`,
+            name: repoInfo.name,
+            repositoryUrl: repositoryUrl,
+            branch: defaultBranch,
+            status: "PENDING",
+            updatedAt: new Date().toISOString(),
+          }],
+          swarmId: swarmData.data.id,
+          swarmStatus: "ACTIVE",
+        });
+      }
+
+
     } catch (error) {
       console.error("Failed to create swarm:", error);
       // setError(error instanceof Error ? error.message : "Failed to create swarm");
@@ -222,14 +225,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspace, workspaceId, swarmId, hasStakworkCustomer, createStakworkCustomer]);
 
-  // // Reset guards when workspace or conditions change
-  // useEffect(() => {
-  //   if (swarmId && swarmId !== lastSwarmId.current) {
-  //     console.log('SwarmId changed from', lastSwarmId.current, 'to', swarmId, '- resetting services setup');
-  //     setupServicesDone.current = false;
-  //     lastSwarmId.current = swarmId;
-  //   }
-  // }, [swarmId]);
 
   // Reset guards only when workspaceId actually changes (not just re-renders)
   useEffect(() => {
