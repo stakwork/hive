@@ -22,7 +22,7 @@ interface AIButtonProps<T> {
   size?: "default" | "sm" | "lg" | "icon";
   pollEndpoint?: string;
   onPollingComplete?: (result: string) => void;
-  architectureRequestId?: string | null;
+  requestId?: string | null;
 }
 
 export function AIButton<T>({
@@ -36,12 +36,12 @@ export function AIButton<T>({
   size = "icon",
   pollEndpoint,
   onPollingComplete,
-  architectureRequestId,
+  requestId,
 }: AIButtonProps<T>) {
   const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(
     endpoint,
     pollEndpoint && onPollingComplete
-      ? { pollEndpoint, onPollingComplete, architectureRequestId }
+      ? { pollEndpoint, onPollingComplete, requestId }
       : undefined
   );
 

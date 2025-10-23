@@ -12,7 +12,7 @@ interface UseAIGenerateResult<T> {
 interface UseAIGenerateOptions {
   pollEndpoint?: string;
   onPollingComplete?: (result: string) => void;
-  architectureRequestId?: string | null;
+  requestId?: string | null;
 }
 
 export function useAIGenerate<T>(
@@ -33,9 +33,9 @@ export function useAIGenerate<T>(
     };
   }, []);
 
-  // Auto-start polling on mount if architectureRequestId exists
+  // Auto-start polling on mount if requestId exists
   useEffect(() => {
-    if (options?.architectureRequestId && options?.pollEndpoint) {
+    if (options?.requestId && options?.pollEndpoint) {
       setGenerating(true);
       startPolling();
     }

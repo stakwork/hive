@@ -519,7 +519,7 @@ export default function FeatureDetailPage() {
             saved={saved}
             onChange={(value) => updateFeature({ architecture: value })}
             onBlur={(value) => handleFieldBlur("architecture", value)}
-            architectureRequestId={feature.architectureRequestId}
+            requestId={feature.architectureRequestId}
           />
 
           <PhaseSection
