@@ -68,6 +68,12 @@ export function AITextareaSection({
     }
   };
 
+  const handlePollingComplete = (result: string) => {
+    // When polling completes, update the field directly
+    onChange(result);
+    onBlur(result);
+  };
+
   const handleModeSwitch = (newMode: "edit" | "preview") => {
     // If switching from edit to preview, trigger save
     if (mode === "edit" && newMode === "preview") {
@@ -88,6 +94,9 @@ export function AITextareaSection({
           onGenerated={handleGenerated}
           tooltip="Generate with AI"
           iconOnly
+          featureId={featureId}
+          pollEndpoint={type === "architecture" ? `/api/features/${featureId}/architecture-status` : undefined}
+          onPollingComplete={type === "architecture" ? handlePollingComplete : undefined}
         />
         <SaveIndicator
           field={id}

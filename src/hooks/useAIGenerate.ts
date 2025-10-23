@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface UseAIGenerateResult<T> {
   generating: boolean;
@@ -9,10 +9,78 @@ interface UseAIGenerateResult<T> {
   clearSuggestions: () => void;
 }
 
-export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
+interface UseAIGenerateOptions {
+  pollEndpoint?: string;
+  onPollingComplete?: (result: string) => void;
+}
+
+export function useAIGenerate<T>(
+  endpoint: string,
+  options?: UseAIGenerateOptions
+): UseAIGenerateResult<T> {
   const [generating, setGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<T[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  async function startPolling() {
+    if (!options?.pollEndpoint) return;
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(options.pollEndpoint!);
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Polling failed");
+        }
+
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          setGenerating(false);
+
+          // Call the completion callback with the result
+          if (options.onPollingComplete && data.architecture) {
+            options.onPollingComplete(data.architecture);
+          }
+
+          // Set suggestions with the completed result
+          setSuggestions([{ content: data.architecture } as T]);
+        } else if (data.status === "failed") {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          setGenerating(false);
+          setError(data.error || "Architecture generation failed");
+        }
+        // If status is "pending", keep polling
+      } catch (err) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        setGenerating(false);
+        const errorMessage = err instanceof Error ? err.message : "Polling error";
+        setError(errorMessage);
+        console.error("Polling error:", err);
+      }
+    }, 3000); // Poll every 3 seconds
+  }
 
   async function generate(params?: Record<string, unknown>) {
     setGenerating(true);
@@ -30,8 +98,17 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
         throw new Error(errorData.error || "Generation failed");
       }
 
-      // Read streaming response
       const text = await response.text();
+      const data = JSON.parse(text);
+
+      // Check if this is a polling-based response (architecture generation)
+      if (data.request_id && data.status === "pending") {
+        // Start polling for completion
+        startPolling();
+        return;
+      }
+
+      // Read streaming response for other generation types
 
       // Parse the structured output response
       try {

@@ -20,6 +20,9 @@ interface AIButtonProps<T> {
   label?: string;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "lg" | "icon";
+  featureId?: string;
+  pollEndpoint?: string;
+  onPollingComplete?: (result: string) => void;
 }
 
 export function AIButton<T>({
@@ -31,8 +34,16 @@ export function AIButton<T>({
   label = "Generate",
   variant = "ghost",
   size = "icon",
+  featureId,
+  pollEndpoint,
+  onPollingComplete,
 }: AIButtonProps<T>) {
-  const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(endpoint);
+  const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(
+    endpoint,
+    pollEndpoint && onPollingComplete
+      ? { pollEndpoint, onPollingComplete }
+      : undefined
+  );
 
   const handleGenerate = async () => {
     await generate(params);
