@@ -21,6 +21,7 @@ export function VMConfigSection() {
   const [loading, setLoading] = useState(false);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
+  const servicesReady = workspace?.containerFilesSetUp === true;
 
   const fetchPoolStatus = useCallback(async () => {
     if (!slug || !isPoolActive) {
@@ -90,6 +91,8 @@ export function VMConfigSection() {
         <CardDescription>
           {isPoolActive
             ? "Manage environment variables and services any time."
+            : servicesReady
+            ? "Complete your pool setup to get started."
             : "Finish your setup to get started."}
         </CardDescription>
       </CardHeader>
@@ -155,10 +158,10 @@ export function VMConfigSection() {
                 <span className="text-xs text-muted-foreground">Finish your setup to get started.</span>
               </div>
             </div>
-            <Button asChild>
-              <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
+            <Button asChild disabled={!servicesReady}>
+              <Link onClick={servicesReady ? handleOpenModal : undefined} href={servicesReady ? `/w/${slug}/code-graph` : '#'}>
                 <Zap className="w-4 h-4 mr-2" />
-                Finish setup
+                {servicesReady ? 'Finish setup' : 'Setting up services...'}
               </Link>
             </Button>
           </div>

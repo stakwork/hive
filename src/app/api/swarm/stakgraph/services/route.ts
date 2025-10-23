@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          status: 200,
+          status: 'COMPLETED',
           data: { services },
         },
         { status: 200 },
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          status: 'processing',
+          status: 'PROCESSING',
           data: {
             request_id: swarm.agentRequestId
           },
@@ -171,7 +171,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
           {
             success: true,
-            status: 'processing',
+            status: 'PROCESSING',
             data: {
               request_id: initData.request_id
             },
@@ -222,10 +222,16 @@ export async function GET(request: NextRequest) {
         ...(containerFiles ? { containerFiles } : {}),
       });
 
+      // Mark container files as set up since we have services and env vars
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { containerFilesSetUp: true },
+      });
+
       return NextResponse.json(
         {
           success: true,
-          status: 200,
+          status: 'COMPLETED',
           data: responseData,
         },
         { status: 200 },
