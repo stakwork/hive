@@ -31,7 +31,7 @@ export function buildRequirementsPrompt(context: FeatureContext): string {
 Title: ${context.title}
 ${context.brief ? `Brief: ${context.brief}` : ''}${context.workspaceDesc}${context.personasText}${context.userStoriesText}${existingRequirements}
 
-Return the FULL final requirements (200-400 words) covering functional, technical, and non-functional aspects.
+Return the final requirements (50-100 words) covering functional aspects. Do NOT include technical details. Please be direct and succinct.
 ${context.requirementsText ? 'Incorporate and enhance the existing requirements above.' : ''}`;
 }
 
