@@ -45,6 +45,9 @@ vi.mock("@/lib/auth/nextauth", () => ({
 }));
 
 vi.mock("crypto", () => ({
+  default: {
+    randomUUID: vi.fn(),
+  },
   randomUUID: vi.fn(),
 }));
 
