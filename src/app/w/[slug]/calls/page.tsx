@@ -101,7 +101,6 @@ export default function CallsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Calls"
-          description="View your call recordings"
         />
         <ConnectRepository
           workspaceSlug={slug}
@@ -117,7 +116,6 @@ export default function CallsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Calls"
-        description="View your call recordings"
         actions={
           workspace?.isCodeGraphSetup ? (
             <Button onClick={handleStartCall} disabled={generatingLink}>
