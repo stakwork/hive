@@ -34,7 +34,6 @@ export const selectors = {
   // Page descriptions
   pageDescription: {
     element: '[data-testid="page-description"]',
-    dashboard: '[data-testid="page-description"]:has-text("Welcome to your development workspace")',
   },
 
   // Workspace

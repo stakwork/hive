@@ -20,7 +20,7 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
 
   const description = setupInProgress
     ? "Your workspace is being configured. You can start exploring while setup completes in the background."
-    : "Welcome to your development workspace.";
+    : "";
 
   const repository = workspace?.repositories[0];
 
