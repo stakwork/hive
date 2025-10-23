@@ -20,9 +20,9 @@ interface AIButtonProps<T> {
   label?: string;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "lg" | "icon";
-  featureId?: string;
   pollEndpoint?: string;
   onPollingComplete?: (result: string) => void;
+  architectureRequestId?: string | null;
 }
 
 export function AIButton<T>({
@@ -34,14 +34,14 @@ export function AIButton<T>({
   label = "Generate",
   variant = "ghost",
   size = "icon",
-  featureId,
   pollEndpoint,
   onPollingComplete,
+  architectureRequestId,
 }: AIButtonProps<T>) {
   const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(
     endpoint,
     pollEndpoint && onPollingComplete
-      ? { pollEndpoint, onPollingComplete }
+      ? { pollEndpoint, onPollingComplete, architectureRequestId }
       : undefined
   );
 

@@ -28,6 +28,7 @@ interface AITextareaSectionProps {
   onBlur: (value: string | null) => void;
   rows?: number;
   className?: string;
+  architectureRequestId?: string | null;
 }
 
 export function AITextareaSection({
@@ -44,6 +45,7 @@ export function AITextareaSection({
   onBlur,
   rows = 8,
   className,
+  architectureRequestId,
 }: AITextareaSectionProps) {
   const [generatedContent, setGeneratedContent] = useState<string>("");
   // Default to edit mode when empty, preview mode when has content
@@ -94,9 +96,9 @@ export function AITextareaSection({
           onGenerated={handleGenerated}
           tooltip="Generate with AI"
           iconOnly
-          featureId={featureId}
           pollEndpoint={type === "architecture" ? `/api/features/${featureId}/architecture-status` : undefined}
           onPollingComplete={type === "architecture" ? handlePollingComplete : undefined}
+          architectureRequestId={type === "architecture" ? architectureRequestId : undefined}
         />
         <SaveIndicator
           field={id}
