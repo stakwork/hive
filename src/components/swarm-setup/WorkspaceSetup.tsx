@@ -28,101 +28,32 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const swarmCreationStarted = useRef(false);
   const ingestionStarted = useRef(false);
   const customerCreationStarted = useRef(false);
-  console.log('workspace', workspace);
+
+  console.log(`WorkspaceSetup render - workspace:`, workspace);
 
   // Log component mount/unmount for debugging
   useEffect(() => {
-    console.log('WorkspaceSetup component mounted');
+    console.log(`WorkspaceSetup component mounted`);
     return () => {
-      console.log('WorkspaceSetup component unmounted');
+      console.log(`WorkspaceSetup component unmounted`);
     };
   }, []);
-
-  // Step 1: Create swarm
-  const createSwarm = useCallback(async () => {
-
-    // Primary guard: check workspace state (persists across remounts)
-    if (!workspaceId || !slug || swarmId) {
-      console.log('createSwarm skipped (state):', { workspaceId: !!workspaceId, slug: !!slug, swarmId: !!swarmId });
-      return;
-    }
-
-    // Secondary guard: prevent duplicate calls within same lifecycle
-    if (swarmCreationStarted.current) {
-      console.log('createSwarm skipped (already started)');
-      return;
-    }
-
-    swarmCreationStarted.current = true;
-
-    try {
-      setIsLoading(true);
-      console.log("Creating swarm for:", repositoryUrl);
-
-
-      const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
-      if (!repoInfo) {
-        throw new Error("Invalid repository URL format");
-      }
-
-      const defaultBranch = await getRepositoryDefaultBranch(repositoryUrl, slug);
-      if (!defaultBranch) {
-        throw new Error("Could not determine repository default branch");
-      }
-
-      console.log('About to call /api/swarm - creating new swarm');
-      const swarmRes = await fetch("/api/swarm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: workspaceId,
-          repositoryName: repoInfo.name,
-          repositoryUrl: repositoryUrl,
-          repositoryDefaultBranch: defaultBranch,
-        }),
-      });
-
-      const swarmData = await swarmRes.json();
-      if (!swarmRes.ok || !swarmData.success) {
-        throw new Error(swarmData.message || "Failed to create swarm");
-      }
-
-      updateWorkspace({
-        repositories: [{
-          id: `repo-${Date.now()}`,
-          name: repoInfo.name,
-          repositoryUrl: repositoryUrl,
-          branch: defaultBranch,
-          status: "PENDING",
-          updatedAt: new Date().toISOString(),
-        }],
-        swarmId: swarmData.data.id,
-        swarmStatus: "ACTIVE",
-      });
-    } catch (error) {
-      console.error("Failed to create swarm:", error);
-      // setError(error instanceof Error ? error.message : "Failed to create swarm");
-      toast({
-        title: "Swarm Creation Error",
-        description: error instanceof Error ? error.message : "Failed to create swarm",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [workspaceId, slug, repositoryUrl, swarmId, toast, updateWorkspace]);
 
   // Step 2: Start code ingestion
   const startIngestion = useCallback(async () => {
     // Primary guard: check workspace state (persists across remounts)
     if (!workspaceId || !swarmId || ingestRefId) {
-      console.log('startIngestion skipped (state):', { workspaceId: !!workspaceId, swarmId: !!swarmId, ingestRefId: !!ingestRefId });
+      console.log("startIngestion skipped (state):", {
+        workspaceId: !!workspaceId,
+        swarmId: !!swarmId,
+        ingestRefId: !!ingestRefId,
+      });
       return;
     }
 
     // Secondary guard: prevent duplicate calls within same lifecycle
     if (ingestionStarted.current) {
-      console.log('startIngestion skipped (already started)');
+      console.log("startIngestion skipped (already started)");
       return;
     }
 
@@ -161,13 +92,13 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const createStakworkCustomer = useCallback(async () => {
     // Primary guard: check workspace state (persists across remounts)
     if (!workspaceId || hasStakworkCustomer) {
-      console.log('createStakworkCustomer skipped (state):', { workspaceId: !!workspaceId, hasStakworkCustomer });
+      console.log("createStakworkCustomer skipped (state):", { workspaceId: !!workspaceId, hasStakworkCustomer });
       return;
     }
 
     // Secondary guard: prevent duplicate calls within same lifecycle
     if (customerCreationStarted.current) {
-      console.log('createStakworkCustomer skipped (already started)');
+      console.log("createStakworkCustomer skipped (already started)");
       return;
     }
 
@@ -199,14 +130,102 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspaceId, hasStakworkCustomer, toast]);
 
-  // Step 1: Create swarm when component mounts
+  // Reactive swarm creation: Only execute when conditions transition from false to true
+  const shouldCreateSwarm = workspace && workspaceId && slug && !swarmId;
+  const prevShouldCreateSwarmRef = useRef(false);
+
   useEffect(() => {
-    console.log('createSwarm useEffect triggered:', { workspace: !!workspace, workspaceId: !!workspaceId, slug: !!slug, swarmId: !!swarmId });
-    // Only proceed if workspace data is loaded and we don't have a swarm yet
-    if (workspace && workspaceId && slug && !swarmId) {
-      createSwarm();
+    const prevShouldCreate = prevShouldCreateSwarmRef.current;
+
+    // Only trigger when transitioning from false to true (edge trigger)
+    if (shouldCreateSwarm && !prevShouldCreate) {
+      // Inline the swarm creation logic to avoid function dependency
+      const performSwarmCreation = async () => {
+        // Primary guard: check workspace state (persists across remounts)
+        if (!workspaceId || !slug || swarmId) {
+          console.log(`Swarm creation skipped (state):`, {
+            workspaceId: !!workspaceId,
+            slug: !!slug,
+            swarmId: !!swarmId,
+          });
+          return;
+        }
+
+        // Secondary guard: prevent duplicate calls within same lifecycle
+        if (swarmCreationStarted.current) {
+          console.log(`Swarm creation skipped (already started)`);
+          return;
+        }
+
+        swarmCreationStarted.current = true;
+
+        try {
+          setIsLoading(true);
+          console.log(`Creating swarm for:`, repositoryUrl);
+
+          const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
+          if (!repoInfo) {
+            throw new Error("Invalid repository URL format");
+          }
+
+          const defaultBranch = await getRepositoryDefaultBranch(repositoryUrl, slug);
+          if (!defaultBranch) {
+            throw new Error("Could not determine repository default branch");
+          }
+
+          console.log(`About to call /api/swarm - creating new swarm`);
+          const swarmRes = await fetch("/api/swarm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workspaceId: workspaceId,
+              repositoryName: repoInfo.name,
+              repositoryUrl: repositoryUrl,
+              repositoryDefaultBranch: defaultBranch,
+            }),
+          });
+
+          const swarmData = await swarmRes.json();
+          if (!swarmRes.ok || !swarmData.success) {
+            throw new Error(swarmData.message || "Failed to create swarm");
+          }
+
+          updateWorkspace({
+            repositories: [
+              {
+                id: `repo-${Date.now()}`,
+                name: repoInfo.name,
+                repositoryUrl: repositoryUrl,
+                branch: defaultBranch,
+                status: "PENDING",
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+            swarmId: swarmData.data.id,
+            swarmStatus: "ACTIVE",
+          });
+        } catch (error) {
+          console.error(`Failed to create swarm:`, error);
+          toast({
+            title: "Swarm Creation Error",
+            description: error instanceof Error ? error.message : "Failed to create swarm",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      performSwarmCreation();
+    } else if (!shouldCreateSwarm) {
+      console.log(`❌ Conditions not met for swarm creation`);
+    } else {
+      console.log(`ℹ️ Conditions still true, but already handled`);
     }
-  }, [workspace, workspaceId, slug, swarmId, createSwarm]);
+
+    // Update the previous value for next comparison
+    prevShouldCreateSwarmRef.current = shouldCreateSwarm;
+  }, [workspace, workspaceId, slug, swarmId, repositoryUrl, toast, updateWorkspace]); // Direct dependencies only
 
   // Step 2: Start ingestion when swarm is ready
   useEffect(() => {
@@ -225,7 +244,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   // Reset guards when workspace or conditions change
   useEffect(() => {
     if (swarmId && swarmId !== lastSwarmId.current) {
-      console.log('SwarmId changed from', lastSwarmId.current, 'to', swarmId, '- resetting services setup');
       setupServicesDone.current = false;
       lastSwarmId.current = swarmId;
     }
@@ -234,7 +252,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   // Reset guards only when workspaceId actually changes (not just re-renders)
   useEffect(() => {
     if (workspaceId && workspaceId !== lastWorkspaceId.current) {
-      console.log('WorkspaceId changed from', lastWorkspaceId.current, 'to', workspaceId, '- resetting guards');
       // Only reset swarm creation guard if we don't have a swarm yet
       if (!swarmId) {
         swarmCreationStarted.current = false;
@@ -254,22 +271,22 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   // Handle services setup when swarmId becomes available
   useEffect(() => {
     const setupServices = async () => {
-      console.log('Services setup conditions:', {
+      console.log("Services setup conditions:", {
         swarmId: !!swarmId,
         containerFilesSetUp,
         workspaceId: !!workspaceId,
-        setupServicesDone: setupServicesDone.current
+        setupServicesDone: setupServicesDone.current,
       });
 
       if (!swarmId || containerFilesSetUp || !workspaceId || setupServicesDone.current) {
-        console.log('Skipping services setup - conditions not met');
+        console.log("Skipping services setup - conditions not met");
         return;
       }
 
       setupServicesDone.current = true;
 
       try {
-        console.log('Setting up services for swarmId:', swarmId);
+        console.log("Setting up services for swarmId:", swarmId);
 
         // Notify that services have started
         onServicesStarted?.(true);
@@ -285,51 +302,51 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         }
 
         const servicesData = await servicesRes.json();
-        console.log('services response:', servicesData);
+        console.log("services response:", servicesData);
 
         // Handle async agent processing with SSE
-        if (servicesData.status === 'processing') {
+        if (servicesData.status === "processing") {
           const streamUrl = `/api/swarm/stakgraph/agent-stream?request_id=${encodeURIComponent(servicesData.data.request_id)}&swarm_id=${encodeURIComponent(swarmId)}`;
-          console.log('Agent processing started, using SSE stream:', streamUrl);
+          console.log("Agent processing started, using SSE stream:", streamUrl);
 
           // Start SSE connection but don't await it - let it run in background
           const eventSource = new EventSource(streamUrl);
 
           eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            console.log('SSE message:', data);
+            console.log("SSE message:", data);
           };
 
-          eventSource.addEventListener('completed', (event) => {
+          eventSource.addEventListener("completed", (event) => {
             const data = JSON.parse(event.data);
-            console.log('Agent completed successfully:', data);
+            console.log("Agent completed successfully:", data);
             eventSource.close();
             updateWorkspace({ containerFilesSetUp: true });
           });
 
-          eventSource.addEventListener('error', (event) => {
+          eventSource.addEventListener("error", (event) => {
             const data = JSON.parse((event as MessageEvent).data);
-            console.error('Agent processing failed:', data);
+            console.error("Agent processing failed:", data);
             eventSource.close();
             // Don't fail the setup, just log the error
-            console.log('Agent failed, but setup will continue with fallback if needed');
+            console.log("Agent failed, but setup will continue with fallback if needed");
           });
 
           eventSource.onerror = (error) => {
-            console.error('SSE connection error:', error);
+            console.error("SSE connection error:", error);
             eventSource.close();
             // Don't fail the setup, just log the error
-            console.log('SSE connection failed, but setup will continue');
+            console.log("SSE connection failed, but setup will continue");
           };
 
           // Don't block - continue with setup immediately
-          console.log('Agent processing started in background, continuing setup...');
+          console.log("Agent processing started in background, continuing setup...");
         } else {
           // Synchronous response (fallback mode)
           updateWorkspace({ containerFilesSetUp: true });
         }
       } catch (error) {
-        console.error('Failed to setup services:', error);
+        console.error("Failed to setup services:", error);
         toast({
           title: "Services Setup Error",
           description: error instanceof Error ? error.message : "Failed to setup services",
@@ -340,8 +357,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
     setupServices();
   }, [swarmId, containerFilesSetUp, workspaceId, repositoryUrl, updateWorkspace, toast, onServicesStarted]);
-
-
 
   // Show error state first, before checking completion
   if (error) {
@@ -354,7 +369,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       </div>
     );
   }
-
 
   // Show loading state during workspace setup
   if (isLoading) {
