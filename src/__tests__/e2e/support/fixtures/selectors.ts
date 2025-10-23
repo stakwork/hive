@@ -20,6 +20,7 @@ export const selectors = {
     learnLink: '[data-testid="nav-learn"]',
     userJourneysLink: '[data-testid="nav-user-journeys"]',
     roadmapLink: '[data-testid="nav-roadmap"]',
+    callsLink: '[data-testid="nav-calls"]',
   },
 
   // Page titles
@@ -29,6 +30,7 @@ export const selectors = {
     tasks: '[data-testid="page-title"]:has-text("Tasks")',
     insights: '[data-testid="page-title"]:has-text("Insights")',
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
+    calls: '[data-testid="page-title"]:has-text("Calls")',
   },
 
   // Page descriptions
@@ -155,6 +157,12 @@ export const selectors = {
     ticketInput: '[data-testid="ticket-title-input"]',
     addTicketButton: '[data-testid="add-ticket-button"]',
     ticketRow: '[data-testid="ticket-row"]',
+  },
+
+  // Calls
+  calls: {
+    startCallButton: 'button:has-text("Start Call")',
+    callRecordingsCard: 'text=/Call Recordings/i',
   },
 
   // Common UI elements
