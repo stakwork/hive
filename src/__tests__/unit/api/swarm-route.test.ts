@@ -4,10 +4,11 @@ import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { SwarmStatus } from "@prisma/client";
+import { SwarmStatus, RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
+import { randomUUID } from "crypto";
 
 // Mock external dependencies
 vi.mock("next-auth/next", () => ({
@@ -43,12 +44,35 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
+vi.mock("crypto", () => ({
+  randomUUID: vi.fn(),
+}));
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    $transaction: vi.fn(),
+    swarm: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    repository: {
+      create: vi.fn(),
+    },
+  },
+}));
+
 const mockGetServerSession = getServerSession as Mock;
 const mockGenerateSecurePassword = generateSecurePassword as Mock;
 const mockValidateWorkspaceAccessById = validateWorkspaceAccessById as Mock;
 const mockSaveOrUpdateSwarm = saveOrUpdateSwarm as Mock;
 const mockSwarmService = SwarmService as Mock;
 const mockGetServiceConfig = getServiceConfig as Mock;
+const mockRandomUUID = randomUUID as Mock;
+
+// Import and setup db mocks
+import { db } from "@/lib/db";
+const mockDb = db as any;
 
 describe("POST /api/swarm - Unit Tests", () => {
   let mockSwarmServiceInstance: {
@@ -73,6 +97,37 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     mockGenerateSecurePassword.mockReturnValue("secure-test-password-123");
+    mockRandomUUID.mockReturnValue("temp-uuid-123");
+
+    // Setup default database transaction mock
+    mockDb.$transaction.mockImplementation(async (callback) => {
+      return callback({
+        swarm: mockDb.swarm,
+        repository: mockDb.repository,
+      });
+    });
+
+    // Default database mocks
+    mockDb.swarm.findFirst.mockResolvedValue(null); // No existing swarm
+    mockDb.swarm.create.mockResolvedValue({
+      id: "placeholder-swarm-123",
+      workspaceId: "workspace-123",
+      name: "temp-uuid-123",
+      status: SwarmStatus.PENDING,
+    });
+    mockDb.swarm.update.mockResolvedValue({
+      id: "placeholder-swarm-123",
+      workspaceId: "workspace-123",
+      name: "swarm2bCar4",
+      status: SwarmStatus.ACTIVE,
+      swarmId: "swarm2bCar4",
+    });
+    mockDb.repository.create.mockResolvedValue({
+      id: "repo-123",
+      name: "test-repo",
+      repositoryUrl: "https://github.com/test/repo",
+      status: RepositoryStatus.PENDING,
+    });
   });
 
   const createMockRequest = (body: object) => {
@@ -172,20 +227,28 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
-
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
           swarm_id: "swarm2bCar4",
           address: "swarm2bCar4.sphinx.chat",
           x_api_key: "sensitive-api-key-789",
+          ec2_id: "i-1234567890abcdef0",
         },
       });
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(200);
+      expect(data).toEqual({
+        success: true,
+        message: "Swarm was created successfully",
+        data: {
+          id: "placeholder-swarm-123",
+          swarmId: "swarm2bCar4",
+        },
+      });
       expect(mockValidateWorkspaceAccessById).toHaveBeenCalledWith(
         "workspace-123",
         "user-123"
@@ -241,6 +304,15 @@ describe("POST /api/swarm - Unit Tests", () => {
         hasAccess: true,
         canAdmin: true,
       });
+
+      // Ensure transaction returns new swarm (not existing)
+      mockDb.$transaction.mockResolvedValue({
+        exists: false,
+        swarm: {
+          id: "placeholder-swarm-123",
+          status: SwarmStatus.PENDING,
+        },
+      });
     });
 
     test("should generate secure password for swarm", async () => {
@@ -269,8 +341,6 @@ describe("POST /api/swarm - Unit Tests", () => {
     test("should handle API key securely", async () => {
       const sensitiveApiKey = "very-sensitive-api-key-123";
 
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
-
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
           swarm_id: "swarm2bCar4",
@@ -289,23 +359,21 @@ describe("POST /api/swarm - Unit Tests", () => {
       // Verify API key is not exposed in response
       expect(JSON.stringify(data)).not.toContain(sensitiveApiKey);
       expect(data.data).toEqual({
-        id: "final-swarm",
+        id: "placeholder-swarm-123",
         swarmId: "swarm2bCar4",
       });
 
-      // Verify API key was saved to database securely
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(1);
-      const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
-      expect(saveCall).toMatchObject({
-        workspaceId: "workspace-123",
-        swarmApiKey: sensitiveApiKey,
-        swarmPassword: "secure-test-password-123",
+      // Verify API key was saved to database securely via update
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: expect.objectContaining({
+          swarmApiKey: sensitiveApiKey,
+          swarmPassword: "secure-test-password-123",
+        }),
       });
     });
 
     test("should create secure secret alias", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
-
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
           swarm_id: "swarm2bCar4",
@@ -317,8 +385,54 @@ describe("POST /api/swarm - Unit Tests", () => {
       const request = createMockRequest(validSwarmData);
       await POST(request);
 
-      const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
-      expect(saveCall.swarmSecretAlias).toBe("{{swarm2bCar4_API_KEY}}");
+      // Verify secret alias was created correctly in update
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: expect.objectContaining({
+          swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
+        }),
+      });
+    });
+  });
+
+  describe("Existing Swarm Handling", () => {
+    test("should return existing swarm if one already exists", async () => {
+      mockGetServerSession.mockResolvedValue({
+        user: { id: "user-123" },
+      });
+
+      mockValidateWorkspaceAccessById.mockResolvedValue({
+        hasAccess: true,
+        canAdmin: true,
+      });
+
+      // Mock existing swarm found in transaction
+      const existingSwarm = {
+        id: "existing-swarm-123",
+        swarmId: "existing-swarm-id",
+        status: SwarmStatus.ACTIVE,
+      };
+      mockDb.$transaction.mockResolvedValue({
+        exists: true,
+        swarm: existingSwarm,
+      });
+
+      const request = createMockRequest(validSwarmData);
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual({
+        success: true,
+        message: "Swarm already exists for this workspace",
+        data: {
+          id: "existing-swarm-123",
+          swarmId: "existing-swarm-id",
+        },
+      });
+
+      // Should not call external service if swarm exists
+      expect(mockSwarmServiceInstance.createSwarm).not.toHaveBeenCalled();
     });
   });
 
@@ -331,6 +445,15 @@ describe("POST /api/swarm - Unit Tests", () => {
       mockValidateWorkspaceAccessById.mockResolvedValue({
         hasAccess: true,
         canAdmin: true,
+      });
+
+      // Ensure transaction returns new swarm (not existing)
+      mockDb.$transaction.mockResolvedValue({
+        exists: false,
+        swarm: {
+          id: "placeholder-swarm-123",
+          status: SwarmStatus.PENDING,
+        },
       });
     });
 
@@ -349,7 +472,15 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.success).toBe(false);
       expect(data.message).toBe("Service temporarily unavailable");
 
-      // Verify no database save occurred since service failed
+      // Verify placeholder swarm was marked as FAILED
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: {
+          status: SwarmStatus.FAILED,
+        },
+      });
+
+      // Verify no saveOrUpdateSwarm was called since it's not used in new implementation
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(0);
     });
 
@@ -367,11 +498,17 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       // Verify sensitive info from error is not exposed
       expect(JSON.stringify(data)).not.toContain("api-key-secret-123");
+
+      // Verify placeholder was marked as FAILED
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: {
+          status: SwarmStatus.FAILED,
+        },
+      });
     });
 
     test("should handle malformed external service responses", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
-
       // Malformed response missing required fields
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -384,13 +521,15 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(200); // Should still succeed
 
-      // Verify it handles undefined values gracefully
-      const saveCall = mockSaveOrUpdateSwarm.mock.calls[0][0];
-      expect(saveCall).toMatchObject({
-        workspaceId: "workspace-123",
-        swarmUrl: "https://undefined/api", // undefined address becomes "undefined"
-        swarmApiKey: undefined,
-        swarmSecretAlias: undefined, // undefined swarm_id results in undefined
+      // Verify it handles undefined values gracefully in the update
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: expect.objectContaining({
+          name: undefined, // undefined swarm_id
+          swarmUrl: "https://undefined/api", // undefined address becomes "undefined"
+          swarmApiKey: undefined,
+          swarmSecretAlias: undefined, // undefined swarm_id results in undefined
+        }),
       });
     });
   });
@@ -405,10 +544,18 @@ describe("POST /api/swarm - Unit Tests", () => {
         hasAccess: true,
         canAdmin: true,
       });
+
+      // Ensure transaction returns new swarm (not existing)
+      mockDb.$transaction.mockResolvedValue({
+        exists: false,
+        swarm: {
+          id: "placeholder-swarm-123",
+          status: SwarmStatus.PENDING,
+        },
+      });
     });
 
-    test("should save swarm only after successful service creation", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValueOnce({ id: "final-swarm" });
+    test("should create placeholder swarm then update after successful service creation", async () => {
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
           swarm_id: "swarm2bCar4",
@@ -421,21 +568,29 @@ describe("POST /api/swarm - Unit Tests", () => {
       const request = createMockRequest(validSwarmData);
       await POST(request);
 
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
-        workspaceId: "workspace-123",
-        name: "swarm2bCar4", // Uses swarm_id as name
-        instanceType: "m6i.xlarge",
-        status: SwarmStatus.ACTIVE,
-        swarmUrl: "https://swarm2bCar4.sphinx.chat/api",
-        ec2Id: "i-1234567890abcdef0",
-        swarmApiKey: "api-key-123",
-        swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
-        swarmId: "swarm2bCar4",
-        swarmPassword: "secure-test-password-123",
+      // Verify transaction was called to create placeholder
+      expect(mockDb.$transaction).toHaveBeenCalled();
+
+      // Verify placeholder was updated with real data after service creation
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: {
+          name: "swarm2bCar4", // Uses swarm_id as name
+          status: SwarmStatus.ACTIVE,
+          swarmUrl: "https://swarm2bCar4.sphinx.chat/api",
+          ec2Id: "i-1234567890abcdef0",
+          swarmApiKey: "api-key-123",
+          swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
+          swarmId: "swarm2bCar4",
+          swarmPassword: "secure-test-password-123",
+        },
       });
+
+      // Verify saveOrUpdateSwarm is NOT called in new implementation
+      expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled();
     });
 
-    test("should handle database save failure after service creation", async () => {
+    test("should create repository record during transaction", async () => {
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
           swarm_id: "swarm2bCar4",
@@ -443,7 +598,61 @@ describe("POST /api/swarm - Unit Tests", () => {
           x_api_key: "api-key-123",
         },
       });
-      mockSaveOrUpdateSwarm.mockRejectedValue(new Error("Database connection failed"));
+
+      const requestData = {
+        ...validSwarmData,
+        repositoryName: "custom-repo-name",
+        repositoryDefaultBranch: "develop",
+      };
+
+      const request = createMockRequest(requestData);
+
+      // Setup transaction to verify repository creation
+      mockDb.$transaction.mockImplementation(async (callback: any) => {
+        const mockTx = {
+          swarm: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({
+              id: "placeholder-swarm-123",
+              status: SwarmStatus.PENDING,
+            }),
+          },
+          repository: {
+            create: vi.fn().mockResolvedValue({
+              id: "repo-123",
+              name: "custom-repo-name",
+            }),
+          },
+        };
+
+        const result = await callback(mockTx);
+
+        // Verify repository was created with correct data
+        expect(mockTx.repository.create).toHaveBeenCalledWith({
+          data: {
+            name: "custom-repo-name",
+            repositoryUrl: "https://github.com/test/repo",
+            branch: "develop",
+            workspaceId: "workspace-123",
+            status: RepositoryStatus.PENDING,
+          },
+        });
+
+        return result;
+      });
+
+      await POST(request);
+    });
+
+    test("should handle database update failure after service creation", async () => {
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: {
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
+          x_api_key: "api-key-123",
+        },
+      });
+      mockDb.swarm.update.mockRejectedValue(new Error("Database connection failed"));
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
@@ -454,16 +663,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.message).toBe("Unknown error while creating swarm");
     });
 
-    test("should handle failed swarm creation", async () => {
-      mockSaveOrUpdateSwarm.mockResolvedValueOnce(null); // Failed creation
-
-      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
-        data: {
-          swarm_id: "swarm2bCar4",
-          address: "swarm2bCar4.sphinx.chat",
-          x_api_key: "api-key-123",
-        },
-      });
+    test("should handle transaction failure during placeholder creation", async () => {
+      mockDb.$transaction.mockRejectedValue(new Error("Transaction failed"));
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
@@ -471,7 +672,10 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       expect(response.status).toBe(500);
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Failed to create swarm record");
+      expect(data.message).toBe("Unknown error while creating swarm");
+
+      // Verify external service was not called if transaction failed
+      expect(mockSwarmServiceInstance.createSwarm).not.toHaveBeenCalled();
     });
   });
 
@@ -486,7 +690,14 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
+      // Ensure transaction returns new swarm (not existing)
+      mockDb.$transaction.mockResolvedValue({
+        exists: false,
+        swarm: {
+          id: "placeholder-swarm-123",
+          status: SwarmStatus.PENDING,
+        },
+      });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
         data: {
@@ -506,7 +717,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         success: true,
         message: "Swarm was created successfully",
         data: {
-          id: "final-swarm",
+          id: "placeholder-swarm-123",
           swarmId: "swarm2bCar4",
         },
       });
@@ -514,8 +725,116 @@ describe("POST /api/swarm - Unit Tests", () => {
       // Verify all steps were executed in correct order
       expect(mockGetServerSession).toHaveBeenCalled();
       expect(mockValidateWorkspaceAccessById).toHaveBeenCalled();
+      expect(mockDb.$transaction).toHaveBeenCalled(); // Placeholder creation
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalled();
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(1); // Only called once after service creation
+      expect(mockDb.swarm.update).toHaveBeenCalledTimes(1); // Update placeholder with real data
+      expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled(); // Not used in new implementation
+    });
+  });
+
+  describe("Status Flow Management", () => {
+    beforeEach(() => {
+      mockGetServerSession.mockResolvedValue({
+        user: { id: "user-123" },
+      });
+
+      mockValidateWorkspaceAccessById.mockResolvedValue({
+        hasAccess: true,
+        canAdmin: true,
+      });
+
+      // Ensure transaction returns new swarm (not existing)
+      mockDb.$transaction.mockResolvedValue({
+        exists: false,
+        swarm: {
+          id: "placeholder-swarm-123",
+          status: SwarmStatus.PENDING,
+        },
+      });
+    });
+
+    test("should follow PENDING -> ACTIVE status flow on success", async () => {
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: {
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
+          x_api_key: "api-key-123",
+        },
+      });
+
+      const request = createMockRequest(validSwarmData);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify status flow: placeholder created with PENDING, then updated to ACTIVE
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: expect.objectContaining({
+          status: SwarmStatus.ACTIVE,
+        }),
+      });
+    });
+
+    test("should follow PENDING -> FAILED status flow on error", async () => {
+      mockSwarmServiceInstance.createSwarm.mockRejectedValue(new Error("Service error"));
+
+      const request = createMockRequest(validSwarmData);
+      const response = await POST(request);
+
+      expect(response.status).toBe(500);
+
+      // Verify status flow: placeholder created with PENDING, then updated to FAILED
+      expect(mockDb.swarm.update).toHaveBeenCalledWith({
+        where: { id: "placeholder-swarm-123" },
+        data: {
+          status: SwarmStatus.FAILED,
+        },
+      });
+    });
+
+    test("should handle placeholder creation with UUID name", async () => {
+      mockRandomUUID.mockReturnValue("custom-uuid-456");
+
+      // Setup transaction to capture what gets created
+      mockDb.$transaction.mockImplementation(async (callback: any) => {
+        const mockTx = {
+          swarm: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({
+              id: "placeholder-swarm-123",
+              name: "custom-uuid-456",
+              status: SwarmStatus.PENDING,
+            }),
+          },
+          repository: {
+            create: vi.fn(),
+          },
+        };
+
+        const result = await callback(mockTx);
+
+        // Verify placeholder was created with UUID name
+        expect(mockTx.swarm.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            name: "custom-uuid-456",
+            status: SwarmStatus.PENDING,
+          }),
+        });
+
+        return result;
+      });
+
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: {
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
+          x_api_key: "api-key-123",
+        },
+      });
+
+      const request = createMockRequest(validSwarmData);
+      await POST(request);
     });
   });
 });

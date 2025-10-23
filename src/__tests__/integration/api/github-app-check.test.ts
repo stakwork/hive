@@ -1,17 +1,17 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
-import { GET } from "@/app/api/github/app/check/route";
-import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  expectUnauthorized,
-  getMockedSession,
-  createGetRequest,
-} from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
 import {
   createTestUserWithGitHubTokens,
   testRepositoryUrls,
 } from "@/__tests__/support/fixtures/github-repository-permissions";
+import { createTestUser } from "@/__tests__/support/fixtures/user";
+import {
+  createAuthenticatedSession,
+  createGetRequest,
+  expectUnauthorized,
+  getMockedSession,
+  mockUnauthenticatedSession,
+} from "@/__tests__/support/helpers";
+import { GET } from "@/app/api/github/app/check/route";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Mock next-auth for session management
 vi.mock("next-auth/next");
@@ -403,7 +403,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(false);
-        expect(data.error).toBe("Repository not accessible through GitHub App installation");
+        expect(data.error).toBe("Repository 'test-owner/test-repo' is not accessible through the GitHub App installation. Please ensure the repository is included in the app's permissions or reinstall the app with access to this repository.");
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
@@ -632,7 +632,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(false);
-        expect(data.error).toBe("Installation not found or no access");
+        expect(data.error).toBe("Installation not found or no access to this installation");
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
