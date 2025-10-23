@@ -283,6 +283,10 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         return;
       }
 
+      // Note: containerFilesSetUp will be set to true by the API endpoints
+      // (/api/swarm/stakgraph/services or /api/swarm/stakgraph/agent-stream)
+      // once services and environment variables are successfully saved
+
       setupServicesDone.current = true;
 
       try {
@@ -305,7 +309,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         console.log("services response:", servicesData);
 
         // Handle async agent processing with SSE
-        if (servicesData.status === "processing") {
+        if (servicesData.status === "PROCESSING") {
           const streamUrl = `/api/swarm/stakgraph/agent-stream?request_id=${encodeURIComponent(servicesData.data.request_id)}&swarm_id=${encodeURIComponent(swarmId)}`;
           console.log("Agent processing started, using SSE stream:", streamUrl);
 
@@ -321,6 +325,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
             const data = JSON.parse(event.data);
             console.log("Agent completed successfully:", data);
             eventSource.close();
+            // Services are now set up - update frontend state to match database
             updateWorkspace({ containerFilesSetUp: true });
           });
 
@@ -343,6 +348,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
           console.log("Agent processing started in background, continuing setup...");
         } else {
           // Synchronous response (fallback mode)
+          // Services are set up synchronously - update frontend state
+          console.log("Fallback mode completed, services ready:", servicesData);
           updateWorkspace({ containerFilesSetUp: true });
         }
       } catch (error) {
