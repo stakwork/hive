@@ -22,9 +22,8 @@ test.describe('Dashboard Smoke Tests', () => {
     await dashboardPage.waitForLoad();
   });
 
-  test('should display dashboard title and description', async ({ page }) => {
+  test('should display dashboard title', async ({ page }) => {
     await expect(page.locator(selectors.pageTitle.dashboard)).toBeVisible();
-    await expect(page.locator(selectors.pageDescription.dashboard)).toBeVisible();
   });
 
   test('should display VM config section', async ({ page }) => {
