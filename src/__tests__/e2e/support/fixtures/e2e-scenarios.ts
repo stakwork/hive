@@ -5,6 +5,7 @@
  * These provide consistent, reproducible test data.
  */
 
+import { db } from "@/lib/db";
 import {
   createTestWorkspaceScenario,
   createTestTask,
@@ -115,4 +116,43 @@ export async function createInvitableUser(options: Partial<CreateTestUserOptions
     withGitHubAuth: true,
     ...options,
   });
+}
+
+/**
+ * Workspace with janitor configuration for testing janitor features
+ * 
+ * Creates a standard workspace with JanitorConfig initialized.
+ * By default, all janitors are disabled (false).
+ * Sets poolState to COMPLETE on the Swarm to allow janitor toggles to work.
+ */
+export async function createWorkspaceWithJanitorConfigScenario() {
+  const scenario = await createStandardWorkspaceScenario();
+
+  // Update swarm poolState to COMPLETE so janitor toggles work
+  // (The JanitorSection checks workspace.poolState which comes from the swarm)
+  if (scenario.swarm) {
+    await db.swarm.update({
+      where: { id: scenario.swarm.id },
+      data: { poolState: "COMPLETE" },
+    });
+  }
+
+  // Create JanitorConfig for the workspace
+  const janitorConfig = await db.janitorConfig.create({
+    data: {
+      workspaceId: scenario.workspace.id,
+      unitTestsEnabled: false,
+      integrationTestsEnabled: false,
+      e2eTestsEnabled: false,
+      securityReviewEnabled: false,
+      taskCoordinatorEnabled: false,
+      recommendationSweepEnabled: false,
+      ticketSweepEnabled: false,
+    },
+  });
+
+  return {
+    ...scenario,
+    janitorConfig,
+  };
 }

@@ -122,6 +122,18 @@ export const selectors = {
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
     acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
+    // Janitor-specific selectors
+    janitorItem: (janitorId: string) => `[data-testid="janitor-item-${janitorId}"]`,
+    janitorName: (janitorId: string) => `[data-testid="janitor-name-${janitorId}"]`,
+    janitorStatus: (janitorId: string) => `[data-testid="janitor-status-${janitorId}"]`,
+    janitorToggle: (janitorId: string) => `[data-testid="janitor-toggle-${janitorId}"]`,
+    janitorRunButton: (janitorId: string) => `[data-testid="janitor-run-button-${janitorId}"]`,
+    // Specific janitors
+    ticketSweepItem: '[data-testid="janitor-item-ticket-sweep"]',
+    ticketSweepName: '[data-testid="janitor-name-ticket-sweep"]',
+    ticketSweepStatus: '[data-testid="janitor-status-ticket-sweep"]',
+    ticketSweepToggle: '[data-testid="janitor-toggle-ticket-sweep"]',
+    ticketSweepRunButton: '[data-testid="janitor-run-button-ticket-sweep"]',
   },
 
   // Onboarding
