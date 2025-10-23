@@ -57,85 +57,104 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existingSwarm = await db.swarm.findFirst({
-      where: {
-        workspaceId: workspaceId,
-      },
-      orderBy: {
-        createdAt: 'desc' // Get the most recent one
+
+
+    // Use transaction to prevent race conditions
+    const result = await db.$transaction(async (tx) => {
+      // Check for existing swarm within transaction
+      const existingSwarm = await tx.swarm.findFirst({
+        where: {
+          workspaceId: workspaceId,
+        },
+        orderBy: {
+          createdAt: 'desc' // Get the most recent one
+        }
+      });
+
+      if (existingSwarm) {
+        console.log('Swarm already exists for workspace:', workspaceId, 'Swarm ID:', existingSwarm.swarmId);
+        return {
+          exists: true,
+          swarm: existingSwarm
+        };
       }
+
+      // const vanity_address = getSwarmVanityAddress(name);
+      const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
+      // const env = SWARM_DEFAULT_ENV_VARS;
+
+      const swarmConfig = getServiceConfig("swarm");
+      const swarmService = new SwarmService(swarmConfig);
+
+      // Generate a secure password for the swarm
+      const swarmPassword = generateSecurePassword(20);
+
+      const apiResponse = await swarmService.createSwarm({
+        instance_type,
+        password: swarmPassword,
+      });
+
+      const swarm_id = apiResponse?.data?.swarm_id;
+      const swarm_address = apiResponse?.data?.address;
+      const x_api_key = apiResponse?.data?.x_api_key;
+      const ec2_id = apiResponse?.data?.ec2_id;
+
+      // Use swarm_id directly for secret alias - works with any format
+      const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
+
+      // Create the swarm record in database only after successful external service creation
+      const createdSwarm = await saveOrUpdateSwarm({
+        workspaceId,
+        name: swarm_id, // Use swarm_id as name so subsequent API requests can succeed
+        instanceType: instance_type,
+        status: SwarmStatus.ACTIVE,
+        swarmUrl: `https://${swarm_address}/api`,
+        ec2Id: ec2_id,
+        swarmApiKey: x_api_key,
+        swarmSecretAlias: swarmSecretAlias,
+        swarmId: swarm_id,
+        swarmPassword: swarmPassword,
+      });
+
+      if (!createdSwarm) {
+        throw new Error("Failed to create swarm record");
+      }
+
+      // Create repository record in the database within the same transaction
+      if (repositoryUrl) {
+        const repoName = repositoryName || repositoryUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
+        const branch = repositoryDefaultBranch || "main";
+
+        await tx.repository.create({
+          data: {
+            name: repoName,
+            repositoryUrl,
+            branch,
+            workspaceId,
+            status: RepositoryStatus.PENDING,
+          },
+        });
+      }
+
+      return {
+        exists: false,
+        swarm: createdSwarm
+      };
     });
 
-    if (existingSwarm) {
-      console.log('Swarm already exists for workspace:', workspaceId, 'Swarm ID:', existingSwarm.swarmId);
+    // Handle the result outside the transaction
+    if (result.exists) {
       return NextResponse.json({
         success: true,
         message: "Swarm already exists for this workspace",
-        data: { id: existingSwarm.id, swarmId: existingSwarm.swarmId },
-      }, { status: 200 })
-    }
-
-    // const vanity_address = getSwarmVanityAddress(name);
-    const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
-    // const env = SWARM_DEFAULT_ENV_VARS;
-
-    const swarmConfig = getServiceConfig("swarm");
-    const swarmService = new SwarmService(swarmConfig);
-
-    // Generate a secure password for the swarm
-    const swarmPassword = generateSecurePassword(20);
-
-    const apiResponse = await swarmService.createSwarm({
-      instance_type,
-      password: swarmPassword,
-    });
-
-    const swarm_id = apiResponse?.data?.swarm_id;
-    const swarm_address = apiResponse?.data?.address;
-    const x_api_key = apiResponse?.data?.x_api_key;
-    const ec2_id = apiResponse?.data?.ec2_id;
-
-    // Use swarm_id directly for secret alias - works with any format
-    const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
-
-    // Create the swarm record in database only after successful external service creation
-    const createdSwarm = await saveOrUpdateSwarm({
-      workspaceId,
-      name: swarm_id, // Use swarm_id as name so subsequent API requests can succeed
-      instanceType: instance_type,
-      status: SwarmStatus.ACTIVE,
-      swarmUrl: `https://${swarm_address}/api`,
-      ec2Id: ec2_id,
-      swarmApiKey: x_api_key,
-      swarmSecretAlias: swarmSecretAlias,
-      swarmId: swarm_id,
-      swarmPassword: swarmPassword,
-    });
-
-    if (!createdSwarm) {
-      return NextResponse.json({ success: false, message: "Failed to create swarm record" }, { status: 500 });
-    }
-
-    // Create repository record in the database
-    if (repositoryUrl) {
-      const repoName = repositoryName || repositoryUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
-      const branch = repositoryDefaultBranch || "main";
-
-      await db.repository.create({
-        data: {
-          name: repoName,
-          repositoryUrl,
-          branch,
-          workspaceId,
-          status: RepositoryStatus.PENDING,
-        },
-      });
+        data: { id: result.swarm.id, swarmId: result.swarm.swarmId },
+      }, { status: 200 });
     }
 
     return NextResponse.json({
       success: true,
       message: `Swarm was created successfully`,
-      data: { id: createdSwarm.id, swarmId: swarm_id },
+      data: { id: result.swarm.id, swarmId: result.swarm.swarmId },
     });
   } catch (error: unknown) {
     console.error("Error creating Swarm:", error);

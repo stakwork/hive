@@ -222,14 +222,14 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspace, workspaceId, swarmId, hasStakworkCustomer, createStakworkCustomer]);
 
-  // Reset guards when workspace or conditions change
-  useEffect(() => {
-    if (swarmId && swarmId !== lastSwarmId.current) {
-      console.log('SwarmId changed from', lastSwarmId.current, 'to', swarmId, '- resetting services setup');
-      setupServicesDone.current = false;
-      lastSwarmId.current = swarmId;
-    }
-  }, [swarmId]);
+  // // Reset guards when workspace or conditions change
+  // useEffect(() => {
+  //   if (swarmId && swarmId !== lastSwarmId.current) {
+  //     console.log('SwarmId changed from', lastSwarmId.current, 'to', swarmId, '- resetting services setup');
+  //     setupServicesDone.current = false;
+  //     lastSwarmId.current = swarmId;
+  //   }
+  // }, [swarmId]);
 
   // Reset guards only when workspaceId actually changes (not just re-renders)
   useEffect(() => {

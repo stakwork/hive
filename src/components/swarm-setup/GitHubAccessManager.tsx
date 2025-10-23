@@ -126,18 +126,6 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
     }
   }, [accessState, installationLink, getInstallationLink]);
 
-  // Handle GitHub App reconnection
-  const handleReconnectGitHub = useCallback(() => {
-    if (installationLink) {
-      if (errorType === 'installation-update') {
-        // For isExtend cases, just open the link directly
-        window.open(installationLink, '_blank', 'noopener,noreferrer');
-      } else {
-        // For new installations, could also just open directly
-        window.open(installationLink, '_blank', 'noopener,noreferrer');
-      }
-    }
-  }, [installationLink, errorType]);
 
   // Show nothing while checking access (silent check)
   if (accessState === 'checking') {
@@ -153,8 +141,10 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
           <CardDescription>
             {errorType === 'installation-update' ? (
               <>We don&apos;t have access to this repository. Please update your GitHub App installation to include this repository.</>
+            ) : errorType === 'reauth' || (error && error.includes('token is invalid or expired')) ? (
+              <>Your GitHub App authorization has expired. Please refresh your connection to continue.</>
             ) : (
-              <>We don&apos;t have push access to your repository. Please reinstall the GitHub App to grant the necessary permissions.</>
+              <>We don&apos;t have push access to your repository. Please install the GitHub App to grant the necessary permissions.</>
             )}
           </CardDescription>
         </CardHeader>
@@ -168,28 +158,38 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
             </p>
           )}
 
-          {errorType === 'installation-update' && installationLink ? (
+          {installationLink ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Click the link below to open your GitHub App installation settings and add this repository:
+                {errorType === 'installation-update'
+                  ? 'Click the button below to open your GitHub App installation settings and add this repository:'
+                  : errorType === 'reauth' || (error?.includes('token is invalid or expired'))
+                  ? 'Click the button below to refresh your GitHub App authorization:'
+                  : 'Click the button below to install the GitHub App and grant the necessary permissions:'
+                }
               </p>
-              <a
-                href={installationLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center text-blue-600 hover:text-blue-800 underline text-sm font-medium"
+              <Button
+                asChild
+                className="w-full"
               >
-                Open GitHub App Installation Settings →
-              </a>
+                <a
+                  href={installationLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {errorType === 'installation-update'
+                    ? 'Open GitHub App Installation Settings'
+                    : errorType === 'reauth' || (error?.includes('token is invalid or expired'))
+                    ? 'Refresh GitHub App Authorization'
+                    : 'Install GitHub App'
+                  }
+                </a>
+              </Button>
             </div>
           ) : (
-            <Button
-              onClick={handleReconnectGitHub}
-              className="w-full"
-              disabled={!installationLink}
-            >
-              {!installationLink ? 'Generating link...' : 'Open GitHub App Installation'}
-            </Button>
+            <div className="text-sm text-muted-foreground">
+              Generating installation link...
+            </div>
           )}
 
           <p className="text-xs text-muted-foreground mt-2">
