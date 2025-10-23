@@ -1,6 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cn, formatRelativeTime, getBaseUrl } from "@/lib/utils";
+import { buildFeatureContext } from "@/lib/ai/utils";
 
+const createMinimalFeatureData = (overrides = {}) => ({
+  title: "",
+  brief: "",
+  personas: [],
+  userStories: [],
+  acceptanceCriteria: [],
+  designLinks: [],
+  additionalContext: "",
+  workspace: {
+    description: "",
+  },
+  ...overrides,
+});
 describe("utils", () => {
   describe("cn", () => {
     it("should merge classes correctly", () => {
@@ -49,7 +63,7 @@ describe("utils", () => {
   describe("formatRelativeTime", () => {
     beforeEach(() => {
       vi.useFakeTimers();
-      vi.setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
     });
 
     afterEach(() => {
@@ -190,6 +204,71 @@ describe("utils", () => {
     it("should handle host headers with port numbers", () => {
       expect(getBaseUrl("example.com:8080")).toBe("https://example.com:8080");
       expect(getBaseUrl("api.test.com:3001")).toBe("https://api.test.com:3001");
+    });
+  });
+
+  describe("buildFeatureContext", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+   it("should handle empty featureData", () => {
+  const featureData = createMinimalFeatureData();
+  const result = buildFeatureContext(featureData);
+  console.log(result); // Debug output
+  expect(result.titleText).toBe("");
+  expect(result.briefText).toBe("");
+  expect(result.personasText).toBe("");
+  expect(result.userStoriesText).toBe("");
+  expect(result.acceptanceCriteriaText).toBe("");
+  expect(result.designLinksText).toBe("");
+  expect(result.additionalContextText).toBe("");
+});
+
+    it("should handle arrays with empty strings in personas", () => {
+      const featureData = createMinimalFeatureData({
+        personas: ["Developer", "", "Designer", ""],
+      });
+      const result = buildFeatureContext(featureData);
+      expect(result.personasText).toBe("\n\nTarget Personas:\n- Developer\n- \n- Designer\n- ");
+    });
+
+    it("should handle large personas array", () => {
+      const largeArray = Array(15).fill("Persona");
+      const featureData = createMinimalFeatureData({ personas: largeArray });
+      const result = buildFeatureContext(featureData);
+      expect(result.personasText).toContain("Persona");
+      expect(result.personasText.split("\n").length).toBeGreaterThan(15);
+    });
+
+    it("should not mutate input featureData", () => {
+      const featureData = createMinimalFeatureData({ title: "Test Title" });
+      const copy = { ...featureData };
+      buildFeatureContext(featureData);
+      expect(featureData).toEqual(copy);
+    });
+
+    it("should handle special characters in brief", () => {
+      const featureData = createMinimalFeatureData({ brief: "Special chars: @#$%^&*" });
+      const result = buildFeatureContext(featureData);
+      expect(result.briefText).toBe("\n\nBrief:\nSpecial chars: @#$%^&*");
+    });
+
+    it("should handle null or undefined fields", () => {
+      const featureData = createMinimalFeatureData({ title: null, brief: undefined });
+      const result = buildFeatureContext(featureData);
+      expect(result.titleText).toBe("");
+      expect(result.briefText).toBe("");
+    });
+
+    it("should handle invalid input types gracefully", () => {
+      const invalidData = { personas: 123 }; // Non-array
+      expect(() => buildFeatureContext(invalidData)).not.toThrow();
+      // Adjust to .toThrow('specific error') if the function throws
     });
   });
 });
