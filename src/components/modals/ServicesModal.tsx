@@ -7,6 +7,7 @@ import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { parseEnv } from "@/lib/env-parser";
 import { Clipboard, Loader2, Save, Settings, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -51,9 +52,14 @@ export default function ServicesModal({
 
   // Local state for services and environment variables
   const [services, setServices] = useState<ServiceDataConfig[]>([]);
-  const [localVars, setLocalVars] = useState<{ name: string; value: string }[]>(
-    [{ name: "", value: "" }],
-  );
+  const {
+    envVars,
+    handleEnvChange,
+    handleAddEnv,
+    handleRemoveEnv,
+    setEnvVars,
+    bulkAddEnvVars,
+  } = useEnvironmentVars();
   const [dataLoading, setDataLoading] = useState(true);
   const [repoName, setRepoName] = useState<string>("");
   const [showImportSection, setShowImportSection] = useState(false);
@@ -79,7 +85,13 @@ export default function ServicesModal({
 
             // Set environment variables
             if (settings.environmentVariables && settings.environmentVariables.length > 0) {
-              setLocalVars(settings.environmentVariables);
+              setEnvVars(
+                settings.environmentVariables.map((env: { name: string; value: string }) => ({
+                  name: env.name,
+                  value: env.value,
+                  show: false,
+                }))
+              );
             }
 
             // Set repo name from swarm data
@@ -112,37 +124,6 @@ export default function ServicesModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onReject]);
-
-  const handleEnvChange = (
-    index: number,
-    field: "name" | "value",
-    value: string,
-  ) => {
-    setLocalVars((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  };
-
-  const handleAddEnv = () => {
-    setLocalVars((prev) => [...prev, { name: "", value: "" }]);
-  };
-
-  const handleRemoveEnv = (index: number) => {
-    setLocalVars((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const bulkAddEnvVars = (parsed: Record<string, string>) => {
-    const newVars = Object.entries(parsed).map(([name, value]) => ({
-      name,
-      value,
-    }));
-    setLocalVars((prev) => {
-      const filtered = prev.filter((v) => v.name.trim() !== "");
-      return [...filtered, ...newVars];
-    });
-  };
 
   const handlePasteEnv = async () => {
     try {
@@ -221,7 +202,7 @@ export default function ServicesModal({
     setLoading(true);
     try {
       // Clean up environment variables
-      const cleanedEnvVars = localVars
+      const cleanedEnvVars = envVars
         .filter((v) => v.name.trim() !== "")
         .map(({ name, value }) => ({ name: name.trim(), value }));
 
@@ -285,7 +266,7 @@ export default function ServicesModal({
     } finally {
       setLoading(false);
     }
-  }, [slug, workspaceId, services, localVars, repoName, toast, onResolve]);
+  }, [slug, workspaceId, services, envVars, repoName, toast, onResolve, updateWorkspace]);
 
 
   return (
@@ -358,7 +339,7 @@ export default function ServicesModal({
               </div>
 
               <div className="space-y-3">
-                {localVars.map((env, idx) => (
+                {envVars.map((env, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
                     <Input
                       placeholder="KEY"
@@ -379,7 +360,7 @@ export default function ServicesModal({
                       variant="outline"
                       onClick={() => handleRemoveEnv(idx)}
                       className="px-2"
-                      disabled={localVars.length === 1 || loading}
+                      disabled={envVars.length === 1 || loading}
                     >
                       Remove
                     </Button>
