@@ -89,9 +89,28 @@ export async function GET(request: Request) {
     });
 
     if (!response.ok) {
+      console.error(`[REPO CHECK] GitHub API error: ${response.status} ${response.statusText}`);
+
+      let errorMessage = "Failed to access installation repositories";
+      let requiresReauth = false;
+
+      if (response.status === 401) {
+        errorMessage = "GitHub App token is invalid or expired";
+        requiresReauth = true;
+      } else if (response.status === 403) {
+        errorMessage = "No permission to access installation repositories";
+        requiresReauth = true;
+      } else if (response.status === 404) {
+        errorMessage = "Installation not found or no access to this installation";
+      } else if (response.status >= 500) {
+        errorMessage = "GitHub API is temporarily unavailable";
+      }
+
       return NextResponse.json({
         hasPushAccess: false,
-        error: response.status === 404 ? "Installation not found or no access" : "Failed to access installation repositories"
+        error: errorMessage,
+        requiresReauth,
+        installationId: sourceControlOrg?.githubInstallationId
       }, { status: 200 });
     }
 
@@ -100,14 +119,19 @@ export async function GET(request: Request) {
 
     // Check if the target repository is accessible through this installation
     const repositoryAccess = installationData.repositories?.find(
-      (repository: { full_name: string; permissions?: any }) =>
+      (repository: { full_name: string; permissions?: { push?: boolean; admin?: boolean; maintain?: boolean } }) =>
         repository.full_name.toLowerCase() === targetRepoFullName
     );
 
     if (!repositoryAccess) {
+      console.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`);
+      console.warn(`[REPO CHECK] Available repositories:`, installationData.repositories?.map((r: { full_name: string }) => r.full_name) || []);
+
       return NextResponse.json({
         hasPushAccess: false,
-        error: "Repository not accessible through GitHub App installation"
+        error: `Repository '${owner}/${repo}' is not accessible through the GitHub App installation. Please ensure the repository is included in the app's permissions or reinstall the app with access to this repository.`,
+        requiresInstallationUpdate: true,
+        installationId: sourceControlOrg?.githubInstallationId
       }, { status: 200 });
     }
 
