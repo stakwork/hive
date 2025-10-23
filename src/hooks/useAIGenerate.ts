@@ -95,6 +95,7 @@ export function useAIGenerate<T>(
   async function generate(params?: Record<string, unknown>) {
     setGenerating(true);
     setError(null);
+    let isPolling = false;
 
     try {
       const response = await fetch(endpoint, {
@@ -114,6 +115,7 @@ export function useAIGenerate<T>(
       // Check if this is a polling-based response (architecture generation)
       if (data.request_id && data.status === "pending") {
         // Start polling for completion
+        isPolling = true;
         startPolling();
         return;
       }
@@ -159,7 +161,10 @@ export function useAIGenerate<T>(
       setError(errorMessage);
       console.error("AI generation error:", err);
     } finally {
-      setGenerating(false);
+      // Only set generating to false if we're NOT polling
+      if (!isPolling) {
+        setGenerating(false);
+      }
     }
   }
 
