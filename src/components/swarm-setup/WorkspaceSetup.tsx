@@ -23,6 +23,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const containerFilesSetUp = workspace?.containerFilesSetUp;
   const swarmId = workspace?.swarmId;
   const setupServicesDone = useRef(false);
+  const lastSwarmId = useRef<string | null>(null);
   const lastWorkspaceId = useRef<string | null>(null);
   const swarmCreationStarted = useRef(false);
   const ingestionStarted = useRef(false);
@@ -240,6 +241,13 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspace, workspaceId, swarmId, hasStakworkCustomer, createStakworkCustomer]);
 
+  // Reset guards when workspace or conditions change
+  useEffect(() => {
+    if (swarmId && swarmId !== lastSwarmId.current) {
+      setupServicesDone.current = false;
+      lastSwarmId.current = swarmId;
+    }
+  }, [swarmId]);
 
   // Reset guards only when workspaceId actually changes (not just re-renders)
   useEffect(() => {
