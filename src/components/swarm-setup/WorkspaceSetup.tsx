@@ -131,8 +131,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   }, [workspaceId, hasStakworkCustomer, toast]);
 
   // Reactive swarm creation: Only execute when conditions transition from false to true
-  const shouldCreateSwarm = workspace && workspaceId && slug && !swarmId;
-  const prevShouldCreateSwarmRef = useRef(false);
+  const shouldCreateSwarm = !!(workspace && workspaceId && slug && !swarmId);
+  const prevShouldCreateSwarmRef = useRef<boolean>(false);
 
   useEffect(() => {
     const prevShouldCreate = prevShouldCreateSwarmRef.current;
