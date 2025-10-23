@@ -728,6 +728,7 @@ model Feature {
   brief       String?
   requirements String?
   architecture String?
+  architectureRequestId String?  @map("architecture_request_id")
   personas    String[]         @default([])
   workspaceId String           @map("workspace_id")
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

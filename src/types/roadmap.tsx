@@ -141,6 +141,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     brief: true;
     requirements: true;
     architecture: true;
+    architectureRequestId: true;
     personas: true;
     status: true;
     priority: true;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, Check, X, Eye, Edit } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +9,7 @@ import { AIButton } from "@/components/ui/ai-button";
 import { SaveIndicator } from "./SaveIndicator";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
+import { useGenerationPollingStore } from "@/stores/useGenerationPollingStore";
 
 interface GeneratedContent {
   content: string;
@@ -28,6 +29,8 @@ interface AITextareaSectionProps {
   onBlur: (value: string | null) => void;
   rows?: number;
   className?: string;
+  requestId?: string | null;
+  workspaceId?: string;
 }
 
 export function AITextareaSection({
@@ -44,10 +47,47 @@ export function AITextareaSection({
   onBlur,
   rows = 8,
   className,
+  requestId,
+  workspaceId,
 }: AITextareaSectionProps) {
   const [generatedContent, setGeneratedContent] = useState<string>("");
   // Default to edit mode when empty, preview mode when has content
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
+
+  const { addGeneration, pendingGenerations, completedGenerations, clearCompleted } = useGenerationPollingStore();
+
+  // Check if this field is currently being generated
+  const isGenerating = pendingGenerations.some(
+    (gen) => gen.featureId === featureId && gen.fieldName === type
+  );
+
+  // Auto-resume polling on mount if requestId exists
+  useEffect(() => {
+    if (requestId && workspaceId && type === "architecture") {
+      addGeneration({
+        featureId,
+        workspaceId,
+        requestId,
+        fieldName: type,
+      });
+    }
+  }, []); // Only run on mount
+
+  // Listen for completion and update local state
+  useEffect(() => {
+    const completed = completedGenerations.find(
+      (gen: { featureId: string; fieldName: string }) => gen.featureId === featureId && gen.fieldName === type
+    );
+
+    if (completed) {
+      // Update local state with the result
+      onChange(completed.result);
+      onBlur(completed.result);
+
+      // Clear the completed notification
+      clearCompleted(featureId, type);
+    }
+  }, [completedGenerations, featureId, type, onChange, onBlur, clearCompleted]);
 
   const handleAccept = () => {
     if (generatedContent) {
@@ -85,44 +125,47 @@ export function AITextareaSection({
         <AIButton<GeneratedContent>
           endpoint={`/api/features/${featureId}/generate`}
           params={{ type }}
-          onGenerated={handleGenerated}
+          onGenerated={(results) => {
+            if (type === "architecture" && results.length > 0) {
+              // For architecture, the response is { request_id, status: "pending" }
+              // We don't show suggestions, we add to polling store instead
+              // The actual generation happens async and is handled by PollingManager
+            } else {
+              // For other types (requirements, user stories), show suggestions normally
+              handleGenerated(results);
+            }
+          }}
           tooltip="Generate with AI"
           iconOnly
+          generating={type === "architecture" ? isGenerating : undefined}
+          onGenerationStarted={(requestId: string) => {
+            if (type === "architecture" && workspaceId && requestId) {
+              addGeneration({
+                featureId,
+                workspaceId,
+                requestId,
+                fieldName: type,
+              });
+            }
+          }}
         />
-        <SaveIndicator
-          field={id}
-          savedField={savedField}
-          saving={saving}
-          saved={saved}
-        />
+        <SaveIndicator field={id} savedField={savedField} saving={saving} saved={saved} />
       </div>
-      <p className="text-sm text-muted-foreground">
-        {description}
-      </p>
+      <p className="text-sm text-muted-foreground">{description}</p>
 
       {/* AI Suggestion Preview */}
       {generatedContent ? (
         <div className="rounded-md border border-border bg-muted/50 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-start gap-3">
             <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-1" />
-            <div className="flex-1 text-sm whitespace-pre-wrap">
-              {generatedContent}
-            </div>
+            <div className="flex-1 text-sm whitespace-pre-wrap">{generatedContent}</div>
           </div>
           <div className="flex gap-2 justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAccept}
-            >
+            <Button size="sm" variant="outline" onClick={handleAccept}>
               <Check className="h-4 w-4 mr-2 text-green-600" />
               Accept
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleReject}
-            >
+            <Button size="sm" variant="ghost" onClick={handleReject}>
               <X className="h-4 w-4 mr-2 text-red-600" />
               Reject
             </Button>
@@ -131,51 +174,53 @@ export function AITextareaSection({
       ) : (
         /* Content Area - Toggle between Edit and Preview */
         <div className="relative">
-        {mode === "edit" ? (
-          <Textarea
-            id={id}
-            placeholder={`Type your ${label.toLowerCase()} here...`}
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={(e) => onBlur(e.target.value || null)}
-            rows={rows}
-            className={cn("resize-y font-mono text-sm min-h-[200px] pr-10", className)}
-          />
-        ) : (
-          <div className={cn(
-            "rounded-md border border-border bg-muted/30 p-4 min-h-[200px]",
-            !value && "flex items-center justify-center text-sm text-muted-foreground",
-            className
-          )}>
-            {value ? (
-              <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
-            ) : (
-              <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
-            )}
-          </div>
-        )}
+          {mode === "edit" ? (
+            <Textarea
+              id={id}
+              placeholder={`Type your ${label.toLowerCase()} here...`}
+              value={value || ""}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={(e) => onBlur(e.target.value || null)}
+              rows={rows}
+              className={cn("resize-y font-mono text-sm min-h-[200px] pr-10", className)}
+            />
+          ) : (
+            <div
+              className={cn(
+                "rounded-md border border-border bg-muted/30 p-4 min-h-[200px]",
+                !value && "flex items-center justify-center text-sm text-muted-foreground",
+                className,
+              )}
+            >
+              {value ? (
+                <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
+              ) : (
+                <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
+              )}
+            </div>
+          )}
 
-        {/* Toggle Buttons - positioned inside content area */}
-        <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm border border-border/50 rounded-md p-0.5">
-          <Button
-            size="sm"
-            variant={mode === "preview" ? "secondary" : "ghost"}
-            onClick={() => handleModeSwitch("preview")}
-            className="h-6 w-6 p-0"
-            title="Preview"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === "edit" ? "secondary" : "ghost"}
-            onClick={() => handleModeSwitch("edit")}
-            className="h-6 w-6 p-0"
-            title="Edit"
-          >
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+          {/* Toggle Buttons - positioned inside content area */}
+          <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm border border-border/50 rounded-md p-0.5">
+            <Button
+              size="sm"
+              variant={mode === "preview" ? "secondary" : "ghost"}
+              onClick={() => handleModeSwitch("preview")}
+              className="h-6 w-6 p-0"
+              title="Preview"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant={mode === "edit" ? "secondary" : "ghost"}
+              onClick={() => handleModeSwitch("edit")}
+              className="h-6 w-6 p-0"
+              title="Edit"
+            >
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
     </div>
