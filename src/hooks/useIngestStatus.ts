@@ -93,8 +93,8 @@ export function useIngestStatus() {
           return;
         }
         // If still in progress, update the status message
-        if (data?.current_update?.message) {
-          setStatusMessage(data.current_update.message);
+        if (data?.update?.message) {
+          setStatusMessage(data.update.message);
         }
       } catch (error) {
         console.error("Failed to get ingest status:", error);
