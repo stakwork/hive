@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const workspaceSlug = body?.workspaceSlug;
     const repositoryUrl = body?.repositoryUrl;
+    const isExtend = body?.isExtend;
 
     if (!workspaceSlug) {
       return NextResponse.json({ success: false, message: "Workspace slug is required" }, { status: 400 });
@@ -165,7 +166,11 @@ export async function POST(request: NextRequest) {
     let authUrl: string;
     let flowType: string;
 
-    if (installed) {
+    // If isExtend is true, return URL to extend existing installation
+    if (isExtend && installed && installationId) {
+      authUrl = `https://github.com/apps/${config.GITHUB_APP_SLUG}/installations/${installationId}`;
+      flowType = "extend_installation";
+    } else if (installed) {
       // App already installed - just need user authorization
       authUrl = `https://github.com/login/oauth/authorize?client_id=${config.GITHUB_APP_CLIENT_ID}&state=${state}`;
       flowType = "user_authorization";
