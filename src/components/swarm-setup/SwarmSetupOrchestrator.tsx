@@ -22,11 +22,6 @@ export function SwarmSetupOrchestrator({ repositoryUrl, onServicesStarted }: Swa
     setHasAccess(hasAccess);
   };
 
-  // If container files are already set up, skip access manager and go directly to workspace setup
-  if (workspace?.containerFilesSetUp) {
-    return <WorkspaceSetup repositoryUrl={repositoryUrl} onServicesStarted={onServicesStarted} />
-  }
-
   // If we don't have access yet, show the access manager
   if (!hasAccess) {
     return (
@@ -36,6 +31,10 @@ export function SwarmSetupOrchestrator({ repositoryUrl, onServicesStarted }: Swa
         error={accessError}
       />
     );
+  }
+
+  if (workspace?.containerFilesSetUp) {
+    return null
   }
 
   // Once we have access, show the workspace setup
