@@ -3,6 +3,7 @@ import { X, CheckCircle2, Loader2, Camera } from "lucide-react";
 import { useRef, useEffect, useState } from "react";
 import { Screenshot } from "@/types/common";
 import { ScreenshotModal } from "@/components/ScreenshotModal";
+import { getRelativeUrl } from "@/lib/utils";
 
 interface Action {
   id: string;
@@ -69,9 +70,10 @@ function getActionDisplay(action: Action): React.ReactNode {
   switch (actionType) {
     case "nav":
     case "goto":
+      const navUrl = action.url || action.value || "/";
       return (
         <>
-          Navigate to <span className="text-primary">{action.url || action.value || "/"}</span>
+          Navigate to <span className="text-primary">{getRelativeUrl(navUrl)}</span>
         </>
       );
     case "click":
@@ -134,9 +136,10 @@ function getActionDisplay(action: Action): React.ReactNode {
         </>
       );
     case "waitForURL":
+      const waitUrl = action.expectedUrl || action.value || "navigation";
       return (
         <>
-          Wait for <span className="text-primary">{action.expectedUrl || action.value || "navigation"}</span>
+          Wait for <span className="text-primary">{waitUrl === "navigation" ? waitUrl : getRelativeUrl(waitUrl)}</span>
         </>
       );
     default:
