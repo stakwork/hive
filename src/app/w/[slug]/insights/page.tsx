@@ -131,7 +131,7 @@ export default function InsightsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Insights" description="Automated codebase analysis and recommendations" />
+      <PageHeader title="Insights" />
 
       <div className="max-w-5xl space-y-6">
         {/* Content container */}
