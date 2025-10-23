@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { MessageCircle, Lightbulb, RefreshCw } from "lucide-react";
+import { MessageCircle, Lightbulb, RefreshCw, Sprout } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Learnings } from "@/types/learn";
 
@@ -18,6 +19,8 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
   const [learnings, setLearnings] = useState<Learnings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [budget, setBudget] = useState("");
+  const [isSeeding, setIsSeeding] = useState(false);
 
   useEffect(() => {
     const fetchLearnings = async () => {
@@ -78,6 +81,29 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
     if (onPromptClick) {
       onPromptClick(prompt);
     }
+  };
+
+  const handleSeedKnowledge = async () => {
+    if (!budget || isSeeding) return;
+
+    setIsSeeding(true);
+    setBudget("");
+
+    fetch(`/api/learnings?workspace=${encodeURIComponent(workspaceSlug)}&budget=${encodeURIComponent(budget)}`, {
+      method: "POST",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          console.error(`Failed to seed knowledge: ${response.status}`);
+        }
+      })
+      .catch((error) => {
+        console.error("Error seeding knowledge:", error);
+      });
+
+    setTimeout(() => {
+      setIsSeeding(false);
+    }, 500);
   };
 
   if (isLoading) {
@@ -186,6 +212,27 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
               </div>
             </div>
           )}
+      </div>
+
+      {/* Seed Knowledge Section */}
+      <div className="p-4 border-t border-border bg-background">
+        <div className="flex items-center gap-2 mb-2">
+          <Sprout className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-muted-foreground">Seed Knowledge</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            placeholder="$ amount"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            className="h-9 text-sm"
+            disabled={isSeeding}
+          />
+          <Button size="sm" onClick={handleSeedKnowledge} disabled={!budget || isSeeding}>
+            {isSeeding ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Seed"}
+          </Button>
+        </div>
       </div>
     </div>
   );

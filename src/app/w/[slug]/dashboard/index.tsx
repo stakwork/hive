@@ -20,40 +20,46 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
 
   const description = setupInProgress
     ? "Your workspace is being configured. You can start exploring while setup completes in the background."
-    : "Welcome to your development workspace.";
+    : "";
 
   const repository = workspace?.repositories[0];
 
   return (
-    <>
+    <div className="flex flex-col h-full">
       <PageHeader title="Dashboard" description={description} />
 
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-        <VMConfigSection />
-        <RepositoryCard />
-        <TestCoverageCard />
-      </div>
+      <div className="flex-1 grid gap-6 grid-cols-1 lg:grid-cols-[auto_1fr] overflow-hidden">
+        {/* Left column: 3 boxes stacked vertically */}
+        <div className="flex flex-col gap-6 lg:w-80 overflow-y-auto">
+          <VMConfigSection />
+          <RepositoryCard />
+          <TestCoverageCard />
+        </div>
 
-      {isIngesting ? (
-        <div className="dark h-auto w-full border rounded-lg p-4 relative bg-card">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-white">Code Universe</h3>
-          </div>
-          <div className="border rounded overflow-hidden bg-card">
-            <div className="flex h-96 flex-col items-center justify-center gap-4">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-              <div className="flex flex-col items-center gap-2">
-                <div className="text-lg text-gray-300">Ingesting your codebase...</div>
-                <div className="text-sm text-gray-500">This usually takes a few minutes</div>
+        {/* Right side: Code Universe */}
+        <div className="min-w-0 flex flex-col overflow-hidden">
+          {isIngesting ? (
+            <div className="dark h-full w-full border rounded-lg p-4 relative bg-card flex flex-col">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white">Code Universe</h3>
+              </div>
+              <div className="border rounded overflow-hidden bg-card flex-1 flex">
+                <div className="flex w-full flex-col items-center justify-center gap-4">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="text-lg text-gray-300">Ingesting your codebase...</div>
+                    <div className="text-sm text-gray-500">This usually takes a few minutes</div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : repository?.status === 'SYNCED' || true ? (
+            <GraphComponent enablePolling={true} />
+          ) : (
+            <Gitsee />
+          )}
         </div>
-      ) : repository?.status === 'SYNCED' || true ? (
-        <GraphComponent />
-      ) : (
-        <Gitsee />
-      )}
-    </>
+      </div>
+    </div>
   );
 }

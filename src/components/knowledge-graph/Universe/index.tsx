@@ -79,7 +79,7 @@ const _Universe = () => {
 
 
   return (
-    <Flex style={{ width: '100%', height: '600px', position: 'relative' }}>
+    <Flex style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Suspense fallback={null}>
 
         <Canvas
