@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, Check, X, Eye, Edit } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +9,7 @@ import { AIButton } from "@/components/ui/ai-button";
 import { SaveIndicator } from "./SaveIndicator";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
+import { useGenerationPollingStore } from "@/stores/useGenerationPollingStore";
 
 interface GeneratedContent {
   content: string;
@@ -29,6 +30,7 @@ interface AITextareaSectionProps {
   rows?: number;
   className?: string;
   requestId?: string | null;
+  workspaceId?: string;
 }
 
 export function AITextareaSection({
@@ -46,10 +48,46 @@ export function AITextareaSection({
   rows = 8,
   className,
   requestId,
+  workspaceId,
 }: AITextareaSectionProps) {
   const [generatedContent, setGeneratedContent] = useState<string>("");
   // Default to edit mode when empty, preview mode when has content
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
+
+  const { addGeneration, pendingGenerations, completedGenerations, clearCompleted } = useGenerationPollingStore();
+
+  // Check if this field is currently being generated
+  const isGenerating = pendingGenerations.some(
+    (gen) => gen.featureId === featureId && gen.fieldName === type
+  );
+
+  // Auto-resume polling on mount if requestId exists
+  useEffect(() => {
+    if (requestId && workspaceId && type === "architecture") {
+      addGeneration({
+        featureId,
+        workspaceId,
+        requestId,
+        fieldName: type,
+      });
+    }
+  }, []); // Only run on mount
+
+  // Listen for completion and update local state
+  useEffect(() => {
+    const completed = completedGenerations.find(
+      (gen: { featureId: string; fieldName: string }) => gen.featureId === featureId && gen.fieldName === type
+    );
+
+    if (completed) {
+      // Update local state with the result
+      onChange(completed.result);
+      onBlur(completed.result);
+
+      // Clear the completed notification
+      clearCompleted(featureId, type);
+    }
+  }, [completedGenerations, featureId, type, onChange, onBlur, clearCompleted]);
 
   const handleAccept = () => {
     if (generatedContent) {
@@ -70,12 +108,6 @@ export function AITextareaSection({
     }
   };
 
-  const handlePollingComplete = (result: string) => {
-    // When polling completes, update the field directly
-    onChange(result);
-    onBlur(result);
-  };
-
   const handleModeSwitch = (newMode: "edit" | "preview") => {
     // If switching from edit to preview, trigger save
     if (mode === "edit" && newMode === "preview") {
@@ -93,12 +125,29 @@ export function AITextareaSection({
         <AIButton<GeneratedContent>
           endpoint={`/api/features/${featureId}/generate`}
           params={{ type }}
-          onGenerated={handleGenerated}
+          onGenerated={(results) => {
+            if (type === "architecture" && results.length > 0) {
+              // For architecture, the response is { request_id, status: "pending" }
+              // We don't show suggestions, we add to polling store instead
+              // The actual generation happens async and is handled by PollingManager
+            } else {
+              // For other types (requirements, user stories), show suggestions normally
+              handleGenerated(results);
+            }
+          }}
           tooltip="Generate with AI"
           iconOnly
-          pollEndpoint={type === "architecture" ? `/api/features/${featureId}/architecture-status` : undefined}
-          onPollingComplete={type === "architecture" ? handlePollingComplete : undefined}
-          requestId={requestId}
+          generating={type === "architecture" ? isGenerating : undefined}
+          onGenerationStarted={(requestId: string) => {
+            if (type === "architecture" && workspaceId && requestId) {
+              addGeneration({
+                featureId,
+                workspaceId,
+                requestId,
+                fieldName: type,
+              });
+            }
+          }}
         />
         <SaveIndicator field={id} savedField={savedField} saving={saving} saved={saved} />
       </div>

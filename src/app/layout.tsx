@@ -8,6 +8,7 @@ import Script from "next/script";
 import "./globals.css";
 import ModalClient from "./ModalClient";
 import QueryProvider from "@/providers/QueryProvider";
+import { PollingManager } from "@/components/PollingManager";
 
 const inter = Inter({ subsets: ["latin"] });
 const roboto = Roboto({
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <SessionProvider>
               <WorkspaceProvider>
                 <QueryProvider>
+                  <PollingManager />
                   <ModalClient>{children}</ModalClient>
                 </QueryProvider>
               </WorkspaceProvider>

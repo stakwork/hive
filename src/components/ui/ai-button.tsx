@@ -20,9 +20,8 @@ interface AIButtonProps<T> {
   label?: string;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "lg" | "icon";
-  pollEndpoint?: string;
-  onPollingComplete?: (result: string) => void;
-  requestId?: string | null;
+  generating?: boolean; // External generating state (from polling store)
+  onGenerationStarted?: (requestId: string) => void; // Callback when generation starts with requestId
 }
 
 export function AIButton<T>({
@@ -34,19 +33,21 @@ export function AIButton<T>({
   label = "Generate",
   variant = "ghost",
   size = "icon",
-  pollEndpoint,
-  onPollingComplete,
-  requestId,
+  generating: externalGenerating,
+  onGenerationStarted,
 }: AIButtonProps<T>) {
-  const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(
-    endpoint,
-    pollEndpoint && onPollingComplete
-      ? { pollEndpoint, onPollingComplete, requestId }
-      : undefined
-  );
+  const { generating: internalGenerating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(endpoint);
+
+  // Use external generating state if provided, otherwise use internal
+  const isGenerating = externalGenerating !== undefined ? externalGenerating : internalGenerating;
 
   const handleGenerate = async () => {
-    await generate(params);
+    const result = await generate(params);
+
+    // If result contains request_id (async generation), call onGenerationStarted
+    if (result?.request_id && onGenerationStarted) {
+      onGenerationStarted(result.request_id);
+    }
   };
 
   // Notify parent when suggestions change
@@ -62,9 +63,9 @@ export function AIButton<T>({
       size={iconOnly ? "icon" : size}
       variant={iconOnly ? "ghost" : variant}
       onClick={handleGenerate}
-      disabled={generating}
+      disabled={isGenerating}
     >
-      {generating ? (
+      {isGenerating ? (
         <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
       ) : (
         <>
