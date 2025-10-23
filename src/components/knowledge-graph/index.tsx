@@ -99,7 +99,7 @@ export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe"
 
 
   return (
-    <div className="dark h-auto w-full border rounded-lg p-4 relative bg-card">
+    <div className="dark h-full w-full border rounded-lg p-4 relative bg-card flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-white">{title}</h3>
         <div className="flex items-center gap-2">
@@ -111,13 +111,13 @@ export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe"
         </div>
       </div>
 
-      <div className="border rounded overflow-hidden bg-card">
+      <div className="border rounded overflow-hidden bg-card flex-1">
         {nodesLoading ? (
-          <div className="flex h-96 items-center justify-center">
+          <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
           </div>
         ) : !dataInitial?.nodes || dataInitial.nodes.length === 0 ? (
-          <div className="flex h-96 items-center justify-center">
+          <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">
               No data found
             </div>
