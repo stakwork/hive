@@ -13,9 +13,8 @@ export default function TasksPage() {
   const { workspace, slug, id: workspaceId } = useWorkspace();
   return (
     <div className="space-y-6">
-      <PageHeader 
+      <PageHeader
         title="Tasks"
-        description="Manage and track your development tasks and issues."
         actions={workspace?.isCodeGraphSetup && (
           <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
             <Plus className="w-4 h-4 mr-2" />

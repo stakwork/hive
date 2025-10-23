@@ -26,10 +26,10 @@ export async function GET(request: Request) {
     function parseOwnerRepo(url: string): { owner: string; repo: string } {
       const u = url.replace(/\.git$/i, "");
       // SSH form
-      const ssh = u.match(/^git@[^:]+:([^/]+)\/([^/]+)$/);
+      const ssh = u.match(/^git@[^:]+:([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
       if (ssh) return { owner: ssh[1], repo: ssh[2] };
       // HTTPS form
-      const https = u.match(/^https?:\/\/[^/]+\/([^/]+)\/([^/]+)$/i);
+      const https = u.match(/^https?:\/\/[^/]+\/([^/]+)\/([^/]+)\/?$/i);
       if (https) return { owner: https[1], repo: https[2] };
       throw new Error(`Cannot parse owner/repo from: ${url}`);
     }

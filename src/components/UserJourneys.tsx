@@ -231,7 +231,6 @@ export default function UserJourneys() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">User Journeys</h1>
-          <p className="text-muted-foreground mt-2">Track and optimize user experiences through your product</p>
         </div>
         {frontend ? (
           <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">

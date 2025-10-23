@@ -69,10 +69,24 @@ export function CoverageInsights() {
     prefetchPrev,
   } = useCoverageNodes();
 
-  const { ignoreDirs, setIgnoreDirs, repo, setRepo } = useCoverageNodes();
+  const {
+    ignoreDirs,
+    setIgnoreDirs,
+    repo,
+    setRepo,
+    unitGlob,
+    setUnitGlob,
+    integrationGlob,
+    setIntegrationGlob,
+    e2eGlob,
+    setE2eGlob,
+  } = useCoverageNodes();
 
   const [inputValue, setInputValue] = useState(ignoreDirs);
   const [repoInputValue, setRepoInputValue] = useState(repo);
+  const [unitGlobInputValue, setUnitGlobInputValue] = useState(unitGlob);
+  const [integrationGlobInputValue, setIntegrationGlobInputValue] = useState(integrationGlob);
+  const [e2eGlobInputValue, setE2eGlobInputValue] = useState(e2eGlob);
 
   useEffect(() => {
     setInputValue(ignoreDirs);
@@ -81,6 +95,18 @@ export function CoverageInsights() {
   useEffect(() => {
     setRepoInputValue(repo);
   }, [repo]);
+
+  useEffect(() => {
+    setUnitGlobInputValue(unitGlob);
+  }, [unitGlob]);
+
+  useEffect(() => {
+    setIntegrationGlobInputValue(integrationGlob);
+  }, [integrationGlob]);
+
+  useEffect(() => {
+    setE2eGlobInputValue(e2eGlob);
+  }, [e2eGlob]);
 
   const handleApplyFilter = () => {
     const cleaned = inputValue
@@ -106,6 +132,27 @@ export function CoverageInsights() {
     }
   };
 
+  const handleApplyUnitGlobFilter = () => {
+    const cleaned = unitGlobInputValue.trim();
+    if (cleaned !== unitGlob) {
+      setUnitGlob(cleaned);
+    }
+  };
+
+  const handleApplyIntegrationGlobFilter = () => {
+    const cleaned = integrationGlobInputValue.trim();
+    if (cleaned !== integrationGlob) {
+      setIntegrationGlob(cleaned);
+    }
+  };
+
+  const handleApplyE2eGlobFilter = () => {
+    const cleaned = e2eGlobInputValue.trim();
+    if (cleaned !== e2eGlob) {
+      setE2eGlob(cleaned);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleApplyFilter();
@@ -120,21 +167,45 @@ export function CoverageInsights() {
     }
   };
 
+  const handleUnitGlobKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleApplyUnitGlobFilter();
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleIntegrationGlobKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleApplyIntegrationGlobFilter();
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleE2eGlobKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleApplyE2eGlobFilter();
+      e.currentTarget.blur();
+    }
+  };
+
   const hasItems = items && items.length > 0;
 
   const rows = useMemo(
     () =>
-      (items as CoverageNodeConcise[]).map((item) => ({
-        key: `${item.name}-${item.file}`,
-        name: item.name,
-        file: item.file,
-        coverage: item.test_count,
-        weight: item.weight,
-        covered: (item.test_count || 0) > 0,
-        bodyLength: item.body_length,
-        lineCount: item.line_count,
-      })),
-    [items],
+      (items as CoverageNodeConcise[]).map((item) => {
+        const displayName = item.verb && params.nodeType === "endpoint" ? `${item.verb} ${item.name}` : item.name;
+        return {
+          key: `${item.name}-${item.file}`,
+          name: displayName,
+          file: item.file,
+          coverage: item.test_count,
+          weight: item.weight,
+          covered: (item.test_count || 0) > 0,
+          bodyLength: item.body_length,
+          lineCount: item.line_count,
+        };
+      }),
+    [items, params.nodeType],
   );
 
   return (
@@ -204,19 +275,63 @@ export function CoverageInsights() {
                 className="h-8 w-[200px] text-xs"
               />
             </div>
+          </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Repo:</span>
-              <Input
-                type="text"
-                placeholder="all, /path/repo1, or /path/repo1,/path/repo2"
-                value={repoInputValue}
-                onChange={(e) => setRepoInputValue(e.target.value)}
-                onBlur={handleApplyRepoFilter}
-                onKeyDown={handleRepoKeyDown}
-                className="h-8 w-[280px] text-xs"
-              />
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">Filter by test patterns (glob):</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Unit:</span>
+                <Input
+                  type="text"
+                  placeholder="**/*.test.ts, **/*.spec.ts"
+                  value={unitGlobInputValue}
+                  onChange={(e) => setUnitGlobInputValue(e.target.value)}
+                  onBlur={handleApplyUnitGlobFilter}
+                  onKeyDown={handleUnitGlobKeyDown}
+                  className="h-8 w-[220px] text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Integration:</span>
+                <Input
+                  type="text"
+                  placeholder="**/integration/*.test.ts"
+                  value={integrationGlobInputValue}
+                  onChange={(e) => setIntegrationGlobInputValue(e.target.value)}
+                  onBlur={handleApplyIntegrationGlobFilter}
+                  onKeyDown={handleIntegrationGlobKeyDown}
+                  className="h-8 w-[220px] text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">E2E:</span>
+                <Input
+                  type="text"
+                  placeholder="**/e2e/**/*.spec.ts"
+                  value={e2eGlobInputValue}
+                  onChange={(e) => setE2eGlobInputValue(e.target.value)}
+                  onBlur={handleApplyE2eGlobFilter}
+                  onKeyDown={handleE2eGlobKeyDown}
+                  className="h-8 w-[220px] text-xs"
+                />
+              </div>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">Repo:</span>
+            <Input
+              type="text"
+              placeholder="all, /path/repo1, or /path/repo1,/path/repo2"
+              value={repoInputValue}
+              onChange={(e) => setRepoInputValue(e.target.value)}
+              onBlur={handleApplyRepoFilter}
+              onKeyDown={handleRepoKeyDown}
+              className="h-8 w-[400px] text-xs"
+            />
           </div>
         </div>
       </CardHeader>
