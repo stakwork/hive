@@ -29,6 +29,7 @@ export const selectors = {
     tasks: '[data-testid="page-title"]:has-text("Tasks")',
     insights: '[data-testid="page-title"]:has-text("Insights")',
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
+    userJourneys: 'h1:has-text("User Journeys")',
   },
 
   // Page descriptions

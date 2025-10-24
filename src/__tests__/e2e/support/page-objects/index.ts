@@ -10,3 +10,4 @@ export { WorkspaceSettingsPage } from './WorkspaceSettingsPage';
 export { RoadmapPage } from './RoadmapPage';
 export { FeatureDetailPage } from './FeatureDetailPage';
 export { PhaseDetailPage } from './PhaseDetailPage';
+export { UserJourneysPage } from './UserJourneysPage';

@@ -48,6 +48,14 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to user journeys page
+   */
+  async goToUserJourneys(): Promise<void> {
+    await this.page.locator(selectors.navigation.userJourneysLink).first().click({ force: true });
+    await this.page.waitForURL(/\/w\/.*\/user-journeys/, { timeout: 10000 });
+  }
+
+  /**
    * Reload the page
    */
   async reload(): Promise<void> {
