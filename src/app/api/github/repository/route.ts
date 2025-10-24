@@ -1,5 +1,4 @@
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
@@ -8,7 +7,6 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const repoUrl = searchParams.get("repoUrl");
-  const workspaceSlug = searchParams.get("workspaceSlug");
 
   if (!repoUrl) {
     return NextResponse.json({ error: "Repo URL is required" }, { status: 400 });
@@ -36,49 +34,34 @@ export async function GET(request: Request) {
 
     const { owner, repo } = parseOwnerRepo(repoUrl);
 
-    // Try to use GitHub App installation token first, fall back to OAuth token
-    let accessToken;
+    // Use GitHub App token only (no OAuth fallback)
+    const tokens = await getUserAppTokens(userId, owner);
 
-    // First try GitHub App installation token if we have a workspace
-    if (workspaceSlug) {
-      try {
-        const workspace = await db.workspace.findUnique({
-          where: { slug: workspaceSlug },
-          include: { sourceControlOrg: true }
-        });
-
-        if (workspace?.sourceControlOrg?.githubLogin) {
-          const appTokens = await getUserAppTokens(userId, workspace.sourceControlOrg.githubLogin);
-          if (appTokens?.accessToken) {
-            accessToken = appTokens.accessToken;
-            console.log("Using GitHub App installation token");
-          }
-        }
-      } catch (error) {
-        console.warn("Could not get GitHub App token, falling back to OAuth token:", error);
-      }
+    if (!tokens?.accessToken) {
+      return NextResponse.json({
+        error: "No GitHub App tokens found for this repository owner. Please ensure the GitHub App is installed for this organization/user."
+      }, { status: 403 });
     }
 
-    // Fall back to OAuth token if GitHub App token not available
-    if (!accessToken) {
-      const githubProfile = await getGithubUsernameAndPAT(userId);
-      if (!githubProfile?.token) {
-        return NextResponse.json({ error: "GitHub access token not found" }, { status: 400 });
-      }
-      accessToken = githubProfile.token;
-      console.log("Using OAuth token");
-    }
+    console.log("Using GitHub App installation token");
 
+    // GitHub App tokens always use Bearer format
+    const authHeader = `Bearer ${tokens.accessToken}`;
+
+    console.log("Making GitHub API request with GitHub App token");
+
+    // Make direct repository API call (same as original purpose)
     const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        Authorization: `token ${accessToken}`,
+        Authorization: authHeader,
         Accept: "application/vnd.github.v3+json",
       },
     });
 
     const repoData = res.data;
 
-    if (repoData.permissions.push) {
+    // Check push permissions and return repository data
+    if (repoData.permissions?.push) {
       const data = {
         id: repoData.id,
         name: repoData.name,
@@ -98,11 +81,13 @@ export async function GET(request: Request) {
       };
 
       return NextResponse.json({
-        message: "Repo is pushable",
+        message: "Repository data retrieved successfully",
         data,
       });
     } else {
-      return NextResponse.json({ error: "You do not have push access to this repository" }, { status: 403 });
+      return NextResponse.json({
+        error: "You do not have push access to this repository"
+      }, { status: 403 });
     }
   } catch (error: unknown) {
     console.error("Error fetching repositories:", error);
