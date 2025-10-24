@@ -382,7 +382,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     return (
       <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
         <div className="w-full h-full flex flex-col items-center justify-center">
-          <PageHeader title="We are setting up your workspace" />
           <NetworkGraph3D />
         </div>
       </div>
