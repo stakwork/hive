@@ -682,6 +682,40 @@ var userBehaviour = (() => {
       return "textbox";
     return null;
   }
+  function getRelativeUrl(url) {
+    if (!url)
+      return "/";
+    let pathname;
+    let search = "";
+    let hash = "";
+    try {
+      const urlObj = new URL(url);
+      pathname = urlObj.pathname;
+      search = urlObj.search;
+      hash = urlObj.hash;
+    } catch (e) {
+      if (!url.startsWith("/")) {
+        return url;
+      }
+      const hashIndex = url.indexOf("#");
+      const searchIndex = url.indexOf("?");
+      if (hashIndex !== -1) {
+        pathname = url.substring(0, hashIndex);
+        hash = url.substring(hashIndex);
+      } else if (searchIndex !== -1) {
+        pathname = url.substring(0, searchIndex);
+        search = url.substring(searchIndex);
+      } else {
+        pathname = url;
+      }
+    }
+    const workspacePattern = /^\/w\/[a-zA-Z0-9_-]+/;
+    pathname = pathname.replace(workspacePattern, "");
+    if (!pathname) {
+      pathname = "/";
+    }
+    return pathname + search + hash;
+  }
 
   // src/debug.ts
   function rectsIntersect(rect1, rect2) {
@@ -4706,7 +4740,7 @@ var userBehaviour = (() => {
         case "navigation":
           return __spreadProps(__spreadValues({}, baseAction), {
             type: "goto",
-            url: eventData.url
+            url: getRelativeUrl(eventData.url)
           });
         case "input":
           return __spreadProps(__spreadValues({}, baseAction), {
@@ -4847,7 +4881,7 @@ var userBehaviour = (() => {
       var _a2, _b, _c, _d, _e;
       switch (action.type) {
         case "goto":
-          return `  await page.goto('${action.url || baseUrl}');`;
+          return `  await page.goto('${getRelativeUrl(action.url || baseUrl)}');`;
         case "waitForURL":
           if (action.normalizedUrl) {
             return `  await page.waitForURL('${action.normalizedUrl}');`;
@@ -5389,20 +5423,22 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
           url: document.URL,
           timestamp: getTimeStamp()
         };
-        this.results.pageNavigation.push(navAction);
-        this.sendEventToParent("navigation", navAction);
-        window.parent.postMessage(
-          {
-            type: "staktrak-action-added",
-            action: {
-              id: navAction.timestamp + "_nav",
-              kind: "nav",
-              timestamp: navAction.timestamp,
-              url: navAction.url
-            }
-          },
-          "*"
-        );
+        if (this.isRunning) {
+          this.results.pageNavigation.push(navAction);
+          this.sendEventToParent("navigation", navAction);
+          window.parent.postMessage(
+            {
+              type: "staktrak-action-added",
+              action: {
+                id: navAction.timestamp + "_nav",
+                kind: "nav",
+                timestamp: navAction.timestamp,
+                url: navAction.url
+              }
+            },
+            "*"
+          );
+        }
         window.parent.postMessage({ type: "staktrak-page-navigation", data: document.URL }, "*");
       };
       history.pushState = (...args) => {
@@ -5435,20 +5471,22 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
         try {
           const dest = new URL(href, window.location.href);
           if (dest.origin === window.location.origin) {
-            const navAction = { type: "anchorClick", url: dest.href, timestamp: getTimeStamp() };
-            this.results.pageNavigation.push(navAction);
-            window.parent.postMessage(
-              {
-                type: "staktrak-action-added",
-                action: {
-                  id: navAction.timestamp + "_nav",
-                  kind: "nav",
-                  timestamp: navAction.timestamp,
-                  url: navAction.url
-                }
-              },
-              "*"
-            );
+            const navAction = { type: "anchorClick", url: getRelativeUrl(dest.href), timestamp: getTimeStamp() };
+            if (this.isRunning) {
+              this.results.pageNavigation.push(navAction);
+              window.parent.postMessage(
+                {
+                  type: "staktrak-action-added",
+                  action: {
+                    id: navAction.timestamp + "_nav",
+                    kind: "nav",
+                    timestamp: navAction.timestamp,
+                    url: navAction.url
+                  }
+                },
+                "*"
+              );
+            }
           }
         } catch (e2) {
         }
