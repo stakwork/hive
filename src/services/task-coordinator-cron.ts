@@ -87,6 +87,107 @@ async function processTicketSweep(
 }
 
 /**
+ * Halt a specific task by updating its workflow status to HALTED
+ * Can be called by cron job or manually
+ */
+export async function haltTask(taskId: string): Promise<void> {
+  await db.task.update({
+    where: { id: taskId },
+    data: {
+      workflowStatus: "HALTED",
+      workflowCompletedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Halt agent tasks that have been in PENDING state for more than 24 hours
+ */
+export async function haltStaleAgentTasks(): Promise<{
+  success: boolean;
+  tasksHalted: number;
+  errors: Array<{ taskId: string; error: string }>;
+  timestamp: string;
+}> {
+  const errors: Array<{ taskId: string; error: string }> = [];
+  let tasksHalted = 0;
+
+  try {
+    console.log("[HaltStaleAgentTasks] Starting execution");
+
+    // Calculate the timestamp for 24 hours ago
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+    // Find agent tasks that have been in PENDING state for more than 24 hours
+    const staleTasks = await db.task.findMany({
+      where: {
+        mode: "agent",
+        workflowStatus: "PENDING",
+        workflowStartedAt: {
+          lt: twentyFourHoursAgo,
+        },
+        deleted: false,
+      },
+      select: {
+        id: true,
+        title: true,
+        workspaceId: true,
+        workflowStartedAt: true,
+      },
+    });
+
+    console.log(`[HaltStaleAgentTasks] Found ${staleTasks.length} stale agent tasks`);
+
+    // Update each task to HALTED status using the shared haltTask function
+    for (const task of staleTasks) {
+      try {
+        await haltTask(task.id);
+
+        tasksHalted++;
+        console.log(
+          `[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - was pending since ${task.workflowStartedAt}`
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[HaltStaleAgentTasks] Error halting task ${task.id}:`, errorMessage);
+        errors.push({
+          taskId: task.id,
+          error: errorMessage,
+        });
+      }
+    }
+
+    console.log(
+      `[HaltStaleAgentTasks] Execution completed. Halted ${tasksHalted} tasks, ${errors.length} errors`
+    );
+
+    return {
+      success: errors.length === 0,
+      tasksHalted,
+      errors,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[HaltStaleAgentTasks] Critical error during execution:", errorMessage);
+
+    return {
+      success: false,
+      tasksHalted,
+      errors: [
+        ...errors,
+        {
+          taskId: "SYSTEM",
+          error: `Critical execution error: ${errorMessage}`,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+/**
  * Execute Task Coordinator runs for all enabled workspaces
  */
 export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecutionResult> {
@@ -97,6 +198,27 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
   try {
     console.log("[TaskCoordinator] Starting execution at", startTime.toISOString());
+
+    // First, halt any stale agent tasks (PENDING for >24 hours)
+    try {
+      const haltResult = await haltStaleAgentTasks();
+      console.log(`[TaskCoordinator] Halted ${haltResult.tasksHalted} stale agent tasks`);
+      if (!haltResult.success) {
+        haltResult.errors.forEach(error => {
+          errors.push({
+            workspaceSlug: "SYSTEM",
+            error: `Failed to halt task ${error.taskId}: ${error.error}`
+          });
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[TaskCoordinator] Error halting stale tasks:", errorMessage);
+      errors.push({
+        workspaceSlug: "SYSTEM",
+        error: `Failed to halt stale tasks: ${errorMessage}`
+      });
+    }
 
     // Get all workspaces with either sweep enabled
     const enabledWorkspaces = await db.workspace.findMany({
