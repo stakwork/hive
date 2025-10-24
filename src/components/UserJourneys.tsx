@@ -241,27 +241,42 @@ export default function UserJourneys() {
 
   const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
     try {
-      console.log("Saving user journey:", filename, generatedCode);
+      console.log("Saving user journey:", { filename, codeLength: generatedCode.length });
 
       // Extract title from filename (remove .spec.ts and format)
-      const title = filename
-        .replace(/\.spec\.ts$/, "")
-        .split("-")
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
+      let title = "User Journey Test";
+      try {
+        title = filename
+          .replace(/\.spec\.ts$/, "")
+          .replace(/\.spec$/, "")
+          .split(/[-_]/)
+          .filter(word => word.length > 0)
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+      } catch (e) {
+        console.warn("Failed to extract title from filename, using default:", e);
+      }
+
+      console.log("Extracted title:", title);
+
+      const payload = {
+        message: generatedCode,
+        workspaceId: id,
+        title: title,
+        testName: filename,
+      };
+
+      console.log("Sending request to save user journey:", payload);
 
       const response = await fetch("/api/stakwork/user-journey", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          message: generatedCode,
-          workspaceId: id,
-          title: title,
-          testName: filename,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      console.log("Response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -269,7 +284,7 @@ export default function UserJourneys() {
         toast({
           variant: "destructive",
           title: "Failed to Save",
-          description: "Unable to save user journey test. Please try again.",
+          description: errorData.error || "Unable to save user journey test. Please try again.",
         });
         return;
       }
@@ -285,6 +300,12 @@ export default function UserJourneys() {
 
         // Refetch tasks to show the new one
         await fetchUserJourneyTasks();
+      } else {
+        console.warn("No task returned from API:", data);
+        toast({
+          title: "Test Saved",
+          description: "Test was saved but task creation may have failed. Check console for details.",
+        });
       }
     } catch (error) {
       console.error("Error saving user journey:", error);
@@ -359,8 +380,8 @@ export default function UserJourneys() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>User Journey Tests</CardTitle>
-              <CardDescription>Track your recorded user journey tests and their status</CardDescription>
+              <CardTitle>E2E Tests</CardTitle>
+              <CardDescription>End-to-end tests from your codebase</CardDescription>
             </CardHeader>
             <CardContent>
               {fetchingTasks ? (

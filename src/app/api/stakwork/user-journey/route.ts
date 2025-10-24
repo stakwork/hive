@@ -107,9 +107,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace ID is required" }, { status: 400 });
     }
 
-    if (!title) {
-      return NextResponse.json({ error: "Title is required" }, { status: 400 });
-    }
+    // Use default title if not provided
+    const taskTitle = title || testName || "User Journey Test";
 
     // Find the workspace and validate user access
     const workspace = await getWorkspaceById(workspaceId, userId);
@@ -165,16 +164,20 @@ export async function POST(request: NextRequest) {
       username,
     );
 
-    // If Stakwork call was successful, create a task to track this user journey
+    console.log("Stakwork response:", { success: stakworkData?.success, hasData: !!stakworkData?.data });
+
+    // Always create a task to track this user journey, regardless of Stakwork success
     let task = null;
-    if (stakworkData?.success && stakworkData?.data) {
+    try {
+      console.log("Creating task for user journey...");
       // Generate test file path from test name or title
       const timestamp = Date.now();
-      const sanitizedName = (testName || title)
+      const sanitizedName = (testName || taskTitle)
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
       const testFilePath = `e2e/user-journey-${sanitizedName}-${timestamp}.spec.ts`;
+      console.log("Generated testFilePath:", testFilePath);
 
       // Get workspace's primary repository if available
       const repository = await db.repository.findFirst({
@@ -182,18 +185,23 @@ export async function POST(request: NextRequest) {
         select: { id: true, repositoryUrl: true },
       });
 
-      // Extract stakworkProjectId from response
-      const stakworkProjectId = stakworkData.data.project_id || stakworkData.data.id || null;
+      // Extract stakworkProjectId from response if Stakwork succeeded
+      const stakworkProjectId = (stakworkData?.success && stakworkData?.data)
+        ? (stakworkData.data.project_id || stakworkData.data.id || null)
+        : null;
+
+      // Determine workflow status based on Stakwork success
+      const workflowStatus = stakworkProjectId ? "PENDING" : null;
 
       // Create task record
       task = await db.task.create({
         data: {
-          title,
-          description: description || `User journey test: ${title}`,
+          title: taskTitle,
+          description: description || `User journey test: ${taskTitle}`,
           workspaceId: workspace.id,
           sourceType: "USER_JOURNEY",
           status: "IN_PROGRESS",
-          workflowStatus: "PENDING",
+          workflowStatus: workflowStatus,
           priority: "MEDIUM",
           testFilePath,
           testFileUrl: repository?.repositoryUrl
@@ -213,6 +221,14 @@ export async function POST(request: NextRequest) {
           stakworkProjectId: true,
         },
       });
+      console.log("Task created successfully:", task.id);
+
+      if (!stakworkProjectId) {
+        console.warn("Task created without stakworkProjectId (Stakwork call failed)");
+      }
+    } catch (error) {
+      console.error("Error creating task for user journey:", error);
+      // Continue anyway - we still want to return the Stakwork response
     }
 
     return NextResponse.json(
