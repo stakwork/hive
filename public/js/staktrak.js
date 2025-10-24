@@ -5389,8 +5389,6 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
           url: document.URL,
           timestamp: getTimeStamp()
         };
-
-        // Only record navigation when actively recording
         if (this.isRunning) {
           this.results.pageNavigation.push(navAction);
           this.sendEventToParent("navigation", navAction);
@@ -5407,8 +5405,6 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
             "*"
           );
         }
-
-        // Always update the current URL display (even when not recording)
         window.parent.postMessage({ type: "staktrak-page-navigation", data: document.URL }, "*");
       };
       history.pushState = (...args) => {
@@ -5442,8 +5438,6 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
           const dest = new URL(href, window.location.href);
           if (dest.origin === window.location.origin) {
             const navAction = { type: "anchorClick", url: dest.href, timestamp: getTimeStamp() };
-
-            // Only record navigation when actively recording
             if (this.isRunning) {
               this.results.pageNavigation.push(navAction);
               window.parent.postMessage(
