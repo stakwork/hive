@@ -16,7 +16,7 @@ interface DashboardProps {
 export function Dashboard({ setupInProgress = false }: DashboardProps) {
 
   const { workspace } = useWorkspace();
-  const { isIngesting } = useIngestStatus();
+  const { isIngesting, statusMessage } = useIngestStatus();
 
   const description = setupInProgress
     ? "Your workspace is being configured. You can start exploring while setup completes in the background."
@@ -47,7 +47,7 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
                 <div className="flex w-full flex-col items-center justify-center gap-4">
                   <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                   <div className="flex flex-col items-center gap-2">
-                    <div className="text-lg text-gray-300">Ingesting your codebase...</div>
+                    <div className="text-lg text-gray-300">{statusMessage}</div>
                     <div className="text-sm text-gray-500">This usually takes a few minutes</div>
                   </div>
                 </div>

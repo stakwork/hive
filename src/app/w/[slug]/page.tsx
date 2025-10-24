@@ -1,7 +1,6 @@
 "use client";
 
 import { SwarmSetupHandler } from "@/components/swarm-setup/SwarmSetupHandler";
-import { useIngestStatus } from "@/hooks/useIngestStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useState } from "react";
 import { Dashboard } from "./dashboard";
@@ -22,12 +21,7 @@ export default function DashboardPage() {
   const setupCompleted = workspace?.containerFilesSetUp;
   const hasSwarmId = !!workspace?.swarmId;
 
-  // Show dashboard early conditions:
-  // 1. Setup is completed (original condition)
-  // 2. OR services have started (swarm exists + services endpoint called)
   const showDashboard = setupCompleted || (hasSwarmId && servicesStarted);
-
-  useIngestStatus();
 
   return (
     <div className="space-y-6">

@@ -9,6 +9,7 @@ export function useIngestStatus() {
   const isRequestPendingRef = useRef(false);
   const [ingestError, setIngestError] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>("Ingesting your codebase...");
 
   const ingestRefId = workspace?.ingestRefId;
   console.log(workspace?.repositories);
@@ -69,6 +70,7 @@ export function useIngestStatus() {
             })),
           });
           setIsIngesting(false);
+          setStatusMessage("Ingesting your codebase...");
           // Stop polling
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
@@ -90,7 +92,10 @@ export function useIngestStatus() {
           }
           return;
         }
-        // If still in progress, continue polling will be handled by interval
+        // If still in progress, update the status message
+        if (data?.update?.message) {
+          setStatusMessage(data.update.message);
+        }
       } catch (error) {
         console.error("Failed to get ingest status:", error);
         setIngestError(true);
@@ -118,5 +123,5 @@ export function useIngestStatus() {
     };
   }, [ingestRefId, workspaceId, codeIsSynced, ingestError, updateWorkspace, workspace?.repositories, toast]);
 
-  return { ingestError, isIngesting };
+  return { ingestError, isIngesting, statusMessage };
 }

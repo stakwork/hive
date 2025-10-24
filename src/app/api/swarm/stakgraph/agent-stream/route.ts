@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Send initial status
-        sendEvent({ status: "starting", message: "Starting agent monitoring..." });
+        sendEvent({ status: "STARTING", message: "Starting agent monitoring..." });
 
         const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey!);
         const cleanSwarmUrl = swarm.swarmUrl!.replace("/api", "");
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
           while (attempts < maxAttempts) {
             try {
               sendEvent({
-                status: "polling",
+                status: "POLLING",
                 message: `Checking agent progress... (${attempts + 1}/${maxAttempts})`,
                 attempt: attempts + 1,
                 maxAttempts
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
 
               if (agentResult.ok) {
                 // Agent completed successfully
-                sendEvent({ status: "processing", message: "Agent completed, processing results..." });
+                sendEvent({ status: "PROCESSING", message: "Agent completed, processing results..." });
 
                 // Process the results
                 const agentFiles = agentResult.data as Record<string, string>;
@@ -146,18 +146,19 @@ export async function GET(request: NextRequest) {
                   containerFiles,
                 });
 
-                // Update agent status to completed
+                // Update agent status to completed and mark container files as set up
                 await db.swarm.update({
                   where: { id: swarm.id },
                   data: {
                     agentStatus: 'COMPLETED',
                     agentRequestId: null, // Clear the request ID
+                    containerFilesSetUp: true, // Mark setup complete since we have services and env vars
                   },
                 });
 
                 // Send success event
                 sendEvent({
-                  status: "completed",
+                  status: "COMPLETED",
                   message: "Agent processing completed successfully!",
                   data: { services }
                 }, "completed");
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
             } catch (error) {
               console.error("Error polling agent:", error);
               sendEvent({
-                status: "error",
+                status: "ERROR",
                 message: `Error polling agent: ${error instanceof Error ? error.message : 'Unknown error'}`,
                 attempt: attempts + 1
               });
@@ -197,7 +198,7 @@ export async function GET(request: NextRequest) {
           });
 
           sendEvent({
-            status: "timeout",
+            status: "TIMEOUT",
             message: "Agent processing timed out after 10 minutes"
           }, "error");
           controller.close();
