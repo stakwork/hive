@@ -294,6 +294,92 @@ describe("chat", () => {
       expect(artifact.content).toEqual(longformContent);
     });
 
+    it("should create artifact with IDE content", () => {
+      const ideContent = {
+        url: "https://ide.example.com",
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.IDE,
+        content: ideContent,
+      });
+
+      expect(artifact.content).toEqual(ideContent);
+    });
+
+    it("should create artifact with BUG_REPORT content", () => {
+      const bugReportContent = {
+        bugDescription: "Button click fails to submit form",
+        iframeUrl: "https://app.example.com/form",
+        method: "click" as const,
+        sourceFiles: [
+          {
+            file: "src/components/Form.tsx",
+            lines: [45, 46, 47],
+            context: "Form submission handler",
+            message: "Event handler not preventing default",
+            componentNames: [
+              {
+                name: "FormComponent",
+                level: 1,
+                type: "FunctionComponent",
+                element: "form",
+              },
+            ],
+          },
+        ],
+        coordinates: {
+          x: 100,
+          y: 200,
+          width: 50,
+          height: 30,
+        },
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.BUG_REPORT,
+        content: bugReportContent,
+      });
+
+      expect(artifact.content).toEqual(bugReportContent);
+    });
+
+    it("should create artifact with GRAPH content", () => {
+      const graphContent = {
+        ref_id: "graph-node-123",
+        depth: 3,
+        cluster_title: "Authentication Flow",
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.GRAPH,
+        content: graphContent,
+      });
+
+      expect(artifact.content).toEqual(graphContent);
+    });
+
+    it("should create artifact with WORKFLOW content", () => {
+      const workflowContent = {
+        projectId: "workflow-project-456",
+      };
+
+      const artifact = createArtifact({
+        id: "artifact-1",
+        messageId: "msg-1",
+        type: ArtifactType.WORKFLOW,
+        content: workflowContent,
+      });
+
+      expect(artifact.content).toEqual(workflowContent);
+    });
+
     it("should create artifact with icon", () => {
       const artifact = createArtifact({
         id: "artifact-1",
