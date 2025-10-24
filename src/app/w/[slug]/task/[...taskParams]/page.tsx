@@ -93,11 +93,25 @@ export default function TaskChatPage() {
             },
           });
         }
+
+        // Update task workflow status to HALTED when pod is dropped (agent mode only)
+        if (currentTaskId && taskMode === "agent" && !useBeacon) {
+          try {
+            await fetch(`/api/tasks/${currentTaskId}/halt`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            });
+          } catch (error) {
+            console.error("Error halting task:", error);
+          }
+        }
       } catch (error) {
         console.error("Error dropping pod:", error);
       }
     },
-    [workspaceId, claimedPodId],
+    [workspaceId, claimedPodId, currentTaskId, taskMode],
   );
 
   // Drop pod when component unmounts or when navigating away

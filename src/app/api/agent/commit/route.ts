@@ -6,6 +6,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getPodFromPool, POD_PORTS } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
+import { WorkflowStatus } from "@/lib/chat";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -211,6 +212,29 @@ export async function POST(request: NextRequest) {
 
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
+
+    // Update task workflow status to COMPLETED after successful commit
+    try {
+      const task = await db.task.findUnique({
+        where: { id: taskId },
+        select: { mode: true, workflowStatus: true },
+      });
+
+      // Only update if this is an agent task
+      if (task?.mode === "agent") {
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            workflowStatus: WorkflowStatus.COMPLETED,
+            workflowCompletedAt: new Date(),
+          },
+        });
+        console.log("✅ Updated agent task workflow status to COMPLETED");
+      }
+    } catch (error) {
+      console.error("Error updating task workflow status:", error);
+      // Don't fail the request if status update fails
+    }
 
     // Create PR URLs directly from workspace repositories
     // Format: https://github.com/owner/repo/pull/new/branchName

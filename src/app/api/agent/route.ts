@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { streamText, ModelMessage } from "ai";
-import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@/lib/chat";
 import { gooseWeb } from "ai-sdk-provider-goose-web";
 
 interface ArtifactRequest {
@@ -116,6 +116,26 @@ export async function POST(request: NextRequest) {
           },
         },
       });
+
+      // Update task workflow status to IN_PROGRESS when agent starts (first message)
+      if (chatHistory.length === 0) {
+        const task = await db.task.findUnique({
+          where: { id: taskId },
+          select: { mode: true, workflowStatus: true },
+        });
+
+        // Only update if this is an agent task and not already started
+        if (task?.mode === "agent" && (!task.workflowStatus || task.workflowStatus === WorkflowStatus.PENDING)) {
+          await db.task.update({
+            where: { id: taskId },
+            data: {
+              workflowStatus: WorkflowStatus.IN_PROGRESS,
+              workflowStartedAt: new Date(),
+            },
+          });
+          console.log("✅ Updated agent task workflow status to IN_PROGRESS");
+        }
+      }
     } catch (error) {
       console.error("Error saving message to database:", error);
     }
