@@ -4,7 +4,7 @@ import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
 export interface CreateTestTaskOptions {
   title?: string;
-  description?: string;
+  description?: string | null;
   workspaceId: string;
   createdById: string;
   assigneeId?: string;
@@ -30,7 +30,7 @@ export async function createTestTask(
   return db.task.create({
     data: {
       title: options.title || `Test Task ${uniqueId}`,
-      description: options.description || `Test task description ${uniqueId}`,
+      description: options.description !== undefined ? options.description : `Test task description ${uniqueId}`,
       workspaceId: options.workspaceId,
       createdById: options.createdById,
       updatedById: options.createdById, // Required field
