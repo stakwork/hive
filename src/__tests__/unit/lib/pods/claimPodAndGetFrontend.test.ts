@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { claimPodAndGetFrontend, getWorkspaceFromPool, type PodWorkspace } from '@/lib/pods/utils';
+import { claimPodAndGetFrontend, getWorkspaceFromPool } from '@/lib/pods/utils';
 import { POD_PORTS } from '@/lib/pods/constants';
-
-// Define ProcessInfo interface for test data
-interface ProcessInfo {
-  pid: number;
-  name: string;
-  status: string;
-  pm_uptime: number;
-  port?: string;
-  cwd?: string;
-}
+import { 
+  createMockPodWorkspace, 
+  createMockProcessList, 
+  type PodWorkspace,
+  type ProcessInfo 
+} from '@/__tests__/support/fixtures';
 
 // Mock env config before importing modules that use it
 vi.mock('@/lib/env', () => ({
