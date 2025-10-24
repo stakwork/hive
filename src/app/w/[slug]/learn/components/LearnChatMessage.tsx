@@ -69,9 +69,14 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
-          className="max-w-[85%] mr-12"
+          className="w-full"
         >
-          <GraphComponent title="Related Knowledge" endpoint={`/graph/subgraph?include_properties=true&start_node=${message.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`} />
+          <GraphComponent
+            title="Related Knowledge"
+            endpoint={`/graph/subgraph?include_properties=true&start_node=${message.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
+            height="h-96"
+            width="w-full"
+          />
         </motion.div>
       )}
     </div>
