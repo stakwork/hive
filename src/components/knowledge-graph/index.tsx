@@ -34,9 +34,19 @@ interface GraphComponentProps {
   endpoint?: string;
   title?: string;
   enablePolling?: boolean;
+  className?: string;
+  height?: string;
+  width?: string;
 }
 
-export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe", enablePolling = false }: GraphComponentProps = {}) => {
+export const GraphComponent = ({
+  endpoint: propEndpoint,
+  title = "Code Universe",
+  enablePolling = false,
+  className,
+  height = "h-full",
+  width = "w-full"
+}: GraphComponentProps = {}) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
 
@@ -109,7 +119,7 @@ export const GraphComponent = ({ endpoint: propEndpoint, title = "Code Universe"
   }, [workspaceId, addNewNode, resetData, propEndpoint]);
 
   return (
-    <div className="dark h-full w-full border rounded-lg p-4 relative bg-card flex flex-col">
+    <div className={`dark ${height} ${width} border rounded-lg p-4 relative bg-card flex flex-col ${className || ''}`}>
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-white">{title}</h3>
       </div>

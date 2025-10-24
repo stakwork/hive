@@ -159,11 +159,11 @@ export default function CallPage() {
       </Card>
 
       {/* Episode Knowledge Graph */}
-      <Card>
-        <CardContent className="pt-6">
-          <GraphComponent endpoint={`/graph/subgraph?include_properties=true&start_node=${call.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`} />
-        </CardContent>
-      </Card>
+      <GraphComponent
+        endpoint={`/graph/subgraph?include_properties=true&start_node=${call.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
+        height="h-96"
+        width="w-full"
+      />
     </div>
   );
 }
