@@ -93,7 +93,7 @@ export function VMConfigSection() {
             ? "Manage environment variables and services any time."
             : servicesReady
             ? "Complete your pool setup to get started."
-            : "Finish your setup to get started."}
+            : "Services are being set up."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -155,15 +155,16 @@ export function VMConfigSection() {
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-medium">In progress</span>
-                <span className="text-xs text-muted-foreground">Finish your setup to get started.</span>
               </div>
             </div>
-            <Button asChild disabled={!servicesReady}>
-              <Link onClick={servicesReady ? handleOpenModal : undefined} href={servicesReady ? `/w/${slug}/code-graph` : '#'}>
-                <Zap className="w-4 h-4 mr-2" />
-                {servicesReady ? 'Finish setup' : 'Setting up services...'}
-              </Link>
-            </Button>
+            {servicesReady && (
+              <Button asChild>
+                <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Finish setup
+                </Link>
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
