@@ -33,12 +33,7 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
         setIsLoading(true);
         setError(null);
 
-        console.log('workspaceSlug-is-here-in-useGithubApp', workspaceSlug);
-
-
         const url = workspaceSlug ? `/api/github/app/status?workspaceSlug=${workspaceSlug}` : "/api/github/app/status";
-
-        console.log('url-is-here-in-useGithubApp', url);
 
         const response = await fetch(url, {
           method: "GET",
