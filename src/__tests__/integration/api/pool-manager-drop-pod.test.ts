@@ -459,13 +459,22 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
           ok: true,
           status: 200,
           json: async () => ({
-            workspace: {
-              id: "pod-123",
-              password: "pod-password",
-              portMappings: {
-                "15552": "https://control.example.com",
-              },
+            id: "pod-123",
+            password: "pod-password",
+            portMappings: {
+              "15552": "https://control.example.com",
             },
+            branches: [],
+            created: new Date().toISOString(),
+            customImage: false,
+            flagged_for_recreation: false,
+            fqdn: "pod-123.example.com",
+            image: "default-image",
+            marked_at: new Date().toISOString(),
+            pool_name: "test-pool",
+            ready: true,
+            repos: [],
+            used: true,
           }),
         })
         // Second call: updatePodRepositories
@@ -561,13 +570,22 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
           ok: true,
           status: 200,
           json: async () => ({
-            workspace: {
-              id: "pod-123",
-              password: "pod-password",
-              portMappings: {
-                "15552": "https://control.example.com",
-              },
+            id: "pod-123",
+            password: "pod-password",
+            portMappings: {
+              "15552": "https://control.example.com",
             },
+            branches: [],
+            created: new Date().toISOString(),
+            customImage: false,
+            flagged_for_recreation: false,
+            fqdn: "pod-123.example.com",
+            image: "default-image",
+            marked_at: new Date().toISOString(),
+            pool_name: "test-pool",
+            ready: true,
+            repos: [],
+            used: true,
           }),
         })
         // Second call: markWorkspaceAsUnused (skip updatePodRepositories)
