@@ -15,8 +15,15 @@ export const runtime = "nodejs";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
+    console.log("[agent-stream] Unauthorized access attempt", {
+      timestamp: new Date().toISOString(),
+      ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent'),
+    });
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -24,7 +31,21 @@ export async function GET(request: NextRequest) {
   const requestId = searchParams.get("request_id");
   const swarmId = searchParams.get("swarm_id");
 
+  const logContext = {
+    userId: session.user.id,
+    requestId,
+    swarmId,
+    timestamp: new Date().toISOString(),
+    sessionId: Math.random().toString(36).substring(7), // Unique session identifier
+  };
+
+  console.log("[agent-stream] SSE connection initiated", logContext);
+
   if (!requestId || !swarmId) {
+    console.warn("[agent-stream] Missing required parameters", {
+      ...logContext,
+      missingParams: { requestId: !requestId, swarmId: !swarmId },
+    });
     return new Response("Missing required parameters", { status: 400 });
   }
 
@@ -48,16 +69,28 @@ export async function GET(request: NextRequest) {
 
       try {
         // Get the swarm
+        console.log("[agent-stream] Fetching swarm from database", logContext);
         const swarm = await db.swarm.findFirst({
           where: { id: swarmId },
           include: { workspace: { select: { slug: true } } }
         });
 
         if (!swarm) {
+          console.error("[agent-stream] Swarm not found", {
+            ...logContext,
+            error: "Swarm not found in database",
+          });
           sendEvent({ error: "Swarm not found" }, "error");
           controller.close();
           return;
         }
+
+        console.log("[agent-stream] Swarm found, starting monitoring", {
+          ...logContext,
+          workspaceSlug: swarm.workspace.slug,
+          swarmStatus: swarm.agentStatus,
+          swarmUrl: swarm.swarmUrl?.replace(/\/api$/, ''), // Log without sensitive parts
+        });
 
         // Send initial status
         sendEvent({ status: "STARTING", message: "Starting agent monitoring..." });
@@ -73,8 +106,17 @@ export async function GET(request: NextRequest) {
         const pollAgent = async () => {
           let attempts = 0;
           const maxAttempts = 120; // 10 minutes with 5-second intervals
+          const pollStartTime = Date.now();
+
+          console.log("[agent-stream] Starting polling loop", {
+            ...logContext,
+            maxAttempts,
+            timeoutMinutes: (maxAttempts * 5) / 60,
+            swarmUrl: swarmUrl.replace(/\/\/.*@/, '//***@'), // Mask credentials in URL
+          });
 
           while (attempts < maxAttempts) {
+            const attemptStartTime = Date.now();
             try {
               sendEvent({
                 status: "POLLING",
@@ -83,18 +125,47 @@ export async function GET(request: NextRequest) {
                 maxAttempts
               });
 
+              console.log("[agent-stream] Polling agent progress", {
+                ...logContext,
+                attempt: attempts + 1,
+                maxAttempts,
+                elapsedTime: Date.now() - pollStartTime,
+              });
+
               const agentResult = await pollAgentProgress(swarmUrl, requestId, decryptedApiKey);
+
+              console.log("[agent-stream] Agent poll result", {
+                ...logContext,
+                attempt: attempts + 1,
+                success: agentResult.ok,
+                pollDuration: Date.now() - attemptStartTime,
+              });
 
               if (agentResult.ok) {
                 // Agent completed successfully
+                console.log("[agent-stream] Agent completed successfully", {
+                  ...logContext,
+                  totalAttempts: attempts + 1,
+                  totalDuration: Date.now() - pollStartTime,
+                });
                 sendEvent({ status: "PROCESSING", message: "Agent completed, processing results..." });
 
                 // Process the results
                 const agentFiles = agentResult.data as Record<string, string>;
+                console.log("[agent-stream] Processing agent files", {
+                  ...logContext,
+                  fileKeys: Object.keys(agentFiles),
+                  fileCount: Object.keys(agentFiles).length,
+                });
+
                 const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
                 const repo_url = primaryRepo?.repositoryUrl;
 
                 if (!repo_url) {
+                  console.error("[agent-stream] No repository URL found", {
+                    ...logContext,
+                    workspaceId: swarm.workspaceId,
+                  });
                   sendEvent({ error: "No repository URL found" }, "error");
                   controller.close();
                   return;
@@ -103,6 +174,11 @@ export async function GET(request: NextRequest) {
                 // Parse results
                 const pm2Content = agentFiles["pm2.config.js"];
                 const services = parsePM2Content(pm2Content);
+                console.log("[agent-stream] Parsed PM2 services", {
+                  ...logContext,
+                  serviceCount: services?.length || 0,
+                  serviceNames: services?.map(s => s.name) || [],
+                });
 
                 // Parse .env file
                 let agentEnvVars: Record<string, string> = {};
@@ -119,9 +195,20 @@ export async function GET(request: NextRequest) {
                       // Use as plain text
                     }
                     agentEnvVars = parseEnv(envText);
+                    console.log("[agent-stream] Parsed environment variables", {
+                      ...logContext,
+                      envVarCount: Object.keys(agentEnvVars).length,
+                      envVarKeys: Object.keys(agentEnvVars), // Log keys but not values for security
+                    });
                   } catch (e) {
-                    console.error("Failed to parse .env file from agent:", e);
+                    console.error("[agent-stream] Failed to parse .env file from agent", {
+                      ...logContext,
+                      error: e instanceof Error ? e.message : String(e),
+                      envContentLength: envContent?.length || 0,
+                    });
                   }
+                } else {
+                  console.warn("[agent-stream] No .env file found in agent results", logContext);
                 }
 
                 // Prepare container files
@@ -139,6 +226,13 @@ export async function GET(request: NextRequest) {
                 }));
 
                 // Save to database
+                console.log("[agent-stream] Saving swarm data to database", {
+                  ...logContext,
+                  serviceCount: services?.length || 0,
+                  envVarCount: environmentVariables.length,
+                  containerFileCount: Object.keys(containerFiles).length,
+                });
+
                 await saveOrUpdateSwarm({
                   workspaceId: swarm.workspaceId,
                   services,
@@ -154,6 +248,13 @@ export async function GET(request: NextRequest) {
                     agentRequestId: null, // Clear the request ID
                     containerFilesSetUp: true, // Mark setup complete since we have services and env vars
                   },
+                });
+
+                console.log("[agent-stream] Agent processing completed successfully", {
+                  ...logContext,
+                  totalDuration: Date.now() - startTime,
+                  pollDuration: Date.now() - pollStartTime,
+                  finalServiceCount: services?.length || 0,
                 });
 
                 // Send success event
@@ -174,7 +275,14 @@ export async function GET(request: NextRequest) {
               }
 
             } catch (error) {
-              console.error("Error polling agent:", error);
+              console.error("[agent-stream] Error polling agent", {
+                ...logContext,
+                attempt: attempts + 1,
+                error: error instanceof Error ? error.message : String(error),
+                errorStack: error instanceof Error ? error.stack : undefined,
+                elapsedTime: Date.now() - pollStartTime,
+              });
+
               sendEvent({
                 status: "ERROR",
                 message: `Error polling agent: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -189,6 +297,14 @@ export async function GET(request: NextRequest) {
           }
 
           // Timeout reached - clear agent status
+          console.error("[agent-stream] Agent polling timed out", {
+            ...logContext,
+            totalAttempts: attempts,
+            maxAttempts,
+            totalDuration: Date.now() - pollStartTime,
+            timeoutMinutes: (maxAttempts * 5) / 60,
+          });
+
           await db.swarm.update({
             where: { id: swarm.id },
             data: {
@@ -206,21 +322,39 @@ export async function GET(request: NextRequest) {
 
         // Start polling in background
         pollAgent().catch((error) => {
-          console.error("Polling error:", error);
+          console.error("[agent-stream] Critical polling error", {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined,
+            totalDuration: Date.now() - startTime,
+          });
           sendEvent({ error: error.message }, "error");
           controller.close();
         });
 
       } catch (error) {
-        console.error("SSE error:", error);
+        console.error("[agent-stream] SSE setup error", {
+          ...logContext,
+          error: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          totalDuration: Date.now() - startTime,
+        });
         sendEvent({ error: error instanceof Error ? error.message : "Unknown error" }, "error");
         controller.close();
       }
     },
 
     cancel() {
-      console.log("SSE connection cancelled");
+      console.log("[agent-stream] SSE connection cancelled", {
+        ...logContext,
+        totalDuration: Date.now() - startTime,
+      });
     }
+  });
+
+  console.log("[agent-stream] SSE stream created successfully", {
+    ...logContext,
+    setupDuration: Date.now() - startTime,
   });
 
   return new Response(stream, { headers });
