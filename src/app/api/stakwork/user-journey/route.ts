@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, workspaceId } = body;
+    const { message, workspaceId, title, description, testName } = body;
 
     // Validate required fields
     if (!message) {
@@ -105,6 +105,10 @@ export async function POST(request: NextRequest) {
 
     if (!workspaceId) {
       return NextResponse.json({ error: "Workspace ID is required" }, { status: 400 });
+    }
+
+    if (!title) {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
 
     // Find the workspace and validate user access
@@ -161,11 +165,62 @@ export async function POST(request: NextRequest) {
       username,
     );
 
+    // If Stakwork call was successful, create a task to track this user journey
+    let task = null;
+    if (stakworkData?.success && stakworkData?.data) {
+      // Generate test file path from test name or title
+      const timestamp = Date.now();
+      const sanitizedName = (testName || title)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      const testFilePath = `e2e/user-journey-${sanitizedName}-${timestamp}.spec.ts`;
+
+      // Get workspace's primary repository if available
+      const repository = await db.repository.findFirst({
+        where: { workspaceId: workspace.id },
+        select: { id: true, repositoryUrl: true },
+      });
+
+      // Extract stakworkProjectId from response
+      const stakworkProjectId = stakworkData.data.project_id || stakworkData.data.id || null;
+
+      // Create task record
+      task = await db.task.create({
+        data: {
+          title,
+          description: description || `User journey test: ${title}`,
+          workspaceId: workspace.id,
+          sourceType: "USER_JOURNEY",
+          status: "IN_PROGRESS",
+          workflowStatus: "PENDING",
+          priority: "MEDIUM",
+          testFilePath,
+          testFileUrl: repository?.repositoryUrl
+            ? `${repository.repositoryUrl}/blob/main/${testFilePath}`
+            : null,
+          stakworkProjectId: stakworkProjectId ? parseInt(String(stakworkProjectId)) : null,
+          repositoryId: repository?.id || null,
+          createdById: userId,
+          updatedById: userId,
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          workflowStatus: true,
+          testFilePath: true,
+          stakworkProjectId: true,
+        },
+      });
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "called stakwork",
         workflow: stakworkData?.data || null,
+        task: task || null,
       },
       { status: 201 },
     );

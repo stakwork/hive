@@ -4,25 +4,28 @@ import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifa
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 
-interface E2eTest {
-  node_type: string;
-  ref_id: string;
-  properties: {
-    token_count: number;
-    file: string;
-    test_kind: string;
-    node_key: string;
-    start: number;
+interface UserJourneyTask {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "BLOCKED";
+  workflowStatus: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ERROR" | "HALTED" | "FAILED" | null;
+  testFilePath: string | null;
+  testFileUrl: string | null;
+  stakworkProjectId: number | null;
+  createdAt: string;
+  repository?: {
+    id: string;
     name: string;
-    end: number;
-    body: string;
+    repositoryUrl: string;
   };
 }
 
@@ -31,40 +34,96 @@ export default function UserJourneys() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
-  const [e2eTests, setE2eTests] = useState<E2eTest[]>([]);
-  const [fetchingTests, setFetchingTests] = useState(false);
+  const [userJourneyTasks, setUserJourneyTasks] = useState<UserJourneyTask[]>([]);
+  const [fetchingTasks, setFetchingTasks] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
+  const [checkingGraphStatus, setCheckingGraphStatus] = useState(false);
   const open = useModal();
 
-  const fetchE2eTests = useCallback(async () => {
-    if (!slug) return;
+  const fetchUserJourneyTasks = useCallback(async () => {
+    if (!id) return;
 
     try {
-      setFetchingTests(true);
-      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
+      setFetchingTasks(true);
+      const response = await fetch(`/api/tasks?workspaceId=${id}&sourceType=USER_JOURNEY&limit=100`);
 
       if (!response.ok) {
-        console.error("Failed to fetch e2e tests");
+        console.error("Failed to fetch user journey tasks");
         return;
       }
 
       const result = await response.json();
       if (result.success && result.data) {
-        setE2eTests(result.data);
+        setUserJourneyTasks(result.data);
       }
     } catch (error) {
-      console.error("Error fetching e2e tests:", error);
+      console.error("Error fetching user journey tasks:", error);
     } finally {
-      setFetchingTests(false);
+      setFetchingTasks(false);
     }
-  }, [slug]);
+  }, [id]);
+
+  // Check if test files exist in graph for non-DONE tasks
+  const checkTestFilesInGraph = useCallback(async () => {
+    if (!slug || userJourneyTasks.length === 0) return;
+
+    const pendingTasks = userJourneyTasks.filter(task => task.status !== "DONE" && task.testFilePath);
+    if (pendingTasks.length === 0) return;
+
+    try {
+      setCheckingGraphStatus(true);
+      // Fetch all E2E tests from graph
+      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
+
+      if (!response.ok) {
+        console.error("Failed to check graph for test files");
+        return;
+      }
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        const graphTestFiles = new Set(result.data.map((test: any) => test.properties.file));
+
+        // Check each pending task
+        for (const task of pendingTasks) {
+          // Extract file path from repository URL for comparison
+          const fileInGraph = Array.from(graphTestFiles).some((graphFile) => {
+            return String(graphFile).includes(task.testFilePath || "");
+          });
+
+          if (fileInGraph) {
+            // Update task status to DONE
+            try {
+              await fetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  status: "DONE",
+                  workflowStatus: "COMPLETED",
+                }),
+              });
+            } catch (error) {
+              console.error(`Error updating task ${task.id}:`, error);
+            }
+          }
+        }
+
+        // Refetch tasks to get updated statuses
+        await fetchUserJourneyTasks();
+      }
+    } catch (error) {
+      console.error("Error checking test files in graph:", error);
+    } finally {
+      setCheckingGraphStatus(false);
+    }
+  }, [slug, userJourneyTasks, fetchUserJourneyTasks]);
 
   useEffect(() => {
     if (!frontend) {
-      fetchE2eTests();
+      fetchUserJourneyTasks();
     }
-  }, [frontend, fetchE2eTests]);
+  }, [frontend, fetchUserJourneyTasks]);
 
   // Shared function to drop the pod
   const dropPod = useCallback(
@@ -118,9 +177,9 @@ export default function UserJourneys() {
     };
   }, [frontend, dropPod]);
 
-  const handleCopyCode = async (code: string, refId: string) => {
-    await navigator.clipboard.writeText(code);
-    setCopiedId(refId);
+  const handleCopyTitle = async (title: string, taskId: string) => {
+    await navigator.clipboard.writeText(title);
+    setCopiedId(taskId);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -184,6 +243,13 @@ export default function UserJourneys() {
     try {
       console.log("Saving user journey:", filename, generatedCode);
 
+      // Extract title from filename (remove .spec.ts and format)
+      const title = filename
+        .replace(/\.spec\.ts$/, "")
+        .split("-")
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+
       const response = await fetch("/api/stakwork/user-journey", {
         method: "POST",
         headers: {
@@ -192,23 +258,53 @@ export default function UserJourneys() {
         body: JSON.stringify({
           message: generatedCode,
           workspaceId: id,
+          title: title,
+          testName: filename,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to save user journey:", errorData);
+        toast({
+          variant: "destructive",
+          title: "Failed to Save",
+          description: "Unable to save user journey test. Please try again.",
+        });
         return;
       }
 
       const data = await response.json();
       console.log("User journey saved successfully:", data);
 
-      // You can add success handling UI here, such as showing a toast notification
+      if (data.task) {
+        toast({
+          title: "User Journey Created",
+          description: `Task "${title}" has been created and is now in progress.`,
+        });
+
+        // Refetch tasks to show the new one
+        await fetchUserJourneyTasks();
+      }
     } catch (error) {
       console.error("Error saving user journey:", error);
-      // You can add error handling UI here
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+      });
     }
+  };
+
+  const getStatusBadge = (status: string, workflowStatus: string | null) => {
+    if (status === "DONE") {
+      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">🟢 Merged</Badge>;
+    } else if (status === "IN_PROGRESS") {
+      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">🔴 Recording</Badge>;
+    } else if (status === "TODO") {
+      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">🟡 Pending Review</Badge>;
+    }
+    return <Badge variant="secondary">{status}</Badge>;
   };
 
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
@@ -237,10 +333,21 @@ export default function UserJourneys() {
             ✕
           </Button>
         ) : (
-          <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
-            <Plus className="w-4 h-4" />
-            Create User Journey
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={checkTestFilesInGraph}
+              disabled={checkingGraphStatus || fetchingTasks}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${checkingGraphStatus ? 'animate-spin' : ''}`} />
+              Check Status
+            </Button>
+            <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
+              <Plus className="w-4 h-4" />
+              Create User Journey
+            </Button>
+          </div>
         )}
       </div>
 
@@ -252,59 +359,58 @@ export default function UserJourneys() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>E2E Tests</CardTitle>
-              <CardDescription>End-to-end tests from your codebase</CardDescription>
+              <CardTitle>User Journey Tests</CardTitle>
+              <CardDescription>Track your recorded user journey tests and their status</CardDescription>
             </CardHeader>
             <CardContent>
-              {fetchingTests ? (
+              {fetchingTasks ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : e2eTests.length > 0 ? (
+              ) : userJourneyTasks.length > 0 ? (
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader className="bg-muted/50">
                       <TableRow>
-                        <TableHead>Test Name</TableHead>
-                        <TableHead>File Path</TableHead>
-                        <TableHead className="w-[100px]">Code</TableHead>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Test File</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead className="w-[100px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {e2eTests.map((test) => (
-                        <TableRow key={test.ref_id}>
-                          <TableCell className="font-medium">{test.properties.name}</TableCell>
+                      {userJourneyTasks.map((task) => (
+                        <TableRow key={task.id}>
+                          <TableCell className="font-medium">{task.title}</TableCell>
+                          <TableCell>{getStatusBadge(task.status, task.workflowStatus)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">{test.properties.file}</span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  // Extract repo and path from file path like "stakwork/hive/src/__tests__/e2e/auth.spec.ts"
-                                  const parts = test.properties.file.split("/");
-                                  if (parts.length >= 2) {
-                                    const owner = parts[0];
-                                    const repo = parts[1];
-                                    const filePath = parts.slice(2).join("/");
-                                    // Using HEAD which GitHub redirects to the default branch
-                                    window.open(`https://github.com/${owner}/${repo}/blob/HEAD/${filePath}`, "_blank");
-                                  }
-                                }}
-                                className="h-6 w-6 p-0"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                              </Button>
+                              <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
+                              {task.testFileUrl && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => window.open(task.testFileUrl!, "_blank")}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(task.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCopyCode(test.properties.body, test.ref_id)}
+                              onClick={() => handleCopyTitle(task.title, task.id)}
                               className="h-8 w-8 p-0"
+                              title="Copy title"
                             >
-                              {copiedId === test.ref_id ? (
+                              {copiedId === task.id ? (
                                 <Check className="h-4 w-4 text-green-500" />
                               ) : (
                                 <Copy className="h-4 w-4" />
@@ -318,7 +424,9 @@ export default function UserJourneys() {
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">No E2E tests found in your codebase.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No user journey tests yet. Create one to get started!
+                  </p>
                 </div>
               )}
             </CardContent>

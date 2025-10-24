@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus, TaskSourceType } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "5");
     const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
+    const sourceType = searchParams.get("sourceType");
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -81,20 +82,30 @@ export async function GET(request: NextRequest) {
     // Get tasks for the workspace with pagination
     const skip = (page - 1) * limit;
 
+    // Build where clause
+    const whereClause: any = {
+      workspaceId,
+      deleted: false,
+      OR: [
+        // Show non-TODO tasks (active work)
+        { status: { not: TaskStatus.TODO } },
+        // Show agent mode tasks regardless of status
+        { mode: "agent" },
+        // Show Stakwork tasks regardless of status
+        { stakworkProjectId: { not: null } },
+        // Show user journey tasks regardless of status
+        { sourceType: TaskSourceType.USER_JOURNEY },
+      ],
+    };
+
+    // Add sourceType filter if provided
+    if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
+      whereClause.sourceType = sourceType as TaskSourceType;
+    }
+
     const [tasks, totalCount] = await Promise.all([
       db.task.findMany({
-        where: {
-          workspaceId,
-          deleted: false,
-          OR: [
-            // Show non-TODO tasks (active work)
-            { status: { not: TaskStatus.TODO } },
-            // Show agent mode tasks regardless of status
-            { mode: "agent" },
-            // Show Stakwork tasks regardless of status
-            { stakworkProjectId: { not: null } },
-          ],
-        },
+        where: whereClause,
         select: {
           id: true,
           title: true,
@@ -105,6 +116,8 @@ export async function GET(request: NextRequest) {
           sourceType: true,
           mode: true,
           stakworkProjectId: true,
+          testFilePath: true,
+          testFileUrl: true,
           createdAt: true,
           updatedAt: true,
           assignee: {
@@ -165,18 +178,7 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       db.task.count({
-        where: {
-          workspaceId,
-          deleted: false,
-          OR: [
-            // Show non-TODO tasks (active work)
-            { status: { not: TaskStatus.TODO } },
-            // Show agent mode tasks regardless of status
-            { mode: "agent" },
-            // Show Stakwork tasks regardless of status
-            { stakworkProjectId: { not: null } },
-          ],
-        },
+        where: whereClause,
       }),
     ]);
 
