@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { getRelativeUrl } from "@/lib/utils";
 
 type StaktrakMessageType =
   | "staktrak-setup"
@@ -201,7 +202,7 @@ export const useStaktrak = (
                     case "nav":
                     case "navigation":
                       toastType = "Navigation captured";
-                      toastText = eventData.url || "Page navigation";
+                      toastText = eventData.url ? getRelativeUrl(eventData.url) : "Page navigation";
                       break;
 
                     case "assertion":

@@ -588,7 +588,7 @@ describe("useStaktrak Hook", () => {
       await waitFor(() => {
         expect(onActionCaptured).toHaveBeenCalledWith(
           "Navigation captured",
-          "https://example.com/page"
+          "/page"
         );
       });
     });

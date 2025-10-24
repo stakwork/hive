@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cn, formatRelativeTime, getBaseUrl } from "@/lib/utils";
+import { cn, formatRelativeTime, getBaseUrl, getRelativeUrl } from "@/lib/utils";
 
 describe("utils", () => {
   describe("cn", () => {
@@ -190,6 +190,70 @@ describe("utils", () => {
     it("should handle host headers with port numbers", () => {
       expect(getBaseUrl("example.com:8080")).toBe("https://example.com:8080");
       expect(getBaseUrl("api.test.com:3001")).toBe("https://api.test.com:3001");
+    });
+  });
+
+  describe("getRelativeUrl", () => {
+    it("should extract pathname from full URL", () => {
+      expect(getRelativeUrl("https://example.com/path/to/page")).toBe("/path/to/page");
+      expect(getRelativeUrl("http://localhost:3000/dashboard")).toBe("/dashboard");
+      expect(getRelativeUrl("https://api.example.com/api/users")).toBe("/api/users");
+    });
+
+    it("should preserve query parameters", () => {
+      expect(getRelativeUrl("https://example.com/search?q=test")).toBe("/search?q=test");
+      expect(getRelativeUrl("http://localhost:3000/page?id=123&tab=overview")).toBe("/page?id=123&tab=overview");
+    });
+
+    it("should preserve hash fragments", () => {
+      expect(getRelativeUrl("https://example.com/docs#section-1")).toBe("/docs#section-1");
+      expect(getRelativeUrl("http://localhost:3000/page#top")).toBe("/page#top");
+    });
+
+    it("should preserve both query parameters and hash", () => {
+      expect(getRelativeUrl("https://example.com/page?id=1#section")).toBe("/page?id=1#section");
+      expect(getRelativeUrl("http://localhost:3000/docs?search=test#results")).toBe("/docs?search=test#results");
+    });
+
+    it("should return '/' for domain-only URLs", () => {
+      expect(getRelativeUrl("https://example.com")).toBe("/");
+      expect(getRelativeUrl("http://localhost:3000")).toBe("/");
+      expect(getRelativeUrl("https://api.example.com/")).toBe("/");
+    });
+
+    it("should strip workspace prefix from URLs", () => {
+      expect(getRelativeUrl("/w/my-workspace/tasks")).toBe("/tasks");
+      expect(getRelativeUrl("/w/workspace-123/dashboard")).toBe("/dashboard");
+      expect(getRelativeUrl("/w/test_workspace/calls")).toBe("/calls");
+      expect(getRelativeUrl("http://localhost:3000/w/my-workspace/tasks")).toBe("/tasks");
+      expect(getRelativeUrl("https://example.com/w/workspace/page?id=1#top")).toBe("/page?id=1#top");
+    });
+
+    it("should handle workspace URLs from pods and strip workspace prefix", () => {
+      expect(getRelativeUrl("https://abc123-3000.workspaces.sphinx.chat/w/mock-stakgraph/dashboard")).toBe("/dashboard");
+      expect(getRelativeUrl("https://abc123-3000.workspaces.sphinx.chat/w/my-workspace/tasks")).toBe("/tasks");
+    });
+
+    it("should return relative URLs without workspace prefix", () => {
+      expect(getRelativeUrl("/path/to/page")).toBe("/path/to/page");
+      expect(getRelativeUrl("/dashboard?tab=overview")).toBe("/dashboard?tab=overview");
+      expect(getRelativeUrl("/docs#section")).toBe("/docs#section");
+    });
+
+    it("should handle empty or invalid inputs", () => {
+      expect(getRelativeUrl("")).toBe("/");
+      expect(getRelativeUrl("invalid-url")).toBe("invalid-url");
+      expect(getRelativeUrl("just-a-string")).toBe("just-a-string");
+    });
+
+    it("should handle complex paths with special characters", () => {
+      expect(getRelativeUrl("https://example.com/path%20with%20spaces")).toBe("/path%20with%20spaces");
+      expect(getRelativeUrl("http://localhost:3000/users/john@example.com")).toBe("/users/john@example.com");
+    });
+
+    it("should handle workspace-only URLs", () => {
+      expect(getRelativeUrl("/w/my-workspace")).toBe("/");
+      expect(getRelativeUrl("/w/workspace-123/")).toBe("/");
     });
   });
 });
