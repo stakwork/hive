@@ -1197,4 +1197,262 @@ describe("createChatMessageAndTriggerStakwork", () => {
       expect(vars.repo2graph_url).toBe("https://swarm.example.com");
     });
   });
+
+  describe("Core Business Logic Validation - Workflow Coordination", () => {
+    test("should execute complete workflow: message creation → Stakwork trigger → task update", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const result = await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test workflow coordination",
+        userId: "test-user-id",
+        contextTags: [{ type: "feature", value: "auth" }],
+        attachments: ["/uploads/spec.pdf"],
+      });
+
+      // 1. Verify chat message was created with correct structure
+      expect(mockDb.chatMessage.create).toHaveBeenCalledWith({
+        data: {
+          taskId: "test-task-id",
+          message: "Test workflow coordination",
+          role: "USER",
+          contextTags: JSON.stringify([{ type: "feature", value: "auth" }]),
+          status: "SENT",
+        },
+        include: {
+          task: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      });
+
+      // 2. Verify Stakwork API was triggered with correct payload
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://stakwork.example.com/projects",
+        expect.objectContaining({
+          method: "POST",
+          headers: {
+            Authorization: "Token token=test-stakwork-key",
+            "Content-Type": "application/json",
+          },
+        })
+      );
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      expect(payload.workflow_params.set_var.attributes.vars).toMatchObject({
+        taskId: "test-task-id",
+        message: "Test workflow coordination",
+        contextTags: [{ type: "feature", value: "auth" }],
+        attachments: ["/uploads/spec.pdf"],
+        username: "testuser",
+        accessToken: "github-token-123",
+      });
+
+      // 3. Verify task was updated with workflow status
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "IN_PROGRESS",
+          workflowStartedAt: expect.any(Date),
+          stakworkProjectId: 12345,
+          status: "IN_PROGRESS",
+        },
+      });
+
+      // 4. Verify return value includes all workflow artifacts
+      expect(result.chatMessage).toBeDefined();
+      expect(result.stakworkData).toEqual({
+        success: true,
+        data: { project_id: 12345 },
+      });
+    });
+
+    test("should coordinate user interactions through correct GitHub credential retrieval", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test user interaction",
+        userId: "test-user-id",
+      });
+
+      // Verify getGithubUsernameAndPAT was called with correct user and workspace
+      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith("test-user-id", "test-workspace");
+
+      // Verify credentials were passed to Stakwork API
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      expect(payload.workflow_params.set_var.attributes.vars).toMatchObject({
+        alias: "testuser",
+        username: "testuser",
+        accessToken: "github-token-123",
+      });
+    });
+
+    test("should handle workflow automation with generateChatTitle parameter", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test chat title generation",
+        userId: "test-user-id",
+        generateChatTitle: true,
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      expect(payload.workflow_params.set_var.attributes.vars.generateChatTitle).toBe(true);
+    });
+
+    test("should pass featureContext for workflow automation coordination", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      const featureContext = {
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        featureTitle: "Authentication System",
+        phaseDescription: "User login implementation",
+      };
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test feature context",
+        userId: "test-user-id",
+        featureContext,
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]!.body as string);
+      
+      expect(payload.workflow_params.set_var.attributes.vars.featureContext).toEqual(featureContext);
+    });
+
+    test("should coordinate workflow with correct mode-based routing", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+
+      // Test each mode's workflow routing
+      const modes = [
+        { mode: "live", expectedWorkflowId: 123, description: "production workflow" },
+        { mode: "unit", expectedWorkflowId: 789, description: "unit test workflow" },
+        { mode: "integration", expectedWorkflowId: 789, description: "integration test workflow" },
+        { mode: "test", expectedWorkflowId: 456, description: "test workflow" },
+      ];
+
+      for (const { mode, expectedWorkflowId, description } of modes) {
+        mockFetch.mockClear();
+
+        await createTaskWithStakworkWorkflow({
+          title: `Test Task - ${mode}`,
+          description: `Testing ${description}`,
+          workspaceId: "test-workspace-id",
+          priority: "MEDIUM",
+          userId: "test-user-id",
+          mode,
+        });
+
+        const fetchCall = mockFetch.mock.calls.find(call => 
+          call[0].toString().includes('stakwork')
+        );
+        const payload = JSON.parse(fetchCall![1]!.body as string);
+        
+        expect(payload.workflow_id).toBe(expectedWorkflowId);
+        expect(payload.workflow_params.set_var.attributes.vars.taskMode).toBe(mode);
+      }
+    });
+
+    test("should ensure correct task status transition during workflow coordination", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockDb.task.findUnique.mockResolvedValue({ status: "TODO" } as any);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test status transition",
+        userId: "test-user-id",
+      });
+
+      // Verify task status was checked before update
+      expect(mockDb.task.findUnique).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        select: { status: true },
+      });
+
+      // Verify task transitioned from TODO to IN_PROGRESS
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: expect.objectContaining({
+          status: "IN_PROGRESS",
+          workflowStatus: "IN_PROGRESS",
+        }),
+      });
+    });
+
+    test("should handle workflow failure with correct error coordination", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: "Internal Server Error",
+      } as Response);
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test error handling",
+        userId: "test-user-id",
+      });
+
+      // Verify chat message was still created
+      expect(mockDb.chatMessage.create).toHaveBeenCalled();
+
+      // Verify task was marked as FAILED
+      expect(mockDb.task.update).toHaveBeenCalledWith({
+        where: { id: "test-task-id" },
+        data: {
+          workflowStatus: "FAILED",
+        },
+      });
+
+      // Verify Stakwork was still attempted
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    test("should validate complete workflow skips Stakwork when configuration missing", async () => {
+      const mockTask = createMockTask();
+      mockDb.task.findFirst = vi.fn().mockResolvedValue(mockTask as any);
+      
+      // Clear Stakwork configuration
+      vi.mocked(mockConfig).STAKWORK_API_KEY = "";
+
+      const result = await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test without Stakwork",
+        userId: "test-user-id",
+      });
+
+      // 1. Chat message should still be created
+      expect(mockDb.chatMessage.create).toHaveBeenCalled();
+
+      // 2. Stakwork API should NOT be called
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      // 3. Task should NOT be updated (no workflow triggered)
+      expect(mockDb.task.update).not.toHaveBeenCalled();
+
+      // 4. Return value should show no Stakwork data
+      expect(result.stakworkData).toBeNull();
+
+      // Restore configuration
+      vi.mocked(mockConfig).STAKWORK_API_KEY = "test-stakwork-key";
+    });
+  });
 });
