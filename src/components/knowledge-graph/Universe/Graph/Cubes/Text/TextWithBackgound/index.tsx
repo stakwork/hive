@@ -32,6 +32,14 @@ const TextWithBackgroundComponent = ({ text, id }: TextWithBackgroundProps, ref:
   const padding = nodeSize / 4
   const sizeHalf = nodeSize / 2
 
+  // Truncate text if it's too long and add ellipsis
+  const truncateText = (str: string, maxLength: number = 8) => {
+    if (str.length <= maxLength) return str
+    return str.substring(0, maxLength) + '...'
+  }
+
+  const displayText = truncateText(text)
+
   return (
     <group ref={ref} name="background-wrapper">
       <mesh name="evt-handle" position={[bgWidth / 2 - 1.5, 0, -2]}>
@@ -48,10 +56,11 @@ const TextWithBackgroundComponent = ({ text, id }: TextWithBackgroundProps, ref:
         {...fontProps}
         anchorX="left"
         fontSize={fontSize}
-        maxWidth={nodeSize}
+        whiteSpace="nowrap"
+        overflowWrap="normal"
         name="text"
       >
-        {text}
+        {displayText}
       </Text>
     </group>
   )
