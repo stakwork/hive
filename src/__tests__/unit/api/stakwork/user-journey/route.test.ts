@@ -292,6 +292,7 @@ describe("POST /api/stakwork/user-journey", () => {
         success: true,
         message: "called stakwork",
         workflow: mockStakworkResponseData.data,
+        task: null,
       });
     });
 
@@ -471,6 +472,7 @@ describe("POST /api/stakwork/user-journey", () => {
         success: true,
         message: "called stakwork",
         workflow: null,
+        task: null,
       });
     });
   });
