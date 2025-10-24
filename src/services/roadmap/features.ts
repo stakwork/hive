@@ -293,6 +293,34 @@ export async function updateFeature(
           order: "asc",
         },
       },
+      phases: {
+        where: {
+          deleted: false,
+        },
+        orderBy: {
+          order: "asc",
+        },
+        include: {
+          tasks: {
+            where: {
+              deleted: false,
+            },
+            orderBy: {
+              order: "asc",
+            },
+            include: {
+              assignee: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  image: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
