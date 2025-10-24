@@ -20,6 +20,7 @@ import {
   createGetRequest,
   createPostRequest,
   createPutRequest,
+  createRequestWithHeaders,
   getMockedSession,
 } from "@/__tests__/support/helpers";
 
@@ -115,17 +116,18 @@ describe("Janitor API Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Set up required environment variables for tests
     process.env.STAKWORK_API_KEY = "test-api-key";
     process.env.STAKWORK_JANITOR_WORKFLOW_ID = "123";
-    
+    process.env.API_TOKEN = "test-api-token";
+
     // Set up default Stakwork service mock
     const mockStakworkRequest = vi.fn().mockResolvedValue({
       success: true,
       data: { project_id: 123 }
     });
-    
+
     mockStakworkService.mockReturnValue({
       stakworkRequest: mockStakworkRequest
     } as any);
@@ -458,8 +460,16 @@ describe("Janitor API Integration Tests", () => {
         },
       };
 
-      const request = createPostRequest("http://localhost/api/test", webhookPayload);
-      
+      const request = createRequestWithHeaders(
+        "http://localhost/api/test",
+        "POST",
+        {
+          "Content-Type": "application/json",
+          "x-api-token": "test-api-token",
+        },
+        webhookPayload
+      );
+
       const response = await WebhookHandler(request);
       const responseData = await response.json();
 
@@ -505,8 +515,16 @@ describe("Janitor API Integration Tests", () => {
         error: "Analysis timed out",
       };
 
-      const request = createPostRequest("http://localhost/api/test", webhookPayload);
-      
+      const request = createRequestWithHeaders(
+        "http://localhost/api/test",
+        "POST",
+        {
+          "Content-Type": "application/json",
+          "x-api-token": "test-api-token",
+        },
+        webhookPayload
+      );
+
       const response = await WebhookHandler(request);
       const responseData = await response.json();
 
@@ -529,11 +547,57 @@ describe("Janitor API Integration Tests", () => {
         status: "completed",
       };
 
-      const request = createPostRequest("http://localhost/api/test", webhookPayload);
-      
+      const request = createRequestWithHeaders(
+        "http://localhost/api/test",
+        "POST",
+        {
+          "Content-Type": "application/json",
+          "x-api-token": "test-api-token",
+        },
+        webhookPayload
+      );
+
       const response = await WebhookHandler(request);
 
       expect(response.status).toBe(404);
+    });
+
+    test("POST /api/janitors/webhook - should reject request without API token", async () => {
+      const webhookPayload = {
+        projectId: 12345,
+        status: "completed",
+      };
+
+      const request = createPostRequest("http://localhost/api/test", webhookPayload);
+
+      const response = await WebhookHandler(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(responseData.error).toBe("Unauthorized");
+    });
+
+    test("POST /api/janitors/webhook - should reject request with invalid API token", async () => {
+      const webhookPayload = {
+        projectId: 12345,
+        status: "completed",
+      };
+
+      const request = createRequestWithHeaders(
+        "http://localhost/api/test",
+        "POST",
+        {
+          "Content-Type": "application/json",
+          "x-api-token": "invalid-token",
+        },
+        webhookPayload
+      );
+
+      const response = await WebhookHandler(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(responseData.error).toBe("Unauthorized");
     });
   });
 
