@@ -319,11 +319,11 @@ export default function UserJourneys() {
 
   const getStatusBadge = (status: string, workflowStatus: string | null) => {
     if (status === "DONE") {
-      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">🟢 Merged</Badge>;
+      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Merged</Badge>;
     } else if (status === "IN_PROGRESS") {
-      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">🔴 Recording</Badge>;
+      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">Recording</Badge>;
     } else if (status === "TODO") {
-      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">🟡 Pending Review</Badge>;
+      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">Pending Review</Badge>;
     }
     return <Badge variant="secondary">{status}</Badge>;
   };
