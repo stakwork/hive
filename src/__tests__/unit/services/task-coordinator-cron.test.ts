@@ -11,10 +11,6 @@ vi.mock("@/lib/db", () => ({
     janitorRecommendation: {
       findMany: vi.fn(),
     },
-    task: {
-      findMany: vi.fn(),
-      update: vi.fn(),
-    },
   },
 }));
 
@@ -161,9 +157,6 @@ const TestHelpers = {
 const MockSetup = {
   reset: () => {
     vi.clearAllMocks();
-    // Mock empty task list by default (no stale tasks)
-    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
-    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
   },
 
   setupSuccessfulExecution: (unusedVms: number = 3) => {
