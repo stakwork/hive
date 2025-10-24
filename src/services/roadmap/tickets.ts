@@ -454,6 +454,33 @@ export async function deleteTicket(
     throw new Error("Task not found or access denied");
   }
 
+  // Clean up orphaned dependencies - remove this task from any dependent tasks
+  const dependentTasks = await db.task.findMany({
+    where: {
+      dependsOnTaskIds: { has: taskId },
+      deleted: false,
+    },
+    select: {
+      id: true,
+      dependsOnTaskIds: true,
+    },
+  });
+
+  // Update each dependent task to remove the deleted task ID
+  for (const dependent of dependentTasks) {
+    const updatedDependencies = dependent.dependsOnTaskIds.filter(
+      (id) => id !== taskId
+    );
+    
+    await db.task.update({
+      where: { id: dependent.id },
+      data: {
+        dependsOnTaskIds: { set: updatedDependencies },
+      },
+    });
+  }
+
+  // Perform soft-delete
   await db.task.update({
     where: { id: taskId },
     data: {
