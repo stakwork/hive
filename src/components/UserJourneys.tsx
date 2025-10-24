@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 
@@ -38,7 +38,6 @@ export default function UserJourneys() {
   const [fetchingTasks, setFetchingTasks] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
-  const [checkingGraphStatus, setCheckingGraphStatus] = useState(false);
   const open = useModal();
 
   const fetchUserJourneyTasks = useCallback(async () => {
@@ -63,61 +62,6 @@ export default function UserJourneys() {
       setFetchingTasks(false);
     }
   }, [id]);
-
-  // Check if test files exist in graph for non-DONE tasks
-  const checkTestFilesInGraph = useCallback(async () => {
-    if (!slug || userJourneyTasks.length === 0) return;
-
-    const pendingTasks = userJourneyTasks.filter(task => task.status !== "DONE" && task.testFilePath);
-    if (pendingTasks.length === 0) return;
-
-    try {
-      setCheckingGraphStatus(true);
-      // Fetch all E2E tests from graph
-      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
-
-      if (!response.ok) {
-        console.error("Failed to check graph for test files");
-        return;
-      }
-
-      const result = await response.json();
-      if (result.success && result.data) {
-        const graphTestFiles = new Set(result.data.map((test: any) => test.properties.file));
-
-        // Check each pending task
-        for (const task of pendingTasks) {
-          // Extract file path from repository URL for comparison
-          const fileInGraph = Array.from(graphTestFiles).some((graphFile) => {
-            return String(graphFile).includes(task.testFilePath || "");
-          });
-
-          if (fileInGraph) {
-            // Update task status to DONE
-            try {
-              await fetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  status: "DONE",
-                  workflowStatus: "COMPLETED",
-                }),
-              });
-            } catch (error) {
-              console.error(`Error updating task ${task.id}:`, error);
-            }
-          }
-        }
-
-        // Refetch tasks to get updated statuses
-        await fetchUserJourneyTasks();
-      }
-    } catch (error) {
-      console.error("Error checking test files in graph:", error);
-    } finally {
-      setCheckingGraphStatus(false);
-    }
-  }, [slug, userJourneyTasks, fetchUserJourneyTasks]);
 
   useEffect(() => {
     if (!frontend) {
@@ -221,7 +165,6 @@ export default function UserJourneys() {
       }
 
       const data = await response.json();
-      console.log("Pod claimed successfully:", data);
 
       if (data.frontend) {
         setFrontend(data.frontend);
@@ -241,8 +184,6 @@ export default function UserJourneys() {
 
   const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
     try {
-      console.log("Saving user journey:", { filename, codeLength: generatedCode.length });
-
       // Extract title from filename (remove .spec.ts and format)
       let title = "User Journey Test";
       try {
@@ -257,16 +198,12 @@ export default function UserJourneys() {
         console.warn("Failed to extract title from filename, using default:", e);
       }
 
-      console.log("Extracted title:", title);
-
       const payload = {
         message: generatedCode,
         workspaceId: id,
         title: title,
         testName: filename,
       };
-
-      console.log("Sending request to save user journey:", payload);
 
       const response = await fetch("/api/stakwork/user-journey", {
         method: "POST",
@@ -275,8 +212,6 @@ export default function UserJourneys() {
         },
         body: JSON.stringify(payload),
       });
-
-      console.log("Response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -290,7 +225,6 @@ export default function UserJourneys() {
       }
 
       const data = await response.json();
-      console.log("User journey saved successfully:", data);
 
       if (data.task) {
         toast({
@@ -301,10 +235,9 @@ export default function UserJourneys() {
         // Refetch tasks to show the new one
         await fetchUserJourneyTasks();
       } else {
-        console.warn("No task returned from API:", data);
         toast({
           title: "Test Saved",
-          description: "Test was saved but task creation may have failed. Check console for details.",
+          description: "Test was saved but task creation may have failed.",
         });
       }
     } catch (error) {
@@ -354,21 +287,10 @@ export default function UserJourneys() {
             ✕
           </Button>
         ) : (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={checkTestFilesInGraph}
-              disabled={checkingGraphStatus || fetchingTasks}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${checkingGraphStatus ? 'animate-spin' : ''}`} />
-              Check Status
-            </Button>
-            <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
-              <Plus className="w-4 h-4" />
-              Create User Journey
-            </Button>
-          </div>
+          <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
+            <Plus className="w-4 h-4" />
+            Create User Journey
+          </Button>
         )}
       </div>
 

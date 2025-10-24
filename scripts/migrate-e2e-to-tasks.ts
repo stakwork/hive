@@ -6,6 +6,9 @@
  * This script scans the graph for existing E2E tests and creates
  * task records with sourceType=USER_JOURNEY for tracking purposes.
  *
+ * Note: The graph remains the source of truth for test code.
+ * Tasks are metadata records for filtering, viewing, and status tracking.
+ *
  * Usage:
  *   npm run migrate:e2e-tasks -- --workspace=<workspace-slug>
  *   npm run migrate:e2e-tasks -- --all  (all workspaces)
@@ -178,16 +181,25 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats): P
       // Generate title from test name
       const title = testName || testFilePath.split('/').pop()?.replace('.spec.ts', '') || 'E2E Test';
 
-      // Construct GitHub URL if repository URL exists
+      // Construct GitHub URL from file path
+      // Expected format: "owner/repo/path/to/file.spec.ts"
+      // This matches the format stored in the graph's E2etest nodes
       let testFileUrl: string | null = null;
       if (repository?.repositoryUrl) {
-        // Extract owner/repo from URL like "https://github.com/owner/repo" or file path like "owner/repo/path"
         const fileParts = testFilePath.split('/');
+
+        // Validate format: need at least owner/repo/filename (3 parts minimum)
         if (fileParts.length >= 3) {
           const owner = fileParts[0];
           const repo = fileParts[1];
           const path = fileParts.slice(2).join('/');
-          testFileUrl = `https://github.com/${owner}/${repo}/blob/HEAD/${path}`;
+
+          // Basic validation: owner and repo should be non-empty
+          if (owner && repo && path) {
+            testFileUrl = `https://github.com/${owner}/${repo}/blob/HEAD/${path}`;
+          } else {
+            console.warn(`   ⚠️  Malformed file path, skipping URL: ${testFilePath}`);
+          }
         }
       }
 

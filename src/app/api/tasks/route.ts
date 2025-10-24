@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, WorkflowStatus, TaskSourceType } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus, TaskSourceType, Prisma } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,7 +83,9 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Build where clause
-    const whereClause: any = {
+    // Always show USER_JOURNEY tasks regardless of TODO status
+    // These represent E2E tests that should be visible for tracking
+    const whereClause: Prisma.TaskWhereInput = {
       workspaceId,
       deleted: false,
       OR: [

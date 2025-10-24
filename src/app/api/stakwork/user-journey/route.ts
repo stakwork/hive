@@ -164,12 +164,11 @@ export async function POST(request: NextRequest) {
       username,
     );
 
-    console.log("Stakwork response:", { success: stakworkData?.success, hasData: !!stakworkData?.data });
-
-    // Always create a task to track this user journey, regardless of Stakwork success
+    // Create a task to track this user journey test
+    // This allows filtering, viewing, and managing E2E tests alongside other tasks
+    // The test code itself is stored in the graph; this task tracks metadata and status
     let task = null;
     try {
-      console.log("Creating task for user journey...");
       // Generate test file path from test name or title
       const timestamp = Date.now();
       const sanitizedName = (testName || taskTitle)
@@ -177,7 +176,6 @@ export async function POST(request: NextRequest) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
       const testFilePath = `e2e/user-journey-${sanitizedName}-${timestamp}.spec.ts`;
-      console.log("Generated testFilePath:", testFilePath);
 
       // Get workspace's primary repository if available
       const repository = await db.repository.findFirst({
@@ -221,7 +219,6 @@ export async function POST(request: NextRequest) {
           stakworkProjectId: true,
         },
       });
-      console.log("Task created successfully:", task.id);
 
       if (!stakworkProjectId) {
         console.warn("Task created without stakworkProjectId (Stakwork call failed)");
