@@ -140,15 +140,23 @@ export async function POST(request: NextRequest) {
     // Only pass sessionId if we're reusing an existing session from chat history
     ...(isResumingSession ? { sessionId } : {}),
     // Callback to save session ID when it's created
-    sessionIdCallback: (createdSessionId: string) => {
+    sessionIdCallback: (createdSessionId: string, oldSessionInvalidated?: boolean) => {
       console.log("🔍 Session created by provider:", createdSessionId);
+
+      if (oldSessionInvalidated) {
+        console.log("⚠️ Old session was invalidated - updating ALL messages to new session");
+      }
+
       if (taskId) {
+        // If old session was invalidated, update ALL messages to the new session
+        // Otherwise, only update messages that don't have a session ID yet
+        const whereCondition = oldSessionInvalidated
+          ? { taskId }
+          : { taskId, sourceWebsocketID: null };
+
         db.chatMessage
           .updateMany({
-            where: {
-              taskId,
-              sourceWebsocketID: null,
-            },
+            where: whereCondition,
             data: {
               sourceWebsocketID: createdSessionId,
             },
@@ -183,12 +191,25 @@ export async function POST(request: NextRequest) {
 
   // Build messages array
   // If resuming a session, Goose already has the history - just send current message
-  // If new session, send system prompt + current message
+  // If new session, send system prompt + chat history + current message
   const messages: ModelMessage[] = [];
 
   if (!isResumingSession) {
     // New session - include system prompt
     messages.push({ role: "system", content: AGENT_SYSTEM_PROMPT });
+
+    // Add chat history to provide context for the new session
+    if (chatHistory.length > 0) {
+      for (const msg of chatHistory) {
+        const role = msg.role.toLowerCase();
+        if (role === "user" || role === "assistant") {
+          messages.push({
+            role: role as "user" | "assistant",
+            content: msg.message,
+          });
+        }
+      }
+    }
   }
 
   // Always add the current user message
