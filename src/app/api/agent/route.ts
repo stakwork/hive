@@ -139,6 +139,28 @@ export async function POST(request: NextRequest) {
     wsUrl,
     // Only pass sessionId if we're reusing an existing session from chat history
     ...(isResumingSession ? { sessionId } : {}),
+    // Callback to save session ID when it's created
+    sessionIdCallback: (createdSessionId: string) => {
+      console.log("🔍 Session created by provider:", createdSessionId);
+      if (taskId) {
+        db.chatMessage
+          .updateMany({
+            where: {
+              taskId,
+              sourceWebsocketID: null,
+            },
+            data: {
+              sourceWebsocketID: createdSessionId,
+            },
+          })
+          .then(() => {
+            console.log("✅ Saved session ID to database:", createdSessionId);
+          })
+          .catch((error) => {
+            console.error("Error saving session ID:", error);
+          });
+      }
+    },
   };
   if (process.env.CUSTOM_GOOSE_URL) {
     opts.logger = {
@@ -187,7 +209,6 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      let extractedSessionId: string | null = null;
 
       const sendEvent = (data: unknown) => {
         const line = `data: ${JSON.stringify(data)}\n\n`;
@@ -264,36 +285,6 @@ export async function POST(request: NextRequest) {
               break;
 
             case "finish":
-              // Extract sessionId from providerMetadata and save immediately
-              const finishChunk = chunk as typeof chunk & { providerMetadata?: Record<string, any> };
-              if (finishChunk.providerMetadata) {
-                const metadata = finishChunk.providerMetadata;
-                if (metadata?.["goose-web"]?.sessionId) {
-                  extractedSessionId = metadata["goose-web"].sessionId;
-                  console.log("🔍 Extracted session ID from finish event:", extractedSessionId);
-
-                  // Save to database immediately to avoid race condition
-                  if (taskId && extractedSessionId) {
-                    db.chatMessage
-                      .updateMany({
-                        where: {
-                          taskId,
-                          sourceWebsocketID: null,
-                        },
-                        data: {
-                          sourceWebsocketID: extractedSessionId,
-                        },
-                      })
-                      .then(() => {
-                        console.log("✅ Saved session ID to database:", extractedSessionId);
-                      })
-                      .catch((error) => {
-                        console.error("Error saving session ID:", error);
-                      });
-                  }
-                }
-              }
-
               sendEvent({ type: "finish-step" });
               sendEvent({ type: "finish", finishReason: chunk.finishReason });
               break;
