@@ -181,23 +181,17 @@ export async function POST(request: NextRequest) {
   }
   const model = gooseWeb("goose", opts);
 
-  // Build messages array from database history
-  const messages: ModelMessage[] = [{ role: "system", content: AGENT_SYSTEM_PROMPT }];
+  // Build messages array
+  // If resuming a session, Goose already has the history - just send current message
+  // If new session, send system prompt + current message
+  const messages: ModelMessage[] = [];
 
-  // Add chat history from database
-  if (chatHistory.length > 0) {
-    for (const msg of chatHistory) {
-      const role = msg.role.toLowerCase();
-      if (role === "user" || role === "assistant") {
-        messages.push({
-          role: role as "user" | "assistant",
-          content: msg.message,
-        });
-      }
-    }
+  if (!isResumingSession) {
+    // New session - include system prompt
+    messages.push({ role: "system", content: AGENT_SYSTEM_PROMPT });
   }
 
-  // Add current user message
+  // Always add the current user message
   messages.push({ role: "user", content: message });
 
   const result = streamText({
