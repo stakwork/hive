@@ -107,7 +107,8 @@ export async function POST(request: NextRequest) {
           message,
           role: ChatRole.USER,
           status: ChatStatus.SENT,
-          sourceWebsocketID: sessionId,
+          // Only set sourceWebsocketID if we're reusing an existing session
+          sourceWebsocketID: chatHistory.length > 0 ? sessionId : null,
           artifacts: {
             create: artifacts.map((artifact: ArtifactRequest) => ({
               type: artifact.type,
@@ -149,11 +150,36 @@ export async function POST(request: NextRequest) {
   }
 
   console.log("🤖 Final Goose WebSocket URL:", wsUrl);
-  console.log("🤖 Session ID:", sessionId);
-  const model = gooseWeb("goose", {
+
+  const isResumingSession = chatHistory.length > 0 && sessionId;
+  if (isResumingSession) {
+    console.log("🔄 Reusing existing session ID:", sessionId);
+  } else {
+    console.log("🆕 Will create new session via REST API");
+  }
+
+  const opts: { [k: string]: unknown } = {
     wsUrl,
-    sessionId,
-  });
+    // Only pass sessionId if we're reusing an existing session from chat history
+    ...(isResumingSession ? { sessionId } : {}),
+  };
+  if (process.env.CUSTOM_GOOSE_URL) {
+    opts.logger = {
+      debug: (message: string, ...args: unknown[]) => {
+        console.log(`🔍 [Goose Debug] ${message}`, ...args);
+      },
+      info: (message: string, ...args: unknown[]) => {
+        console.log(`ℹ️ [Goose Info] ${message}`, ...args);
+      },
+      warn: (message: string, ...args: unknown[]) => {
+        console.warn(`⚠️ [Goose Warn] ${message}`, ...args);
+      },
+      error: (message: string, ...args: unknown[]) => {
+        console.error(`❌ [Goose Error] ${message}`, ...args);
+      },
+    };
+  }
+  const model = gooseWeb("goose", opts);
 
   // Build messages array from database history
   const messages: ModelMessage[] = [{ role: "system", content: AGENT_SYSTEM_PROMPT }];
@@ -183,6 +209,7 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      let extractedSessionId: string | null = null;
 
       const sendEvent = (data: unknown) => {
         const line = `data: ${JSON.stringify(data)}\n\n`;
@@ -259,6 +286,15 @@ export async function POST(request: NextRequest) {
               break;
 
             case "finish":
+              // Extract sessionId from providerMetadata
+              if (chunk.providerMetadata) {
+                const metadata = chunk.providerMetadata as any;
+                if (metadata?.["goose-web"]?.sessionId) {
+                  extractedSessionId = metadata["goose-web"].sessionId;
+                  console.log("🔍 Extracted session ID from finish event:", extractedSessionId);
+                }
+              }
+
               sendEvent({ type: "finish-step" });
               sendEvent({ type: "finish", finishReason: chunk.finishReason });
               break;
@@ -268,6 +304,28 @@ export async function POST(request: NextRequest) {
         // Send done marker
         sendEvent("[DONE]");
         controller.close();
+
+        // Save sessionId to database if we extracted it from the stream
+        if (taskId && extractedSessionId) {
+          try {
+            console.log("💾 Saving session ID to database:", extractedSessionId);
+
+            // Update all messages in this task that don't have a sourceWebsocketID
+            await db.chatMessage.updateMany({
+              where: {
+                taskId,
+                sourceWebsocketID: null,
+              },
+              data: {
+                sourceWebsocketID: extractedSessionId,
+              },
+            });
+
+            console.log("✅ Updated messages with session ID:", extractedSessionId);
+          } catch (error) {
+            console.error("Error saving session ID to database:", error);
+          }
+        }
       } catch (error) {
         console.error("Stream error:", error);
         controller.error(error);
