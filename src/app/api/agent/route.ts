@@ -11,19 +11,6 @@ interface ArtifactRequest {
   content?: Record<string, unknown>;
 }
 
-// Generate a session ID using timestamp format (yyyymmdd_hhmmss) like CLI
-function generateSessionId() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hour = String(now.getHours()).padStart(2, "0");
-  const minute = String(now.getMinutes()).padStart(2, "0");
-  const second = String(now.getSeconds()).padStart(2, "0");
-
-  return `${year}${month}${day}_${hour}${minute}${second}`;
-}
-
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { message, gooseUrl, taskId, artifacts = [] } = body;
@@ -62,14 +49,10 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Check if first message has a sourceWebsocketID
+      // Check if first message has a sourceWebsocketID to reuse
       if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
         sessionId = chatHistory[0].sourceWebsocketID;
-        console.log("🔄 Reusing existing session ID:", sessionId);
-      } else {
-        // Generate new session ID for first message
-        sessionId = generateSessionId();
-        console.log("🆕 Generated new session ID:", sessionId);
+        console.log("🔄 Found existing session ID from database:", sessionId);
       }
 
       // Look for IDE artifact to get persisted gooseUrl
@@ -92,12 +75,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // If no taskId or failed to load, generate new session
-  if (!sessionId) {
-    sessionId = generateSessionId();
-    console.log("🆕 Generated new session ID (no task):", sessionId);
-  }
-
   // Save user message with artifacts and sourceWebsocketID to database if taskId is provided
   if (taskId) {
     try {
@@ -107,8 +84,8 @@ export async function POST(request: NextRequest) {
           message,
           role: ChatRole.USER,
           status: ChatStatus.SENT,
-          // Only set sourceWebsocketID if we're reusing an existing session
-          sourceWebsocketID: chatHistory.length > 0 ? sessionId : null,
+          // Set sourceWebsocketID if we have one from previous messages (null for new conversations)
+          sourceWebsocketID: sessionId,
           artifacts: {
             create: artifacts.map((artifact: ArtifactRequest) => ({
               type: artifact.type,
@@ -151,11 +128,11 @@ export async function POST(request: NextRequest) {
 
   console.log("🤖 Final Goose WebSocket URL:", wsUrl);
 
-  const isResumingSession = chatHistory.length > 0 && sessionId;
+  const isResumingSession = chatHistory.length > 0 && !!sessionId;
   if (isResumingSession) {
-    console.log("🔄 Reusing existing session ID:", sessionId);
+    console.log("🔄 Resuming conversation with session ID:", sessionId);
   } else {
-    console.log("🆕 Will create new session via REST API");
+    console.log("🆕 Starting new conversation - provider will create session via REST API");
   }
 
   const opts: { [k: string]: unknown } = {
@@ -165,9 +142,10 @@ export async function POST(request: NextRequest) {
   };
   if (process.env.CUSTOM_GOOSE_URL) {
     opts.logger = {
-      debug: (message: string, ...args: unknown[]) => {
-        console.log(`🔍 [Goose Debug] ${message}`, ...args);
-      },
+      debug: () => {},
+      // debug: (message: string, ...args: unknown[]) => {
+      //   console.log(`🔍 [Goose Debug] ${message}`, ...args);
+      // },
       info: (message: string, ...args: unknown[]) => {
         console.log(`ℹ️ [Goose Info] ${message}`, ...args);
       },
@@ -286,12 +264,33 @@ export async function POST(request: NextRequest) {
               break;
 
             case "finish":
-              // Extract sessionId from providerMetadata
-              if (chunk.providerMetadata) {
-                const metadata = chunk.providerMetadata as any;
+              // Extract sessionId from providerMetadata and save immediately
+              const finishChunk = chunk as typeof chunk & { providerMetadata?: Record<string, any> };
+              if (finishChunk.providerMetadata) {
+                const metadata = finishChunk.providerMetadata;
                 if (metadata?.["goose-web"]?.sessionId) {
                   extractedSessionId = metadata["goose-web"].sessionId;
                   console.log("🔍 Extracted session ID from finish event:", extractedSessionId);
+
+                  // Save to database immediately to avoid race condition
+                  if (taskId && extractedSessionId) {
+                    db.chatMessage
+                      .updateMany({
+                        where: {
+                          taskId,
+                          sourceWebsocketID: null,
+                        },
+                        data: {
+                          sourceWebsocketID: extractedSessionId,
+                        },
+                      })
+                      .then(() => {
+                        console.log("✅ Saved session ID to database:", extractedSessionId);
+                      })
+                      .catch((error) => {
+                        console.error("Error saving session ID:", error);
+                      });
+                  }
                 }
               }
 
@@ -304,28 +303,6 @@ export async function POST(request: NextRequest) {
         // Send done marker
         sendEvent("[DONE]");
         controller.close();
-
-        // Save sessionId to database if we extracted it from the stream
-        if (taskId && extractedSessionId) {
-          try {
-            console.log("💾 Saving session ID to database:", extractedSessionId);
-
-            // Update all messages in this task that don't have a sourceWebsocketID
-            await db.chatMessage.updateMany({
-              where: {
-                taskId,
-                sourceWebsocketID: null,
-              },
-              data: {
-                sourceWebsocketID: extractedSessionId,
-              },
-            });
-
-            console.log("✅ Updated messages with session ID:", extractedSessionId);
-          } catch (error) {
-            console.error("Error saving session ID to database:", error);
-          }
-        }
       } catch (error) {
         console.error("Stream error:", error);
         controller.error(error);
