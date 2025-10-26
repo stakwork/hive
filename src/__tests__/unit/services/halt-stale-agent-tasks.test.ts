@@ -35,13 +35,13 @@ describe("haltStaleAgentTasks", () => {
         id: "task-1",
         title: "Stale Agent Task 1",
         workspaceId: "workspace-1",
-        workflowStartedAt: twentyFiveHoursAgo,
+        createdAt: twentyFiveHoursAgo,
       },
       {
         id: "task-2",
         title: "Stale Agent Task 2",
         workspaceId: "workspace-1",
-        workflowStartedAt: twentyFiveHoursAgo,
+        createdAt: twentyFiveHoursAgo,
       },
     ];
 
@@ -55,7 +55,7 @@ describe("haltStaleAgentTasks", () => {
       where: {
         mode: "agent",
         workflowStatus: "PENDING",
-        workflowStartedAt: {
+        createdAt: {
           lt: expect.any(Date),
         },
         deleted: false,
@@ -64,7 +64,7 @@ describe("haltStaleAgentTasks", () => {
         id: true,
         title: true,
         workspaceId: true,
-        workflowStartedAt: true,
+        createdAt: true,
       },
     });
 
@@ -128,13 +128,13 @@ describe("haltStaleAgentTasks", () => {
         id: "task-1",
         title: "Task 1",
         workspaceId: "workspace-1",
-        workflowStartedAt: twentyFiveHoursAgo,
+        createdAt: twentyFiveHoursAgo,
       },
       {
         id: "task-2",
         title: "Task 2",
         workspaceId: "workspace-1",
-        workflowStartedAt: twentyFiveHoursAgo,
+        createdAt: twentyFiveHoursAgo,
       },
     ];
 
@@ -242,7 +242,7 @@ describe("haltStaleAgentTasks", () => {
         id: "task-1",
         title: "Task 1",
         workspaceId: "workspace-1",
-        workflowStartedAt: twentyFiveHoursAgo,
+        createdAt: twentyFiveHoursAgo,
       },
     ];
 
