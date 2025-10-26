@@ -124,7 +124,7 @@ export async function haltStaleAgentTasks(): Promise<{
       where: {
         mode: "agent",
         workflowStatus: "PENDING",
-        workflowStartedAt: {
+        createdAt: {
           lt: twentyFourHoursAgo,
         },
         deleted: false,
@@ -133,7 +133,7 @@ export async function haltStaleAgentTasks(): Promise<{
         id: true,
         title: true,
         workspaceId: true,
-        workflowStartedAt: true,
+        createdAt: true,
       },
     });
 
@@ -146,7 +146,7 @@ export async function haltStaleAgentTasks(): Promise<{
 
         tasksHalted++;
         console.log(
-          `[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - was pending since ${task.workflowStartedAt}`
+          `[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`
         );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
