@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { streamText, ModelMessage } from "ai";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { gooseWeb, validateGooseSession } from "ai-sdk-provider-goose-web";
+
+const encryptionService = EncryptionService.getInstance();
 
 interface ArtifactRequest {
   type: ArtifactType;
@@ -13,7 +16,8 @@ interface ArtifactRequest {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { message, gooseUrl, taskId, artifacts = [] } = body;
+  const { message, taskId, artifacts = [] } = body;
+  // gooseUrl removed from destructuring
 
   // Authenticate user
   const session = await getServerSession(authOptions);
@@ -25,6 +29,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "taskId is required" }, { status: 400 });
   }
 
+  // Fetch task from database to get agent credentials
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: {
+      agentUrl: true,
+      agentPassword: true,
+      mode: true,
+    },
+  });
+
+  if (!task) {
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  }
+
+  if (task.mode !== "agent") {
+    return NextResponse.json({ error: "Task is not in agent mode" }, { status: 400 });
+  }
+
+  // If CUSTOM_GOOSE_URL is set, credentials are optional (for local development)
+  const usingCustomGooseUrl = !!process.env.CUSTOM_GOOSE_URL;
+
+  // Only require credentials if not using custom Goose URL
+  if (!usingCustomGooseUrl && (!task.agentUrl || !task.agentPassword)) {
+    return NextResponse.json({ error: "Agent credentials not found for task" }, { status: 400 });
+  }
+
+  // Decrypt the pod password if available
+  const agentPassword = task.agentPassword
+    ? encryptionService.decryptField("agentPassword", task.agentPassword)
+    : undefined;
+
+  // Use credentials from database (or will use CUSTOM_GOOSE_URL later)
+  const gooseUrl = task.agentUrl || null;
+
   // Load chat history from database
   let chatHistory: {
     role: string;
@@ -33,7 +71,6 @@ export async function POST(request: NextRequest) {
     artifacts: { content: unknown }[];
   }[] = [];
   let sessionId: string | null = null;
-  let persistedGooseUrl: string | null = null;
 
   try {
     chatHistory = await db.chatMessage.findMany({
@@ -56,22 +93,6 @@ export async function POST(request: NextRequest) {
     if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
       sessionId = chatHistory[0].sourceWebsocketID;
       console.log("🔄 Found existing session ID from database:", sessionId);
-    }
-
-    // Look for IDE artifact to get persisted gooseUrl
-    for (const msg of chatHistory) {
-      if (msg.artifacts && msg.artifacts.length > 0) {
-        const ideArtifact = msg.artifacts[0];
-        if (ideArtifact.content && typeof ideArtifact.content === "object") {
-          const content = ideArtifact.content as { url?: string };
-          if (content.url) {
-            // Transform URL: https://09c0a821.workspaces.sphinx.chat -> https://09c0a821-15551.workspaces.sphinx.chat
-            persistedGooseUrl = content.url.replace(/^(https?:\/\/[^.]+)\./, "$1-15551.");
-            console.log("🔄 Found persisted Goose URL from IDE artifact:", persistedGooseUrl);
-            break;
-          }
-        }
-      }
     }
   } catch (error) {
     console.error("Error loading chat history:", error);
@@ -107,23 +128,16 @@ export async function POST(request: NextRequest) {
     wsUrl = process.env.CUSTOM_GOOSE_URL;
     console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_URL:", wsUrl);
   } else {
-    // Use persisted gooseUrl from IDE artifact, or provided gooseUrl
-    const effectiveGooseUrl = persistedGooseUrl || gooseUrl;
-
-    if (!effectiveGooseUrl) {
+    // Use gooseUrl from task credentials (stored in database)
+    if (!gooseUrl) {
       return NextResponse.json(
-        { error: "No Goose URL available. Please start a new agent task to claim a pod." },
+        { error: "No Goose URL available. Agent credentials not properly configured." },
         { status: 400 },
       );
     }
 
-    wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
-
-    if (persistedGooseUrl) {
-      console.log("🔄 Using persisted Goose URL from database:", wsUrl);
-    } else if (gooseUrl) {
-      console.log("🆕 Using Goose URL from request:", wsUrl);
-    }
+    wsUrl = gooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
+    console.log("🔐 Using Goose URL from task credentials:", wsUrl);
   }
 
   console.log("🤖 Final Goose WebSocket URL:", wsUrl);
@@ -159,12 +173,14 @@ export async function POST(request: NextRequest) {
     wsUrl,
     sessionId: isResumingSession ? (sessionId ?? undefined) : undefined,
     logger,
+    authToken: agentPassword || "asdfasdf",
   });
 
   // Create model with validated session ID
   const opts: { [k: string]: unknown } = {
     wsUrl,
     sessionId: validatedSessionId,
+    authToken: agentPassword || "asdfasdf",
     ...(logger ? { logger } : {}),
   };
   const model = gooseWeb("goose", opts);
