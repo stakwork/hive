@@ -74,7 +74,7 @@
     "@vercel/functions": "^3.1.4",
     "@xyflow/react": "^12.8.6",
     "ai": "^5.0.50",
-    "ai-sdk-provider-goose-web": "^0.1.6",
+    "ai-sdk-provider-goose-web": "^0.1.8",
     "aieo": "^0.1.25",
     "autoprefixer": "^10.4.21",
     "axios": "^1.10.0",
