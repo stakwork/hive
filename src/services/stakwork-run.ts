@@ -74,7 +74,7 @@ export async function createStakworkRun(
   const decryptedPAT =
     workspace.sourceControlOrg?.tokens[0]?.token
       ? encryptionService.decryptField(
-          "token",
+          "access_token",
           workspace.sourceControlOrg.tokens[0].token
         )
       : null;
