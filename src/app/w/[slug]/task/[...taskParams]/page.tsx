@@ -291,45 +291,7 @@ export default function TaskChatPage() {
 
     try {
       if (isNewTask) {
-        // Claim pod if agent mode is selected
-        let claimedPodUrls: { frontend: string; ide: string; goose: string } | null = null;
-        if (taskMode === "agent" && workspaceId) {
-          try {
-            const podResponse = await fetch(`/api/pool-manager/claim-pod/${workspaceId}?latest=true&goose=true`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-            });
-
-            if (podResponse.ok) {
-              const podResult = await podResponse.json();
-              claimedPodUrls = {
-                frontend: podResult.frontend,
-                ide: podResult.ide,
-                goose: podResult.goose,
-              };
-              setHasPod(true);
-              setClaimedPodId(podResult.podId);
-            } else {
-              console.error("Failed to claim pod:", await podResponse.text());
-              toast({
-                title: "Warning",
-                description: "Failed to claim pod. Continuing without pod integration.",
-                variant: "destructive",
-              });
-            }
-          } catch (error) {
-            console.error("Error claiming pod:", error);
-            toast({
-              title: "Warning",
-              description: "Failed to claim pod. Continuing without pod integration.",
-              variant: "destructive",
-            });
-          }
-        }
-
-        // Create new task
+        // Create new task FIRST
         const response = await fetch("/api/tasks", {
           method: "POST",
           headers: {
@@ -351,6 +313,47 @@ export default function TaskChatPage() {
         const result = await response.json();
         const newTaskId = result.data.id;
         setCurrentTaskId(newTaskId);
+
+        // Claim pod if agent mode is selected (AFTER task creation)
+        let claimedPodUrls: { frontend: string; ide: string } | null = null;
+        if (taskMode === "agent" && workspaceId) {
+          try {
+            const podResponse = await fetch(
+              `/api/pool-manager/claim-pod/${workspaceId}?latest=true&goose=true&taskId=${newTaskId}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+
+            if (podResponse.ok) {
+              const podResult = await podResponse.json();
+              // Only frontend and IDE URLs are returned (no goose URL or password)
+              claimedPodUrls = {
+                frontend: podResult.frontend,
+                ide: podResult.ide,
+              };
+              setHasPod(true);
+              setClaimedPodId(podResult.podId);
+            } else {
+              console.error("Failed to claim pod:", await podResponse.text());
+              toast({
+                title: "Warning",
+                description: "Failed to claim pod. Continuing without pod integration.",
+                variant: "destructive",
+              });
+            }
+          } catch (error) {
+            console.error("Error claiming pod:", error);
+            toast({
+              title: "Warning",
+              description: "Failed to claim pod. Continuing without pod integration.",
+              variant: "destructive",
+            });
+          }
+        }
 
         // Set the task title from the response or fallback to the initial message
         if (result.data.title) {
@@ -402,7 +405,7 @@ export default function TaskChatPage() {
       replyId?: string;
       webhook?: string;
       artifact?: Artifact;
-      podUrls?: { frontend: string; ide: string; goose: string } | null;
+      podUrls?: { frontend: string; ide: string } | null;
     },
   ) => {
     // Create artifacts array starting with any existing artifact
@@ -457,9 +460,6 @@ export default function TaskChatPage() {
           content: artifact.content,
         }));
 
-        // Extract gooseUrl from IDE artifact if available
-        const gooseUrl = options?.podUrls?.goose;
-
         const response = await fetch("/api/agent", {
           method: "POST",
           headers: {
@@ -469,7 +469,7 @@ export default function TaskChatPage() {
             taskId: options?.taskId || currentTaskId,
             message: messageText,
             workspaceSlug: slug,
-            gooseUrl,
+            // gooseUrl removed - will be fetched from database in backend
             artifacts: backendArtifacts,
           }),
         });

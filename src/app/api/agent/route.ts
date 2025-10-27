@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { streamText, ModelMessage } from "ai";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
-import { gooseWeb } from "ai-sdk-provider-goose-web";
+import { gooseWeb, validateGooseSession } from "ai-sdk-provider-goose-web";
+
+const encryptionService = EncryptionService.getInstance();
 
 interface ArtifactRequest {
   type: ArtifactType;
@@ -13,13 +16,52 @@ interface ArtifactRequest {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { message, gooseUrl, taskId, artifacts = [] } = body;
+  const { message, taskId, artifacts = [] } = body;
+  // gooseUrl removed from destructuring
 
   // Authenticate user
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  if (!taskId) {
+    return NextResponse.json({ error: "taskId is required" }, { status: 400 });
+  }
+
+  // Fetch task from database to get agent credentials
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: {
+      agentUrl: true,
+      agentPassword: true,
+      mode: true,
+    },
+  });
+
+  if (!task) {
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  }
+
+  if (task.mode !== "agent") {
+    return NextResponse.json({ error: "Task is not in agent mode" }, { status: 400 });
+  }
+
+  // If CUSTOM_GOOSE_URL is set, credentials are optional (for local development)
+  const usingCustomGooseUrl = !!process.env.CUSTOM_GOOSE_URL;
+
+  // Only require credentials if not using custom Goose URL
+  if (!usingCustomGooseUrl && (!task.agentUrl || !task.agentPassword)) {
+    return NextResponse.json({ error: "Agent credentials not found for task" }, { status: 400 });
+  }
+
+  // Decrypt the pod password if available
+  const agentPassword = task.agentPassword
+    ? encryptionService.decryptField("agentPassword", task.agentPassword)
+    : undefined;
+
+  // Use credentials from database (or will use CUSTOM_GOOSE_URL later)
+  const gooseUrl = task.agentUrl || null;
 
   // Load chat history from database
   let chatHistory: {
@@ -29,74 +71,53 @@ export async function POST(request: NextRequest) {
     artifacts: { content: unknown }[];
   }[] = [];
   let sessionId: string | null = null;
-  let persistedGooseUrl: string | null = null;
 
-  if (taskId) {
-    try {
-      chatHistory = await db.chatMessage.findMany({
-        where: { taskId },
-        orderBy: { timestamp: "asc" },
-        select: {
-          role: true,
-          message: true,
-          sourceWebsocketID: true,
-          artifacts: {
-            where: { type: ArtifactType.IDE },
-            select: {
-              content: true,
-            },
+  try {
+    chatHistory = await db.chatMessage.findMany({
+      where: { taskId },
+      orderBy: { timestamp: "asc" },
+      select: {
+        role: true,
+        message: true,
+        sourceWebsocketID: true,
+        artifacts: {
+          where: { type: ArtifactType.IDE },
+          select: {
+            content: true,
           },
         },
-      });
+      },
+    });
 
-      // Check if first message has a sourceWebsocketID to reuse
-      if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
-        sessionId = chatHistory[0].sourceWebsocketID;
-        console.log("🔄 Found existing session ID from database:", sessionId);
-      }
-
-      // Look for IDE artifact to get persisted gooseUrl
-      for (const msg of chatHistory) {
-        if (msg.artifacts && msg.artifacts.length > 0) {
-          const ideArtifact = msg.artifacts[0];
-          if (ideArtifact.content && typeof ideArtifact.content === "object") {
-            const content = ideArtifact.content as { url?: string };
-            if (content.url) {
-              // Transform URL: https://09c0a821.workspaces.sphinx.chat -> https://09c0a821-15551.workspaces.sphinx.chat
-              persistedGooseUrl = content.url.replace(/^(https?:\/\/[^.]+)\./, "$1-15551.");
-              console.log("🔄 Found persisted Goose URL from IDE artifact:", persistedGooseUrl);
-              break;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error loading chat history:", error);
+    // Check if first message has a sourceWebsocketID to reuse
+    if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
+      sessionId = chatHistory[0].sourceWebsocketID;
+      console.log("🔄 Found existing session ID from database:", sessionId);
     }
+  } catch (error) {
+    console.error("Error loading chat history:", error);
   }
 
   // Save user message with artifacts and sourceWebsocketID to database if taskId is provided
-  if (taskId) {
-    try {
-      await db.chatMessage.create({
-        data: {
-          taskId,
-          message,
-          role: ChatRole.USER,
-          status: ChatStatus.SENT,
-          // Set sourceWebsocketID if we have one from previous messages (null for new conversations)
-          sourceWebsocketID: sessionId,
-          artifacts: {
-            create: artifacts.map((artifact: ArtifactRequest) => ({
-              type: artifact.type,
-              content: artifact.content,
-            })),
-          },
+  try {
+    await db.chatMessage.create({
+      data: {
+        taskId,
+        message,
+        role: ChatRole.USER,
+        status: ChatStatus.SENT,
+        // Set sourceWebsocketID if we have one from previous messages (null for new conversations)
+        sourceWebsocketID: sessionId,
+        artifacts: {
+          create: artifacts.map((artifact: ArtifactRequest) => ({
+            type: artifact.type,
+            content: artifact.content,
+          })),
         },
-      });
-    } catch (error) {
-      console.error("Error saving message to database:", error);
-    }
+      },
+    });
+  } catch (error) {
+    console.error("Error saving message to database:", error);
   }
 
   // If CUSTOM_GOOSE_URL is set, use it as-is (it should be the full ws:// URL)
@@ -107,23 +128,16 @@ export async function POST(request: NextRequest) {
     wsUrl = process.env.CUSTOM_GOOSE_URL;
     console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_URL:", wsUrl);
   } else {
-    // Use persisted gooseUrl from IDE artifact, or provided gooseUrl
-    const effectiveGooseUrl = persistedGooseUrl || gooseUrl;
-
-    if (!effectiveGooseUrl) {
+    // Use gooseUrl from task credentials (stored in database)
+    if (!gooseUrl) {
       return NextResponse.json(
-        { error: "No Goose URL available. Please start a new agent task to claim a pod." },
+        { error: "No Goose URL available. Agent credentials not properly configured." },
         { status: 400 },
       );
     }
 
-    wsUrl = effectiveGooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
-
-    if (persistedGooseUrl) {
-      console.log("🔄 Using persisted Goose URL from database:", wsUrl);
-    } else if (gooseUrl) {
-      console.log("🆕 Using Goose URL from request:", wsUrl);
-    }
+    wsUrl = gooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
+    console.log("🔐 Using Goose URL from task credentials:", wsUrl);
   }
 
   console.log("🤖 Final Goose WebSocket URL:", wsUrl);
@@ -135,60 +149,96 @@ export async function POST(request: NextRequest) {
     console.log("🆕 Starting new conversation - provider will create session via REST API");
   }
 
-  const opts: { [k: string]: unknown } = {
-    wsUrl,
-    // Only pass sessionId if we're reusing an existing session from chat history
-    ...(isResumingSession ? { sessionId } : {}),
-    // Callback to save session ID when it's created
-    sessionIdCallback: (createdSessionId: string) => {
-      console.log("🔍 Session created by provider:", createdSessionId);
-      if (taskId) {
-        db.chatMessage
-          .updateMany({
-            where: {
-              taskId,
-              sourceWebsocketID: null,
-            },
-            data: {
-              sourceWebsocketID: createdSessionId,
-            },
-          })
-          .then(() => {
-            console.log("✅ Saved session ID to database:", createdSessionId);
-          })
-          .catch((error) => {
-            console.error("Error saving session ID:", error);
-          });
+  // Prepare logger if custom Goose URL is set
+  const logger = process.env.CUSTOM_GOOSE_URL
+    ? {
+        debug: () => {},
+        // debug: (message: string, ...args: unknown[]) => {
+        //   console.log(`🔍 [Goose Debug] ${message}`, ...args);
+        // },
+        info: (message: string, ...args: unknown[]) => {
+          console.log(`ℹ️ [Goose Info] ${message}`, ...args);
+        },
+        warn: (message: string, ...args: unknown[]) => {
+          console.warn(`⚠️ [Goose Warn] ${message}`, ...args);
+        },
+        error: (message: string, ...args: unknown[]) => {
+          console.error(`❌ [Goose Error] ${message}`, ...args);
+        },
       }
-    },
-  };
-  if (process.env.CUSTOM_GOOSE_URL) {
-    opts.logger = {
-      debug: () => {},
-      // debug: (message: string, ...args: unknown[]) => {
-      //   console.log(`🔍 [Goose Debug] ${message}`, ...args);
-      // },
-      info: (message: string, ...args: unknown[]) => {
-        console.log(`ℹ️ [Goose Info] ${message}`, ...args);
-      },
-      warn: (message: string, ...args: unknown[]) => {
-        console.warn(`⚠️ [Goose Warn] ${message}`, ...args);
-      },
-      error: (message: string, ...args: unknown[]) => {
-        console.error(`❌ [Goose Error] ${message}`, ...args);
-      },
-    };
+    : undefined;
+
+  // Validate session immediately before creating model
+  const { sessionId: validatedSessionId, oldSessionInvalidated } = await validateGooseSession({
+    wsUrl,
+    sessionId: isResumingSession ? (sessionId ?? undefined) : undefined,
+    logger,
+    authToken: agentPassword || "asdfasdf",
+  });
+
+  // Create model with validated session ID
+  const model = gooseWeb("goose", {
+    wsUrl,
+    sessionId: validatedSessionId,
+    authToken: agentPassword || "asdfasdf",
+    assumeSessionValid: true,
+    ...(logger ? { logger } : {}),
+  });
+
+  console.log("✅ Session validated:", {
+    sessionId: validatedSessionId,
+    oldSessionInvalidated,
+  });
+
+  // Update database with session ID
+  if (oldSessionInvalidated) {
+    console.log("⚠️ Old session was invalidated - updating ALL messages to new session");
   }
-  const model = gooseWeb("goose", opts);
+
+  try {
+    // If old session was invalidated, update ALL messages to the new session
+    // Otherwise, only update messages that don't have a session ID yet
+    const whereCondition = oldSessionInvalidated ? { taskId } : { taskId, sourceWebsocketID: null };
+
+    await db.chatMessage.updateMany({
+      where: whereCondition,
+      data: {
+        sourceWebsocketID: validatedSessionId,
+      },
+    });
+
+    console.log("✅ Saved session ID to database:", validatedSessionId);
+  } catch (error) {
+    console.error("Error saving session ID:", error);
+  }
 
   // Build messages array
-  // If resuming a session, Goose already has the history - just send current message
-  // If new session, send system prompt + current message
+  // Logic:
+  // - If starting new (no chat history), send system prompt + current message
+  // - If old session was invalidated, treat as new session and send full history
+  // - If resuming valid session, Goose already has history, just send current message
   const messages: ModelMessage[] = [];
 
-  if (!isResumingSession) {
-    // New session - include system prompt
+  if (!isResumingSession || oldSessionInvalidated) {
+    // New session or invalidated session - include system prompt
     messages.push({ role: "system", content: AGENT_SYSTEM_PROMPT });
+
+    // Add chat history to provide context for the new session
+    if (chatHistory.length > 0) {
+      for (const msg of chatHistory) {
+        const role = msg.role.toLowerCase();
+        if (role === "user" || role === "assistant") {
+          messages.push({
+            role: role as "user" | "assistant",
+            content: msg.message,
+          });
+        }
+      }
+    }
+
+    if (oldSessionInvalidated) {
+      console.log("⚠️ Old session invalidated - sending full conversation history");
+    }
   }
 
   // Always add the current user message
