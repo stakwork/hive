@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
+import { TaskStatus, WorkflowStatus } from "@prisma/client";
 
 export async function PATCH(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function PATCH(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { startWorkflow, mode } = body;
+    const { startWorkflow, mode, status, workflowStatus } = body;
 
     // Verify task exists and user has access
     const task = await db.task.findFirst({
@@ -83,6 +84,57 @@ export async function PATCH(
           success: true,
           task: updatedTask,
           workflow: workflowResult.stakworkData,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Handle status and workflowStatus updates
+    if (status || workflowStatus) {
+      // Validate status if provided
+      if (status && !Object.values(TaskStatus).includes(status as TaskStatus)) {
+        return NextResponse.json(
+          {
+            error: `Invalid status. Must be one of: ${Object.values(TaskStatus).join(", ")}`
+          },
+          { status: 400 }
+        );
+      }
+
+      // Validate workflowStatus if provided
+      if (workflowStatus && !Object.values(WorkflowStatus).includes(workflowStatus as WorkflowStatus)) {
+        return NextResponse.json(
+          {
+            error: `Invalid workflowStatus. Must be one of: ${Object.values(WorkflowStatus).join(", ")}`
+          },
+          { status: 400 }
+        );
+      }
+
+      // Update task
+      const updatedTask = await db.task.update({
+        where: { id: taskId },
+        data: {
+          ...(status && { status: status as TaskStatus }),
+          ...(workflowStatus && { workflowStatus: workflowStatus as WorkflowStatus }),
+          updatedById: userOrResponse.id,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          workflowStatus: true,
+          stakworkProjectId: true,
+          updatedAt: true,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          task: updatedTask,
         },
         { status: 200 }
       );
