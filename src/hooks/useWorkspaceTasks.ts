@@ -21,7 +21,12 @@ export const saveCurrentPage = (workspaceId: string, page: number) => {
 export const getStoredPage = (workspaceId: string): number => {
   if (typeof window !== "undefined") {
     const stored = window.sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-    return stored ? parseInt(stored, 10) : 1;
+    if (!stored) return 1;
+    
+    const parsed = parseInt(stored, 10);
+    // Return default page 1 if parsing fails (NaN) or results in invalid page number
+    // Also validate that the stored value matches the parsed value (to reject partial parses like "12.5.3" -> 12)
+    return (isNaN(parsed) || stored !== parsed.toString()) ? 1 : parsed;
   }
   return 1;
 };

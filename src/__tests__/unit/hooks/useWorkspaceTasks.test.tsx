@@ -1,27 +1,10 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
-
-// Test helper functions to mirror the implementation
-const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
-
-const saveCurrentPage = (workspaceId: string, page: number) => {
-  if (typeof window !== "undefined") {
-    sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
-  }
-};
-
-const getStoredPage = (workspaceId: string): number => {
-  if (typeof window !== "undefined") {
-    const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-    return stored ? parseInt(stored, 10) : 1;
-  }
-  return 1;
-};
-
-const clearStoredPage = (workspaceId: string) => {
-  if (typeof window !== "undefined") {
-    sessionStorage.removeItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-  }
-};
+import {
+  TASKS_PAGE_STORAGE_KEY,
+  saveCurrentPage,
+  getStoredPage,
+  clearStoredPage,
+} from "@/hooks/useWorkspaceTasks";
 
 describe("useWorkspaceTasks - Storage Functions", () => {
   // Store original window object
@@ -225,10 +208,9 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), "not-a-number");
       
       const page = getStoredPage(workspaceId);
-      // parseInt("not-a-number") returns NaN, but the function should handle it
-      // Based on the implementation, it will return NaN, which may need fixing
-      // For now, we test actual behavior
-      expect(isNaN(page)).toBe(true);
+      // Should fall back to default page 1 when data cannot be parsed
+      expect(page).toBe(1);
+      expect(typeof page).toBe("number");
     });
 
     test("handles empty string gracefully", () => {
@@ -239,6 +221,22 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       const page = getStoredPage(workspaceId);
       // Empty string is falsy, so should return default 1
       expect(page).toBe(1);
+    });
+
+    test("handles various invalid data formats", () => {
+      const workspaceId = "workspace-123";
+      
+      const invalidValues = ["invalid", "abc123", "12.5.3", "null", "undefined", "{}"];
+      
+      invalidValues.forEach(invalidValue => {
+        sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), invalidValue);
+        const page = getStoredPage(workspaceId);
+        
+        // All invalid formats should fall back to page 1
+        expect(page).toBe(1);
+        expect(typeof page).toBe("number");
+        expect(isNaN(page)).toBe(false);
+      });
     });
   });
 
@@ -315,27 +313,6 @@ describe("useWorkspaceTasks - Storage Functions", () => {
   });
 
   describe("Integration Scenarios", () => {
-    const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
-    
-    const saveCurrentPage = (workspaceId: string, page: number) => {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
-      }
-    };
-    
-    const getStoredPage = (workspaceId: string): number => {
-      if (typeof window !== "undefined") {
-        const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-        return stored ? parseInt(stored, 10) : 1;
-      }
-      return 1;
-    };
-    
-    const clearStoredPage = (workspaceId: string) => {
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-      }
-    };
 
     test("save and retrieve page workflow", () => {
       const workspaceId = "workspace-123";
@@ -439,21 +416,6 @@ describe("useWorkspaceTasks - Storage Functions", () => {
   });
 
   describe("Edge Cases and Error Handling", () => {
-    const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
-    
-    const saveCurrentPage = (workspaceId: string, page: number) => {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
-      }
-    };
-    
-    const getStoredPage = (workspaceId: string): number => {
-      if (typeof window !== "undefined") {
-        const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-        return stored ? parseInt(stored, 10) : 1;
-      }
-      return 1;
-    };
 
     test("handles very large page numbers", () => {
       const workspaceId = "workspace-123";
