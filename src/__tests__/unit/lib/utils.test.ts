@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cn, formatRelativeTime, getBaseUrl, getRelativeUrl } from "@/lib/utils";
+import { cn, formatRelativeTime, getBaseUrl, getRelativeUrl, validateDomainLabel } from "@/lib/utils";
 
 describe("utils", () => {
   describe("cn", () => {
@@ -254,6 +254,129 @@ describe("utils", () => {
     it("should handle workspace-only URLs", () => {
       expect(getRelativeUrl("/w/my-workspace")).toBe("/");
       expect(getRelativeUrl("/w/workspace-123/")).toBe("/");
+    });
+  });
+
+  describe("validateDomainLabel", () => {
+    describe("valid domain labels", () => {
+      it("should accept valid alphanumeric labels", () => {
+        expect(validateDomainLabel("ab")).toEqual({ isValid: true });
+        expect(validateDomainLabel("abc")).toEqual({ isValid: true });
+        expect(validateDomainLabel("test")).toEqual({ isValid: true });
+        expect(validateDomainLabel("myworkspace")).toEqual({ isValid: true });
+        expect(validateDomainLabel("workspace123")).toEqual({ isValid: true });
+        expect(validateDomainLabel("123workspace")).toEqual({ isValid: true });
+      });
+
+      it("should accept labels with hyphens in middle", () => {
+        expect(validateDomainLabel("my-workspace")).toEqual({ isValid: true });
+        expect(validateDomainLabel("test-123")).toEqual({ isValid: true });
+        expect(validateDomainLabel("a-b-c")).toEqual({ isValid: true });
+        expect(validateDomainLabel("my-awesome-project")).toEqual({ isValid: true });
+      });
+
+      it("should accept labels at minimum length (2 chars)", () => {
+        expect(validateDomainLabel("ab")).toEqual({ isValid: true });
+        expect(validateDomainLabel("a1")).toEqual({ isValid: true });
+        expect(validateDomainLabel("12")).toEqual({ isValid: true });
+      });
+
+      it("should accept labels at maximum length (50 chars)", () => {
+        const maxLabel = "a".repeat(50);
+        expect(validateDomainLabel(maxLabel)).toEqual({ isValid: true });
+      });
+    });
+
+    describe("invalid domain labels - format", () => {
+      it("should reject labels with special characters", () => {
+        const result1 = validateDomainLabel("test!");
+        expect(result1.isValid).toBe(false);
+        expect(result1.error).toContain("must start and end with letters or numbers");
+
+        const result2 = validateDomainLabel("my@workspace");
+        expect(result2.isValid).toBe(false);
+
+        const result3 = validateDomainLabel("test_project");
+        expect(result3.isValid).toBe(false);
+
+        const result4 = validateDomainLabel("my.workspace");
+        expect(result4.isValid).toBe(false);
+      });
+
+      it("should reject labels starting with hyphen", () => {
+        const result = validateDomainLabel("-workspace");
+        expect(result.isValid).toBe(false);
+        expect(result.error).toContain("must start and end with letters or numbers");
+      });
+
+      it("should reject labels ending with hyphen", () => {
+        const result = validateDomainLabel("workspace-");
+        expect(result.isValid).toBe(false);
+        expect(result.error).toContain("must start and end with letters or numbers");
+      });
+
+      it("should reject labels with uppercase letters", () => {
+        const result1 = validateDomainLabel("MyWorkspace");
+        expect(result1.isValid).toBe(false);
+        expect(result1.error).toContain("must start and end with letters or numbers");
+
+        const result2 = validateDomainLabel("TEST");
+        expect(result2.isValid).toBe(false);
+      });
+    });
+
+    describe("invalid domain labels - length", () => {
+      it("should reject labels that are too short", () => {
+        const result = validateDomainLabel("a");
+        expect(result.isValid).toBe(false);
+        expect(result.error).toContain("must be between 2 and 50 characters");
+      });
+
+      it("should reject labels that are too long", () => {
+        const longLabel = "a".repeat(51);
+        const result = validateDomainLabel(longLabel);
+        expect(result.isValid).toBe(false);
+        expect(result.error).toContain("must be between 2 and 50 characters");
+      });
+
+      it("should reject empty strings", () => {
+        const result = validateDomainLabel("");
+        expect(result.isValid).toBe(false);
+        expect(result.error).toContain("must start and end with letters or numbers");
+      });
+    });
+
+    describe("invalid domain labels - reserved words", () => {
+      it("should reject common reserved words", () => {
+        const reservedWords = ["api", "admin", "dashboard", "settings", "auth", "login", "signup"];
+
+        reservedWords.forEach((word) => {
+          const result = validateDomainLabel(word);
+          expect(result.isValid).toBe(false);
+          expect(result.error).toContain("reserved");
+        });
+      });
+    });
+
+    describe("edge cases", () => {
+      it("should handle null and undefined", () => {
+        const result1 = validateDomainLabel(null as any);
+        expect(result1.isValid).toBe(false);
+
+        const result2 = validateDomainLabel(undefined as any);
+        expect(result2.isValid).toBe(false);
+      });
+
+      it("should reject whitespace-only strings", () => {
+        const result = validateDomainLabel("   ");
+        expect(result.isValid).toBe(false);
+      });
+
+      it("should handle consecutive hyphens", () => {
+        // RFC 1035 regex should allow consecutive hyphens
+        const result = validateDomainLabel("my--workspace");
+        expect(result.isValid).toBe(true);
+      });
     });
   });
 });

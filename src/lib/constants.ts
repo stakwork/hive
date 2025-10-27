@@ -97,9 +97,9 @@ export const RESERVED_WORKSPACE_SLUGS = [
   "sw",
 ] as const;
 
-// Workspace slug validation patterns
+// Workspace slug validation patterns (RFC 1035 compliant domain labels)
 export const WORKSPACE_SLUG_PATTERNS = {
-  VALID: /^[a-z0-9]([a-z0-9]|-[a-z0-9])*$/,
+  VALID: /^(?!-)[a-z0-9-]{2,50}(?<!-)$/,
   MIN_LENGTH: 2,
   MAX_LENGTH: 50,
 } as const;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { validateDomainLabel } from "@/lib/utils";
 
 interface WorkspaceFormData {
   name: string;
@@ -49,11 +50,11 @@ export function useWorkspaceForm() {
 
     if (!formData.slug.trim()) {
       newErrors.slug = "Slug is required";
-    } else if (formData.slug.length < 3) {
-      newErrors.slug = "Slug must be at least 3 characters";
-    } else if (!/^[a-z0-9-]+$/.test(formData.slug)) {
-      newErrors.slug =
-        "Slug can only contain lowercase letters, numbers, and hyphens";
+    } else {
+      const validation = validateDomainLabel(formData.slug);
+      if (!validation.isValid) {
+        newErrors.slug = validation.error || "Invalid workspace name";
+      }
     }
 
     setErrors(newErrors);

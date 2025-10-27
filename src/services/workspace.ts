@@ -1,13 +1,12 @@
 import { getServiceConfig } from "@/config/services";
 import {
-  RESERVED_WORKSPACE_SLUGS,
   WORKSPACE_ERRORS,
   WORKSPACE_LIMITS,
   WORKSPACE_PERMISSION_LEVELS,
-  WORKSPACE_SLUG_PATTERNS,
 } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { validateDomainLabel } from "@/lib/utils";
 import {
   createWorkspaceMember,
   findActiveMember,
@@ -797,39 +796,13 @@ export async function recoverWorkspace(
 
 /**
  * Validates a workspace slug against reserved words and format requirements
+ * Uses shared validation utility for consistency between client and server
  */
 export function validateWorkspaceSlug(slug: string): {
   isValid: boolean;
   error?: string;
 } {
-  // Handle null/undefined inputs
-  if (slug == null) {
-    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
-  }
-
-  // Check length
-  if (
-    slug.length < WORKSPACE_SLUG_PATTERNS.MIN_LENGTH ||
-    slug.length > WORKSPACE_SLUG_PATTERNS.MAX_LENGTH
-  ) {
-    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH };
-  }
-
-  // Check format (lowercase alphanumeric with hyphens, start/end with alphanumeric, no consecutive hyphens)
-  if (!WORKSPACE_SLUG_PATTERNS.VALID.test(slug)) {
-    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
-  }
-
-  // Check against reserved slugs
-  if (
-    RESERVED_WORKSPACE_SLUGS.includes(
-      slug as (typeof RESERVED_WORKSPACE_SLUGS)[number],
-    )
-  ) {
-    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_RESERVED };
-  }
-
-  return { isValid: true };
+  return validateDomainLabel(slug);
 }
 
 // =============================================

@@ -1,8 +1,52 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import {
+  RESERVED_WORKSPACE_SLUGS,
+  WORKSPACE_ERRORS,
+  WORKSPACE_SLUG_PATTERNS,
+} from "./constants";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/**
+ * Validates a domain label (workspace slug) against RFC 1035 standards
+ * Used by both client and server for consistent validation
+ */
+export function validateDomainLabel(label: string): {
+  isValid: boolean;
+  error?: string;
+} {
+  // Handle null/undefined inputs
+  if (label == null || label === "") {
+    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
+  }
+
+  // Check length
+  if (
+    label.length < WORKSPACE_SLUG_PATTERNS.MIN_LENGTH ||
+    label.length > WORKSPACE_SLUG_PATTERNS.MAX_LENGTH
+  ) {
+    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH };
+  }
+
+  // Check format - RFC 1035 compliant domain label
+  // Must start and end with alphanumeric, hyphens allowed in middle
+  if (!WORKSPACE_SLUG_PATTERNS.VALID.test(label)) {
+    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
+  }
+
+  // Check against reserved slugs
+  if (
+    RESERVED_WORKSPACE_SLUGS.includes(
+      label as (typeof RESERVED_WORKSPACE_SLUGS)[number],
+    )
+  ) {
+    return { isValid: false, error: WORKSPACE_ERRORS.SLUG_RESERVED };
+  }
+
+  return { isValid: true };
 }
 
 export function formatRelativeTime(date: string | Date): string {
