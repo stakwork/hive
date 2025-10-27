@@ -169,11 +169,16 @@ export function WorkspaceProvider({
     if (status === "authenticated") {
       refreshWorkspaces();
     } else if (status === "unauthenticated") {
-      // Reset state when user logs out
-      setWorkspace(null);
-      setWorkspaces([]);
-      setError(null);
-      setCurrentLoadedSlug(""); // Reset loaded slug tracking
+      // Only reset state if we're actually online - prevents clearing state during network issues
+      if (navigator.onLine) {
+        // Reset state when user logs out
+        setWorkspace(null);
+        setWorkspaces([]);
+        setError(null);
+        setCurrentLoadedSlug(""); // Reset loaded slug tracking
+      } else {
+        console.log("User appears unauthenticated but offline - preserving workspace state");
+      }
     }
   }, [status, refreshWorkspaces]);
 
