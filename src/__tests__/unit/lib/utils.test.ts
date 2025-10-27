@@ -262,7 +262,7 @@ describe("utils", () => {
       it("should accept valid alphanumeric labels", () => {
         expect(validateDomainLabel("ab")).toEqual({ isValid: true });
         expect(validateDomainLabel("abc")).toEqual({ isValid: true });
-        expect(validateDomainLabel("test")).toEqual({ isValid: true });
+        expect(validateDomainLabel("example")).toEqual({ isValid: true });
         expect(validateDomainLabel("myworkspace")).toEqual({ isValid: true });
         expect(validateDomainLabel("workspace123")).toEqual({ isValid: true });
         expect(validateDomainLabel("123workspace")).toEqual({ isValid: true });
@@ -270,7 +270,7 @@ describe("utils", () => {
 
       it("should accept labels with hyphens in middle", () => {
         expect(validateDomainLabel("my-workspace")).toEqual({ isValid: true });
-        expect(validateDomainLabel("test-123")).toEqual({ isValid: true });
+        expect(validateDomainLabel("example-123")).toEqual({ isValid: true });
         expect(validateDomainLabel("a-b-c")).toEqual({ isValid: true });
         expect(validateDomainLabel("my-awesome-project")).toEqual({ isValid: true });
       });
@@ -342,7 +342,7 @@ describe("utils", () => {
       it("should reject empty strings", () => {
         const result = validateDomainLabel("");
         expect(result.isValid).toBe(false);
-        expect(result.error).toContain("Must start and end with a letter or number");
+        expect(result.error).toContain("must be between 2 and 50 characters");
       });
     });
 
@@ -372,10 +372,11 @@ describe("utils", () => {
         expect(result.isValid).toBe(false);
       });
 
-      it("should handle consecutive hyphens", () => {
-        // RFC 1035 regex should allow consecutive hyphens
+      it("should reject consecutive hyphens", () => {
+        // Consecutive hyphens should be rejected for better readability
         const result = validateDomainLabel("my--workspace");
-        expect(result.isValid).toBe(true);
+        expect(result.isValid).toBe(false);
+        expect(result.error).toContain("Must start and end with a letter or number");
       });
     });
   });

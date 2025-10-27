@@ -19,11 +19,11 @@ export function validateDomainLabel(label: string): {
   error?: string;
 } {
   // Handle null/undefined inputs
-  if (label == null || label === "") {
+  if (label == null) {
     return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT };
   }
 
-  // Check length
+  // Check length first (including empty string)
   if (
     label.length < WORKSPACE_SLUG_PATTERNS.MIN_LENGTH ||
     label.length > WORKSPACE_SLUG_PATTERNS.MAX_LENGTH
