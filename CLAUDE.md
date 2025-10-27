@@ -131,11 +131,18 @@ The database follows a hierarchical structure:
 - **Source Control**: `SourceControlOrg` (GitHub orgs/users), `SourceControlToken` (encrypted installation tokens)
 - **Workspaces**: Multi-tenant workspace system with role-based access (`Workspace`, `WorkspaceMember`)
 - **Infrastructure**: `Swarm` (deployment infrastructure), `Repository` (linked Git repos)
-- **Task Management**: `Task` model with AI chat integration (`ChatMessage`), status tracking, and file attachments (`Attachment`, `Artifact`)
-  - `sourceType: USER_JOURNEY` - E2E tests tracked as tasks for filtering and viewing
-  - `testFilePath` - Path to test file (for USER_JOURNEY tasks)
-  - `testFileUrl` - GitHub URL to test file (for USER_JOURNEY tasks)
-  - User journey tasks are metadata records; actual test code is stored in the graph
+- **Task Management**: `Task` model with AI chat integration (`ChatMessage`), dual-status tracking, and file attachments (`Attachment`, `Artifact`)
+  - **Dual Status Fields**:
+    - `status` (TaskStatus) - User/PM work tracking: TODO, IN_PROGRESS, DONE, CANCELLED, BLOCKED
+    - `workflowStatus` (WorkflowStatus) - System automation state: PENDING, IN_PROGRESS, COMPLETED, ERROR, HALTED, FAILED
+    - Example: `status: DONE` + `workflowStatus: FAILED` = merged code but test failing
+  - **User Journey Tasks**:
+    - `sourceType: USER_JOURNEY` - E2E tests tracked as tasks for filtering and viewing
+    - `testFilePath` - Path to test file (e.g., `src/__tests__/e2e/specs/login.spec.ts`)
+    - `testFileUrl` - GitHub URL to test file
+    - Metadata records; actual test code stored in the graph
+    - Status lifecycle: Recording (IN_PROGRESS) → Review (TODO) → Deployed (DONE)
+    - WorkflowStatus tracks test execution pass/fail
 - **Janitor System**: `JanitorRun`, `JanitorRecommendation`, `JanitorConfig` for automated code quality analysis
 - **Learning**: `Learning` model for capturing insights from codebase analysis
 - Encrypted fields use JSON format: `{ data: string, iv: string, tag: string, keyId?: string, version: string, encryptedAt: string }`
@@ -182,6 +189,33 @@ npx shadcn@latest add [component-name]
 - Use `useWorkspaceAccess()` for permission checks
 - Workspace context is provided by `WorkspaceProvider`
 - Each workspace can be linked to a GitHub org/user via `SourceControlOrg`
+
+### Task Status Architecture
+Tasks use two distinct status fields that serve different purposes:
+
+**status (TaskStatus)** - User/PM-controlled work lifecycle:
+- Tracks task completion from a product management perspective
+- Values: `TODO`, `IN_PROGRESS`, `DONE`, `CANCELLED`, `BLOCKED`
+- Updated manually by users or PMs to reflect work state
+- For user journeys: Recording → Pending Review → Merged/Deployed
+
+**workflowStatus (WorkflowStatus)** - System-managed automation state:
+- Tracks automated workflow execution health (Stakwork, Playwright, agents)
+- Values: `PENDING`, `IN_PROGRESS`, `COMPLETED`, `ERROR`, `HALTED`, `FAILED`
+- Updated automatically by system when workflows run
+- For user journeys: Test execution results (pass/fail)
+- Displayed via `WorkflowStatusBadge` component with icons and colors
+
+**How They Work Together:**
+- A task can be "done" from a PM perspective but have a failing test
+- Example: `status: DONE` + `workflowStatus: FAILED` = code merged but CI failing
+- Example: `status: IN_PROGRESS` + `workflowStatus: PENDING` = actively coding, test queued
+- Example: `status: DONE` + `workflowStatus: COMPLETED` = shipped and passing
+
+**Real-time Updates:**
+- Status changes broadcast via Pusher to workspace channels
+- Components using `useWorkspaceTasks` hook receive live updates
+- Event: `WORKSPACE_TASK_TITLE_UPDATE` (reused for all task updates)
 
 ### GitHub App Integration
 - GitHub App provides repository-level access beyond OAuth scope

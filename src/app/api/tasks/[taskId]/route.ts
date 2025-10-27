@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
+import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export async function PATCH(
   request: NextRequest,
@@ -131,6 +132,38 @@ export async function PATCH(
           updatedAt: true,
         },
       });
+
+      // Broadcast status update to real-time subscribers
+      try {
+        const statusUpdatePayload = {
+          taskId: updatedTask.id,
+          status: updatedTask.status,
+          workflowStatus: updatedTask.workflowStatus,
+          timestamp: new Date(),
+        };
+
+        // Broadcast to workspace channel (for task lists like UserJourneys)
+        if (task.workspace?.id) {
+          const workspace = await db.workspace.findUnique({
+            where: { id: task.workspace.id },
+            select: { slug: true },
+          });
+
+          if (workspace?.slug) {
+            const workspaceChannelName = getWorkspaceChannelName(workspace.slug);
+            await pusherServer.trigger(
+              workspaceChannelName,
+              PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, // Reuse existing event for task updates
+              statusUpdatePayload,
+            );
+          }
+        }
+
+        console.log(`Task status updated and broadcasted: ${taskId}`);
+      } catch (error) {
+        console.error("Error broadcasting status update to Pusher:", error);
+        // Don't fail the request if Pusher fails
+      }
 
       return NextResponse.json(
         {
