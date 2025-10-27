@@ -43,14 +43,9 @@ async function callStakwork(
       repo2graph_url: repo2GraphUrl,
     };
 
-    const workflowId = config.STAKWORK_USER_JOURNEY_WORKFLOW_ID || "";
-    if (!workflowId) {
-      throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
-    }
-
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
-      workflow_id: parseInt(workflowId),
+      workflow_id: parseInt(config.STAKWORK_USER_JOURNEY_WORKFLOW_ID),
       workflow_params: {
         set_var: {
           attributes: {

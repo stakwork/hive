@@ -184,19 +184,8 @@ export default function UserJourneys() {
 
   const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
     try {
-      // Extract title from filename (remove .spec.ts and format)
-      let title = "User Journey Test";
-      try {
-        title = filename
-          .replace(/\.spec\.ts$/, "")
-          .replace(/\.spec$/, "")
-          .split(/[-_]/)
-          .filter(word => word.length > 0)
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(" ");
-      } catch (e) {
-        console.warn("Failed to extract title from filename, using default:", e);
-      }
+      // Use filename directly as title for predictability and consistency
+      const title = filename || "User Journey Test";
 
       const payload = {
         message: generatedCode,

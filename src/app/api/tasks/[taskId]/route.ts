@@ -29,6 +29,7 @@ export async function PATCH(
         workspace: {
           select: {
             id: true,
+            slug: true,
             ownerId: true,
             members: {
               where: {
@@ -143,20 +144,13 @@ export async function PATCH(
         };
 
         // Broadcast to workspace channel (for task lists like UserJourneys)
-        if (task.workspace?.id) {
-          const workspace = await db.workspace.findUnique({
-            where: { id: task.workspace.id },
-            select: { slug: true },
-          });
-
-          if (workspace?.slug) {
-            const workspaceChannelName = getWorkspaceChannelName(workspace.slug);
-            await pusherServer.trigger(
-              workspaceChannelName,
-              PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, // Reuse existing event for task updates
-              statusUpdatePayload,
-            );
-          }
+        if (task.workspace?.slug) {
+          const workspaceChannelName = getWorkspaceChannelName(task.workspace.slug);
+          await pusherServer.trigger(
+            workspaceChannelName,
+            PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, // Reuse existing event for task updates
+            statusUpdatePayload,
+          );
         }
 
         console.log(`Task status updated and broadcasted: ${taskId}`);
