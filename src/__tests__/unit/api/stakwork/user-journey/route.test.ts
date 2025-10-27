@@ -292,6 +292,7 @@ describe("POST /api/stakwork/user-journey", () => {
         success: true,
         message: "called stakwork",
         workflow: mockStakworkResponseData.data,
+        task: null,
       });
     });
 
@@ -471,6 +472,7 @@ describe("POST /api/stakwork/user-journey", () => {
         success: true,
         message: "called stakwork",
         workflow: null,
+        task: null,
       });
     });
   });
@@ -518,6 +520,294 @@ describe("POST /api/stakwork/user-journey", () => {
       });
 
       expect(result.status).toBe(201);
+    });
+  });
+
+  describe("Task Creation", () => {
+    let mockDbTaskCreate: ReturnType<typeof vi.fn>;
+    let mockDbRepositoryFindFirst: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockDbTaskCreate = vi.fn();
+      mockDbRepositoryFindFirst = vi.fn();
+
+      vi.mocked(db).task = {
+        create: mockDbTaskCreate,
+      } as any;
+
+      vi.mocked(db).repository = {
+        findFirst: mockDbRepositoryFindFirst,
+      } as any;
+    });
+
+    it("should create task with correct fields when Stakwork succeeds", async () => {
+      const mockWorkspace = createMockWorkspace();
+      const mockSwarm = createMockSwarm();
+      const mockGithubProfile = createMockGithubProfile();
+      const mockRepository = {
+        id: "repo-123",
+        repositoryUrl: "https://github.com/testuser/test-repo",
+      };
+      const mockStakworkResponseData = {
+        success: true,
+        data: { project_id: 456, workflow_id: 789, status: "pending" },
+      };
+      const mockTask = {
+        id: "task-123",
+        title: "My Test",
+        status: "IN_PROGRESS",
+        workflowStatus: "PENDING",
+        testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
+        stakworkProjectId: 456,
+      };
+
+      mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
+      mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      mockDbRepositoryFindFirst.mockResolvedValue(mockRepository);
+      mockDbTaskCreate.mockResolvedValue(mockTask);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockStakworkResponseData),
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({
+          title: "My Test",
+          testName: "my-test.spec.ts",
+        }),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.task).toEqual(mockTask);
+
+      // Verify task was created with correct data
+      expect(mockDbTaskCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "My Test",
+          workspaceId: "workspace-123",
+          sourceType: expect.any(String), // Will be TaskSourceType.USER_JOURNEY enum
+          status: "IN_PROGRESS",
+          workflowStatus: "PENDING",
+          priority: "MEDIUM",
+          testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
+          testFileUrl: "https://github.com/testuser/test-repo/blob/main/src/__tests__/e2e/specs/my-test.spec.ts",
+          stakworkProjectId: 456,
+          repositoryId: "repo-123",
+          createdById: "user-123",
+          updatedById: "user-123",
+        }),
+        select: expect.any(Object),
+      });
+    });
+
+    it("should create task even when Stakwork fails (resilient design)", async () => {
+      const mockWorkspace = createMockWorkspace();
+      const mockSwarm = createMockSwarm();
+      const mockGithubProfile = createMockGithubProfile();
+      const mockRepository = {
+        id: "repo-123",
+        repositoryUrl: "https://github.com/testuser/test-repo",
+      };
+      const mockTask = {
+        id: "task-124",
+        title: "My Test",
+        status: "IN_PROGRESS",
+        workflowStatus: null, // No workflow status when Stakwork fails
+        testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
+        stakworkProjectId: null, // No project ID when Stakwork fails
+      };
+
+      mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
+      mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      mockDbRepositoryFindFirst.mockResolvedValue(mockRepository);
+      mockDbTaskCreate.mockResolvedValue(mockTask);
+
+      // Mock Stakwork failure
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({
+          title: "My Test",
+          testName: "my-test.spec.ts",
+        }),
+      });
+
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.task).toEqual(mockTask);
+      expect(json.workflow).toBeNull();
+
+      // Verify task was created with null stakworkProjectId and workflowStatus
+      expect(mockDbTaskCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          workflowStatus: null,
+          stakworkProjectId: null,
+        }),
+        select: expect.any(Object),
+      });
+    });
+
+    it("should use default title when title is not provided", async () => {
+      const mockWorkspace = createMockWorkspace();
+      const mockSwarm = createMockSwarm();
+      const mockGithubProfile = createMockGithubProfile();
+      const mockRepository = { id: "repo-123", repositoryUrl: "https://github.com/testuser/test-repo" };
+      const mockTask = { id: "task-125", title: "User Journey Test" };
+
+      mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
+      mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      mockDbRepositoryFindFirst.mockResolvedValue(mockRepository);
+      mockDbTaskCreate.mockResolvedValue(mockTask);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { project_id: 456 } }),
+      } as Response);
+
+      await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody(),
+      });
+
+      expect(mockDbTaskCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "User Journey Test",
+        }),
+        select: expect.any(Object),
+      });
+    });
+
+    it("should handle task creation failure gracefully", async () => {
+      const mockWorkspace = createMockWorkspace();
+      const mockSwarm = createMockSwarm();
+      const mockGithubProfile = createMockGithubProfile();
+      const mockRepository = { id: "repo-123", repositoryUrl: "https://github.com/testuser/test-repo" };
+
+      mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
+      mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      mockDbRepositoryFindFirst.mockResolvedValue(mockRepository);
+
+      // Mock task creation failure
+      mockDbTaskCreate.mockRejectedValue(new Error("Database error"));
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { project_id: 456 } }),
+      } as Response);
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({
+          title: "Test",
+          testName: "test.spec.ts",
+        }),
+      });
+
+      // Should still return success with Stakwork data, but task will be null
+      expect(result.status).toBe(201);
+      const json = await result.json();
+      expect(json.success).toBe(true);
+      expect(json.workflow).toEqual({ project_id: 456 });
+      expect(json.task).toBeNull();
+    });
+
+    it("should construct testFileUrl correctly when repository exists", async () => {
+      const mockWorkspace = createMockWorkspace();
+      const mockSwarm = createMockSwarm();
+      const mockGithubProfile = createMockGithubProfile();
+      const mockRepository = {
+        id: "repo-123",
+        repositoryUrl: "https://github.com/testorg/test-repo",
+      };
+      const mockTask = { id: "task-126" };
+
+      mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
+      mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      mockDbRepositoryFindFirst.mockResolvedValue(mockRepository);
+      mockDbTaskCreate.mockResolvedValue(mockTask);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { project_id: 456 } }),
+      } as Response);
+
+      await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({
+          testName: "login-flow.spec.ts",
+        }),
+      });
+
+      expect(mockDbTaskCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          testFilePath: "src/__tests__/e2e/specs/login-flow.spec.ts",
+          testFileUrl: "https://github.com/testorg/test-repo/blob/main/src/__tests__/e2e/specs/login-flow.spec.ts",
+        }),
+        select: expect.any(Object),
+      });
+    });
+
+    it("should set testFileUrl to null when no repository exists", async () => {
+      const mockWorkspace = createMockWorkspace();
+      const mockSwarm = createMockSwarm();
+      const mockGithubProfile = createMockGithubProfile();
+      const mockTask = { id: "task-127" };
+
+      mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
+      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
+      mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
+      mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
+      mockDbRepositoryFindFirst.mockResolvedValue(null); // No repository
+      mockDbTaskCreate.mockResolvedValue(mockTask);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { project_id: 456 } }),
+      } as Response);
+
+      await invokeRoute(POST, {
+        method: "POST",
+        session: createMockSession(),
+        body: createMockRequestBody({
+          testName: "test.spec.ts",
+        }),
+      });
+
+      expect(mockDbTaskCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          testFileUrl: null,
+          repositoryId: null,
+        }),
+        select: expect.any(Object),
+      });
     });
   });
 });
