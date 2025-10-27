@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -9,7 +10,6 @@ import { formatRelativeTime } from "@/lib/utils";
 import { Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
-import { useState, useEffect, useCallback } from "react";
 import { PoolStatusResponse } from "@/types";
 
 export function VMConfigSection() {
@@ -148,16 +148,17 @@ export function VMConfigSection() {
           ) : null
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 text-orange-700">
-                <Clock className="w-6 h-6" />
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
+            {!servicesReady ? (
+              <div className="flex items-center gap-3">
+                <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 text-orange-700">
+                  <Clock className="w-6 h-6" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">In progress</span>
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">In progress</span>
-              </div>
-            </div>
-            {servicesReady && (
+            ) : (
               <Button asChild>
                 <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
                   <Zap className="w-4 h-4 mr-2" />
