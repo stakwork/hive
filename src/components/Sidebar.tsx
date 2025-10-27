@@ -201,7 +201,7 @@ export function Sidebar({ user }: SidebarProps) {
               <Menu className="h-4 w-4" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-80 p-0">
+          <SheetContent side="left" className="w-64 p-0">
             <SidebarContent
               navigationItems={navigationItems}
               pathname={pathname}
@@ -214,7 +214,7 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-80 md:flex-col md:fixed md:inset-y-0 md:z-0`}
+        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-64 md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
           <SidebarContent
