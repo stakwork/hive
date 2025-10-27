@@ -316,6 +316,13 @@ User journey E2E tests are automatically tracked as tasks to enable filtering, v
 
 **Migration for existing tests:**
 - Use `npm run migrate:e2e-tasks -- --workspace=<slug>` to backfill existing E2E tests from graph as task records
+- Use `npm run migrate:e2e-tasks -- --all` to migrate all workspaces
 - Migration script queries the swarm graph for E2etest nodes and creates corresponding tasks
 - Duplicate detection prevents re-migration (checks by testFilePath)
 - Migrated tests are marked as DONE with workflowStatus: COMPLETED
+- Configure graph service port via `GRAPH_SERVICE_PORT` environment variable (default: 3355)
+
+**Rolling back migration:**
+- To remove migrated tasks: `DELETE FROM tasks WHERE source_type = 'USER_JOURNEY' AND workflow_status = 'COMPLETED'`
+- Migration is idempotent - can be safely re-run after rollback
+- Warning: This will permanently delete task records (test code in graph is preserved)

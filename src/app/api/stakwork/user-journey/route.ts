@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { db } from "@/lib/db";
+import { TaskSourceType } from "@prisma/client";
 import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
           title: taskTitle,
           description: description || `User journey test: ${taskTitle}`,
           workspaceId: workspace.id,
-          sourceType: "USER_JOURNEY",
+          sourceType: TaskSourceType.USER_JOURNEY,
           status: "IN_PROGRESS",
           workflowStatus: workflowStatus,
           priority: "MEDIUM",

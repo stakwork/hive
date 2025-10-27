@@ -14,7 +14,7 @@
  *   npm run migrate:e2e-tasks -- --all  (all workspaces)
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, TaskSourceType } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 import { EncryptionService } from "../src/lib/encryption";
 
@@ -73,8 +73,10 @@ async function fetchE2eTestsFromGraph(
 ): Promise<E2eTestNode[]> {
   try {
     // Extract hostname from swarm URL and construct graph endpoint
+    // Port can be configured via GRAPH_SERVICE_PORT environment variable
+    const graphPort = process.env.GRAPH_SERVICE_PORT || '3355';
     const swarmUrlObj = new URL(swarmUrl);
-    const graphUrl = `https://${swarmUrlObj.hostname}:3355`;
+    const graphUrl = `https://${swarmUrlObj.hostname}:${graphPort}`;
 
     // Query graph microservice directly
     const apiResult = await graphApiRequest(graphUrl, swarmApiKey, {
@@ -182,25 +184,32 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats): P
       const title = testName || testFilePath.split('/').pop()?.replace('.spec.ts', '') || 'E2E Test';
 
       // Construct GitHub URL from file path
-      // Expected format: "owner/repo/path/to/file.spec.ts"
-      // This matches the format stored in the graph's E2etest nodes
+      // The graph may store paths in different formats:
+      // 1. Relative path: "src/__tests__/e2e/specs/test.spec.ts"
+      // 2. Full GitHub path: "owner/repo/src/__tests__/e2e/specs/test.spec.ts"
+      //
+      // We normalize to relative paths and use the workspace's repository URL
       let testFileUrl: string | null = null;
+      let normalizedPath = testFilePath;
+
       if (repository?.repositoryUrl) {
+        // Try to extract owner/repo from the path if present (format: owner/repo/path)
         const fileParts = testFilePath.split('/');
-
-        // Validate format: need at least owner/repo/filename (3 parts minimum)
         if (fileParts.length >= 3) {
-          const owner = fileParts[0];
-          const repo = fileParts[1];
-          const path = fileParts.slice(2).join('/');
+          // Check if this looks like a GitHub path (owner/repo/...)
+          // by seeing if the repository URL contains the first two parts
+          const potentialOwner = fileParts[0];
+          const potentialRepo = fileParts[1];
+          const repoUrlLower = repository.repositoryUrl.toLowerCase();
 
-          // Basic validation: owner and repo should be non-empty
-          if (owner && repo && path) {
-            testFileUrl = `https://github.com/${owner}/${repo}/blob/HEAD/${path}`;
-          } else {
-            console.warn(`   ⚠️  Malformed file path, skipping URL: ${testFilePath}`);
+          if (repoUrlLower.includes(`/${potentialOwner}/${potentialRepo}`.toLowerCase())) {
+            // This is a full GitHub path, extract the relative path
+            normalizedPath = fileParts.slice(2).join('/');
           }
         }
+
+        // Construct URL using repository URL + relative path
+        testFileUrl = `${repository.repositoryUrl}/blob/main/${normalizedPath}`;
       }
 
       // Create task
@@ -209,7 +218,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats): P
           title,
           description: `E2E test: ${testName}`,
           workspaceId: workspace.id,
-          sourceType: "USER_JOURNEY",
+          sourceType: TaskSourceType.USER_JOURNEY,
           status: "DONE",
           workflowStatus: "COMPLETED",
           priority: "MEDIUM",
