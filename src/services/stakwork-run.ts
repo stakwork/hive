@@ -22,6 +22,10 @@ import {
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
+import { buildFeatureContext } from "@/lib/ai/utils";
+import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
+
+const encryptionService = FieldEncryptionService.getInstance();
 
 /**
  * Create a new Stakwork AI generation run
@@ -31,16 +35,32 @@ export async function createStakworkRun(
   input: CreateStakworkRunInput,
   userId: string
 ) {
-  // Validate workspace access
+  // Validate workspace access and fetch related data
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
     include: {
       swarm: {
         select: {
           swarmUrl: true,
+          swarmApiKey: true,
           swarmSecretAlias: true,
           poolName: true,
           id: true,
+        },
+      },
+      sourceControlOrg: {
+        include: {
+          tokens: {
+            where: { userId },
+            take: 1,
+          },
+        },
+      },
+      repositories: {
+        take: 1,
+        orderBy: { createdAt: "desc" },
+        select: {
+          repositoryUrl: true,
         },
       },
     },
@@ -50,13 +70,39 @@ export async function createStakworkRun(
     throw new Error("Workspace not found");
   }
 
-  // Fetch feature data if featureId provided and type is ARCHITECTURE
-  let featureData: {
-    title: string;
-    brief: string | null;
-    requirements: string | null;
-    userStories: { title: string }[];
-  } | null = null;
+  // Decrypt sensitive data
+  const decryptedPAT =
+    workspace.sourceControlOrg?.tokens[0]?.token
+      ? encryptionService.decryptField(
+          "token",
+          workspace.sourceControlOrg.tokens[0].token
+        )
+      : null;
+
+  const decryptedSwarmApiKey =
+    workspace.swarm?.swarmApiKey
+      ? encryptionService.decryptField(
+          "swarmApiKey",
+          workspace.swarm.swarmApiKey
+        )
+      : null;
+
+  // Get user info for username
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    include: {
+      githubAuth: {
+        select: {
+          githubUsername: true,
+        },
+      },
+    },
+  });
+
+  const githubUsername = user?.githubAuth?.githubUsername || null;
+
+  // Fetch feature data if featureId provided
+  let featureContext: ReturnType<typeof buildFeatureContext> | null = null;
 
   if (input.featureId) {
     const feature = await db.feature.findFirst({
@@ -70,6 +116,9 @@ export async function createStakworkRun(
           orderBy: { order: "asc" },
           select: { title: true },
         },
+        workspace: {
+          select: { description: true },
+        },
       },
     });
 
@@ -77,14 +126,9 @@ export async function createStakworkRun(
       throw new Error("Feature not found");
     }
 
-    // Store feature data for ARCHITECTURE type
+    // Build feature context for ARCHITECTURE type
     if (input.type === StakworkRunType.ARCHITECTURE) {
-      featureData = {
-        title: feature.title,
-        brief: feature.brief,
-        requirements: feature.requirements,
-        userStories: feature.userStories,
-      };
+      featureContext = buildFeatureContext(feature as Parameters<typeof buildFeatureContext>[0]);
     }
   }
 
@@ -116,16 +160,27 @@ export async function createStakworkRun(
       workspaceId: input.workspaceId,
       featureId: input.featureId,
       webhookUrl,
+
+      // Repository & credentials
+      repo_url: workspace.repositories[0]?.repositoryUrl || null,
+      username: githubUsername,
+      pat: decryptedPAT,
+
+      // Swarm data
       swarmUrl: workspace.swarm?.swarmUrl || null,
+      swarmApiKey: decryptedSwarmApiKey,
       swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
       poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
 
-      // Include feature data for ARCHITECTURE type
-      ...(featureData && {
-        featureTitle: featureData.title,
-        featureBrief: featureData.brief,
-        featureRequirements: featureData.requirements,
-        featureUserStories: featureData.userStories.map((s) => s.title),
+      // Include formatted feature context for ARCHITECTURE type
+      ...(featureContext && {
+        featureTitle: featureContext.title,
+        featureBrief: featureContext.brief,
+        workspaceDesc: featureContext.workspaceDesc,
+        personas: featureContext.personasText,
+        userStories: featureContext.userStoriesText,
+        requirements: featureContext.requirementsText,
+        architecture: featureContext.architectureText,
       }),
 
       // Allow params override
