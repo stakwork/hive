@@ -11,19 +11,6 @@ interface ArtifactRequest {
   content?: Record<string, unknown>;
 }
 
-// Generate a session ID using timestamp format (yyyymmdd_hhmmss) like CLI
-function generateSessionId() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hour = String(now.getHours()).padStart(2, "0");
-  const minute = String(now.getMinutes()).padStart(2, "0");
-  const second = String(now.getSeconds()).padStart(2, "0");
-
-  return `${year}${month}${day}_${hour}${minute}${second}`;
-}
-
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { message, gooseUrl, taskId, artifacts = [] } = body;
@@ -62,14 +49,10 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Check if first message has a sourceWebsocketID
+      // Check if first message has a sourceWebsocketID to reuse
       if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
         sessionId = chatHistory[0].sourceWebsocketID;
-        console.log("🔄 Reusing existing session ID:", sessionId);
-      } else {
-        // Generate new session ID for first message
-        sessionId = generateSessionId();
-        console.log("🆕 Generated new session ID:", sessionId);
+        console.log("🔄 Found existing session ID from database:", sessionId);
       }
 
       // Look for IDE artifact to get persisted gooseUrl
@@ -92,12 +75,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // If no taskId or failed to load, generate new session
-  if (!sessionId) {
-    sessionId = generateSessionId();
-    console.log("🆕 Generated new session ID (no task):", sessionId);
-  }
-
   // Save user message with artifacts and sourceWebsocketID to database if taskId is provided
   if (taskId) {
     try {
@@ -107,6 +84,7 @@ export async function POST(request: NextRequest) {
           message,
           role: ChatRole.USER,
           status: ChatStatus.SENT,
+          // Set sourceWebsocketID if we have one from previous messages (null for new conversations)
           sourceWebsocketID: sessionId,
           artifacts: {
             create: artifacts.map((artifact: ArtifactRequest) => ({
@@ -149,29 +127,71 @@ export async function POST(request: NextRequest) {
   }
 
   console.log("🤖 Final Goose WebSocket URL:", wsUrl);
-  console.log("🤖 Session ID:", sessionId);
-  const model = gooseWeb("goose", {
-    wsUrl,
-    sessionId,
-  });
 
-  // Build messages array from database history
-  const messages: ModelMessage[] = [{ role: "system", content: AGENT_SYSTEM_PROMPT }];
-
-  // Add chat history from database
-  if (chatHistory.length > 0) {
-    for (const msg of chatHistory) {
-      const role = msg.role.toLowerCase();
-      if (role === "user" || role === "assistant") {
-        messages.push({
-          role: role as "user" | "assistant",
-          content: msg.message,
-        });
-      }
-    }
+  const isResumingSession = chatHistory.length > 0 && !!sessionId;
+  if (isResumingSession) {
+    console.log("🔄 Resuming conversation with session ID:", sessionId);
+  } else {
+    console.log("🆕 Starting new conversation - provider will create session via REST API");
   }
 
-  // Add current user message
+  const opts: { [k: string]: unknown } = {
+    wsUrl,
+    // Only pass sessionId if we're reusing an existing session from chat history
+    ...(isResumingSession ? { sessionId } : {}),
+    // Callback to save session ID when it's created
+    sessionIdCallback: (createdSessionId: string) => {
+      console.log("🔍 Session created by provider:", createdSessionId);
+      if (taskId) {
+        db.chatMessage
+          .updateMany({
+            where: {
+              taskId,
+              sourceWebsocketID: null,
+            },
+            data: {
+              sourceWebsocketID: createdSessionId,
+            },
+          })
+          .then(() => {
+            console.log("✅ Saved session ID to database:", createdSessionId);
+          })
+          .catch((error) => {
+            console.error("Error saving session ID:", error);
+          });
+      }
+    },
+  };
+  if (process.env.CUSTOM_GOOSE_URL) {
+    opts.logger = {
+      debug: () => {},
+      // debug: (message: string, ...args: unknown[]) => {
+      //   console.log(`🔍 [Goose Debug] ${message}`, ...args);
+      // },
+      info: (message: string, ...args: unknown[]) => {
+        console.log(`ℹ️ [Goose Info] ${message}`, ...args);
+      },
+      warn: (message: string, ...args: unknown[]) => {
+        console.warn(`⚠️ [Goose Warn] ${message}`, ...args);
+      },
+      error: (message: string, ...args: unknown[]) => {
+        console.error(`❌ [Goose Error] ${message}`, ...args);
+      },
+    };
+  }
+  const model = gooseWeb("goose", opts);
+
+  // Build messages array
+  // If resuming a session, Goose already has the history - just send current message
+  // If new session, send system prompt + current message
+  const messages: ModelMessage[] = [];
+
+  if (!isResumingSession) {
+    // New session - include system prompt
+    messages.push({ role: "system", content: AGENT_SYSTEM_PROMPT });
+  }
+
+  // Always add the current user message
   messages.push({ role: "user", content: message });
 
   const result = streamText({
