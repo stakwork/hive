@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getMiddlewareContext } from "@/lib/middleware/utils";
+import { requireAuthWithApiToken } from "@/lib/middleware/auth-helpers";
 import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
 
@@ -8,13 +9,15 @@ export async function PATCH(
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { taskId } = await params;
     const body = await request.json();
     const { startWorkflow, mode } = body;
+
+    const context = getMiddlewareContext(request);
+    const authResult = await requireAuthWithApiToken(request, context, {
+      taskId,
+    });
+    if (authResult instanceof NextResponse) return authResult;
 
     // Verify task exists and user has access
     const task = await db.task.findFirst({
@@ -29,7 +32,7 @@ export async function PATCH(
             ownerId: true,
             members: {
               where: {
-                userId: userOrResponse.id,
+                userId: authResult.userId,
               },
               select: {
                 role: true,
@@ -48,7 +51,7 @@ export async function PATCH(
     }
 
     // Check if user is workspace owner or member
-    const isOwner = task.workspace.ownerId === userOrResponse.id;
+    const isOwner = task.workspace.ownerId === authResult.userId;
     const isMember = task.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
@@ -59,7 +62,7 @@ export async function PATCH(
     if (startWorkflow) {
       const workflowResult = await startTaskWorkflow({
         taskId,
-        userId: userOrResponse.id,
+        userId: authResult.userId,
         mode: mode || "live",
       });
 

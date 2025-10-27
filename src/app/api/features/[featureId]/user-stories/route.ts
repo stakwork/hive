@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthWithApiToken } from "@/lib/middleware/auth-helpers";
 import { db } from "@/lib/db";
 import { createUserStory } from "@/services/roadmap";
 import type {
@@ -122,14 +123,16 @@ export async function POST(
   { params }: { params: Promise<{ featureId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { featureId } = await params;
     const body: CreateUserStoryRequest = await request.json();
 
-    const userStory = await createUserStory(featureId, userOrResponse.id, body);
+    const context = getMiddlewareContext(request);
+    const authResult = await requireAuthWithApiToken(request, context, {
+      featureId,
+    });
+    if (authResult instanceof NextResponse) return authResult;
+
+    const userStory = await createUserStory(featureId, authResult.userId, body);
 
     return NextResponse.json<UserStoryResponse>(
       {

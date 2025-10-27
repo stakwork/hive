@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { requireAuthWithApiToken } from "@/lib/middleware/auth-helpers";
 import { listFeatures, createFeature } from "@/services/roadmap";
 import { FeatureStatus } from "@prisma/client";
 import type {
@@ -110,10 +111,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const body: CreateFeatureRequest = await request.json();
 
     if (!body.title || !body.workspaceId) {
@@ -123,7 +120,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const feature = await createFeature(userOrResponse.id, body);
+    const context = getMiddlewareContext(request);
+    const authResult = await requireAuthWithApiToken(request, context, {
+      workspaceId: body.workspaceId,
+    });
+    if (authResult instanceof NextResponse) return authResult;
+
+    const feature = await createFeature(authResult.userId, body);
 
     return NextResponse.json<FeatureResponse>(
       {

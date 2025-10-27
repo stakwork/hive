@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 // Middleware authentication status
-export type AuthStatus = "authenticated" | "public" | "webhook" | "error";
+export type AuthStatus = "authenticated" | "public" | "webhook" | "api_token" | "error";
 
 // User context from middleware
 export interface MiddlewareUser {

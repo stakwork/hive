@@ -113,6 +113,14 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, routeAccess);
     }
 
+    // Check for API_TOKEN authentication on protected routes
+    const apiToken = request.headers.get("x-api-token");
+    if (apiToken && apiToken === process.env.API_TOKEN) {
+      // Valid API_TOKEN - allow through without session check
+      return continueRequest(requestHeaders, "api_token");
+    }
+
+    // Check for NextAuth session
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     if (!token) {
       if (isApiRoute) {
