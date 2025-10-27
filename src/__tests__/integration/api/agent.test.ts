@@ -52,7 +52,7 @@ describe("POST /api/agent Integration Tests", () => {
   });
 
   describe("Validation", () => {
-    test("returns 400 when gooseUrl is missing and no persisted URL", async () => {
+    test("returns 400 when taskId is missing", async () => {
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
@@ -62,10 +62,9 @@ describe("POST /api/agent Integration Tests", () => {
 
       const response = await POST(request);
 
-      // Check for the actual error message
       const data = await response.json();
       expect(response.status).toBe(400);
-      expect(data.error).toContain("No Goose URL available");
+      expect(data.error).toBe("taskId is required");
     });
   });
 
