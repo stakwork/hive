@@ -291,7 +291,7 @@ describe("utils", () => {
       it("should reject labels with special characters", () => {
         const result1 = validateDomainLabel("test!");
         expect(result1.isValid).toBe(false);
-        expect(result1.error).toContain("must start and end with letters or numbers");
+        expect(result1.error).toContain("Must start and end with a letter or number");
 
         const result2 = validateDomainLabel("my@workspace");
         expect(result2.isValid).toBe(false);
@@ -306,19 +306,19 @@ describe("utils", () => {
       it("should reject labels starting with hyphen", () => {
         const result = validateDomainLabel("-workspace");
         expect(result.isValid).toBe(false);
-        expect(result.error).toContain("must start and end with letters or numbers");
+        expect(result.error).toContain("Must start and end with a letter or number");
       });
 
       it("should reject labels ending with hyphen", () => {
         const result = validateDomainLabel("workspace-");
         expect(result.isValid).toBe(false);
-        expect(result.error).toContain("must start and end with letters or numbers");
+        expect(result.error).toContain("Must start and end with a letter or number");
       });
 
       it("should reject labels with uppercase letters", () => {
         const result1 = validateDomainLabel("MyWorkspace");
         expect(result1.isValid).toBe(false);
-        expect(result1.error).toContain("must start and end with letters or numbers");
+        expect(result1.error).toContain("Must start and end with a letter or number");
 
         const result2 = validateDomainLabel("TEST");
         expect(result2.isValid).toBe(false);
@@ -342,7 +342,7 @@ describe("utils", () => {
       it("should reject empty strings", () => {
         const result = validateDomainLabel("");
         expect(result.isValid).toBe(false);
-        expect(result.error).toContain("must start and end with letters or numbers");
+        expect(result.error).toContain("Must start and end with a letter or number");
       });
     });
 
