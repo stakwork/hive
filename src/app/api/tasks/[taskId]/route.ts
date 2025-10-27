@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
+import { sanitizeTask } from "@/lib/helpers/tasks";
 
 export async function PATCH(
   request: NextRequest,
@@ -92,7 +93,7 @@ export async function PATCH(
     return NextResponse.json(
       {
         success: true,
-        task,
+        task: sanitizeTask(task),
       },
       { status: 200 }
     );

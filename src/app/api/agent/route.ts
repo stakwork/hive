@@ -177,13 +177,13 @@ export async function POST(request: NextRequest) {
   });
 
   // Create model with validated session ID
-  const opts: { [k: string]: unknown } = {
+  const model = gooseWeb("goose", {
     wsUrl,
     sessionId: validatedSessionId,
     authToken: agentPassword || "asdfasdf",
+    assumeSessionValid: true,
     ...(logger ? { logger } : {}),
-  };
-  const model = gooseWeb("goose", opts);
+  });
 
   console.log("✅ Session validated:", {
     sessionId: validatedSessionId,

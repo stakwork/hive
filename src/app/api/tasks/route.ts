@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
+import { sanitizeTask } from "@/lib/helpers/tasks";
 
 export async function GET(request: NextRequest) {
   try {
@@ -438,7 +439,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data: task,
+        data: sanitizeTask(task),
       },
       { status: 201 },
     );
