@@ -273,6 +273,8 @@ describe("pusher.ts", () => {
         RECOMMENDATIONS_UPDATED: "recommendations-updated",
         TASK_TITLE_UPDATE: "task-title-update",
         WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
+        STAKWORK_RUN_UPDATE: "stakwork-run-update",
+        STAKWORK_RUN_DECISION: "stakwork-run-decision",
       });
     });
 
@@ -306,10 +308,12 @@ describe("pusher.ts", () => {
       expect(PUSHER_EVENTS.RECOMMENDATIONS_UPDATED).toBe("recommendations-updated");
       expect(PUSHER_EVENTS.TASK_TITLE_UPDATE).toBe("task-title-update");
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
+      expect(PUSHER_EVENTS.STAKWORK_RUN_UPDATE).toBe("stakwork-run-update");
+      expect(PUSHER_EVENTS.STAKWORK_RUN_DECISION).toBe("stakwork-run-decision");
     });
 
     it("should have correct number of events", () => {
-      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(6);
+      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(8);
     });
 
     it("should follow kebab-case naming convention for event values", () => {
