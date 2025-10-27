@@ -90,7 +90,7 @@ export const NodeControls = memo(() => {
         onPointerOver={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
         sprite
-        zIndexRange={[16777271, 16777272]}
+        zIndexRange={[0, 0]}
       >
         <div className="flex items-center gap-3 -translate-y-20">
           {buttons.map((b) => {
