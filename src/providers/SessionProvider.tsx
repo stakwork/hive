@@ -10,10 +10,9 @@ interface SessionProviderProps {
 export default function SessionProvider({ children }: SessionProviderProps) {
   return (
     <NextAuthSessionProvider
-      // Disable automatic session refetch on window focus to prevent network errors
-      refetchOnWindowFocus={false}
-      // Reduce refetch interval to prevent excessive requests
-      refetchInterval={5 * 60} // 5 minutes instead of default
+    // Disable automatic session refetch on window focus to prevent network errors
+    // Reduce refetch interval to prevent excessive requests
+
     >
       {children}
     </NextAuthSessionProvider>
