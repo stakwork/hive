@@ -28,10 +28,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for "latest" and "goose" query parameters
+    // Check for "latest", "goose", and "taskId" query parameters
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
     const shouldIncludeGoose = searchParams.get("goose") === "true";
+    const taskId = searchParams.get("taskId");
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({
@@ -165,6 +166,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
+    // If taskId is provided, store agent credentials on the task
+    if (taskId && shouldIncludeGoose && goose) {
+      try {
+        // Encrypt the pod password
+        const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
+
+        // Update the task with agent credentials
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            agentUrl: goose,
+            agentPassword: JSON.stringify(encryptedPassword),
+          },
+        });
+
+        console.log(`✅ Stored agent credentials for task ${taskId}`);
+      } catch (error) {
+        console.error("Failed to store agent credentials:", error);
+        // Don't fail the request, but log the error
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -173,7 +196,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         frontend,
         control,
         ide,
-        goose,
+        // goose URL and password are NOT returned (stored in DB)
       },
       { status: 200 },
     );
