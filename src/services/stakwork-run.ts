@@ -23,9 +23,9 @@ import {
 } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
-import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
+import { EncryptionService } from "@/lib/encryption";
 
-const encryptionService = FieldEncryptionService.getInstance();
+const encryptionService = EncryptionService.getInstance();
 
 /**
  * Create a new Stakwork AI generation run
@@ -409,10 +409,6 @@ export async function updateStakworkRunDecision(
           members: {
             where: { userId },
           },
-        },
-        select: {
-          slug: true,
-          members: true,
         },
       },
     },
