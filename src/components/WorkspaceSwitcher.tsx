@@ -116,7 +116,7 @@ export function WorkspaceSwitcher({
             className="w-full justify-between h-auto p-3 hover:bg-accent transition-colors"
             disabled={loading}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground overflow-hidden">
                 {loading ? (
                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -130,8 +130,8 @@ export function WorkspaceSwitcher({
                   <Building2 className="w-4 h-4" />
                 )}
               </div>
-              <div className="text-left">
-                <div className="font-medium text-sm">
+              <div className="text-left flex-1 min-w-0">
+                <div className="font-medium text-sm truncate">
                   {activeWorkspace.name}
                 </div>
               </div>
@@ -163,8 +163,8 @@ export function WorkspaceSwitcher({
                 <Building2 className="w-3.5 h-3.5" />
               )}
             </div>
-            <div className="flex-1">
-              <div className="font-medium text-sm">{activeWorkspace.name}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm truncate">{activeWorkspace.name}</div>
             </div>
             <div className="w-2 h-2 rounded-full bg-primary" />
           </DropdownMenuItem>
@@ -193,8 +193,8 @@ export function WorkspaceSwitcher({
                           <Building2 className="w-3.5 h-3.5" />
                         )}
                       </div>
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">
                           {workspace.name}
                         </div>
                       </div>

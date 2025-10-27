@@ -73,7 +73,7 @@ export function NavUser({
                   {getInitials(user.name)}
                 </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
                 <span className="truncate font-medium">{user.name}</span>
                 <span className="truncate text-xs">{user.email}</span>
               </div>
@@ -94,7 +94,7 @@ export function NavUser({
                     {getInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
+                <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
                   <span className="truncate font-medium">{user.name}</span>
                   <span className="truncate text-xs">{user.email}</span>
                 </div>
@@ -110,8 +110,8 @@ export function NavUser({
                 </DropdownMenuLabel>
                 <DropdownMenuItem className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{workspace.name}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{workspace.name}</div>
                   </div>
                 </DropdownMenuItem>
               </>
