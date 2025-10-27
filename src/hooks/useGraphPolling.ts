@@ -35,6 +35,7 @@ export function useGraphPolling({
 
   // Fetch new nodes and edges for polling
   const fetchLatestNodes = useCallback(async () => {
+
     if (!workspaceId || !enabled || isPollingRequestInProgress.current) return;
 
     // Mark request as in progress
@@ -45,9 +46,21 @@ export function useGraphPolling({
     abortControllerRef.current = new AbortController();
 
     try {
-      // Use a smaller limit for polling to get recent nodes
-      const pollingEndpoint = propEndpoint || "graph/search/latest?limit=50&top_node_count=50";
+      // Use graph/search as base endpoint for polling
+      let pollingEndpoint = propEndpoint || "graph/search?limit=20&top_node_count=20";
+
+      // Add start_date_added_to_graph parameter if we have nodes (use latest node's date)
+      const latestNode = dataInitial?.nodes?.[0]; // Nodes are sorted by date_added_to_graph
+      if (latestNode?.date_added_to_graph) {
+        const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
+        pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
+        console.log(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`);
+      } else {
+        console.log(`Polling: No existing nodes, using base endpoint`);
+      }
+
       const requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(pollingEndpoint)}`;
+      console.log(`Polling endpoint: ${pollingEndpoint}`);
 
       const response = await fetch(requestUrl, {
         signal: abortControllerRef.current.signal
@@ -67,9 +80,9 @@ export function useGraphPolling({
           edges: data.data.edges || []
         });
 
-        // Only log if there were actually new nodes added
+        // Log polling results
         if (data.data.nodes.length > 0) {
-          console.log(`Polling: Found ${data.data.nodes.length} nodes, ${data.data.edges?.length || 0} edges (duplicates filtered by store)`);
+          console.log(`Polling: Found ${data.data.nodes.length} nodes, ${data.data.edges?.length || 0} edges`);
         }
       }
     } catch (err) {
@@ -83,7 +96,7 @@ export function useGraphPolling({
       setIsPollingActive(false);
       abortControllerRef.current = null;
     }
-  }, [workspaceId, addNewNode, propEndpoint, enabled]);
+  }, [workspaceId, addNewNode, propEndpoint, enabled, dataInitial]);
 
   // Start polling
   const startPolling = useCallback(() => {
