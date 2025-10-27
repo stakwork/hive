@@ -169,13 +169,11 @@ export async function POST(request: NextRequest) {
     // The test code itself is stored in the graph; this task tracks metadata and status
     let task = null;
     try {
-      // Generate test file path from test name or title
-      const timestamp = Date.now();
-      const sanitizedName = (testName || taskTitle)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
-      const testFilePath = `e2e/user-journey-${sanitizedName}-${timestamp}.spec.ts`;
+      // Use the user's chosen filename directly, or provide a default
+      // The filename is provided by the browser artifact panel when the user saves the test
+      const testFilePath = testName
+        ? `src/__tests__/e2e/specs/${testName}`
+        : `src/__tests__/e2e/specs/user-journey-test.spec.ts`;
 
       // Get workspace's primary repository if available
       const repository = await db.repository.findFirst({

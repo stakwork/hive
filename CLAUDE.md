@@ -43,6 +43,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run test:decrypt` - View critical database fields
 - `npm run mock-server` - Start mock server for testing
 - `npm run migrate:encrypt` - Encrypt existing sensitive data
+- `npm run migrate:e2e-tasks -- --workspace=<slug>` - Migrate existing E2E tests from graph to task records for a workspace
+- `npm run migrate:e2e-tasks -- --all` - Migrate E2E tests to task records for all workspaces
 - `npm run rotate-keys` - Rotate encryption keys
 - `npx shadcn@latest add [component]` - Add shadcn/ui components
 
@@ -130,6 +132,10 @@ The database follows a hierarchical structure:
 - **Workspaces**: Multi-tenant workspace system with role-based access (`Workspace`, `WorkspaceMember`)
 - **Infrastructure**: `Swarm` (deployment infrastructure), `Repository` (linked Git repos)
 - **Task Management**: `Task` model with AI chat integration (`ChatMessage`), status tracking, and file attachments (`Attachment`, `Artifact`)
+  - `sourceType: USER_JOURNEY` - E2E tests tracked as tasks for filtering and viewing
+  - `testFilePath` - Path to test file (for USER_JOURNEY tasks)
+  - `testFileUrl` - GitHub URL to test file (for USER_JOURNEY tasks)
+  - User journey tasks are metadata records; actual test code is stored in the graph
 - **Janitor System**: `JanitorRun`, `JanitorRecommendation`, `JanitorConfig` for automated code quality analysis
 - **Learning**: `Learning` model for capturing insights from codebase analysis
 - Encrypted fields use JSON format: `{ data: string, iv: string, tag: string, keyId?: string, version: string, encryptedAt: string }`
@@ -293,3 +299,23 @@ Endpoint: `/api/cron/janitors` (processes all enabled workspaces)
 - **Migration**: Use `npm run migrate:encrypt` to encrypt existing unencrypted data
 - **Encrypted fields**: Access tokens, refresh tokens, API keys, webhook secrets
 - Token encryption uses AES-256-GCM with versioned keys for rotation support
+
+### User Journey Task Tracking
+User journey E2E tests are automatically tracked as tasks to enable filtering, viewing, and status management alongside other work items.
+
+**How it works:**
+- When a user records an E2E test via the browser panel, a task is automatically created with `sourceType: USER_JOURNEY`
+- The test code itself is stored in the swarm graph (source of truth)
+- Task records store metadata: title, status, test file path, and GitHub URL
+- Status tracking: Recording (IN_PROGRESS) → Pending Review (TODO) → Merged (DONE)
+
+**Viewing user journey tasks:**
+- Navigate to `/w/[slug]/user-journeys` to see all E2E tests
+- Task API supports filtering: `/api/tasks?sourceType=USER_JOURNEY`
+- Tasks appear in the main task list regardless of TODO status (always visible)
+
+**Migration for existing tests:**
+- Use `npm run migrate:e2e-tasks -- --workspace=<slug>` to backfill existing E2E tests from graph as task records
+- Migration script queries the swarm graph for E2etest nodes and creates corresponding tasks
+- Duplicate detection prevents re-migration (checks by testFilePath)
+- Migrated tests are marked as DONE with workflowStatus: COMPLETED
