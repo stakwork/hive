@@ -665,9 +665,10 @@ describe("usePusherConnection Hook", () => {
       expect(result.current.isConnected).toBe(false);
 
       // Should be connected after delay
+      // Use a longer timeout to account for React rendering + setTimeout delay
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
-      }, { timeout: delay + 100 });
+      }, { timeout: delay + 500 });
     });
 
     test("should work without optional callback parameters", () => {
