@@ -1,10 +1,10 @@
 import { config } from "@/lib/env";
 
 // Re-export constants for external use
-export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG, FRONTEND_CONFIG } from "./constants";
 
 // Import for internal use
-import { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+import { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG, FRONTEND_CONFIG } from "./constants";
 
 export interface PodWorkspace {
   branches: string[];
@@ -126,7 +126,7 @@ async function markWorkspaceAsUnused(poolName: string, workspaceId: string, pool
   console.log(`>>> Pod dropped successfully (${response.status}):`, responseData || "No response body");
 }
 
-async function getProcessList(controlPortUrl: string, password: string): Promise<ProcessInfo[]> {
+export async function getProcessList(controlPortUrl: string, password: string): Promise<ProcessInfo[]> {
   const jlistUrl = `${controlPortUrl}/jlist`;
   const response = await fetch(jlistUrl, {
     method: "GET",
@@ -249,6 +249,15 @@ export async function updatePodRepositories(
 export function checkGooseRunning(processList: ProcessInfo[]): boolean {
   const gooseProcess = processList.find((proc) => proc.name === PROCESS_NAMES.GOOSE);
   return !!gooseProcess;
+}
+
+/**
+ * Check if Frontend service is running by checking the process list
+ * Returns true if frontend process is found, false otherwise
+ */
+export function checkFrontendRunning(processList: ProcessInfo[]): boolean {
+  const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
+  return !!frontendProcess;
 }
 
 /**

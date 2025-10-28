@@ -39,3 +39,14 @@ export const GOOSE_CONFIG = {
   /** Time (in milliseconds) to wait between polling attempts */
   POLLING_INTERVAL_MS: 1000,
 } as const;
+
+/**
+ * Frontend service configuration
+ * Controls the behavior of frontend service startup and polling
+ */
+export const FRONTEND_CONFIG = {
+  /** Maximum number of attempts to poll for frontend service availability after startup */
+  MAX_STARTUP_ATTEMPTS: 30,
+  /** Time (in milliseconds) to wait between polling attempts */
+  POLLING_INTERVAL_MS: 1000,
+} as const;

@@ -116,6 +116,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
+    let updatingFrontend = false;
     if (shouldUpdateToLatest) {
       const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
@@ -127,6 +128,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (repositories.length > 0) {
           try {
             await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+            updatingFrontend = true; // Frontend needs to restart after repository update
           } catch (error) {
             console.error("Error updating pod repositories:", error);
           }
@@ -200,6 +202,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         frontend,
         control,
         ide,
+        updatingFrontend, // Indicates if frontend is being updated/restarted
         // goose URL and password are NOT returned (stored in DB)
       },
       { status: 200 },
