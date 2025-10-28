@@ -46,10 +46,17 @@ export function useFrontendReadyCheck({
     // Create new abort controller for this request
     abortControllerRef.current = new AbortController();
 
+    // Set a timeout to abort the request if it takes too long
+    const timeoutId = setTimeout(() => {
+      abortControllerRef.current?.abort();
+    }, 10000); // 10 second timeout
+
     try {
       const response = await fetch(`/api/pool-manager/check-pod-frontend/${workspaceId}?podId=${podId}`, {
         signal: abortControllerRef.current.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -60,7 +67,7 @@ export function useFrontendReadyCheck({
       if (data.isReady) {
         setIsReady(true);
         setError(null);
-        
+
         // Stop polling when ready
         if (pollIntervalRef.current) {
           clearInterval(pollIntervalRef.current);
@@ -83,6 +90,7 @@ export function useFrontendReadyCheck({
         setAttemptCount((prev) => prev + 1);
       }
     } finally {
+      clearTimeout(timeoutId);
       isRequestInProgress.current = false;
       setIsChecking(false);
       abortControllerRef.current = null;
