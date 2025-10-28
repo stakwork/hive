@@ -32,7 +32,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     sourceType = "USER",
     userId,
     status = TaskStatus.IN_PROGRESS,  // Default to IN_PROGRESS since workflow starts immediately
-    mode = "live", // Default to "live" mode (valid modes: live, agent, test)
+    mode = "default",
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -48,7 +48,6 @@ export async function createTaskWithStakworkWorkflow(params: {
       sourceType,
       createdById: userId,
       updatedById: userId,
-      mode, // Save mode to database so stale agent tasks can be found
     },
     include: {
       assignee: {
