@@ -101,7 +101,7 @@ export async function haltTask(taskId: string): Promise<void> {
 }
 
 /**
- * Halt agent tasks that have been in PENDING state for more than 24 hours
+ * Halt agent tasks that have been in IN_PROGRESS status for more than 24 hours
  */
 export async function haltStaleAgentTasks(): Promise<{
   success: boolean;
@@ -119,11 +119,11 @@ export async function haltStaleAgentTasks(): Promise<{
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-    // Find agent tasks that have been in PENDING state for more than 24 hours
+    // Find agent tasks that have been in IN_PROGRESS status for more than 24 hours
     const staleTasks = await db.task.findMany({
       where: {
         mode: "agent",
-        workflowStatus: "PENDING",
+        status: "IN_PROGRESS",
         createdAt: {
           lt: twentyFourHoursAgo,
         },
@@ -199,7 +199,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
   try {
     console.log("[TaskCoordinator] Starting execution at", startTime.toISOString());
 
-    // First, halt any stale agent tasks (PENDING for >24 hours)
+    // First, halt any stale agent tasks (IN_PROGRESS for >24 hours)
     try {
       const haltResult = await haltStaleAgentTasks();
       console.log(`[TaskCoordinator] Halted ${haltResult.tasksHalted} stale agent tasks`);
