@@ -219,16 +219,30 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         console.log(`      Ref ID: ${test.ref_id}`);
       }
 
-      // Check if task already exists for this test file
+      // Generate title from test name (do this before duplicate check)
+      const title = testName || testFilePath.split('/').pop()?.replace('.spec.ts', '') || 'E2E Test';
+
+      // Check if task already exists for this specific test case
+      // We check both testFilePath AND title to create one task per test case,
+      // not just one task per file
       if (options.verbose) {
-        console.log(`      🔍 Checking for duplicate with testFilePath: "${testFilePath}"`);
+        console.log(`      🔍 Checking for duplicate with testFilePath: "${testFilePath}" AND title: "${title}"`);
       }
 
       const existingTask = await prisma.task.findFirst({
         where: {
           workspaceId: workspace.id,
           testFilePath: testFilePath,
+          title: title,
           deleted: false,
+        },
+        select: {
+          id: true,
+          title: true,
+          testFilePath: true,
+          status: true,
+          workflowStatus: true,
+          createdAt: true,
         },
       });
 
@@ -238,6 +252,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         if (options.verbose) {
           console.log(`      ✅ Found existing task:`);
           console.log(`         Task ID: ${existingTask.id}`);
+          console.log(`         Task title: ${existingTask.title}`);
           console.log(`         Task path: ${existingTask.testFilePath}`);
           console.log(`         Created at: ${existingTask.createdAt}`);
           console.log(`         Status: ${existingTask.status} / ${existingTask.workflowStatus || 'N/A'}`);
@@ -250,9 +265,6 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
       if (options.verbose) {
         console.log(`      ✅ No duplicate found, proceeding with creation`);
       }
-
-      // Generate title from test name
-      const title = testName || testFilePath.split('/').pop()?.replace('.spec.ts', '') || 'E2E Test';
 
       // Construct GitHub URL from file path
       // The graph may store paths in different formats:
