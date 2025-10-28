@@ -16,6 +16,7 @@ import {
   Pause,
   List,
   CheckCircle2,
+  ArrowLeft,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
@@ -41,6 +42,8 @@ export function BrowserArtifactPanel({
   const [refreshKey, setRefreshKey] = useState(0);
   const [actionToast, setActionToast] = useState<{ type: string; text: string; id: number } | null>(null);
   const [urlInput, setUrlInput] = useState("");
+  const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -116,6 +119,17 @@ export function BrowserArtifactPanel({
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
 
+  // Track navigation history when URL changes
+  useEffect(() => {
+    if (displayUrl && displayUrl !== navigationHistory[historyIndex]) {
+      // If we're not at the end of history, truncate forward history
+      const newHistory = navigationHistory.slice(0, historyIndex + 1);
+      newHistory.push(displayUrl);
+      setNavigationHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+  }, [displayUrl]);
+
   // Sync urlInput with displayUrl
   useEffect(() => {
     setUrlInput(displayUrl || "");
@@ -131,6 +145,16 @@ export function BrowserArtifactPanel({
       navigateToUrl(urlInput);
     }
   };
+
+  const handleBack = () => {
+    if (historyIndex > 0 && navigateToUrl) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      navigateToUrl(navigationHistory[newIndex]);
+    }
+  };
+
+  const canGoBack = historyIndex > 0;
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
@@ -214,6 +238,22 @@ export function BrowserArtifactPanel({
               {!ide && (
                 <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b gap-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleBack}
+                            disabled={!isActive || !canGoBack}
+                            className="h-7 w-7 p-0 flex-shrink-0"
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Go back</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                     <Monitor className="w-4 h-4 flex-shrink-0" />
                     <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
                       <Input
