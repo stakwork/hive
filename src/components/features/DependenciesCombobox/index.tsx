@@ -85,7 +85,7 @@ export function DependenciesCombobox({
   if (availableTickets.length === 0) {
     return (
       <div className="text-sm text-muted-foreground px-2 py-1">
-        No other tickets
+        No other tasks
       </div>
     );
   }
@@ -124,9 +124,9 @@ export function DependenciesCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
         <Command>
-          <CommandInput placeholder="Search tickets..." />
+          <CommandInput placeholder="Search tasks..." />
           <CommandList>
-            <CommandEmpty>No tickets found.</CommandEmpty>
+            <CommandEmpty>No tasks found.</CommandEmpty>
             <CommandGroup>
               {availableTickets.map((ticket) => {
                 const isSelected = localDependencies.includes(ticket.id);
