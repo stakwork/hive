@@ -62,6 +62,9 @@ describe("Stakwork Run Service", () => {
     test("should create stakwork run successfully for ARCHITECTURE type", async () => {
       const mockWorkspace = {
         id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
         swarm: {
           swarmUrl: "https://swarm.example.com",
           swarmApiKey: "encrypted-key",
@@ -129,7 +132,7 @@ describe("Stakwork Run Service", () => {
 
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
         where: { id: "ws-1" },
-        include: expect.any(Object),
+        select: expect.any(Object),
       });
       expect(db.feature.findFirst).toHaveBeenCalledWith({
         where: {
@@ -203,6 +206,9 @@ describe("Stakwork Run Service", () => {
     test("should throw error when feature not found", async () => {
       const mockWorkspace = {
         id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
         swarm: null,
         sourceControlOrg: null,
         repositories: [],
@@ -227,6 +233,9 @@ describe("Stakwork Run Service", () => {
     test("should handle Stakwork API failure and mark run as FAILED", async () => {
       const mockWorkspace = {
         id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
         swarm: null,
         sourceControlOrg: null,
         repositories: [],
@@ -269,6 +278,9 @@ describe("Stakwork Run Service", () => {
     test("should work without feature for workspace-level generation", async () => {
       const mockWorkspace = {
         id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
         swarm: null,
         sourceControlOrg: null,
         repositories: [],
@@ -565,12 +577,13 @@ describe("Stakwork Run Service", () => {
 
       await expect(
         getStakworkRuns({ workspaceId: "non-existent", limit: 10, offset: 0 }, "user-1")
-      ).rejects.toThrow("Workspace not found or access denied");
+      ).rejects.toThrow("Workspace not found");
     });
 
     test("should throw error when user not a member", async () => {
       const mockWorkspace = {
         id: "ws-1",
+        ownerId: "different-user",
         members: [],
       };
 
@@ -578,7 +591,7 @@ describe("Stakwork Run Service", () => {
 
       await expect(
         getStakworkRuns({ workspaceId: "ws-1", limit: 10, offset: 0 }, "user-1")
-      ).rejects.toThrow("Workspace not found or access denied");
+      ).rejects.toThrow("Access denied");
     });
   });
 
@@ -699,7 +712,7 @@ describe("Stakwork Run Service", () => {
         updateStakworkRunDecision("non-existent", "user-1", {
           decision: StakworkRunDecision.ACCEPTED,
         })
-      ).rejects.toThrow("StakworkRun not found or access denied");
+      ).rejects.toThrow("StakworkRun not found");
     });
 
     test("should throw error when user not a member", async () => {
@@ -707,6 +720,7 @@ describe("Stakwork Run Service", () => {
         id: "run-1",
         workspace: {
           slug: "test-workspace",
+          ownerId: "different-user",
           members: [],
         },
       };
@@ -717,7 +731,7 @@ describe("Stakwork Run Service", () => {
         updateStakworkRunDecision("run-1", "user-1", {
           decision: StakworkRunDecision.ACCEPTED,
         })
-      ).rejects.toThrow("StakworkRun not found or access denied");
+      ).rejects.toThrow("Access denied");
     });
 
     test("should handle Pusher failure gracefully", async () => {
