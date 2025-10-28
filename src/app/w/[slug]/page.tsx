@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const showDashboard = setupCompleted || (hasSwarmId && servicesStarted);
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col">
       <SwarmSetupHandler onServicesStarted={setServicesStarted} />
 
       {showDashboard && <Dashboard setupInProgress={!setupCompleted} />}

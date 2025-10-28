@@ -69,16 +69,15 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="h-screen bg-background text-foreground flex flex-col">
       <Sidebar user={user} />
       <GlobalSearch />
 
       {/* Main content */}
-      <div className={`${isTaskPage ? "md:pl-0" : "md:pl-64"}`}>
-        <main className={isTaskPage ? "p-1 md:p-3" : "p-4 md:p-8"}>
+      <div className={`flex-1 flex flex-col overflow-hidden ${isTaskPage ? "md:pl-0" : "md:pl-64"}`}>
+        <main className={`flex-1 flex flex-col overflow-auto ${isTaskPage ? "p-1 md:p-3" : "p-4 md:p-8"}`}>
           {children}
         </main>
-        {/* <main className="p-4 md:p-8">{children}</main> */}
       </div>
     </div>
   );
