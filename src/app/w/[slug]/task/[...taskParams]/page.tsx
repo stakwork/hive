@@ -315,7 +315,7 @@ export default function TaskChatPage() {
         setCurrentTaskId(newTaskId);
 
         // Claim pod if agent mode is selected (AFTER task creation)
-        let claimedPodUrls: { frontend: string; ide: string } | null = null;
+        let claimedPodUrls: { frontend: string; ide: string; updatingFrontend?: boolean } | null = null;
         if (taskMode === "agent" && workspaceId) {
           try {
             const podResponse = await fetch(
@@ -334,6 +334,7 @@ export default function TaskChatPage() {
               claimedPodUrls = {
                 frontend: podResult.frontend,
                 ide: podResult.ide,
+                updatingFrontend: podResult.updatingFrontend,
               };
               setHasPod(true);
               setClaimedPodId(podResult.podId);
@@ -405,7 +406,7 @@ export default function TaskChatPage() {
       replyId?: string;
       webhook?: string;
       artifact?: Artifact;
-      podUrls?: { frontend: string; ide: string } | null;
+      podUrls?: { frontend: string; ide: string; updatingFrontend?: boolean } | null;
     },
   ) => {
     // Create artifacts array starting with any existing artifact
@@ -420,6 +421,9 @@ export default function TaskChatPage() {
           type: ArtifactType.BROWSER,
           content: {
             url: options.podUrls.frontend,
+            updatingFrontend: options.podUrls.updatingFrontend,
+            podId: claimedPodId || undefined,
+            workspaceId: workspaceId || undefined,
           },
         }),
         createArtifact({

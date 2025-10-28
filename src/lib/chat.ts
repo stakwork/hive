@@ -24,6 +24,9 @@ export interface CodeContent {
 
 export interface BrowserContent {
   url: string;
+  updatingFrontend?: boolean; // Indicates if frontend is being updated/restarted
+  podId?: string; // Pod ID for checking frontend status
+  workspaceId?: string; // Workspace ID for checking frontend status
 }
 
 export interface IDEContent {
