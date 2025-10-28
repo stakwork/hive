@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ArrowUp } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowUp, Mic, MicOff } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 
 interface TaskStartInputProps {
   onStart: (task: string) => void;
@@ -17,12 +20,46 @@ interface TaskStartInputProps {
 export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = false }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const initialValueRef = useRef("");
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+    useSpeechRecognition();
   
   const devMode = isDevelopmentMode();
 
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (transcript) {
+      // Append transcript to the initial value
+      const newValue = initialValueRef.current 
+        ? `${initialValueRef.current} ${transcript}`.trim()
+        : transcript;
+      setValue(newValue);
+    }
+  }, [transcript]);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      // Store the current value when starting to listen
+      initialValueRef.current = value;
+      startListening();
+    }
+  }, [isListening, stopListening, startListening, value]);
+
+  const handleStartListening = useCallback(() => {
+    initialValueRef.current = value;
+    startListening();
+  }, [value, startListening]);
+
+  useControlKeyHold({
+    onStart: handleStartListening,
+    onStop: stopListening,
+    enabled: isSupported && !isLoading,
+  });
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -37,6 +74,10 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
 
   const handleClick = () => {
     if (hasText) {
+      if (isListening) {
+        stopListening();
+      }
+      resetTranscript();
       onStart(value.trim());
     }
   };
@@ -49,7 +90,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
         <Textarea
           ref={textareaRef}
-          placeholder="Describe a task"
+          placeholder={isListening ? "Listening..." : "Describe a task"}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -57,19 +98,43 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
           autoFocus
           data-testid="task-start-input"
         />
-        <Button
-          type="button"
-          variant="default"
-          size="icon"
-          className="absolute bottom-6 right-8 z-10 rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
-          style={{ width: 32, height: 32 }}
-          disabled={!hasText || isLoading}
-          onClick={handleClick}
-          tabIndex={0}
-          data-testid="task-start-submit"
-        >
-          <ArrowUp className="w-4 h-4" />
-        </Button>
+        <div className="absolute bottom-6 right-8 z-10 flex gap-2">
+          {isSupported && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant={isListening ? "default" : "outline"}
+                    size="icon"
+                    className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+                    style={{ width: 32, height: 32 }}
+                    onClick={toggleListening}
+                    disabled={isLoading}
+                  >
+                    {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button
+            type="button"
+            variant="default"
+            size="icon"
+            className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
+            style={{ width: 32, height: 32 }}
+            disabled={!hasText || isLoading}
+            onClick={handleClick}
+            tabIndex={0}
+            data-testid="task-start-submit"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </Button>
+        </div>
       </Card>
       <div className="flex justify-center mt-6">
         <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
