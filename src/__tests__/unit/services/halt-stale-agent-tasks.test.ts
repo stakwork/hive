@@ -20,7 +20,7 @@ describe("haltStaleAgentTasks", () => {
     vi.useFakeTimers();
   });
 
-  test("should find and halt agent tasks that have been pending for more than 24 hours", async () => {
+  test("should find and halt agent tasks that have been in progress for more than 24 hours", async () => {
     // Set current time
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
@@ -54,7 +54,7 @@ describe("haltStaleAgentTasks", () => {
     expect(mockDb.task.findMany).toHaveBeenCalledWith({
       where: {
         mode: "agent",
-        workflowStatus: "PENDING",
+        status: "IN_PROGRESS",
         createdAt: {
           lt: expect.any(Date),
         },
@@ -94,7 +94,7 @@ describe("haltStaleAgentTasks", () => {
     vi.useRealTimers();
   });
 
-  test("should not halt tasks that have been pending for less than 24 hours", async () => {
+  test("should not halt tasks that have been in progress for less than 24 hours", async () => {
     // Set current time
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
@@ -197,7 +197,7 @@ describe("haltStaleAgentTasks", () => {
     vi.useRealTimers();
   });
 
-  test("should only target PENDING workflow status", async () => {
+  test("should only target IN_PROGRESS status", async () => {
     // Set current time
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
@@ -206,9 +206,9 @@ describe("haltStaleAgentTasks", () => {
 
     await haltStaleAgentTasks();
 
-    // Verify the query specifically filters for PENDING status
+    // Verify the query specifically filters for IN_PROGRESS status
     const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
-    expect(findManyCall?.where?.workflowStatus).toBe("PENDING");
+    expect(findManyCall?.where?.status).toBe("IN_PROGRESS");
 
     vi.useRealTimers();
   });
