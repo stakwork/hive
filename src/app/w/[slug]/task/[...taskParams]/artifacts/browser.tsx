@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useState, useCallback, useEffect } from "react";
 import {
   Monitor,
@@ -39,6 +40,7 @@ export function BrowserArtifactPanel({
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [actionToast, setActionToast] = useState<{ type: string; text: string; id: number } | null>(null);
+  const [urlInput, setUrlInput] = useState("");
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -71,6 +73,7 @@ export function BrowserArtifactPanel({
     clearAllActions,
     toggleActionsView,
     isRecorderReady,
+    navigateToUrl,
   } = useStaktrak(
     activeContent?.url,
     () => {
@@ -112,6 +115,22 @@ export function BrowserArtifactPanel({
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
+
+  // Sync urlInput with displayUrl
+  useEffect(() => {
+    setUrlInput(displayUrl || "");
+  }, [displayUrl]);
+
+  const handleUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUrlInput(e.target.value);
+  };
+
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (urlInput && navigateToUrl) {
+      navigateToUrl(urlInput);
+    }
+  };
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
@@ -193,12 +212,22 @@ export function BrowserArtifactPanel({
           return (
             <div key={artifact.id} className={`h-full flex flex-col ${isActive ? "block" : "hidden"}`}>
               {!ide && (
-                <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     <Monitor className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-sm font-medium truncate">{tabUrl}</span>
+                    <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
+                      <Input
+                        type="text"
+                        value={isActive ? urlInput : tabUrl}
+                        onChange={handleUrlInputChange}
+                        onFocus={(e) => e.target.select()}
+                        disabled={!isActive}
+                        className="h-7 text-sm"
+                        placeholder="Enter URL..."
+                      />
+                    </form>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     {isSetup &&
                       isRecorderReady &&
                       (isRecording || isPlaywrightReplaying || capturedActions.length > 0) && (
