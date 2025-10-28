@@ -319,7 +319,6 @@ describe("Stakwork Runs API Integration Tests", () => {
         data: {
           type: StakworkRunType.ARCHITECTURE,
           workspaceId: workspace.id,
-          featureId: feature.id,
           status: "COMPLETED",
           result: "Generated architecture content",
           webhookUrl: "http://example.com/webhook",
@@ -328,6 +327,7 @@ describe("Stakwork Runs API Integration Tests", () => {
       });
       const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
         decision: "ACCEPTED",
+        featureId: feature.id,
       }, user);
 
       const response = await UpdateDecision(request, {
@@ -339,6 +339,12 @@ describe("Stakwork Runs API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
       expect(responseData.run.decision).toBe("ACCEPTED");
+      expect(responseData.run.featureId).toBe(feature.id);
+
+      const updatedRun = await db.stakworkRun.findUnique({
+        where: { id: run.id },
+      });
+      expect(updatedRun?.featureId).toBe(feature.id);
 
       const updatedFeature = await db.feature.findUnique({
         where: { id: feature.id },
@@ -413,6 +419,116 @@ describe("Stakwork Runs API Integration Tests", () => {
       expect(responseData.run.feedback).toBe("Please add more database schema details");
     });
 
+    test("should reject ACCEPTED decision without featureId", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature();
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          result: "Generated architecture content",
+          webhookUrl: "http://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
+        decision: "ACCEPTED",
+      }, user);
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(400);
+      const responseData = await response.json();
+      expect(responseData.error).toContain("featureId is required");
+    });
+
+    test("should reject ACCEPTED decision with non-existent featureId", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature();
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          result: "Generated architecture content",
+          webhookUrl: "http://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      // Use a valid CUID format that doesn't exist in the database
+      const nonExistentFeatureId = "clxxxxxxxxxxxxxxxxxxxxxxxxxx";
+
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
+        decision: "ACCEPTED",
+        featureId: nonExistentFeatureId,
+      }, user);
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(500);
+      const responseData = await response.json();
+      expect(responseData.error).toContain("Feature not found");
+    });
+
+    test("should reject ACCEPTED decision with featureId from different workspace", async () => {
+      const { user, workspace: workspace1 } = await createTestWorkspaceWithFeature();
+
+      // Create second workspace with a feature
+      const workspace2 = await db.workspace.create({
+        data: {
+          name: "Other Workspace",
+          slug: "other-workspace",
+          ownerId: user.id,
+        },
+      });
+
+      const feature2 = await db.feature.create({
+        data: {
+          title: "Other Feature",
+          workspace: {
+            connect: { id: workspace2.id },
+          },
+          createdBy: {
+            connect: { id: user.id },
+          },
+          updatedBy: {
+            connect: { id: user.id },
+          },
+        },
+      });
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace1.id,
+          status: "COMPLETED",
+          result: "Generated architecture content",
+          webhookUrl: "http://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
+        decision: "ACCEPTED",
+        featureId: feature2.id,
+      }, user);
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(500);
+      const responseData = await response.json();
+      expect(responseData.error).toContain("Feature does not belong to the same workspace");
+    });
+
     test("should reject non-member user", async () => {
       const { workspace, feature } = await createTestWorkspaceWithFeature();
 
@@ -437,6 +553,7 @@ describe("Stakwork Runs API Integration Tests", () => {
 
       const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
         decision: "ACCEPTED",
+        featureId: feature.id,
       }, otherUser);
 
       const response = await UpdateDecision(request, {
