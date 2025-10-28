@@ -172,7 +172,7 @@ function SignInContent() {
                     data-testid="mock-signin-button"
                     onClick={handleMockSignIn}
                     disabled={isMockSigningIn || isSigningIn}
-                    className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
+                    className="w-full h-12 text-base font-medium bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 shadow-[0_0_15px_rgba(34,197,94,0.5)] hover:shadow-[0_0_25px_rgba(34,197,94,0.7)]"
                   >
                     {isMockSigningIn ? (
                       <>
