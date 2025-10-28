@@ -346,15 +346,26 @@ export async function getStakworkRuns(
   // Validate workspace access
   const workspace = await db.workspace.findUnique({
     where: { id: query.workspaceId },
-    include: {
+    select: {
+      id: true,
+      ownerId: true,
+      deleted: true,
       members: {
         where: { userId },
+        select: { role: true },
       },
     },
   });
 
-  if (!workspace || workspace.members.length === 0) {
-    throw new Error("Workspace not found or access denied");
+  if (!workspace || workspace.deleted) {
+    throw new Error("Workspace not found");
+  }
+
+  const isOwner = workspace.ownerId === userId;
+  const isMember = workspace.members.length > 0;
+
+  if (!isOwner && !isMember) {
+    throw new Error("Access denied");
   }
 
   // Build where clause
@@ -405,17 +416,28 @@ export async function updateStakworkRunDecision(
     where: { id: runId },
     include: {
       workspace: {
-        include: {
+        select: {
+          id: true,
+          ownerId: true,
+          deleted: true,
           members: {
             where: { userId },
+            select: { role: true },
           },
         },
       },
     },
   });
 
-  if (!run || run.workspace.members.length === 0) {
-    throw new Error("StakworkRun not found or access denied");
+  if (!run || run.workspace.deleted) {
+    throw new Error("StakworkRun not found");
+  }
+
+  const isOwner = run.workspace.ownerId === userId;
+  const isMember = run.workspace.members.length > 0;
+
+  if (!isOwner && !isMember) {
+    throw new Error("Access denied");
   }
 
   // Update the decision

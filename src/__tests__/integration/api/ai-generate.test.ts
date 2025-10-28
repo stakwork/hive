@@ -445,7 +445,7 @@ describe("AI Generation API Integration Tests", () => {
 
       expect(response.status).toBe(500);
       const responseData = await response.json();
-      expect(responseData.error).toContain("not found or access denied");
+      expect(responseData.error).toContain("Access denied");
     });
   });
 
