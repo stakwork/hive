@@ -27,7 +27,7 @@ export function Dashboard({ setupInProgress = false }: DashboardProps) {
             </div>
           </div>
         ) : (
-          <GraphComponent enablePolling={true} height="h-full" width="w-full" />
+          <GraphComponent enablePolling={true} height="h-full" width="w-full" showWidgets={true} />
         )}
       </div>
     </div>
