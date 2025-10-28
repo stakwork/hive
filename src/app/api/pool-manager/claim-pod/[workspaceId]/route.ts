@@ -99,17 +99,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Check if swarm has pool configuration
-    if (!workspace.swarm.poolName || !workspace.swarm.poolApiKey) {
+    if (!workspace.swarm.id || !workspace.swarm.poolApiKey) {
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
     const poolApiKey = workspace.swarm.poolApiKey;
 
     // Call Pool Manager API to claim pod
-    const poolName = workspace.swarm.poolName;
+    const poolId = workspace.swarm.id;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const { frontend, workspace: podWorkspace, processList } = await claimPodAndGetFrontend(poolName, poolApiKeyPlain);
+    const { frontend, workspace: podWorkspace, processList } = await claimPodAndGetFrontend(poolId, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
