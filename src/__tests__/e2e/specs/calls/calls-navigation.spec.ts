@@ -70,7 +70,7 @@ test.describe('Calls Navigation', () => {
 
   test('should complete full user journey: dashboard -> calls -> interact', async ({ page }) => {
     // Starting from dashboard
-    await expect(page.locator(selectors.pageTitle.dashboard)).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
 
     // Navigate to calls via sidebar
     await callsPage.navigateViaNavigation();
