@@ -288,7 +288,7 @@ export default function PhaseDetailPage() {
                     variant: "destructive",
                     confirmation: {
                       title: "Delete Phase",
-                      description: `Are you sure you want to delete "${phase.name}"? Any tickets in this phase will be moved to "Unassigned".`,
+                      description: `Are you sure you want to delete "${phase.name}"? Any tasks in this phase will be moved to "Unassigned".`,
                       onConfirm: handleDeletePhase,
                     },
                   },
@@ -299,26 +299,26 @@ export default function PhaseDetailPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Tickets Section */}
+          {/* Tasks Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Tickets</h3>
+              <h3 className="text-lg font-semibold">Tasks</h3>
               {!isCreatingTicket && (
                 <Button onClick={() => setIsCreatingTicket(true)} size="sm">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Ticket
+                  Add Task
                 </Button>
               )}
             </div>
 
-            {/* Inline Ticket Creation Form */}
+            {/* Inline Task Creation Form */}
             {isCreatingTicket && (
               <div className="rounded-lg border bg-muted/30 p-4">
                 <div className="space-y-3">
                   <div>
                     <Input
                       ref={titleInputRef}
-                      placeholder="Ticket title..."
+                      placeholder="Task title..."
                       value={newTicketTitle}
                       onChange={(e) => setNewTicketTitle(e.target.value)}
                       onKeyDown={(e) => {
@@ -335,7 +335,7 @@ export default function PhaseDetailPage() {
                   <AutoSaveTextarea
                     id="new-ticket-description"
                     label="Description"
-                    placeholder="Describe this ticket (optional)"
+                    placeholder="Describe this task (optional)"
                     value={newTicketDescription}
                     onChange={(value) => setNewTicketDescription(value)}
                     onBlur={() => {}} // No-op for inline form
@@ -419,10 +419,10 @@ export default function PhaseDetailPage() {
                   onNodeClick={(ticketId) => {
                     router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
                   }}
-                  emptyStateMessage="No tickets to display."
+                  emptyStateMessage="No tasks to display."
                   noDependenciesMessage={{
                     title: "No Dependencies Yet",
-                    description: "Add dependencies between tickets to see them visualized here.",
+                    description: "Add dependencies between tasks to see them visualized here.",
                   }}
                 />
               </TabsContent>
