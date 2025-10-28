@@ -179,44 +179,53 @@ export async function claimPodAndGetFrontend(
   // Mark the workspace as used
   await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
 
-  let frontend: string;
+  let frontend: string | undefined;
   let processList: ProcessInfo[] | undefined;
 
   const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
-  if (!controlPortUrl) {
-    throw new Error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`);
-  }
-  try {
-    // Get the process list from the control port
-    processList = await getProcessList(controlPortUrl, workspace.password);
 
-    // Get the frontend URL from port mappings
-    frontend = getFrontendUrl(processList, workspace.portMappings);
-  } catch (error) {
+  // Try to get frontend from process discovery if control port exists
+  if (controlPortUrl) {
+    try {
+      // Get the process list from the control port
+      processList = await getProcessList(controlPortUrl, workspace.password);
+
+      // Get the frontend URL from port mappings
+      frontend = getFrontendUrl(processList, workspace.portMappings);
+    } catch (error) {
+      console.error(
+        `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
+        error,
+      );
+      // frontend remains undefined, will try fallback below
+    }
+  } else {
+    // Control port not available, will try fallback
     console.error(
       `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
-      error,
+      new Error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`),
     );
+  }
 
-    // Fallback to port 3000 if process discovery fails
+  // If frontend not found via process discovery, use fallback
+  if (!frontend) {
+    // Fallback to port 3000 if process discovery failed or control port was missing
     frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
 
-    if (!frontend) {
+    if (!frontend && controlPortUrl) {
       // Final fallback: replace control port (15552) with frontend port (3000) in controlPortUrl
       frontend = controlPortUrl.replace(POD_PORTS.CONTROL, POD_PORTS.FRONTEND_FALLBACK);
       console.log(
         `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${POD_PORTS.FRONTEND_FALLBACK} in controlPortUrl:`,
         frontend,
       );
-    } else {
+    } else if (frontend) {
       console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
     }
 
     if (!frontend) {
       throw new Error(`Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`);
     }
-
-    console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
   }
 
   return { frontend, workspace, processList };

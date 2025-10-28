@@ -321,7 +321,7 @@ describe('claimPodAndGetFrontend', () => {
   });
 
   describe('error handling', () => {
-    it('should throw error when both process discovery fails and port 3000 is missing', async () => {
+    it('should use final fallback URL when both process discovery fails and port 3000 is missing', async () => {
       // Arrange
       const workspaceWithoutPort3000: PodWorkspace = {
         ...mockWorkspace,
@@ -346,17 +346,17 @@ describe('claimPodAndGetFrontend', () => {
           text: async () => 'Control API unavailable',
         });
 
-      // Act & Assert
-      await expect(
-        claimPodAndGetFrontend(mockPoolName, mockPoolApiKey)
-      ).rejects.toThrow(
-        `Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`
-      );
+      // Act
+      const result = await claimPodAndGetFrontend(mockPoolName, mockPoolApiKey);
 
+      // Assert - Should use final fallback (replace port 15552 with 3000 in control URL)
       expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result.frontend).toBe('https://control-abc123.example.com'.replace('15552', '3000'));
+      expect(result.workspace).toEqual(workspaceWithoutPort3000);
+      expect(result.processList).toBeUndefined();
     });
 
-    it('should throw error when frontend port not found in mappings and no fallback', async () => {
+    it('should use final fallback URL when frontend port not found in mappings and no port 3000', async () => {
       // Arrange
       const workspaceWithControlButNoFallback: PodWorkspace = {
         ...mockWorkspace,
@@ -391,12 +391,13 @@ describe('claimPodAndGetFrontend', () => {
           json: async () => processListWithoutMappedPort,
         });
 
-      // Act & Assert
-      await expect(
-        claimPodAndGetFrontend(mockPoolName, mockPoolApiKey)
-      ).rejects.toThrow(
-        `Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`
-      );
+      // Act
+      const result = await claimPodAndGetFrontend(mockPoolName, mockPoolApiKey);
+
+      // Assert - Should use final fallback (replace port 15552 with 3000 in control URL)
+      expect(result.frontend).toBe('https://control-abc123.example.com'.replace('15552', '3000'));
+      expect(result.workspace).toEqual(workspaceWithControlButNoFallback);
+      expect(result.processList).toEqual(processListWithoutMappedPort);
     });
 
     it('should propagate errors from getWorkspaceFromPool', async () => {
