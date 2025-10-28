@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
@@ -38,6 +39,7 @@ export default function UserJourneys() {
   const [fetchingTasks, setFetchingTasks] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
+  const [hidePending, setHidePending] = useState(false);
   const open = useModal();
 
   const fetchUserJourneyTasks = useCallback(async () => {
@@ -68,6 +70,11 @@ export default function UserJourneys() {
       fetchUserJourneyTasks();
     }
   }, [frontend, fetchUserJourneyTasks]);
+
+  // Filter tasks based on hidePending toggle
+  const filteredTasks = hidePending
+    ? userJourneyTasks.filter(task => task.status === "DONE")
+    : userJourneyTasks;
 
   // Shared function to drop the pod
   const dropPod = useCallback(
@@ -291,15 +298,29 @@ export default function UserJourneys() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>E2E Tests</CardTitle>
-              <CardDescription>End-to-end tests from your codebase</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>E2E Tests</CardTitle>
+                  <CardDescription>End-to-end tests from your codebase</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="hide-pending" className="text-sm text-muted-foreground cursor-pointer">
+                    Hide pending recordings
+                  </label>
+                  <Switch
+                    id="hide-pending"
+                    checked={hidePending}
+                    onCheckedChange={setHidePending}
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {fetchingTasks ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : userJourneyTasks.length > 0 ? (
+              ) : filteredTasks.length > 0 ? (
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader className="bg-muted/50">
@@ -312,7 +333,7 @@ export default function UserJourneys() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {userJourneyTasks.map((task) => (
+                      {filteredTasks.map((task) => (
                         <TableRow key={task.id}>
                           <TableCell className="font-medium">{task.title}</TableCell>
                           <TableCell>{getStatusBadge(task.status, task.workflowStatus)}</TableCell>
@@ -357,7 +378,9 @@ export default function UserJourneys() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    No user journey tests yet. Create one to get started!
+                    {hidePending && userJourneyTasks.length > 0
+                      ? "No merged tests to display. Toggle off to see pending recordings."
+                      : "No user journey tests yet. Create one to get started!"}
                   </p>
                 </div>
               )}
