@@ -158,7 +158,7 @@ export async function createStakworkRun(
       featureId: input.featureId || null,
       status: WorkflowStatus.PENDING,
       webhookUrl,
-      dataType: "json", // Default, will be updated by webhook
+      dataType: "string", // Default, will be updated by webhook based on actual result type
     },
   });
 

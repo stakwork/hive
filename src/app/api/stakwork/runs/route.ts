@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 /**
- * GET /api/ai/runs
+ * GET /api/stakwork/runs
  * Query Stakwork AI generation runs with filters
  * Query params: workspaceId (required), type, featureId, status, limit, offset
  */

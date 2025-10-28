@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 /**
- * POST /api/ai/generate
+ * POST /api/stakwork/ai/generate
  * Create a new AI generation run via Stakwork
  */
 export async function POST(request: NextRequest) {
