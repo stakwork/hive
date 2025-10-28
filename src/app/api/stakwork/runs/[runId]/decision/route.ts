@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 /**
- * PATCH /api/ai/runs/[runId]/decision
+ * PATCH /api/stakwork/runs/[runId]/decision
  * Update user decision (accept/reject/feedback) on an AI generation run
  * For ARCHITECTURE type + ACCEPTED: also updates feature.architecture
  */

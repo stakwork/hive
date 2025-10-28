@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { POST as GenerateAI } from "@/app/api/ai/generate/route";
-import { GET as GetRuns } from "@/app/api/ai/runs/route";
-import { PATCH as UpdateDecision } from "@/app/api/ai/runs/[runId]/decision/route";
+import { POST as GenerateAI } from "@/app/api/stakwork/ai/generate/route";
+import { GET as GetRuns } from "@/app/api/stakwork/runs/route";
+import { PATCH as UpdateDecision } from "@/app/api/stakwork/runs/[runId]/decision/route";
 import { POST as WebhookHandler } from "@/app/api/webhook/stakwork/response/route";
 import { WorkspaceRole, StakworkRunType, StakworkRunDecision } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -46,7 +46,7 @@ vi.mock("@/lib/pusher", () => ({
 
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
-describe("AI Generation API Integration Tests", () => {
+describe("Stakwork Runs API Integration Tests", () => {
   async function createTestWorkspaceWithFeature(role: WorkspaceRole = "OWNER") {
     return await db.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -109,7 +109,7 @@ describe("AI Generation API Integration Tests", () => {
     } as any);
   });
 
-  describe("POST /api/ai/generate", () => {
+  describe("POST /api/stakwork/ai/generate", () => {
     test("should create AI generation run successfully", async () => {
       const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
       const request = createAuthenticatedPostRequest("http://localhost/api/test", {
@@ -201,7 +201,7 @@ describe("AI Generation API Integration Tests", () => {
     });
   });
 
-  describe("GET /api/ai/runs", () => {
+  describe("GET /api/stakwork/runs", () => {
     test("should get all runs for workspace", async () => {
       const { user, workspace, feature } = await createTestWorkspaceWithFeature();
 
@@ -311,7 +311,7 @@ describe("AI Generation API Integration Tests", () => {
     });
   });
 
-  describe("PATCH /api/ai/runs/[runId]/decision", () => {
+  describe("PATCH /api/stakwork/runs/[runId]/decision", () => {
     test("should accept ARCHITECTURE run and update feature", async () => {
       const { user, workspace, feature } = await createTestWorkspaceWithFeature();
 
