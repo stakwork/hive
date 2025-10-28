@@ -226,7 +226,7 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
   // Show detailed comparison
   console.log(`\n\n${'='.repeat(80)}`);
   console.log(`📝 Detailed Comparison`);
-  console.log(${'='.repeat(80)}\n`);
+  console.log(`${'='.repeat(80)}\n`);
 
   console.log(`Graph Tests:`);
   graphTests.forEach((test, index) => {
