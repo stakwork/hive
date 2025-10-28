@@ -9,9 +9,10 @@ import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowAr
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
+  isBrowserLoading?: boolean;
 }
 
-export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, onDebugMessage, isBrowserLoading }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -116,7 +117,7 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               forceMount
               hidden={activeTab !== "BROWSER"}
             >
-              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} />
+              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} isLoading={isBrowserLoading} />
             </TabsContent>
           )}
           {ideArtifacts.length > 0 && (

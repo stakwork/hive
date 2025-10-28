@@ -20,7 +20,6 @@ import {
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import { usePlaywrightReplay } from "@/hooks/useStaktrakReplay";
-import { useFrontendReadyCheck } from "@/hooks/useFrontendReadyCheck";
 import { TestManagerModal } from "./TestManagerModal";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { DebugOverlay } from "@/components/DebugOverlay";
@@ -33,11 +32,13 @@ export function BrowserArtifactPanel({
   ide,
   onDebugMessage,
   onUserJourneySave,
+  isLoading,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  isLoading?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -114,12 +115,6 @@ export function BrowserArtifactPanel({
     handleDebugSelection: handleDebugSelectionHook,
   } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
-
-  // Check if frontend is ready when updatingFrontend flag is set
-  const { isReady: isFrontendReady } = useFrontendReadyCheck({
-    enabled: activeContent?.updatingFrontend || false,
-    workspaceId: activeContent?.workspaceId,
-  });
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
@@ -410,8 +405,8 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
-                {/* Show loading overlay when frontend is updating and not ready */}
-                {content.updatingFrontend && !isFrontendReady && isActive && (
+                {/* Show loading overlay when frontend is loading */}
+                {isLoading && isActive && (
                   <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-4 text-center">
                       <Loader2 className="w-12 h-12 animate-spin text-primary" />

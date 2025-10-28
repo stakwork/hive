@@ -6,6 +6,8 @@ interface UseFrontendReadyCheckOptions {
   enabled: boolean;
   /** Workspace ID for the pod */
   workspaceId?: string;
+  /** Pod ID for the pod */
+  podId?: string;
   /** Polling interval in milliseconds (default: from FRONTEND_CONFIG) */
   interval?: number;
   /** Maximum number of polling attempts (default: from FRONTEND_CONFIG) */
@@ -20,6 +22,7 @@ interface UseFrontendReadyCheckOptions {
 export function useFrontendReadyCheck({
   enabled,
   workspaceId,
+  podId,
   interval = FRONTEND_CONFIG.POLLING_INTERVAL_MS,
   maxAttempts = FRONTEND_CONFIG.MAX_STARTUP_ATTEMPTS,
   onReady,
@@ -35,7 +38,7 @@ export function useFrontendReadyCheck({
 
   // Check frontend status
   const checkFrontendStatus = useCallback(async () => {
-    if (!workspaceId || !enabled || isRequestInProgress.current || isReady) return;
+    if (!workspaceId || !podId || !enabled || isRequestInProgress.current || isReady) return;
 
     isRequestInProgress.current = true;
     setIsChecking(true);
@@ -44,7 +47,7 @@ export function useFrontendReadyCheck({
     abortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch(`/api/pool-manager/check-pod-frontend/${workspaceId}`, {
+      const response = await fetch(`/api/pool-manager/check-pod-frontend/${workspaceId}?podId=${podId}`, {
         signal: abortControllerRef.current.signal,
       });
 
@@ -84,7 +87,7 @@ export function useFrontendReadyCheck({
       setIsChecking(false);
       abortControllerRef.current = null;
     }
-  }, [workspaceId, enabled, isReady, onReady]);
+  }, [workspaceId, podId, enabled, isReady, onReady]);
 
   // Stop polling
   const stopPolling = useCallback(() => {
@@ -104,7 +107,7 @@ export function useFrontendReadyCheck({
 
   // Start polling when enabled
   useEffect(() => {
-    if (!enabled || !workspaceId || isReady || pollIntervalRef.current) {
+    if (!enabled || !workspaceId || !podId || isReady || pollIntervalRef.current) {
       return;
     }
 
@@ -119,7 +122,7 @@ export function useFrontendReadyCheck({
     return () => {
       stopPolling();
     };
-  }, [enabled, workspaceId, isReady, interval, checkFrontendStatus, stopPolling]);
+  }, [enabled, workspaceId, podId, isReady, interval, checkFrontendStatus, stopPolling]);
 
   // Stop polling if max attempts reached
   useEffect(() => {

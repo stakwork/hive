@@ -27,6 +27,8 @@ import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useTheme } from "@/hooks/use-theme";
+import { useFrontendReadyCheck } from "@/hooks/useFrontendReadyCheck";
+import { BrowserContent } from "@/lib/chat";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -61,6 +63,7 @@ export default function TaskChatPage() {
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [hasPod, setHasPod] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
+  const [isFrontendUpdating, setIsFrontendUpdating] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -315,7 +318,7 @@ export default function TaskChatPage() {
         setCurrentTaskId(newTaskId);
 
         // Claim pod if agent mode is selected (AFTER task creation)
-        let claimedPodUrls: { frontend: string; ide: string; updatingFrontend?: boolean } | null = null;
+        let claimedPodUrls: { frontend: string; ide: string } | null = null;
         if (taskMode === "agent" && workspaceId) {
           try {
             const podResponse = await fetch(
@@ -334,10 +337,13 @@ export default function TaskChatPage() {
               claimedPodUrls = {
                 frontend: podResult.frontend,
                 ide: podResult.ide,
-                updatingFrontend: podResult.updatingFrontend,
               };
               setHasPod(true);
               setClaimedPodId(podResult.podId);
+              // Track if frontend is updating so we can poll for ready status
+              if (podResult.updatingFrontend) {
+                setIsFrontendUpdating(true);
+              }
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
               toast({
@@ -406,7 +412,7 @@ export default function TaskChatPage() {
       replyId?: string;
       webhook?: string;
       artifact?: Artifact;
-      podUrls?: { frontend: string; ide: string; updatingFrontend?: boolean } | null;
+      podUrls?: { frontend: string; ide: string } | null;
     },
   ) => {
     // Create artifacts array starting with any existing artifact
@@ -421,9 +427,6 @@ export default function TaskChatPage() {
           type: ArtifactType.BROWSER,
           content: {
             url: options.podUrls.frontend,
-            updatingFrontend: options.podUrls.updatingFrontend,
-            podId: claimedPodId || undefined,
-            workspaceId: workspaceId || undefined,
           },
         }),
         createArtifact({
@@ -765,6 +768,20 @@ export default function TaskChatPage() {
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
 
+  // Poll for frontend ready status when pod frontend is updating
+  const { isReady: isFrontendReady } = useFrontendReadyCheck({
+    enabled: isFrontendUpdating,
+    workspaceId: workspaceId || undefined,
+    podId: claimedPodId || undefined,
+    onReady: () => {
+      // Clear the updating flag when frontend is ready
+      setIsFrontendUpdating(false);
+    },
+  });
+
+  // Pass loading state to browser artifacts
+  const isBrowserLoading = isFrontendUpdating && !isFrontendReady;
+
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
     // TODO: rm this and only enable if ready below
@@ -818,7 +835,7 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} isBrowserLoading={isBrowserLoading} />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -865,7 +882,7 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} isBrowserLoading={isBrowserLoading} />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
