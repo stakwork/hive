@@ -255,6 +255,13 @@ export const useStaktrak = (
     };
   }, [initialUrl]);
 
+  const navigateToUrl = (url: string) => {
+    if (iframeRef.current) {
+      iframeRef.current.src = url;
+      setCurrentUrl(url);
+    }
+  };
+
   return {
     currentUrl,
     isSetup,
@@ -273,5 +280,6 @@ export const useStaktrak = (
     clearAllActions,
     toggleActionsView,
     isRecorderReady,
+    navigateToUrl,
   };
 };
