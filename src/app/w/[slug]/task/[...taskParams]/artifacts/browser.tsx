@@ -138,9 +138,9 @@ export function BrowserArtifactPanel({
     setUrlInput(displayUrl || "");
   }, [displayUrl]);
 
-  // Poll URL to check if it's ready (use displayUrl instead of activeContent.url)
+  // Poll URL to check if it's ready (only on initial load for each artifact)
   useEffect(() => {
-    const url = displayUrl;
+    const url = activeContent?.url;
     if (!url) return;
 
     // If we already know this URL is ready, don't poll
@@ -187,15 +187,7 @@ export function BrowserArtifactPanel({
     }, pollInterval);
 
     return () => clearInterval(intervalId);
-  }, [displayUrl, isUrlReady, urlCheckAttempts]);
-
-  // Reset URL ready state when refreshKey changes (manual refresh)
-  useEffect(() => {
-    if (refreshKey > 0 && displayUrl) {
-      setIsUrlReady(prev => ({ ...prev, [displayUrl]: false }));
-      setUrlCheckAttempts(prev => ({ ...prev, [displayUrl]: 0 }));
-    }
-  }, [refreshKey, displayUrl]);
+  }, [activeContent?.url, isUrlReady, urlCheckAttempts]);
 
   const handleUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUrlInput(e.target.value);
@@ -504,7 +496,7 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
-                {isActive && !isUrlReady[tabUrl] && (
+                {isActive && !isUrlReady[content.url] && (
                   <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="w-8 h-8 animate-spin text-primary" />
