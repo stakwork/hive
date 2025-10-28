@@ -768,15 +768,17 @@ export default function TaskChatPage() {
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
 
+  // Stable callback for when frontend is ready
+  const handleFrontendReady = useCallback(() => {
+    setIsFrontendUpdating(false);
+  }, []);
+
   // Poll for frontend ready status when pod frontend is updating
   const { isReady: isFrontendReady } = useFrontendReadyCheck({
     enabled: isFrontendUpdating,
     workspaceId: workspaceId || undefined,
     podId: claimedPodId || undefined,
-    onReady: () => {
-      // Clear the updating flag when frontend is ready
-      setIsFrontendUpdating(false);
-    },
+    onReady: handleFrontendReady,
   });
 
   // Pass loading state to browser artifacts
