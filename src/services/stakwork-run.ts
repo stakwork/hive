@@ -38,7 +38,14 @@ export async function createStakworkRun(
   // Validate workspace access and fetch related data
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
-    include: {
+    select: {
+      id: true,
+      ownerId: true,
+      deleted: true,
+      members: {
+        where: { userId },
+        select: { role: true },
+      },
       swarm: {
         select: {
           swarmUrl: true,
@@ -66,8 +73,16 @@ export async function createStakworkRun(
     },
   });
 
-  if (!workspace) {
+  if (!workspace || workspace.deleted) {
     throw new Error("Workspace not found");
+  }
+
+  // Validate user has access to this workspace
+  const isOwner = workspace.ownerId === userId;
+  const isMember = workspace.members.length > 0;
+
+  if (!isOwner && !isMember) {
+    throw new Error("Access denied");
   }
 
   // Decrypt sensitive data
@@ -418,6 +433,7 @@ export async function updateStakworkRunDecision(
       workspace: {
         select: {
           id: true,
+          slug: true,
           ownerId: true,
           deleted: true,
           members: {
