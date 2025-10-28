@@ -96,10 +96,12 @@ export function LearnChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Allow Shift+Enter for new lines, Enter alone submits
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
+    // Shift+Enter will naturally insert a new line (no preventDefault)
   };
 
   const isMicMode = mode === "mic";
