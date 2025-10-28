@@ -204,35 +204,6 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    test("returns 400 when swarm missing poolName", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-      });
-
-      // Set poolApiKey but leave poolName null
-      await db.swarm.update({
-        where: { id: swarm.id },
-        data: { poolName: null, poolApiKey: JSON.stringify({ encrypted: "key" }) },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      await expectError(response, "Swarm not properly configured with pool information", 400);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
     test("returns 400 when swarm missing poolApiKey", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
@@ -690,8 +661,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
+      // URL should now use swarm.id instead of poolName
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pool-manager.test.com/pools/test-pool/workspace",
+        `https://pool-manager.test.com/pools/${swarm.id}/workspace`,
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -799,9 +771,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      // Verify the API was called with the decrypted key (from mocked EncryptionService)
+      // Verify the API was called with the decrypted key and swarm.id (from mocked EncryptionService)
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pool-manager.test.com/pools/test-pool/workspace",
+        `https://pool-manager.test.com/pools/${swarm.id}/workspace`,
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -811,7 +783,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
     });
 
-    test("encodes pool name in URL correctly", async () => {
+    test("encodes swarm id in URL correctly", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -840,8 +812,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
+      // URL should now use swarm.id (which is a cuid and doesn't need special encoding)
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pool-manager.test.com/pools/test%20pool%20with%20spaces/workspace",
+        `https://pool-manager.test.com/pools/${encodeURIComponent(swarm.id)}/workspace`,
         expect.any(Object)
       );
     });

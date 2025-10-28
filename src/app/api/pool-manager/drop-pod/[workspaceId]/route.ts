@@ -75,11 +75,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolApiKey = workspace.swarm.poolApiKey;
 
     // Check if swarm has pool configuration
-    if (!workspace.swarm.poolName || !poolApiKey) {
+    if (!workspace.swarm.id || !poolApiKey) {
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
-    const poolName = workspace.swarm.poolName;
+    const poolId = workspace.swarm.id || workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     console.log(">>> Dropping pod with ID:", podId);
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Now drop the pod
-    await dropPod(poolName, podId, poolApiKeyPlain);
+    await dropPod(poolId as string, podId, poolApiKeyPlain);
 
     return NextResponse.json(
       {
