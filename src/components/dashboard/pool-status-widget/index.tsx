@@ -128,15 +128,12 @@ export function PoolStatusWidget() {
     if (!servicesReady) {
       // Services being set up
       return (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-lg border border-border bg-card">
-          <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-orange-100 text-orange-700">
-            <Clock className="w-4 h-4" />
-            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+        <div className="flex items-center gap-2 px-3 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm">
+          <div className="relative flex items-center justify-center">
+            <Server className="w-4 h-4 text-foreground" />
+            <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Setting up services</span>
-            <span className="text-xs text-muted-foreground">In progress...</span>
-          </div>
+          <div className="text-xs font-medium text-muted-foreground">Setting up...</div>
         </div>
       );
     }
