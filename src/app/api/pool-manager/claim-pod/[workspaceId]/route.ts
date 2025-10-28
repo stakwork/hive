@@ -106,10 +106,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolApiKey = workspace.swarm.poolApiKey;
 
     // Call Pool Manager API to claim pod
-    const poolId = workspace.swarm.id;
+    const poolId = workspace.swarm.id || workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    const { frontend, workspace: podWorkspace, processList } = await claimPodAndGetFrontend(poolId, poolApiKeyPlain);
+    const {
+      frontend,
+      workspace: podWorkspace,
+      processList,
+    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
