@@ -37,7 +37,7 @@ export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMes
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
           >
-            <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
+            <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"} size="compact">
               {message.message}
             </MarkdownRenderer>
 

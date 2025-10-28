@@ -18,8 +18,8 @@ vi.mock('framer-motion', () => ({
 
 // Mock MarkdownRenderer
 vi.mock('@/components/MarkdownRenderer', () => ({
-  MarkdownRenderer: ({ children, variant }: { children: string; variant?: 'user' | 'assistant' }) => (
-    <div data-testid="markdown-renderer" data-variant={variant}>
+  MarkdownRenderer: ({ children, variant, size }: { children: string; variant?: 'user' | 'assistant'; size?: 'default' | 'compact' }) => (
+    <div data-testid="markdown-renderer" data-variant={variant} data-size={size}>
       {children}
     </div>
   ),

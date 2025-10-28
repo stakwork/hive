@@ -35,7 +35,7 @@ export function FormArtifact({
     <div className="relative">
       <Card className={`p-4 bg-card rounded-lg relative ${!isDisabled ? "border border-primary/30" : "border"}`}>
         <div className="text-sm font-medium mb-3">
-          <MarkdownRenderer>{content.actionText}</MarkdownRenderer>
+          <MarkdownRenderer size="compact">{content.actionText}</MarkdownRenderer>
         </div>
 
         {/* Only show buttons for actionType="button" options */}
