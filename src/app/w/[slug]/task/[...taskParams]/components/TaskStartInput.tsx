@@ -20,6 +20,7 @@ interface TaskStartInputProps {
 export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = false }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
   
@@ -31,7 +32,11 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
 
   useEffect(() => {
     if (transcript) {
-      setValue(transcript);
+      // Append transcript to the initial value
+      const newValue = initialValueRef.current 
+        ? `${initialValueRef.current} ${transcript}`.trim()
+        : transcript;
+      setValue(newValue);
     }
   }, [transcript]);
 
@@ -39,12 +44,19 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
     if (isListening) {
       stopListening();
     } else {
+      // Store the current value when starting to listen
+      initialValueRef.current = value;
       startListening();
     }
-  }, [isListening, stopListening, startListening]);
+  }, [isListening, stopListening, startListening, value]);
+
+  const handleStartListening = useCallback(() => {
+    initialValueRef.current = value;
+    startListening();
+  }, [value, startListening]);
 
   useControlKeyHold({
-    onStart: startListening,
+    onStart: handleStartListening,
     onStop: stopListening,
     enabled: isSupported && !isLoading,
   });
