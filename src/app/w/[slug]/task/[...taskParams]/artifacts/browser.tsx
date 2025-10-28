@@ -17,6 +17,7 @@ import {
   List,
   CheckCircle2,
   ArrowLeft,
+  Loader2,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
@@ -44,6 +45,8 @@ export function BrowserArtifactPanel({
   const [urlInput, setUrlInput] = useState("");
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isUrlReady, setIsUrlReady] = useState<Record<string, boolean>>({});
+  const [urlCheckAttempts, setUrlCheckAttempts] = useState<Record<string, number>>({});
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -134,6 +137,65 @@ export function BrowserArtifactPanel({
   useEffect(() => {
     setUrlInput(displayUrl || "");
   }, [displayUrl]);
+
+  // Poll URL to check if it's ready (for the active artifact)
+  useEffect(() => {
+    const url = activeContent?.url;
+    if (!url) return;
+
+    // If we already know this URL is ready, don't poll
+    if (isUrlReady[url]) return;
+
+    const maxAttempts = 30; // 30 attempts = 30 seconds max
+    const pollInterval = 1000; // 1 second
+
+    const checkUrl = async () => {
+      try {
+        const response = await fetch(url, { 
+          method: 'HEAD',
+          mode: 'no-cors', // Allow checking cross-origin URLs
+        });
+        // With no-cors mode, we can't read the status, but if fetch succeeds, URL is likely ready
+        setIsUrlReady(prev => ({ ...prev, [url]: true }));
+        setUrlCheckAttempts(prev => ({ ...prev, [url]: 0 }));
+      } catch (error) {
+        // URL not ready yet, increment attempts
+        setUrlCheckAttempts(prev => {
+          const currentAttempts = (prev[url] || 0) + 1;
+          
+          if (currentAttempts >= maxAttempts) {
+            // Give up after max attempts and show iframe anyway
+            setIsUrlReady(prevReady => ({ ...prevReady, [url]: true }));
+            return { ...prev, [url]: 0 };
+          }
+          
+          return { ...prev, [url]: currentAttempts };
+        });
+      }
+    };
+
+    // Initial check
+    checkUrl();
+
+    // Set up polling
+    const intervalId = setInterval(() => {
+      if (!isUrlReady[url] && (urlCheckAttempts[url] || 0) < maxAttempts) {
+        checkUrl();
+      } else {
+        clearInterval(intervalId);
+      }
+    }, pollInterval);
+
+    return () => clearInterval(intervalId);
+  }, [activeContent?.url, isUrlReady, urlCheckAttempts]);
+
+  // Reset URL ready state when refreshKey changes (manual refresh)
+  useEffect(() => {
+    if (refreshKey > 0 && activeContent?.url) {
+      setIsUrlReady(prev => ({ ...prev, [activeContent.url]: false }));
+      setUrlCheckAttempts(prev => ({ ...prev, [activeContent.url]: 0 }));
+    }
+  }, [refreshKey, activeContent?.url]);
 
   const handleUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUrlInput(e.target.value);
@@ -442,6 +504,14 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
+                {!isUrlReady[content.url] && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Waiting for server to be ready...</p>
+                    </div>
+                  </div>
+                )}
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
