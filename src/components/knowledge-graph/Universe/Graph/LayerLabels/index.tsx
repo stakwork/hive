@@ -88,7 +88,8 @@ export const LayerLabels = () => {
         const labelCenter = nodeTypesWithPosition[nodeTypeId]
         const typedPositions = positions as { x: number; y: number; z: number }[]
 
-        const name = displayNodeTypes.find((n) => n.ref_id === nodeTypeId)?.name || nodeTypeId
+        const rawName = displayNodeTypes.find((n) => n.ref_id === nodeTypeId)?.name || nodeTypeId
+        const name = rawName.replace(/_/g, ' ')
 
         if (!labelCenter || typedPositions.length === 0) {
           return null
