@@ -48,6 +48,16 @@ export async function PATCH(
 
     const input = validationResult.data;
 
+    // Validate featureId is provided when decision is ACCEPTED
+    if (input.decision === "ACCEPTED" && !input.featureId) {
+      return NextResponse.json(
+        {
+          error: "featureId is required when accepting a decision",
+        },
+        { status: 400 }
+      );
+    }
+
     // Update the decision
     const updatedRun = await updateStakworkRunDecision(runId, userId, input);
 

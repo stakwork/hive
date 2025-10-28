@@ -68,6 +68,7 @@ export const StakworkRunWebhookSchema = z.object({
 export const UpdateStakworkRunDecisionSchema = z.object({
   decision: z.nativeEnum(StakworkRunDecision),
   feedback: z.string().optional(),
+  featureId: z.string().cuid().optional(),
 });
 
 export const StakworkRunQuerySchema = z.object({

@@ -420,7 +420,9 @@ export async function getStakworkRuns(
 
 /**
  * Update user decision on a Stakwork run
- * If ACCEPTED and type=ARCHITECTURE, also updates feature.architecture
+ * If ACCEPTED: updates StakworkRun.featureId and the appropriate feature field based on type
+ * - ARCHITECTURE: updates feature.architecture
+ * - Future: REQUIREMENTS, USER_STORIES, etc.
  */
 export async function updateStakworkRunDecision(
   runId: string,
@@ -456,28 +458,58 @@ export async function updateStakworkRunDecision(
     throw new Error("Access denied");
   }
 
+  // If ACCEPTED, validate and verify the feature exists
+  if (input.decision === StakworkRunDecision.ACCEPTED && input.featureId) {
+    const feature = await db.feature.findUnique({
+      where: { id: input.featureId },
+      select: { id: true, workspaceId: true },
+    });
+
+    if (!feature) {
+      throw new Error("Feature not found");
+    }
+
+    if (feature.workspaceId !== run.workspaceId) {
+      throw new Error("Feature does not belong to the same workspace as the run");
+    }
+  }
+
+  // Prepare update data
+  const updateData: Prisma.StakworkRunUpdateInput = {
+    decision: input.decision,
+    feedback: input.feedback || null,
+  };
+
+  // If ACCEPTED, update the featureId
+  if (input.decision === StakworkRunDecision.ACCEPTED && input.featureId) {
+    updateData.featureId = input.featureId;
+  }
+
   // Update the decision
   const updatedRun = await db.stakworkRun.update({
     where: { id: runId },
-    data: {
-      decision: input.decision,
-      feedback: input.feedback || null,
-    },
+    data: updateData,
   });
 
-  // If ACCEPTED and ARCHITECTURE type, update feature.architecture
+  // If ACCEPTED with result, update the appropriate feature field based on type
   if (
     input.decision === StakworkRunDecision.ACCEPTED &&
-    updatedRun.type === StakworkRunType.ARCHITECTURE &&
-    updatedRun.featureId &&
+    input.featureId &&
     updatedRun.result
   ) {
-    await db.feature.update({
-      where: { id: updatedRun.featureId },
-      data: {
-        architecture: updatedRun.result,
-      },
-    });
+    switch (updatedRun.type) {
+      case StakworkRunType.ARCHITECTURE:
+        await db.feature.update({
+          where: { id: input.featureId },
+          data: {
+            architecture: updatedRun.result,
+          },
+        });
+        break;
+      // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
+      default:
+        console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
+    }
   }
 
   // Broadcast decision via Pusher
