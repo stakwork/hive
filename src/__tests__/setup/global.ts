@@ -7,6 +7,14 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+// Polyfill ResizeObserver for jsdom test environment
+// Required by components using cmdk (Command Dialog)
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 beforeAll(() => {
   // Global test hooks can be added here when needed.
 });
