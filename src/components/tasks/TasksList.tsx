@@ -118,9 +118,6 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             </ToggleGroup>
           </div>
         </CardTitle>
-        <CardDescription>
-          Your latest tasks in this workspace
-        </CardDescription>
       </CardHeader>
       <CardContent className={viewType === "kanban" ? "p-0" : "space-y-3"}>
         {viewType === "list" ? (
