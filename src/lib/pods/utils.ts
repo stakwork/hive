@@ -182,12 +182,13 @@ export async function claimPodAndGetFrontend(
   let frontend: string;
   let processList: ProcessInfo[] | undefined;
 
+  // Get the control port URL
+  const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
+  if (!controlPortUrl) {
+    throw new Error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`);
+  }
+
   try {
-    // Get the control port URL
-    const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
-    if (!controlPortUrl) {
-      throw new Error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`);
-    }
 
     // Get the process list from the control port
     processList = await getProcessList(controlPortUrl, workspace.password);
@@ -204,10 +205,15 @@ export async function claimPodAndGetFrontend(
     frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
 
     if (!frontend) {
-      throw new Error(`Failed to discover frontend and port ${POD_PORTS.FRONTEND_FALLBACK} not found in port mappings`);
+      // Final fallback: replace control port (15552) with frontend port (3000) in controlPortUrl
+      frontend = controlPortUrl.replace(POD_PORTS.CONTROL, POD_PORTS.FRONTEND_FALLBACK);
+      console.log(
+        `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${POD_PORTS.FRONTEND_FALLBACK} in controlPortUrl:`,
+        frontend,
+      );
+    } else {
+      console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
     }
-
-    console.log(`>>> Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}:`, frontend);
   }
 
   return { frontend, workspace, processList };
