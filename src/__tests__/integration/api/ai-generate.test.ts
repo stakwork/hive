@@ -16,6 +16,9 @@ import {
   createPostRequest,
   createPatchRequest,
   getMockedSession,
+  createAuthenticatedPostRequest,
+  createAuthenticatedGetRequest,
+  createAuthenticatedPatchRequest,
 } from "@/__tests__/support/helpers";
 
 vi.mock("@/lib/service-factory", () => ({
@@ -109,14 +112,11 @@ describe("AI Generation API Integration Tests", () => {
   describe("POST /api/ai/generate", () => {
     test("should create AI generation run successfully", async () => {
       const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createPostRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
         type: "ARCHITECTURE",
         workspaceId: workspace.id,
         featureId: feature.id,
-      });
+      }, user);
 
       const response = await GenerateAI(request);
       const responseData = await response.json();
@@ -140,14 +140,11 @@ describe("AI Generation API Integration Tests", () => {
 
     test("should create workspace-level generation without featureId", async () => {
       const { user, workspace } = await createTestWorkspaceWithFeature();
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createPostRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
         type: "ARCHITECTURE",
         workspaceId: workspace.id,
         featureId: null,
-      });
+      }, user);
 
       const response = await GenerateAI(request);
       const responseData = await response.json();
@@ -158,13 +155,10 @@ describe("AI Generation API Integration Tests", () => {
 
     test("should reject invalid StakworkRunType", async () => {
       const { user, workspace } = await createTestWorkspaceWithFeature();
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createPostRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
         type: "INVALID_TYPE",
         workspaceId: workspace.id,
-      });
+      }, user);
 
       const response = await GenerateAI(request);
 
@@ -174,8 +168,6 @@ describe("AI Generation API Integration Tests", () => {
     });
 
     test("should reject unauthenticated user", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest("http://localhost/api/test", {
         type: "ARCHITECTURE",
         workspaceId: "ws-1",
@@ -187,19 +179,16 @@ describe("AI Generation API Integration Tests", () => {
 
     test("should handle Stakwork API failure", async () => {
       const { user, workspace, feature } = await createTestWorkspaceWithFeature();
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
       const mockStakworkRequest = vi.fn().mockRejectedValue(new Error("Stakwork API error"));
       mockStakworkService.mockReturnValue({
         stakworkRequest: mockStakworkRequest,
       } as any);
 
-      const request = createPostRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
         type: "ARCHITECTURE",
         workspaceId: workspace.id,
         featureId: feature.id,
-      });
+      }, user);
 
       const response = await GenerateAI(request);
 
@@ -236,11 +225,9 @@ describe("AI Generation API Integration Tests", () => {
           },
         ],
       });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createGetRequest(
-        `http://localhost/api/test?workspaceId=${workspace.id}&limit=10&offset=0`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&limit=10&offset=0`,
+        user
       );
 
       const response = await GetRuns(request);
@@ -265,11 +252,9 @@ describe("AI Generation API Integration Tests", () => {
           dataType: "string",
         },
       });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createGetRequest(
-        `http://localhost/api/test?workspaceId=${workspace.id}&type=ARCHITECTURE&limit=10&offset=0`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=ARCHITECTURE&limit=10&offset=0`,
+        user
       );
 
       const response = await GetRuns(request);
@@ -303,11 +288,9 @@ describe("AI Generation API Integration Tests", () => {
           },
         ],
       });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createGetRequest(
-        `http://localhost/api/test?workspaceId=${workspace.id}&featureId=${feature.id}&limit=10&offset=0`
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&featureId=${feature.id}&limit=10&offset=0`,
+        user
       );
 
       const response = await GetRuns(request);
@@ -320,10 +303,7 @@ describe("AI Generation API Integration Tests", () => {
 
     test("should reject invalid query parameters", async () => {
       const { user } = await createTestWorkspaceWithFeature();
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createGetRequest("http://localhost/api/test?workspaceId=invalid-id");
+      const request = createAuthenticatedGetRequest("http://localhost/api/test?workspaceId=invalid-id", user);
 
       const response = await GetRuns(request);
 
@@ -346,12 +326,9 @@ describe("AI Generation API Integration Tests", () => {
           dataType: "string",
         },
       });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createPatchRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
         decision: "ACCEPTED",
-      });
+      }, user);
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -385,13 +362,10 @@ describe("AI Generation API Integration Tests", () => {
       });
 
       const originalArchitecture = feature.architecture;
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createPatchRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
         decision: "REJECTED",
         feedback: "Not good enough",
-      });
+      }, user);
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -423,13 +397,10 @@ describe("AI Generation API Integration Tests", () => {
           dataType: "string",
         },
       });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
-
-      const request = createPatchRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
         decision: "FEEDBACK",
         feedback: "Please add more database schema details",
-      });
+      }, user);
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -464,11 +435,9 @@ describe("AI Generation API Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(otherUser) as any);
-
-      const request = createPatchRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
         decision: "ACCEPTED",
-      });
+      }, otherUser);
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
