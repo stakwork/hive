@@ -123,7 +123,7 @@ export const GraphComponent = ({
   }, [workspaceId, addNewNode, resetData, propEndpoint]);
 
   return (
-    <div className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
+    <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
       {/* Widgets overlaid in top-right corner - only show on dashboard */}
       {showWidgets && (
         <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
