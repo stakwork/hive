@@ -480,9 +480,11 @@ export async function updateStakworkRunDecision(
     feedback: input.feedback || null,
   };
 
-  // If ACCEPTED, update the featureId
+  // If ACCEPTED, update the featureId using connect syntax for relation
   if (input.decision === StakworkRunDecision.ACCEPTED && input.featureId) {
-    updateData.featureId = input.featureId;
+    updateData.feature = {
+      connect: { id: input.featureId }
+    };
   }
 
   // Update the decision
@@ -494,13 +496,13 @@ export async function updateStakworkRunDecision(
   // If ACCEPTED with result, update the appropriate feature field based on type
   if (
     input.decision === StakworkRunDecision.ACCEPTED &&
-    input.featureId &&
+    updatedRun.featureId &&
     updatedRun.result
   ) {
     switch (updatedRun.type) {
       case StakworkRunType.ARCHITECTURE:
         await db.feature.update({
-          where: { id: input.featureId },
+          where: { id: updatedRun.featureId },
           data: {
             architecture: updatedRun.result,
           },
