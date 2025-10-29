@@ -469,7 +469,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       expect(data.frontend).toBe("https://frontend.example.com");
     });
 
-    test("returns 500 when no frontend port mapping found", async () => {
+    test("uses final fallback when no frontend port mapping found", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -489,7 +489,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       // Mock with portMappings that have no frontend port (only internal ports)
-      // This should cause the fallback to port 3000 to fail as well
+      // This triggers the final fallback which attempts to replace control port with frontend port in URL
       mockFetch
         // First call: GET workspace from pool (no port 3000, only internal ports)
         .mockResolvedValueOnce({
@@ -534,7 +534,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      await expectError(response, "Failed to claim pod", 500);
+      // The final fallback uses controlPortUrl.replace() which returns the control URL
+      const data = await expectSuccess(response, 200);
+      expect(data.frontend).toBe("https://internal1.example.com");
     });
 
     test("returns 500 when portMappings is empty", async () => {

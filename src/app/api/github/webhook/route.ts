@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
+    console.log("=> github webhook candidateUrl", candidateUrl);
+
     const webhookId = request.headers.get("x-github-hook-id");
     if (!webhookId) {
       console.error("Missing webhook ID header");
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
       // Get workspace slug for the GitHub credentials
       const workspaceData = await db.workspace.findUnique({
         where: { id: repository.workspaceId },
-        select: { slug: true }
+        select: { slug: true },
       });
 
       if (workspaceData) {
