@@ -20,6 +20,8 @@ const initialState = {
   recommendationsLoading: false,
   showAll: false,
   runningJanitors: new Set<string>(),
+  workspaceSlug: null as string | null,
+  taskCoordinatorEnabled: false,
   recommendationSweepEnabled: false,
   ticketSweepEnabled: false,
 };
