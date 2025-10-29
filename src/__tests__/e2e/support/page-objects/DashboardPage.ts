@@ -18,9 +18,10 @@ export class DashboardPage {
 
   /**
    * Wait for dashboard to fully load
+   * Dashboard no longer has a title, so we wait for the graph component to be visible
    */
   async waitForLoad(): Promise<void> {
-    await expect(this.page.locator(selectors.pageTitle.dashboard)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 10000 });
   }
 
   /**
@@ -53,5 +54,12 @@ export class DashboardPage {
   async reload(): Promise<void> {
     await this.page.reload();
     await this.waitForLoad();
+  }
+
+  /**
+   * Check if dashboard is loaded (graph is visible)
+   */
+  async isLoaded(): Promise<boolean> {
+    return await this.page.locator('[data-testid="graph-component"]').isVisible();
   }
 }

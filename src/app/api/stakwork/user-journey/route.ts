@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { db } from "@/lib/db";
+import { TaskSourceType } from "@prisma/client";
 import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
@@ -42,14 +43,9 @@ async function callStakwork(
       repo2graph_url: repo2GraphUrl,
     };
 
-    const workflowId = config.STAKWORK_USER_JOURNEY_WORKFLOW_ID || "";
-    if (!workflowId) {
-      throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
-    }
-
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
-      workflow_id: parseInt(workflowId),
+      workflow_id: parseInt(config.STAKWORK_USER_JOURNEY_WORKFLOW_ID),
       workflow_params: {
         set_var: {
           attributes: {
@@ -96,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, workspaceId } = body;
+    const { message, workspaceId, title, description, testName } = body;
 
     // Validate required fields
     if (!message) {
@@ -106,6 +102,9 @@ export async function POST(request: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json({ error: "Workspace ID is required" }, { status: 400 });
     }
+
+    // Use default title if not provided
+    const taskTitle = title || testName || "User Journey Test";
 
     // Find the workspace and validate user access
     const workspace = await getWorkspaceById(workspaceId, userId);
@@ -161,11 +160,74 @@ export async function POST(request: NextRequest) {
       username,
     );
 
+    // Create a task to track this user journey test
+    // This allows filtering, viewing, and managing E2E tests alongside other tasks
+    // The test code itself is stored in the graph; this task tracks metadata and status
+    let task = null;
+    try {
+      // Use the user's chosen filename directly, or provide a default
+      // The filename is provided by the browser artifact panel when the user saves the test
+      const testFilePath = testName
+        ? `src/__tests__/e2e/specs/${testName}`
+        : `src/__tests__/e2e/specs/user-journey-test.spec.ts`;
+
+      // Get workspace's primary repository if available
+      const repository = await db.repository.findFirst({
+        where: { workspaceId: workspace.id },
+        select: { id: true, repositoryUrl: true },
+      });
+
+      // Extract stakworkProjectId from response if Stakwork succeeded
+      const stakworkProjectId = (stakworkData?.success && stakworkData?.data)
+        ? (stakworkData.data.project_id || stakworkData.data.id || null)
+        : null;
+
+      // Determine workflow status based on Stakwork success
+      const workflowStatus = stakworkProjectId ? "PENDING" : null;
+
+      // Create task record
+      task = await db.task.create({
+        data: {
+          title: taskTitle,
+          description: description || `User journey test: ${taskTitle}`,
+          workspaceId: workspace.id,
+          sourceType: TaskSourceType.USER_JOURNEY,
+          status: "IN_PROGRESS",
+          workflowStatus: workflowStatus,
+          priority: "MEDIUM",
+          testFilePath,
+          testFileUrl: repository?.repositoryUrl
+            ? `${repository.repositoryUrl}/blob/main/${testFilePath}`
+            : null,
+          stakworkProjectId: stakworkProjectId ? parseInt(String(stakworkProjectId)) : null,
+          repositoryId: repository?.id || null,
+          createdById: userId,
+          updatedById: userId,
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          workflowStatus: true,
+          testFilePath: true,
+          stakworkProjectId: true,
+        },
+      });
+
+      if (!stakworkProjectId) {
+        console.warn("Task created without stakworkProjectId (Stakwork call failed)");
+      }
+    } catch (error) {
+      console.error("Error creating task for user journey:", error);
+      // Continue anyway - we still want to return the Stakwork response
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "called stakwork",
         workflow: stakworkData?.data || null,
+        task: task || null,
       },
       { status: 201 },
     );

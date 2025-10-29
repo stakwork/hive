@@ -6,6 +6,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { streamText, ModelMessage } from "ai";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { gooseWeb, validateGooseSession } from "ai-sdk-provider-goose-web";
+import { retryWithDelay } from "@/lib/utils/retry";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -168,13 +169,15 @@ export async function POST(request: NextRequest) {
       }
     : undefined;
 
-  // Validate session immediately before creating model
-  const { sessionId: validatedSessionId, oldSessionInvalidated } = await validateGooseSession({
-    wsUrl,
-    sessionId: isResumingSession ? (sessionId ?? undefined) : undefined,
-    logger,
-    authToken: agentPassword || "asdfasdf",
-  });
+  // Validate session immediately before creating model (with retry logic)
+  const { sessionId: validatedSessionId, oldSessionInvalidated } = await retryWithDelay(() =>
+    validateGooseSession({
+      wsUrl,
+      sessionId: isResumingSession ? (sessionId ?? undefined) : undefined,
+      logger,
+      authToken: agentPassword || "asdfasdf",
+    }),
+  );
 
   // Create model with validated session ID
   const model = gooseWeb("goose", {

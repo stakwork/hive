@@ -41,4 +41,6 @@ export const PUSHER_EVENTS = {
   RECOMMENDATIONS_UPDATED: "recommendations-updated",
   TASK_TITLE_UPDATE: "task-title-update",
   WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
+  STAKWORK_RUN_UPDATE: "stakwork-run-update",
+  STAKWORK_RUN_DECISION: "stakwork-run-decision",
 } as const;

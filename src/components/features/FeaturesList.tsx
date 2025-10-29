@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, Plus, List, LayoutGrid, Trash2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Lightbulb, Plus, List, LayoutGrid, Trash2, X } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -24,6 +24,9 @@ import {
   PaginationContent,
   PaginationEllipsis,
   PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
 } from "@/components/ui/pagination";
 import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
@@ -102,6 +105,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Filter and sort state with localStorage persistence
   const [statusFilters, setStatusFilters] = useState<string[]>(() => {
@@ -225,6 +229,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
       if (data.success) {
         setFeatures(data.data);
         setHasMore(data.pagination.hasMore);
+        setTotalPages(data.pagination.totalPages);
       } else {
         throw new Error("Failed to fetch features");
       }
@@ -237,6 +242,33 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
   // Check if any filters are active
   const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null;
+
+  // Calculate visible page numbers (show 3 pages on each side of current page)
+  const getPageRange = (current: number, total: number): number[] => {
+    const range: number[] = [];
+    const delta = 3; // Show 3 pages on each side
+
+    // Calculate the start and end of the range
+    let start = Math.max(2, current - delta);
+    let end = Math.min(total - 1, current + delta);
+
+    // Adjust if we're near the start
+    if (current <= delta + 1) {
+      end = Math.min(total - 1, delta * 2 + 1);
+    }
+
+    // Adjust if we're near the end
+    if (current >= total - delta) {
+      start = Math.max(2, total - delta * 2);
+    }
+
+    // Build the range
+    for (let i = start; i <= end; i++) {
+      range.push(i);
+    }
+
+    return range;
+  };
 
   useEffect(() => {
     fetchFeatures(page);
@@ -724,67 +756,103 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
         {viewType === "list" && features.length > 0 && (
           <div className="pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </div>
+            </div>
             <Pagination>
               <PaginationContent>
+                {/* Previous button */}
                 <PaginationItem>
-                  <Button
-                    variant="ghost"
-                    size="default"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="gap-1 pl-2.5"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    <span>Previous</span>
-                  </Button>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage((p) => Math.max(1, p - 1));
+                    }}
+                    aria-disabled={page === 1}
+                    className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
                 </PaginationItem>
 
-                {page > 1 && (
+                {/* Always show page 1 */}
+                {totalPages > 0 && (
                   <PaginationItem>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setPage(1)}
+                    <PaginationLink
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPage(1);
+                      }}
+                      isActive={page === 1}
+                      className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
                     >
                       1
-                    </Button>
+                    </PaginationLink>
                   </PaginationItem>
                 )}
 
-                {page > 2 && (
+                {/* Show ellipsis if there's a gap between page 1 and the range */}
+                {page > 4 && totalPages > 7 && (
                   <PaginationItem>
                     <PaginationEllipsis />
                   </PaginationItem>
                 )}
 
-                <PaginationItem>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    disabled
-                  >
-                    {page}
-                  </Button>
-                </PaginationItem>
+                {/* Show page range (3 pages on each side of current) */}
+                {getPageRange(page, totalPages).map((pageNum) => (
+                  <PaginationItem key={pageNum}>
+                    <PaginationLink
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPage(pageNum);
+                      }}
+                      isActive={page === pageNum}
+                      className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
+                    >
+                      {pageNum}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
 
-                {hasMore && (
-                  <>
-                    <PaginationItem>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                    <PaginationItem>
-                      <Button
-                        variant="ghost"
-                        size="default"
-                        onClick={() => setPage((p) => p + 1)}
-                        className="gap-1 pr-2.5"
-                      >
-                        <span>Next</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </PaginationItem>
-                  </>
+                {/* Show ellipsis if there's a gap between the range and last page */}
+                {page < totalPages - 3 && totalPages > 7 && (
+                  <PaginationItem>
+                    <PaginationEllipsis />
+                  </PaginationItem>
                 )}
+
+                {/* Always show last page (if > 1) */}
+                {totalPages > 1 && (
+                  <PaginationItem>
+                    <PaginationLink
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPage(totalPages);
+                      }}
+                      isActive={page === totalPages}
+                      className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
+                    >
+                      {totalPages}
+                    </PaginationLink>
+                  </PaginationItem>
+                )}
+
+                {/* Next button */}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage((p) => Math.min(totalPages, p + 1));
+                    }}
+                    aria-disabled={page >= totalPages}
+                    className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
               </PaginationContent>
             </Pagination>
           </div>

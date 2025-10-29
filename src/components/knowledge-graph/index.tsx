@@ -7,6 +7,8 @@ import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
+import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
+import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 
 // --- TYPE DEFINITIONS ---
 
@@ -37,6 +39,7 @@ interface GraphComponentProps {
   className?: string;
   height?: string;
   width?: string;
+  showWidgets?: boolean;
 }
 
 export const GraphComponent = ({
@@ -45,7 +48,8 @@ export const GraphComponent = ({
   enablePolling = false,
   className,
   height = "h-full",
-  width = "w-full"
+  width = "w-full",
+  showWidgets = false
 }: GraphComponentProps = {}) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
@@ -119,10 +123,14 @@ export const GraphComponent = ({
   }, [workspaceId, addNewNode, resetData, propEndpoint]);
 
   return (
-    <div className={`dark ${height} ${width} border rounded-lg p-4 relative bg-card flex flex-col ${className || ''}`}>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-white">{title}</h3>
-      </div>
+    <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
+      {/* Widgets overlaid in top-right corner - only show on dashboard */}
+      {showWidgets && (
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+          <GitHubStatusWidget />
+          <PoolStatusWidget />
+        </div>
+      )}
 
       <div className="border rounded overflow-hidden bg-card flex-1">
         {nodesLoading ? (

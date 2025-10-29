@@ -220,6 +220,9 @@ model Workspace {
   // Roadmap features
   features Feature[]
 
+  // AI generation runs
+  stakworkRuns StakworkRun[]
+
   // Temporary storage for repository URL during setup
   repositoryDraft String? @map("repository_draft")
 
@@ -384,6 +387,10 @@ model Task {
 
   // Bounty code for external bounty platforms
   bountyCode String? @unique @map("bounty_code")
+
+  // User Journey test file tracking
+  testFilePath String? @map("test_file_path")
+  testFileUrl  String? @map("test_file_url")
 
   // Audit fields
   createdById String @map("created_by_id")
@@ -710,6 +717,7 @@ enum TaskSourceType {
   JANITOR
   TASK_COORDINATOR
   SYSTEM
+  USER_JOURNEY
 }
 
 enum SourceControlOrgType {
@@ -750,9 +758,10 @@ model Feature {
   updatedBy   User             @relation("FeatureUpdater", fields: [updatedById], references: [id])
 
   // Relationships
-  userStories UserStory[]
-  phases      Phase[]
-  tasks       Task[]
+  userStories  UserStory[]
+  phases       Phase[]
+  tasks        Task[]
+  stakworkRuns StakworkRun[]
 
   deleted     Boolean          @default(false)
   deletedAt   DateTime?        @map("deleted_at")
@@ -827,5 +836,47 @@ model Phase {
   @@index([order])
   @@index([deleted])
   @@map("phases")
+}
+
+// =============================================
+// STAKWORK AI GENERATION RUNS
+// =============================================
+
+model StakworkRun {
+  id          String   @id @default(cuid())
+  webhookUrl  String   @map("webhook_url")
+  projectId   Int?     @map("project_id") // Stakwork project ID
+  type        StakworkRunType
+  featureId   String?  @map("feature_id")
+  feature     Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  workspaceId String   @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  status      WorkflowStatus @default(PENDING)
+  result      String?        // Stores the actual result
+  dataType    String         @default("string") @map("data_type") // "string", "json", "number", etc.
+  feedback    String?        // User feedback on result
+  decision    StakworkRunDecision? // User decision on result
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([featureId])
+  @@index([type])
+  @@index([status])
+  @@index([projectId])
+  @@index([createdAt])
+  @@map("stakwork_runs")
+}
+
+enum StakworkRunType {
+  ARCHITECTURE
+}
+
+enum StakworkRunDecision {
+  ACCEPTED
+  REJECTED
+  FEEDBACK
 }
 

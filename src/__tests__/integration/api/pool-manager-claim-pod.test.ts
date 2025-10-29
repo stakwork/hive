@@ -204,35 +204,6 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    test("returns 400 when swarm missing poolName", async () => {
-      const { owner, workspace } = await createTestWorkspaceScenario();
-
-      const swarm = await createTestSwarm({
-        workspaceId: workspace.id,
-        name: "test-swarm",
-        status: "ACTIVE",
-      });
-
-      // Set poolApiKey but leave poolName null
-      await db.swarm.update({
-        where: { id: swarm.id },
-        data: { poolName: null, poolApiKey: JSON.stringify({ encrypted: "key" }) },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
-
-      const response = await POST(request, {
-        params: Promise.resolve({ workspaceId: workspace.id }),
-      });
-
-      await expectError(response, "Swarm not properly configured with pool information", 400);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
     test("returns 400 when swarm missing poolApiKey", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
@@ -498,7 +469,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       expect(data.frontend).toBe("https://frontend.example.com");
     });
 
-    test("returns 500 when no frontend port mapping found", async () => {
+    test("uses final fallback when no frontend port mapping found", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -518,7 +489,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       // Mock with portMappings that have no frontend port (only internal ports)
-      // This should cause the fallback to port 3000 to fail as well
+      // This triggers the final fallback which attempts to replace control port with frontend port in URL
       mockFetch
         // First call: GET workspace from pool (no port 3000, only internal ports)
         .mockResolvedValueOnce({
@@ -563,7 +534,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      await expectError(response, "Failed to claim pod", 500);
+      // The final fallback uses controlPortUrl.replace() which returns the control URL
+      const data = await expectSuccess(response, 200);
+      expect(data.frontend).toBe("https://internal1.example.com");
     });
 
     test("returns 500 when portMappings is empty", async () => {
@@ -690,8 +663,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
+      // URL should now use swarm.id instead of poolName
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pool-manager.test.com/pools/test-pool/workspace",
+        `https://pool-manager.test.com/pools/${swarm.id}/workspace`,
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -799,9 +773,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      // Verify the API was called with the decrypted key (from mocked EncryptionService)
+      // Verify the API was called with the decrypted key and swarm.id (from mocked EncryptionService)
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pool-manager.test.com/pools/test-pool/workspace",
+        `https://pool-manager.test.com/pools/${swarm.id}/workspace`,
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -811,7 +785,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       );
     });
 
-    test("encodes pool name in URL correctly", async () => {
+    test("encodes swarm id in URL correctly", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -840,8 +814,9 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
+      // URL should now use swarm.id (which is a cuid and doesn't need special encoding)
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pool-manager.test.com/pools/test%20pool%20with%20spaces/workspace",
+        `https://pool-manager.test.com/pools/${encodeURIComponent(swarm.id)}/workspace`,
         expect.any(Object)
       );
     });

@@ -22,16 +22,9 @@ test.describe('Dashboard Smoke Tests', () => {
     await dashboardPage.waitForLoad();
   });
 
-  test('should display dashboard title', async ({ page }) => {
-    await expect(page.locator(selectors.pageTitle.dashboard)).toBeVisible();
-  });
-
-  test('should display VM config section', async ({ page }) => {
-    await expect(page.locator(selectors.dashboard.vmSection)).toBeVisible();
-  });
-
-  test('should display test coverage section', async ({ page }) => {
-    await expect(page.locator(selectors.dashboard.coverageSection)).toBeVisible();
+  test('should display code graph', async ({ page }) => {
+    // Dashboard should show the graph component
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
   });
 
   test('should navigate to tasks page', async ({ page }) => {
@@ -48,6 +41,7 @@ test.describe('Dashboard Smoke Tests', () => {
   test('should persist workspace context after page reload', async ({ page }) => {
     await dashboardPage.reload();
     expect(page.url()).toContain(`/w/${workspaceSlug}`);
-    await expect(page.locator(selectors.pageTitle.dashboard)).toBeVisible();
+    // Verify we're still on the dashboard page (graph is visible)
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
   });
 });

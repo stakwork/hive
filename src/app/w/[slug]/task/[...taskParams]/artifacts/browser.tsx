@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useState, useCallback, useEffect } from "react";
 import {
   Monitor,
@@ -15,6 +16,8 @@ import {
   Pause,
   List,
   CheckCircle2,
+  ArrowLeft,
+  Loader2,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
@@ -39,6 +42,11 @@ export function BrowserArtifactPanel({
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [actionToast, setActionToast] = useState<{ type: string; text: string; id: number } | null>(null);
+  const [urlInput, setUrlInput] = useState("");
+  const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isUrlReady, setIsUrlReady] = useState<Record<string, boolean>>({});
+  const [urlCheckAttempts, setUrlCheckAttempts] = useState<Record<string, number>>({});
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
@@ -71,6 +79,7 @@ export function BrowserArtifactPanel({
     clearAllActions,
     toggleActionsView,
     isRecorderReady,
+    navigateToUrl,
   } = useStaktrak(
     activeContent?.url,
     () => {
@@ -112,6 +121,94 @@ export function BrowserArtifactPanel({
 
   // Use currentUrl from staktrak hook, fallback to content.url
   const displayUrl = currentUrl || activeContent?.url;
+
+  // Track navigation history when URL changes
+  useEffect(() => {
+    if (displayUrl && displayUrl !== navigationHistory[historyIndex]) {
+      // If we're not at the end of history, truncate forward history
+      const newHistory = navigationHistory.slice(0, historyIndex + 1);
+      newHistory.push(displayUrl);
+      setNavigationHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+  }, [displayUrl]);
+
+  // Sync urlInput with displayUrl
+  useEffect(() => {
+    setUrlInput(displayUrl || "");
+  }, [displayUrl]);
+
+  // Poll URL to check if it's ready (only on initial load for each artifact)
+  useEffect(() => {
+    const url = activeContent?.url;
+    if (!url) return;
+
+    // If we already know this URL is ready, don't poll
+    if (isUrlReady[url]) return;
+
+    const maxAttempts = 30; // 30 attempts = 30 seconds max
+    const pollInterval = 1000; // 1 second
+
+    const checkUrl = async () => {
+      try {
+        const response = await fetch(url, { 
+          method: 'HEAD',
+          mode: 'no-cors', // Allow checking cross-origin URLs
+        });
+        // With no-cors mode, we can't read the status, but if fetch succeeds, URL is likely ready
+        setIsUrlReady(prev => ({ ...prev, [url]: true }));
+        setUrlCheckAttempts(prev => ({ ...prev, [url]: 0 }));
+      } catch (error) {
+        // URL not ready yet, increment attempts
+        setUrlCheckAttempts(prev => {
+          const currentAttempts = (prev[url] || 0) + 1;
+          
+          if (currentAttempts >= maxAttempts) {
+            // Give up after max attempts and show iframe anyway
+            setIsUrlReady(prevReady => ({ ...prevReady, [url]: true }));
+            return { ...prev, [url]: 0 };
+          }
+          
+          return { ...prev, [url]: currentAttempts };
+        });
+      }
+    };
+
+    // Initial check
+    checkUrl();
+
+    // Set up polling
+    const intervalId = setInterval(() => {
+      if (!isUrlReady[url] && (urlCheckAttempts[url] || 0) < maxAttempts) {
+        checkUrl();
+      } else {
+        clearInterval(intervalId);
+      }
+    }, pollInterval);
+
+    return () => clearInterval(intervalId);
+  }, [activeContent?.url, isUrlReady, urlCheckAttempts]);
+
+  const handleUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUrlInput(e.target.value);
+  };
+
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (urlInput && navigateToUrl) {
+      navigateToUrl(urlInput);
+    }
+  };
+
+  const handleBack = () => {
+    if (historyIndex > 0 && navigateToUrl) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      navigateToUrl(navigationHistory[newIndex]);
+    }
+  };
+
+  const canGoBack = historyIndex > 0;
 
   const handleRefresh = () => {
     setRefreshKey((prev) => prev + 1);
@@ -193,12 +290,38 @@ export function BrowserArtifactPanel({
           return (
             <div key={artifact.id} className={`h-full flex flex-col ${isActive ? "block" : "hidden"}`}>
               {!ide && (
-                <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleBack}
+                            disabled={!isActive || !canGoBack}
+                            className="h-7 w-7 p-0 flex-shrink-0"
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Go back</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                     <Monitor className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-sm font-medium truncate">{tabUrl}</span>
+                    <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
+                      <Input
+                        type="text"
+                        value={isActive ? urlInput : tabUrl}
+                        onChange={handleUrlInputChange}
+                        onFocus={(e) => e.target.select()}
+                        disabled={!isActive}
+                        className="h-7 text-sm"
+                        placeholder="Enter URL..."
+                      />
+                    </form>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     {isSetup &&
                       isRecorderReady &&
                       (isRecording || isPlaywrightReplaying || capturedActions.length > 0) && (
@@ -373,6 +496,14 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
+                {isActive && !isUrlReady[content.url] && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Waiting for server to be ready...</p>
+                    </div>
+                  </div>
+                )}
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}

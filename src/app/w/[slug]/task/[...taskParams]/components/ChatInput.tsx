@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Input } from "@/components/ui/input";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Mic, MicOff } from "lucide-react";
@@ -33,6 +33,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -46,6 +47,13 @@ export function ChatInput({
       setInput(transcript);
     }
   }, [transcript]);
+
+  // Auto-scroll textarea to bottom when content changes
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [input]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -77,6 +85,15 @@ export function ChatInput({
     await onSend(message);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Allow Shift+Enter for new lines, Enter alone submits
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+    // Shift+Enter will naturally insert a new line (no preventDefault)
+  };
+
   return (
     <div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -99,13 +116,20 @@ export function ChatInput({
         onSubmit={handleSubmit}
         className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10"
       >
-        <Input
+        <Textarea
+          ref={textareaRef}
           placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          className="flex-1"
+          onKeyDown={handleKeyDown}
+          className="flex-1 resize-none min-h-[40px]"
+          style={{
+            maxHeight: "8em", // About 5 lines
+            overflowY: "auto",
+          }}
           autoFocus
           disabled={disabled}
+          rows={1}
           data-testid="chat-message-input"
         />
         {isSupported && (
