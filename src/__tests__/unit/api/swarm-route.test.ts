@@ -239,6 +239,11 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
       const data = await response.json();
@@ -352,6 +357,11 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
       const data = await response.json();
@@ -366,14 +376,14 @@ describe("POST /api/swarm - Unit Tests", () => {
         swarmId: "swarm2bCar4",
       });
 
-      // Verify API key was saved to database securely via update
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
-        where: { id: "placeholder-swarm-123" },
-        data: expect.objectContaining({
+      // Verify API key was saved to database securely via saveOrUpdateSwarm (which encrypts)
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: "workspace-123",
           swarmApiKey: sensitiveApiKey,
           swarmPassword: "secure-test-password-123",
-        }),
-      });
+        })
+      );
     });
 
     test("should create secure secret alias", async () => {
@@ -385,16 +395,20 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+
       const request = createMockRequest(validSwarmData);
       await POST(request);
 
-      // Verify secret alias was created correctly in update
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
-        where: { id: "placeholder-swarm-123" },
-        data: expect.objectContaining({
+      // Verify secret alias was created correctly via saveOrUpdateSwarm
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({
           swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
-        }),
-      });
+        })
+      );
     });
   });
 
@@ -483,8 +497,8 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
-      // Verify no saveOrUpdateSwarm was called since it's not used in new implementation
-      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(0);
+      // Verify saveOrUpdateSwarm was not called on error
+      expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled();
     });
 
     test("should handle unknown errors securely", async () => {
@@ -519,21 +533,25 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+      });
+
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
 
       expect(response.status).toBe(200); // Should still succeed
 
-      // Verify it handles undefined values gracefully in the update
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
-        where: { id: "placeholder-swarm-123" },
-        data: expect.objectContaining({
+      // Verify it handles undefined values gracefully via saveOrUpdateSwarm
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: "workspace-123",
           name: undefined, // undefined swarm_id
           swarmUrl: "https://undefined/api", // undefined address becomes "undefined"
           swarmApiKey: undefined,
           swarmSecretAlias: undefined, // undefined swarm_id results in undefined
-        }),
-      });
+        })
+      );
     });
   });
 
@@ -568,29 +586,29 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+
       const request = createMockRequest(validSwarmData);
       await POST(request);
 
       // Verify transaction was called to create placeholder
       expect(mockDb.$transaction).toHaveBeenCalled();
 
-      // Verify placeholder was updated with real data after service creation
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
-        where: { id: "placeholder-swarm-123" },
-        data: {
-          name: "swarm2bCar4", // Uses swarm_id as name
-          status: SwarmStatus.ACTIVE,
-          swarmUrl: "https://swarm2bCar4.sphinx.chat/api",
-          ec2Id: "i-1234567890abcdef0",
-          swarmApiKey: "api-key-123",
-          swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
-          swarmId: "swarm2bCar4",
-          swarmPassword: "secure-test-password-123",
-        },
+      // Verify placeholder was updated with real data via saveOrUpdateSwarm (with encryption)
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith({
+        workspaceId: "workspace-123",
+        name: "swarm2bCar4", // Uses swarm_id as name
+        status: SwarmStatus.ACTIVE,
+        swarmUrl: "https://swarm2bCar4.sphinx.chat/api",
+        ec2Id: "i-1234567890abcdef0",
+        swarmApiKey: "api-key-123",
+        swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
+        swarmId: "swarm2bCar4",
+        swarmPassword: "secure-test-password-123",
       });
-
-      // Verify saveOrUpdateSwarm is NOT called in new implementation
-      expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled();
     });
 
     test("should create repository record during transaction", async () => {
@@ -655,7 +673,7 @@ describe("POST /api/swarm - Unit Tests", () => {
           x_api_key: "api-key-123",
         },
       });
-      mockDb.swarm.update.mockRejectedValue(new Error("Database connection failed"));
+      mockSaveOrUpdateSwarm.mockRejectedValue(new Error("Database connection failed"));
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
@@ -710,6 +728,11 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
       const data = await response.json();
@@ -730,8 +753,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(mockValidateWorkspaceAccessById).toHaveBeenCalled();
       expect(mockDb.$transaction).toHaveBeenCalled(); // Placeholder creation
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalled();
-      expect(mockDb.swarm.update).toHaveBeenCalledTimes(1); // Update placeholder with real data
-      expect(mockSaveOrUpdateSwarm).not.toHaveBeenCalled(); // Not used in new implementation
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledTimes(1); // Update placeholder with real data (encrypted)
     });
   });
 
@@ -765,18 +787,22 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
 
       expect(response.status).toBe(200);
 
-      // Verify status flow: placeholder created with PENDING, then updated to ACTIVE
-      expect(mockDb.swarm.update).toHaveBeenCalledWith({
-        where: { id: "placeholder-swarm-123" },
-        data: expect.objectContaining({
+      // Verify status flow: placeholder created with PENDING, then updated to ACTIVE via saveOrUpdateSwarm
+      expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({
           status: SwarmStatus.ACTIVE,
-        }),
-      });
+        })
+      );
     });
 
     test("should follow PENDING -> FAILED status flow on error", async () => {
@@ -834,6 +860,11 @@ describe("POST /api/swarm - Unit Tests", () => {
           address: "swarm2bCar4.sphinx.chat",
           x_api_key: "api-key-123",
         },
+      });
+
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
       });
 
       const request = createMockRequest(validSwarmData);
