@@ -84,10 +84,11 @@ interface UseWorkspaceTasksResult {
 }
 
 export function useWorkspaceTasks(
-  workspaceId: string | null, 
-  workspaceSlug?: string | null, 
+  workspaceId: string | null,
+  workspaceSlug?: string | null,
   includeNotifications: boolean = false,
-  pageLimit: number = 5
+  pageLimit: number = 5,
+  showArchived: boolean = false
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -97,18 +98,25 @@ export function useWorkspaceTasks(
   const [currentPage, setCurrentPage] = useState(1);
   const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
 
-  // Handle real-time task title updates
+  // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === update.taskId 
+      setTasks(prevTasks => {
+        // If task is archived/unarchived, remove it from current list
+        // (it will now belong to the opposite tab)
+        if ('archived' in update && update.archived !== showArchived) {
+          return prevTasks.filter(task => task.id !== update.taskId);
+        }
+
+        // Otherwise update the task in place
+        return prevTasks.map(task =>
+          task.id === update.taskId
             ? { ...task, title: update.newTitle }
             : task
-        )
-      );
+        );
+      });
     },
-    [],
+    [showArchived],
   );
 
   // Subscribe to workspace-level updates if workspaceSlug is provided
@@ -120,16 +128,28 @@ export function useWorkspaceTasks(
 
   const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
     if (!workspaceId || !session?.user) {
+      console.log('[useWorkspaceTasks] No workspaceId or session user');
       setTasks([]);
       setPagination(null);
       return;
     }
 
+    console.log('[useWorkspaceTasks] Fetching tasks:', {
+      workspaceId,
+      page,
+      pageLimit,
+      showArchived,
+      includeLatestMessage
+    });
+
     setLoading(true);
     setError(null);
 
     try {
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+      const archivedParam = showArchived ? '&includeArchived=true' : '';
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
+      console.log('[useWorkspaceTasks] Request URL:', url);
+
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -142,10 +162,17 @@ export function useWorkspaceTasks(
       }
 
       const result = await response.json();
-      
+
+      console.log('[useWorkspaceTasks] Response:', {
+        success: result.success,
+        tasksCount: result.data?.length,
+        pagination: result.pagination
+      });
+
       if (result.success && Array.isArray(result.data)) {
         setTasks(prevTasks => reset ? result.data : [...prevTasks, ...result.data]);
         setPagination(result.pagination);
+        console.log('[useWorkspaceTasks] Tasks updated, new count:', result.data.length);
       } else {
         throw new Error("Invalid response format");
       }
@@ -156,7 +183,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -179,7 +206,8 @@ export function useWorkspaceTasks(
       let finalPagination: PaginationData | null = null;
 
       for (let page = 1; page <= storedPage; page++) {
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5${includeLatestMessage ? '&includeLatestMessage=true' : ''}`;
+        const archivedParam = showArchived ? '&includeArchived=true' : '';
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -192,7 +220,7 @@ export function useWorkspaceTasks(
         }
 
         const result = await response.json();
-        
+
         if (result.success && Array.isArray(result.data)) {
           allTasks.push(...result.data);
           finalPagination = result.pagination;
@@ -215,7 +243,7 @@ export function useWorkspaceTasks(
       setLoading(false);
       setIsRestoringFromStorage(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks]);
+  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived]);
 
   const loadMore = useCallback(async () => {
     if (pagination?.hasMore && workspaceId) {

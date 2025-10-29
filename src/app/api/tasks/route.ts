@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "5");
     const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
     const sourceType = searchParams.get("sourceType");
+    const includeArchived = searchParams.get("includeArchived");
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -84,12 +85,29 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Build where clause
-    // Always show USER_JOURNEY tasks regardless of TODO status
-    // These represent E2E tests that should be visible for tracking
+    // Filter by archived status based on includeArchived param
+    // - includeArchived="true" -> show only archived tasks
+    // - includeArchived="false" or not provided -> show only non-archived tasks
+    const isShowingArchived = includeArchived === "true";
+
+    console.log('[TASKS API] Query params:', {
+      workspaceId,
+      page,
+      limit,
+      includeArchived,
+      isShowingArchived,
+      sourceType
+    });
+
     const whereClause: Prisma.TaskWhereInput = {
       workspaceId,
       deleted: false,
-      OR: [
+      archived: isShowingArchived,
+    };
+
+    // If showing non-archived tasks (Recent tab), apply visibility rules
+    if (!isShowingArchived) {
+      whereClause.OR = [
         // Show non-TODO tasks (active work)
         { status: { not: TaskStatus.TODO } },
         // Show agent mode tasks regardless of status
@@ -98,13 +116,15 @@ export async function GET(request: NextRequest) {
         { stakworkProjectId: { not: null } },
         // Show user journey tasks regardless of status
         { sourceType: TaskSourceType.USER_JOURNEY },
-      ],
-    };
+      ];
+    }
 
     // Add sourceType filter if provided
     if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
       whereClause.sourceType = sourceType as TaskSourceType;
     }
+
+    console.log('[TASKS API] Where clause:', JSON.stringify(whereClause, null, 2));
 
     const [tasks, totalCount] = await Promise.all([
       db.task.findMany({
@@ -185,6 +205,22 @@ export async function GET(request: NextRequest) {
         where: whereClause,
       }),
     ]);
+
+    console.log('[TASKS API] Query results:', {
+      tasksFound: tasks.length,
+      totalCount,
+      page,
+      limit
+    });
+
+    if (tasks.length > 0) {
+      console.log('[TASKS API] First task:', {
+        id: tasks[0].id,
+        title: tasks[0].title,
+        status: tasks[0].status,
+        archived: (tasks[0] as any).archived
+      });
+    }
 
     const totalPages = Math.ceil(totalCount / limit);
     const hasMore = page < totalPages;
