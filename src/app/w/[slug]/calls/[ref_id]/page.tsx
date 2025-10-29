@@ -11,6 +11,9 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+const nodeTypes = ['-Clip', '-Episode']
+const nodeTypeParam = JSON.stringify(nodeTypes)
+
 export default function CallPage() {
   const params = useParams();
   const router = useRouter();
@@ -160,7 +163,7 @@ export default function CallPage() {
 
       {/* Episode Knowledge Graph */}
       <GraphComponent
-        endpoint={`/graph/subgraph?include_properties=true&start_node=${call.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
+        endpoint={`/graph/subgraph?node_type=${encodeURIComponent(nodeTypeParam)}&include_properties=true&start_node=${call.ref_id}&depth=2&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
         height="h-96"
         width="w-full"
       />
