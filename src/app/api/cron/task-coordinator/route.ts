@@ -1,4 +1,5 @@
 import { executeTaskCoordinatorRuns } from "@/services/task-coordinator-cron";
+import { checkAndUpdateMergedPRs } from "@/services/pr-tracking-cron";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -40,12 +41,36 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Execute PR tracking as a separate function
+    console.log("[TaskCoordinatorCron] Starting PR tracking check");
+    const prResult = await checkAndUpdateMergedPRs();
+    
+    // Log PR tracking results
+    if (prResult.success) {
+      console.log(`[TaskCoordinatorCron] PR tracking completed successfully. Checked ${prResult.tasksChecked} tasks, updated ${prResult.tasksUpdated} tasks`);
+    } else {
+      console.error(`[TaskCoordinatorCron] PR tracking completed with errors. Checked ${prResult.tasksChecked} tasks, updated ${prResult.tasksUpdated} tasks, ${prResult.errors.length} errors`);
+      
+      // Log individual errors
+      prResult.errors.forEach((error, index) => {
+        console.error(`[TaskCoordinatorCron] PR Error ${index + 1}: Task ${error.taskId} - ${error.error}`);
+      });
+    }
+
     return NextResponse.json({
-      success: result.success,
-      workspacesProcessed: result.workspacesProcessed,
-      tasksCreated: result.tasksCreated,
-      errorCount: result.errors.length,
-      errors: result.errors,
+      success: result.success && prResult.success,
+      taskCoordinator: {
+        workspacesProcessed: result.workspacesProcessed,
+        tasksCreated: result.tasksCreated,
+        errorCount: result.errors.length,
+        errors: result.errors,
+      },
+      prTracking: {
+        tasksChecked: prResult.tasksChecked,
+        tasksUpdated: prResult.tasksUpdated,
+        errorCount: prResult.errors.length,
+        errors: prResult.errors,
+      },
       timestamp: result.timestamp
     });
 
