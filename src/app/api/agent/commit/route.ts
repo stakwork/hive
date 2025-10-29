@@ -232,6 +232,23 @@ export async function POST(request: NextRequest) {
       })
       .filter((url: string | null): url is string => url !== null);
 
+    // Store PR URL and branch in the task for tracking
+    if (prUrls.length > 0) {
+      try {
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            prUrl: prUrls[0], // Store the first PR URL (most tasks have one repo)
+            prBranch: branchName,
+          },
+        });
+        console.log(`Stored PR tracking info for task ${taskId}: ${prUrls[0]}`);
+      } catch (error) {
+        console.error("Failed to store PR tracking info:", error);
+        // Don't fail the request, but log the error
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,

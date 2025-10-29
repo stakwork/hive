@@ -385,6 +385,11 @@ model Task {
   agentUrl      String? @map("agent_url")
   agentPassword String? @map("agent_password") // Encrypted pod password
 
+  // PR tracking for agent tasks
+  prUrl         String?   @map("pr_url") // Pull Request URL
+  prBranch      String?   @map("pr_branch") // Branch name associated with PR
+  prMergedAt    DateTime? @map("pr_merged_at") // When PR was merged
+
   // Bounty code for external bounty platforms
   bountyCode String? @unique @map("bounty_code")
 
