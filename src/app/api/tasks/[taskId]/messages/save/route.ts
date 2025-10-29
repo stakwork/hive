@@ -84,6 +84,7 @@ export async function POST(
         where: { id: taskId },
         data: {
           status: "DONE",
+          workflowStatus: "COMPLETED",
         },
       });
     }
