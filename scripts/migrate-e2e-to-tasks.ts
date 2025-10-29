@@ -125,6 +125,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         select: {
           id: true,
           repositoryUrl: true,
+          branch: true,
         },
       },
     },
@@ -292,7 +293,9 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         }
 
         // Construct URL using repository URL + relative path
-        testFileUrl = `${repository.repositoryUrl}/blob/main/${normalizedPath}`;
+        // Use dynamic branch from repository (fallback to 'main' if not set)
+        const branch = repository.branch || 'main';
+        testFileUrl = `${repository.repositoryUrl}/blob/${branch}/${normalizedPath}`;
       }
 
       // Log data that will be used for task creation
@@ -303,6 +306,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         console.log(`         testFilePath length: ${testFilePath?.length || 0} chars`);
         console.log(`         testFileUrl: ${testFileUrl || 'null'}`);
         console.log(`         normalizedPath: "${normalizedPath}"`);
+        console.log(`         branch: ${repository?.branch || 'main (default)'}`);
         console.log(`         repositoryId: ${repository?.id || 'null'}`);
         console.log(`         ownerId: ${ownerId || 'null'}`);
         console.log(`         workspaceId: ${workspace.id}`);
