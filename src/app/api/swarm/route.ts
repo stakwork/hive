@@ -171,19 +171,17 @@ export async function POST(request: NextRequest) {
       const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
       console.log(`[SWARM_CREATE] Updating placeholder ${result.swarm.id} with external API data`);
-      // Update the placeholder record with real data
-      const updatedSwarm = await db.swarm.update({
-        where: { id: result.swarm.id },
-        data: {
-          name: swarm_id, // Use swarm_id as name
-          status: SwarmStatus.ACTIVE,
-          swarmUrl: `https://${swarm_address}/api`,
-          ec2Id: ec2_id,
-          swarmApiKey: x_api_key,
-          swarmSecretAlias: swarmSecretAlias,
-          swarmId: swarm_id,
-          swarmPassword: swarmPassword,
-        },
+      // Update the placeholder record with real data (using saveOrUpdateSwarm for proper encryption)
+      const updatedSwarm = await saveOrUpdateSwarm({
+        workspaceId: workspaceId,
+        name: swarm_id, // Use swarm_id as name
+        status: SwarmStatus.ACTIVE,
+        swarmUrl: `https://${swarm_address}/api`,
+        ec2Id: ec2_id,
+        swarmApiKey: x_api_key,
+        swarmSecretAlias: swarmSecretAlias,
+        swarmId: swarm_id,
+        swarmPassword: swarmPassword,
       });
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm.id} to ACTIVE status with swarmId: ${swarm_id}`);
