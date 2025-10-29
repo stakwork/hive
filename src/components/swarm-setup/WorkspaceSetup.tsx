@@ -6,7 +6,6 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { extractRepoInfoFromUrl } from "@/utils/extractRepoInfoFromUrl";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
 import { useCallback, useEffect, useRef, useState } from "react";
-import NetworkGraph3D from "../hive-graph-preloader";
 
 interface WorkspaceSetupProps {
   repositoryUrl: string;
@@ -372,17 +371,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         <div className="w-full h-full flex flex-col items-center justify-center">
           <PageHeader title="Setup Error" />
           <p className="text-sm text-muted-foreground mt-4">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show loading state during workspace setup
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
-        <div className="w-full h-full flex flex-col items-center justify-center">
-          <NetworkGraph3D />
         </div>
       </div>
     );
