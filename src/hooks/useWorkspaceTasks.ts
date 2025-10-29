@@ -128,19 +128,10 @@ export function useWorkspaceTasks(
 
   const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
     if (!workspaceId || !session?.user) {
-      console.log('[useWorkspaceTasks] No workspaceId or session user');
       setTasks([]);
       setPagination(null);
       return;
     }
-
-    console.log('[useWorkspaceTasks] Fetching tasks:', {
-      workspaceId,
-      page,
-      pageLimit,
-      showArchived,
-      includeLatestMessage
-    });
 
     setLoading(true);
     setError(null);
@@ -148,7 +139,6 @@ export function useWorkspaceTasks(
     try {
       const archivedParam = showArchived ? '&includeArchived=true' : '';
       const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
-      console.log('[useWorkspaceTasks] Request URL:', url);
 
       const response = await fetch(url, {
         method: "GET",
@@ -163,16 +153,9 @@ export function useWorkspaceTasks(
 
       const result = await response.json();
 
-      console.log('[useWorkspaceTasks] Response:', {
-        success: result.success,
-        tasksCount: result.data?.length,
-        pagination: result.pagination
-      });
-
       if (result.success && Array.isArray(result.data)) {
         setTasks(prevTasks => reset ? result.data : [...prevTasks, ...result.data]);
         setPagination(result.pagination);
-        console.log('[useWorkspaceTasks] Tasks updated, new count:', result.data.length);
       } else {
         throw new Error("Invalid response format");
       }

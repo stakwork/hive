@@ -90,15 +90,6 @@ export async function GET(request: NextRequest) {
     // - includeArchived="false" or not provided -> show only non-archived tasks
     const isShowingArchived = includeArchived === "true";
 
-    console.log('[TASKS API] Query params:', {
-      workspaceId,
-      page,
-      limit,
-      includeArchived,
-      isShowingArchived,
-      sourceType
-    });
-
     const whereClause: Prisma.TaskWhereInput = {
       workspaceId,
       deleted: false,
@@ -123,8 +114,6 @@ export async function GET(request: NextRequest) {
     if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
       whereClause.sourceType = sourceType as TaskSourceType;
     }
-
-    console.log('[TASKS API] Where clause:', JSON.stringify(whereClause, null, 2));
 
     const [tasks, totalCount] = await Promise.all([
       db.task.findMany({
@@ -205,22 +194,6 @@ export async function GET(request: NextRequest) {
         where: whereClause,
       }),
     ]);
-
-    console.log('[TASKS API] Query results:', {
-      tasksFound: tasks.length,
-      totalCount,
-      page,
-      limit
-    });
-
-    if (tasks.length > 0) {
-      console.log('[TASKS API] First task:', {
-        id: tasks[0].id,
-        title: tasks[0].title,
-        status: tasks[0].status,
-        archived: (tasks[0] as any).archived
-      });
-    }
 
     const totalPages = Math.ceil(totalCount / limit);
     const hasMore = page < totalPages;
