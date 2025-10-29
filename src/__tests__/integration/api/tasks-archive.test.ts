@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { PATCH } from "@/app/api/tasks/[taskId]/route";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
