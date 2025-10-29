@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
+import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 
 // --- TYPE DEFINITIONS ---
 
@@ -124,7 +125,10 @@ export const GraphComponent = ({
 
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
-      {/* Widgets overlaid in top-right corner - only show on dashboard */}
+      {/* Ingestion widget in top-left corner */}
+      {showWidgets && <IngestionStatusWidget />}
+
+      {/* Status widgets in top-right corner - only show on dashboard */}
       {showWidgets && (
         <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
           <GitHubStatusWidget />

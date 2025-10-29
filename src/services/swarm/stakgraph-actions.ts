@@ -74,6 +74,7 @@ export async function triggerIngestAsync(
     username: creds.username,
     pat: creds.pat,
     use_lsp: useLsp,
+    realtime: true,
   };
   if (callbackUrl) data.callback_url = callbackUrl;
   return swarmApiRequest({
