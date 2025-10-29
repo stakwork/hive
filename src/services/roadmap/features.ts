@@ -15,6 +15,7 @@ export async function listFeatures({
   limit = 10,
   statuses,
   assigneeId,
+  search,
   sortBy,
   sortOrder,
 }: {
@@ -24,6 +25,7 @@ export async function listFeatures({
   limit?: number;
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
   assigneeId?: string; // String including "UNASSIGNED" special value
+  search?: string; // Text search for feature title
   sortBy?: "title" | "createdAt";
   sortOrder?: "asc" | "desc";
 }) {
@@ -52,6 +54,14 @@ export async function listFeatures({
     } else {
       whereClause.assigneeId = assigneeId;
     }
+  }
+
+  // Handle search - case-insensitive title search
+  if (search && search.trim()) {
+    whereClause.title = {
+      contains: search.trim(),
+      mode: "insensitive",
+    };
   }
 
   // Build orderBy clause
