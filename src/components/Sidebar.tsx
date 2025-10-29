@@ -6,13 +6,13 @@ import {
   BarChart3,
   BookOpen,
   CheckSquare,
-  LayoutDashboard,
   Map,
   Menu,
   Phone,
   Settings,
   Users,
 } from "lucide-react";
+import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -66,7 +66,7 @@ interface SidebarContentProps {
 }
 
 const baseNavigationItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
+  { icon: PiGraphFill, label: "Graph", href: "/" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: BarChart3, label: "Insights", href: "/insights" },
