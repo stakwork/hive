@@ -69,7 +69,7 @@ export async function listFeatures({
     ? { [sortBy]: sortOrder || "asc" }
     : { createdAt: "desc" };
 
-  const [features, totalCount] = await Promise.all([
+  const [features, totalCount, totalCountWithoutFilters] = await Promise.all([
     db.feature.findMany({
       where: whereClause,
       select: {
@@ -98,6 +98,13 @@ export async function listFeatures({
     db.feature.count({
       where: whereClause,
     }),
+    // Count total features in workspace without any filters (for UI logic)
+    db.feature.count({
+      where: {
+        workspaceId,
+        deleted: false,
+      },
+    }),
   ]);
 
   const totalPages = Math.ceil(totalCount / limit);
@@ -111,6 +118,7 @@ export async function listFeatures({
       totalCount,
       totalPages,
       hasMore,
+      totalCountWithoutFilters,
     },
   };
 }

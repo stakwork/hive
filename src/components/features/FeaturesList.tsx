@@ -105,6 +105,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [features, setFeatures] = useState<FeatureWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [workspaceHasFeatures, setWorkspaceHasFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -251,6 +252,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (data.success) {
         setFeatures(data.data);
         setHasLoadedOnce(true);
+        setWorkspaceHasFeatures((data.pagination.totalCountWithoutFilters || 0) > 0);
         setHasMore(data.pagination.hasMore);
         setTotalPages(data.pagination.totalPages);
       } else {
@@ -300,12 +302,12 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
 
   // Auto-open creation form when no features exist AND no filters are active (only on initial load)
   useEffect(() => {
-    if (!loading && hasLoadedOnce && features.length === 0 && !isCreating && !hasActiveFilters) {
+    if (!loading && hasLoadedOnce && !workspaceHasFeatures && !isCreating && !hasActiveFilters) {
       setIsCreating(true);
       setViewType("list");
       localStorage.setItem("features-view-preference", "list");
     }
-  }, [loading, hasLoadedOnce, features.length, isCreating, hasActiveFilters]);
+  }, [loading, hasLoadedOnce, workspaceHasFeatures, isCreating, hasActiveFilters]);
 
   // Auto-focus after feature creation completes
   useEffect(() => {
@@ -681,74 +683,76 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         )}
 
         {viewType === "list" ? (
-          <div className="rounded-md border">
-          <Table className="table-fixed">
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead className="w-[300px]">
-                  <SortableColumnHeader
-                    label="Title"
-                    field="title"
-                    currentSort={sortBy === "title" ? sortOrder : null}
-                    onSort={(order) => handleSort("title", order)}
-                  />
-                </TableHead>
-                <TableHead className="w-[120px]">
-                  <FilterDropdownHeader
-                    label="Status"
-                    options={statusOptions}
-                    value={statusFilters}
-                    onChange={handleStatusFiltersChange}
-                    showSearch={false}
-                    multiSelect={true}
-                    showStatusBadges={true}
-                  />
-                </TableHead>
-                <TableHead className="w-[180px]">
-                  <FilterDropdownHeader
-                    label="Assigned"
-                    options={assigneeOptions}
-                    value={assigneeFilter}
-                    onChange={handleAssigneeFilterChange}
-                    showSearch={true}
-                    showAvatars={true}
-                  />
-                </TableHead>
-                <TableHead className="w-[150px] text-right">
-                  <SortableColumnHeader
-                    label="Created"
-                    field="createdAt"
-                    currentSort={sortBy === "createdAt" ? sortOrder : null}
-                    onSort={(order) => handleSort("createdAt", order)}
-                    align="right"
-                  />
-                </TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {features.length === 0 ? (
+          hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
+            <div className="rounded-md border">
+            <Table className="table-fixed">
+              <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center">
-                    <p className="text-muted-foreground">No features match your filters</p>
-                  </TableCell>
+                  <TableHead className="w-[300px]">
+                    <SortableColumnHeader
+                      label="Title"
+                      field="title"
+                      currentSort={sortBy === "title" ? sortOrder : null}
+                      onSort={(order) => handleSort("title", order)}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[120px]">
+                    <FilterDropdownHeader
+                      label="Status"
+                      options={statusOptions}
+                      value={statusFilters}
+                      onChange={handleStatusFiltersChange}
+                      showSearch={false}
+                      multiSelect={true}
+                      showStatusBadges={true}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[180px]">
+                    <FilterDropdownHeader
+                      label="Assigned"
+                      options={assigneeOptions}
+                      value={assigneeFilter}
+                      onChange={handleAssigneeFilterChange}
+                      showSearch={true}
+                      showAvatars={true}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[150px] text-right">
+                    <SortableColumnHeader
+                      label="Created"
+                      field="createdAt"
+                      currentSort={sortBy === "createdAt" ? sortOrder : null}
+                      onSort={(order) => handleSort("createdAt", order)}
+                      align="right"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
-              ) : (
-                features.map((feature) => (
-                  <FeatureRow
-                    key={feature.id}
-                    feature={feature}
-                    workspaceSlug={workspaceSlug}
-                    onStatusUpdate={handleUpdateStatus}
-                    onAssigneeUpdate={handleUpdateAssignee}
-                    onDelete={handleDeleteFeature}
-                    onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-          </div>
+              </TableHeader>
+              <TableBody>
+                {features.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center">
+                      <p className="text-muted-foreground">No features match your filters</p>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  features.map((feature) => (
+                    <FeatureRow
+                      key={feature.id}
+                      feature={feature}
+                      workspaceSlug={workspaceSlug}
+                      onStatusUpdate={handleUpdateStatus}
+                      onAssigneeUpdate={handleUpdateAssignee}
+                      onDelete={handleDeleteFeature}
+                      onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            </div>
+          ) : null
         ) : (
           <KanbanView
             items={features}

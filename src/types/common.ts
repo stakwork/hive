@@ -29,6 +29,7 @@ export interface PaginationMeta {
   totalCount: number;
   totalPages: number;
   hasMore: boolean;
+  totalCountWithoutFilters?: number;
 }
 
 // Standard success response for single resource
