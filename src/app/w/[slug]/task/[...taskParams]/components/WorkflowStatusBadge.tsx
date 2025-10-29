@@ -8,11 +8,8 @@ import {
   Pause,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 
 interface WorkflowStatusBadgeProps {
-  logs?: LogEntry[] | null;
   status: WorkflowStatus | null | undefined;
   className?: string;
 }
@@ -57,15 +54,12 @@ const statusConfig = {
 };
 
 export function WorkflowStatusBadge({
-  logs = [],
   status,
   className,
 }: WorkflowStatusBadgeProps) {
   // Default to PENDING if no status provided
   const effectiveStatus = status || WorkflowStatus.PENDING;
-  const effectiveLogs = logs || [];
   const config = statusConfig[effectiveStatus as keyof typeof statusConfig];
-  const [isHovered, setIsHovered] = useState(false);
 
   if (!config) {
     return null;
@@ -80,30 +74,9 @@ export function WorkflowStatusBadge({
         config.className,
         className,
       )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
-      {isHovered && effectiveLogs.length > 0 && (
-        <>
-          <span className="text-sm font-semibold mb-1">Logs:</span>
-          <ul className="list-disc pl-4  text-gray-100 dark:text-gray-200">
-            {effectiveLogs.map((log, index) => (
-              <li key={index} className="py-1">
-                {log.message}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {isHovered && effectiveLogs.length <= 0 && (
-        <div className="text-sm text-gray-500">No logs available</div>
-      )}
-      {!isHovered && (
-        <>
-          <Icon className={cn("h-3 w-3", config.iconClassName)} />
-          <span>{config.label}</span>
-        </>
-      )}
+      <Icon className={cn("h-3 w-3", config.iconClassName)} />
+      <span>{config.label}</span>
     </div>
   );
 }
