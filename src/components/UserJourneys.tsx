@@ -42,6 +42,7 @@ export default function UserJourneys() {
   const [hidePending, setHidePending] = useState(false);
   // Replay-related state
   const [replayTestCode, setReplayTestCode] = useState<string | null>(null); // Test code to replay
+  const [replayTitle, setReplayTitle] = useState<string | null>(null); // Title of test being replayed
   const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null); // ID of task being replayed (for loading state)
   const open = useModal();
 
@@ -196,6 +197,7 @@ export default function UserJourneys() {
     // Clear podId and replay state
     setClaimedPodId(null);
     setReplayTestCode(null);
+    setReplayTitle(null);
     setIsReplayingTask(null);
   };
 
@@ -295,6 +297,7 @@ export default function UserJourneys() {
       // Step 3: Set state to trigger replay
       if (data.frontend) {
         setReplayTestCode(testCode);
+        setReplayTitle(task.title);
         setFrontend(data.frontend);
         setClaimedPodId(data.podId);
       }
@@ -417,6 +420,7 @@ export default function UserJourneys() {
             ide={false}
             onUserJourneySave={saveUserJourneyTest}
             externalTestCode={replayTestCode}
+            externalTestTitle={replayTitle}
           />
         </div>
       ) : (

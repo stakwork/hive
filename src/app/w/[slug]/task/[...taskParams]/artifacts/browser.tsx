@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Monitor,
   RefreshCw,
@@ -34,12 +34,14 @@ export function BrowserArtifactPanel({
   onDebugMessage,
   onUserJourneySave,
   externalTestCode,
+  externalTestTitle,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
   externalTestCode?: string | null;
+  externalTestTitle?: string | null;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -111,21 +113,12 @@ export function BrowserArtifactPanel({
     }
   }, [isPlaywrightReplaying, showActions, toggleActionsView]);
 
-  // Auto-start replay when externalTestCode is provided
+  // Auto-show actions list when externalTestCode is loaded and recorder is ready
   useEffect(() => {
-    if (externalTestCode && isSetup && isRecorderReady && !isPlaywrightReplaying) {
-      // Show actions list
-      if (!showActions) {
-        toggleActionsView();
-      }
-      // Start replay after a short delay to ensure everything is ready
-      const timer = setTimeout(() => {
-        startPlaywrightReplay(externalTestCode);
-      }, 500);
-
-      return () => clearTimeout(timer);
+    if (externalTestCode && isSetup && isRecorderReady && !showActions) {
+      toggleActionsView();
     }
-  }, [externalTestCode, isSetup, isRecorderReady, isPlaywrightReplaying, showActions, toggleActionsView, startPlaywrightReplay]);
+  }, [externalTestCode, isSetup, isRecorderReady, showActions, toggleActionsView]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -256,8 +249,12 @@ export function BrowserArtifactPanel({
   const handleReplayToggle = () => {
     if (isPlaywrightReplaying) {
       stopPlaywrightReplay();
-    } else if (generatedPlaywrightTest) {
-      startPlaywrightReplay(generatedPlaywrightTest);
+    } else {
+      // Use externalTestCode if available, otherwise use generated test
+      const testCode = externalTestCode || generatedPlaywrightTest;
+      if (testCode) {
+        startPlaywrightReplay(testCode);
+      }
     }
   };
 
@@ -389,7 +386,7 @@ export function BrowserArtifactPanel({
                       </TooltipProvider>
                     )}
 
-                    {generatedPlaywrightTest && (
+                    {(generatedPlaywrightTest || externalTestCode) && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -510,6 +507,8 @@ export function BrowserArtifactPanel({
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
+                    title={externalTestTitle || undefined}
+                    onReplayToggle={handleReplayToggle}
                   />
                 </div>
               )}
