@@ -28,6 +28,7 @@ export default function CallPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [seekToTime, setSeekToTime] = useState<number | undefined>(undefined);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
+  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
 
   const handleBackClick = () => {
     router.push(`/w/${slug}/calls`);
@@ -47,6 +48,34 @@ export default function CallPage() {
     setSeekToTime(time);
     // Clear the seek request after a short delay
     setTimeout(() => setSeekToTime(undefined), 100);
+  };
+
+  const generatePresignedUrl = async (s3Key: string): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/calls/presigned-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ s3Key }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate presigned URL');
+      }
+
+      const { presignedUrl } = await response.json();
+      return presignedUrl;
+    } catch (error) {
+      console.error('Error generating presigned URL:', error);
+      return null;
+    }
+  };
+
+  const isS3Key = (url: string): boolean => {
+    // Check if the URL looks like an S3 key (has .mp4 extension and doesn't start with http)
+    // S3 keys from your example: "2025-10-30T09%3A41%3A13.520Z-sphinx.call.-swarm38.sphinx.chat-.783510069.78522.mp4"
+    return url.includes('.mp4') && !url.startsWith('http') && !url.startsWith('blob:');
   };
 
 
@@ -97,6 +126,12 @@ export default function CallPage() {
         };
 
         setCall(callData);
+
+        // Generate presigned URL if source_link is an S3 key
+        if (callData.source_link && isS3Key(callData.source_link)) {
+          const url = await generatePresignedUrl(callData.source_link);
+          setPresignedUrl(url);
+        }
 
         // Extract transcript from video nodes
         const videoNodes = data.data.nodes.filter((node: any) =>
@@ -216,7 +251,7 @@ export default function CallPage() {
             {/* Media Player */}
             <div className="flex-none p-4">
               <MediaPlayer
-                src={call.source_link || call.media_url}
+                src={presignedUrl || call.source_link || call.media_url}
                 title={call.episode_title}
                 imageUrl={call.image_url}
                 onTimeUpdate={handleTimeUpdate}
