@@ -165,24 +165,32 @@ export async function GET(request: NextRequest) {
               chatMessages: true,
             },
           },
-          ...(includeLatestMessage && {
-            chatMessages: {
+          chatMessages: {
+            select: {
+              id: true,
+              timestamp: true,
+              artifacts: {
+                where: {
+                  type: "PULL_REQUEST",
+                },
+                select: {
+                  id: true,
+                  type: true,
+                  content: true,
+                },
+                orderBy: {
+                  createdAt: "desc",
+                },
+                take: 1,
+              },
+            },
+            ...(includeLatestMessage && {
               orderBy: {
                 timestamp: "desc",
               },
               take: 1,
-              select: {
-                id: true,
-                timestamp: true,
-                artifacts: {
-                  select: {
-                    id: true,
-                    type: true,
-                  },
-                },
-              },
-            },
-          }),
+            }),
+          },
         },
         orderBy: {
           createdAt: "desc",
@@ -198,9 +206,10 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
     const hasMore = page < totalPages;
 
-    // Process tasks to add hasActionArtifact flag
+    // Process tasks to add hasActionArtifact flag and PR artifact info
     const processedTasks = tasks.map((task: any) => {
       let hasActionArtifact = false;
+      let prArtifact = null;
       
       // Only check for action artifacts if the workflow is pending or in_progress
       if (includeLatestMessage && 
@@ -213,11 +222,25 @@ export async function GET(request: NextRequest) {
         ) || false;
       }
 
-      // Return task with hasActionArtifact flag, removing chatMessages array to keep response clean
+      // Extract PR artifact if it exists
+      if (task.chatMessages && task.chatMessages.length > 0) {
+        for (const message of task.chatMessages) {
+          if (message.artifacts && message.artifacts.length > 0) {
+            const prArt = message.artifacts.find((a: any) => a.type === 'PULL_REQUEST');
+            if (prArt) {
+              prArtifact = prArt;
+              break;
+            }
+          }
+        }
+      }
+
+      // Return task with hasActionArtifact flag and PR artifact, removing chatMessages array to keep response clean
       const { chatMessages, ...taskWithoutMessages } = task;
       return {
         ...taskWithoutMessages,
         hasActionArtifact,
+        prArtifact,
       };
     });
 

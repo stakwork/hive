@@ -87,6 +87,16 @@ export interface PullRequestContent {
   repo: string;
   url: string;
   status: string;
+  branchName: string;
+  commitMessage: string;
+  repositories: Array<{
+    url: string;
+    owner: string;
+    repo: string;
+  }>;
+  prUrls: string[];
+  status?: "OPEN" | "CLOSED" | "MERGED";
+  prNumber?: number;
 }
 
 // Client-side types that extend Prisma types with proper JSON field typing

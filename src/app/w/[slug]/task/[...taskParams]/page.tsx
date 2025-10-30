@@ -110,7 +110,7 @@ export default function TaskChatPage() {
         console.error("Error dropping pod:", error);
       }
     },
-    [workspaceId, claimedPodId],
+    [workspaceId, claimedPodId]
   );
 
   // Drop pod when component unmounts or when navigating away
@@ -164,7 +164,7 @@ export default function TaskChatPage() {
         console.error("Error saving agent message:", error);
       }
     },
-    [],
+    []
   );
 
   // Handle incoming SSE messages
@@ -192,7 +192,7 @@ export default function TaskChatPage() {
         setTaskTitle(update.newTitle);
       }
     },
-    [currentTaskId],
+    [currentTaskId]
   );
 
   // Use the Pusher connection hook
@@ -265,8 +265,8 @@ export default function TaskChatPage() {
             // Update the last message with the workflow artifact
             setMessages((msgs) =>
               msgs.map((msg, idx) =>
-                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
-              ),
+                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg
+              )
             );
           }
         }
@@ -338,7 +338,7 @@ export default function TaskChatPage() {
                 headers: {
                   "Content-Type": "application/json",
                 },
-              },
+              }
             );
 
             if (podResponse.ok) {
@@ -419,7 +419,7 @@ export default function TaskChatPage() {
       webhook?: string;
       artifact?: Artifact;
       podUrls?: { frontend: string; ide: string } | null;
-    },
+    }
   ) => {
     // Create artifacts array starting with any existing artifact
     const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
@@ -442,7 +442,7 @@ export default function TaskChatPage() {
           content: {
             url: options.podUrls.ide,
           },
-        }),
+        })
       );
     }
 
@@ -464,7 +464,7 @@ export default function TaskChatPage() {
       if (taskMode === "agent") {
         // Mark user message as sent
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg))
         );
 
         // Prepare artifacts for backend (convert to serializable format)
@@ -523,7 +523,7 @@ export default function TaskChatPage() {
           {
             role: "assistant" as const,
             timestamp: new Date(),
-          },
+          }
         );
 
         // After streaming completes, save assistant message to backend
@@ -583,8 +583,8 @@ export default function TaskChatPage() {
         // Add the workflow artifact to the last message
         setMessages((msgs) =>
           msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
-          ),
+            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg
+          )
         );
       }
 
@@ -742,7 +742,7 @@ export default function TaskChatPage() {
               url: prUrl as string,
               status: "open",
             } as PullRequestContent,
-          }),
+          })
         );
 
         // Save the PR artifacts as an assistant message
@@ -782,6 +782,20 @@ export default function TaskChatPage() {
           description: "Changes were pushed but no pull requests were created.",
           variant: "destructive",
         });
+      }
+      // Display success message
+      toast({
+        title: "Success",
+        description: "Changes committed and pushed successfully! Check the chat for PR links.",
+      });
+
+      // Refresh messages to show the new PR artifact message
+      if (currentTaskId) {
+        const messagesResponse = await fetch(`/api/tasks/${currentTaskId}/messages`);
+        if (messagesResponse.ok) {
+          const messagesData = await messagesResponse.json();
+          setMessages(messagesData);
+        }
       }
     } catch (error) {
       console.error("Error committing:", error);
