@@ -8,13 +8,12 @@ import {
   expectError,
   expectUnauthorized,
   expectForbidden,
-  expectNotFound,
-  generateUniqueId,
-  generateUniqueSlug,
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestTask, createTestChatMessage } from "@/__tests__/support/fixtures/task";
 
 // Mock AI commit message generation
 vi.mock("@/lib/ai/commit-msg", () => ({
@@ -27,71 +26,49 @@ import { generateCommitMessage } from "@/lib/ai/commit-msg";
 describe("POST /api/agent/branch Integration Tests", () => {
   // Helper to create complete test data with workspace, task, and chat messages
   async function createTestDataForBranchGeneration() {
-    return await db.$transaction(async (tx) => {
-      // Create test user
-      const user = await tx.user.create({
-        data: {
-          email: `test-${generateUniqueId()}@example.com`,
-          name: "Test User",
-        },
-      });
+    // Create test user
+    const user = await createTestUser({ name: "Test User" });
 
-      // Create workspace
-      const workspace = await tx.workspace.create({
-        data: {
-          name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
-        },
-      });
-
-      // Create task linked to workspace
-      const task = await tx.task.create({
-        data: {
-          title: "Test Task",
-          description: "A test task for branch generation",
-          workspaceId: workspace.id,
-          status: "TODO",
-          createdById: user.id,
-          updatedById: user.id,
-        },
-      });
-
-      // Create chat messages for conversation history
-      const chatMessages = await Promise.all([
-        tx.chatMessage.create({
-          data: {
-            taskId: task.id,
-            role: "USER",
-            message: "I need to add a commit button to the UI",
-            timestamp: new Date("2024-01-01T10:00:00Z"),
-          },
-        }),
-        tx.chatMessage.create({
-          data: {
-            taskId: task.id,
-            role: "ASSISTANT",
-            message: "I'll help you add a commit button. Let me create the component.",
-            timestamp: new Date("2024-01-01T10:01:00Z"),
-          },
-        }),
-        tx.chatMessage.create({
-          data: {
-            taskId: task.id,
-            role: "USER",
-            message: "Great! Please also add the click handler",
-            timestamp: new Date("2024-01-01T10:02:00Z"),
-          },
-        }),
-      ]);
-
-      return {
-        user,
-        workspace,
-        task,
-        chatMessages,
-      };
+    // Create workspace
+    const workspace = await createTestWorkspace({
+      name: "Test Workspace",
+      ownerId: user.id,
     });
+
+    // Create task linked to workspace
+    const task = await createTestTask({
+      title: "Test Task",
+      description: "A test task for branch generation",
+      workspaceId: workspace.id,
+      createdById: user.id,
+      status: "TODO",
+    });
+
+    // Create chat messages for conversation history
+    const chatMessages = await Promise.all([
+      createTestChatMessage({
+        taskId: task.id,
+        role: "USER",
+        message: "I need to add a commit button to the UI",
+      }),
+      createTestChatMessage({
+        taskId: task.id,
+        role: "ASSISTANT",
+        message: "I'll help you add a commit button. Let me create the component.",
+      }),
+      createTestChatMessage({
+        taskId: task.id,
+        role: "USER",
+        message: "Great! Please also add the click handler",
+      }),
+    ]);
+
+    return {
+      user,
+      workspace,
+      task,
+      chatMessages,
+    };
   }
 
   beforeEach(async () => {
