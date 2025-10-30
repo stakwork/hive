@@ -73,9 +73,24 @@ export default function CallPage() {
   };
 
   const isS3Key = (url: string): boolean => {
-    // Check if the URL looks like an S3 key (has .mp4 extension and doesn't start with http)
-    // S3 keys from your example: "2025-10-30T09%3A41%3A13.520Z-sphinx.call.-swarm38.sphinx.chat-.783510069.78522.mp4"
-    return url.includes('.mp4') && !url.startsWith('http') && !url.startsWith('blob:');
+    // Check if this is an S3 URL that needs a fresh presigned URL
+    // Your URLs: "https://sphinx-livekit-recordings.s3.amazonaws.com/filename.mp4?AWSAccessKeyId=..."
+    // We need to extract the S3 key (filename) and generate a fresh presigned URL
+    return url.includes('sphinx-livekit-recordings.s3.amazonaws.com') && url.includes('?');
+  };
+
+  const extractS3KeyFromUrl = (url: string): string => {
+    // Extract S3 key from presigned URL
+    // Input: "https://sphinx-livekit-recordings.s3.amazonaws.com/2025-10-30T11%3A21%3A23.293Z-sphinx.call.-swarm38.sphinx.chat-.783516079.620162.mp4?AWSAccessKeyId=..."
+    // Output: "2025-10-30T11%3A21%3A23.293Z-sphinx.call.-swarm38.sphinx.chat-.783516079.620162.mp4"
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      // Remove leading slash and return the S3 key
+      return pathname.startsWith('/') ? pathname.substring(1) : pathname;
+    } catch {
+      return url; // Fallback to original if URL parsing fails
+    }
   };
 
 
@@ -127,9 +142,10 @@ export default function CallPage() {
 
         setCall(callData);
 
-        // Generate presigned URL if source_link is an S3 key
+        // Generate fresh presigned URL if source_link is an expired S3 presigned URL
         if (callData.source_link && isS3Key(callData.source_link)) {
-          const url = await generatePresignedUrl(callData.source_link);
+          const s3Key = extractS3KeyFromUrl(callData.source_link);
+          const url = await generatePresignedUrl(s3Key);
           setPresignedUrl(url);
         }
 
