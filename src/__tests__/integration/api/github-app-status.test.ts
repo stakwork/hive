@@ -16,7 +16,6 @@ import {
   createGetRequest,
   generateUniqueSlug,
 } from "@/__tests__/support/helpers";
-import { workspaceAccessMocks } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
 import { db } from "@/lib/db";
 
 // Mock next-auth for session management
