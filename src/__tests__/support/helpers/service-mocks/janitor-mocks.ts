@@ -195,7 +195,14 @@ export const janitorMockSetup = {
   },
 
   mockRecommendationExists(db: any, recommendation: any) {
-    vi.mocked(db.janitorRecommendation.findUnique).mockResolvedValue(recommendation);
+    // Extract workspace from janitorRun if it exists and add as top-level field
+    // to match the new schema where recommendations have direct workspace relationship
+    const enrichedRecommendation = {
+      ...recommendation,
+      workspace: recommendation.janitorRun?.janitorConfig?.workspace || recommendation.workspace,
+      workspaceId: recommendation.workspaceId || recommendation.janitorRun?.janitorConfig?.workspace?.id || "ws-1",
+    };
+    vi.mocked(db.janitorRecommendation.findUnique).mockResolvedValue(enrichedRecommendation);
   },
 
   mockRecommendationUpdate(db: any, updatedRecommendation: any) {

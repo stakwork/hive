@@ -8,10 +8,7 @@ export interface DevContainerFile {
 }
 
 // Helper function to generate PM2 apps from services data
-export const generatePM2Apps = (
-  repoName: string,
-  servicesData: ServiceDataConfig[],
-) => {
+export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfig[]) => {
   if (!servicesData || servicesData.length === 0) {
     // Return default configuration if no services
     return [
@@ -37,9 +34,7 @@ export const generatePM2Apps = (
   return servicesData.map((service) => {
     // If cwd is specified, treat it as a subdirectory within the workspace
     // Otherwise use the workspace root
-    const cwd = service.cwd
-      ? `/workspaces/${repoName}/${service.cwd.replace(/^\/+/, '')}`
-      : `/workspaces/${repoName}`;
+    const cwd = service.cwd ? `/workspaces/${repoName}/${service.cwd.replace(/^\/+/, "")}` : `/workspaces/${repoName}`;
 
     const appConfig = {
       name: service.name,
@@ -112,9 +107,7 @@ export const formatPM2Apps = (
       .map(([key, value]) => `        ${key}: "${value}"`)
       .join(",\n");
 
-    const interpreterLine = app.interpreter
-      ? `      interpreter: "${app.interpreter}",\n`
-      : "";
+    const interpreterLine = app.interpreter ? `      interpreter: "${app.interpreter}",\n` : "";
 
     return `    {
       name: "${app.name}",
@@ -138,10 +131,7 @@ export interface GetFilesParams {
   servicesData: ServiceDataConfig[];
 }
 
-export const getPM2AppsContent = (
-  repoName: string,
-  servicesData: ServiceDataConfig[],
-) => {
+export const getPM2AppsContent = (repoName: string, servicesData: ServiceDataConfig[]) => {
   const pm2Apps = generatePM2Apps(repoName, servicesData);
   const pm2AppFormatted = formatPM2Apps(pm2Apps);
 
@@ -206,9 +196,7 @@ export function dockerfileContent() {
 `;
 }
 
-export const getDevContainerFiles = (
-  params: GetFilesParams,
-): Record<string, DevContainerFile> => {
+export const getDevContainerFiles = (params: GetFilesParams): Record<string, DevContainerFile> => {
   const { repoName, servicesData } = params;
 
   return {
@@ -254,7 +242,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
     return parsePM2ConfigToServices(content);
   } catch {
     try {
-      const decoded = Buffer.from(content, 'base64').toString('utf-8');
+      const decoded = Buffer.from(content, "base64").toString("utf-8");
       return parsePM2ConfigToServices(decoded);
     } catch {
       console.error("Failed to parse pm2.config.js");
@@ -265,6 +253,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
 
 // Parse pm2.config.js content to extract ServiceConfig[]
 export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
+  console.log(">>> pm2Content", pm2Content);
   const services: ServiceConfig[] = [];
 
   try {
@@ -324,10 +313,10 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
         if (cwdMatch) {
           const cwdPath = cwdMatch[1];
           // Extract subdirectory from path like /workspaces/reponame/subdirectory
-          const pathParts = cwdPath.split('/').filter(p => p);
+          const pathParts = cwdPath.split("/").filter((p) => p);
           if (pathParts.length > 2) {
             // Has subdirectory beyond /workspaces/reponame
-            serviceDir = pathParts.slice(2).join('/');
+            serviceDir = pathParts.slice(2).join("/");
           }
         }
 
@@ -345,7 +334,7 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
             postStart: postStartCmd,
             rebuild: rebuildCmd,
             reset: resetCmd,
-          }
+          },
         };
 
         services.push(service);
@@ -358,9 +347,7 @@ export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
   return services;
 }
 
-export const getDevContainerFilesFromBase64 = (
-  base64Files: Record<string, string>,
-) => {
+export const getDevContainerFilesFromBase64 = (base64Files: Record<string, string>) => {
   const containerFiles = Object.entries(base64Files).reduce(
     (acc, [name, content]) => {
       const keyName = fileNamesMapper[name as keyof typeof fileNamesMapper];

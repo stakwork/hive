@@ -363,10 +363,12 @@ export async function getJanitorRecommendations(
   const skip = (page - 1) * limit;
 
   const where: Prisma.JanitorRecommendationWhereInput = {
-    janitorRun: {
-      janitorConfigId: config.id,
-      ...(janitorType && { janitorType }),
-    }
+    workspaceId: workspaceId,
+    ...(janitorType && {
+      janitorRun: {
+        janitorType: janitorType
+      }
+    })
   };
 
   // Default to PENDING status if no status filter is provided
@@ -443,13 +445,10 @@ export async function acceptJanitorRecommendation(
   const recommendation = await db.janitorRecommendation.findUnique({
     where: { id: recommendationId },
     include: {
-      janitorRun: {
-        include: {
-          janitorConfig: {
-            include: {
-              workspace: true
-            }
-          }
+      workspace: {
+        select: {
+          id: true,
+          slug: true,
         }
       }
     }
@@ -460,9 +459,9 @@ export async function acceptJanitorRecommendation(
   }
 
   // Verify user has permission - use proper workspace validation
-  const workspaceSlug = recommendation.janitorRun.janitorConfig.workspace.slug;
+  const workspaceSlug = recommendation.workspace.slug;
   const validation = await validateWorkspaceAccess(workspaceSlug, userId);
-  
+
   if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
@@ -476,7 +475,7 @@ export async function acceptJanitorRecommendation(
     const assigneeExists = await db.workspaceMember.findFirst({
       where: {
         userId: options.assigneeId,
-        workspaceId: recommendation.janitorRun.janitorConfig.workspace.id
+        workspaceId: recommendation.workspaceId
       }
     });
 
@@ -490,7 +489,7 @@ export async function acceptJanitorRecommendation(
     const repositoryExists = await db.repository.findFirst({
       where: {
         id: options.repositoryId,
-        workspaceId: recommendation.janitorRun.janitorConfig.workspace.id
+        workspaceId: recommendation.workspaceId
       }
     });
 
@@ -518,7 +517,7 @@ export async function acceptJanitorRecommendation(
   const taskResult = await createTaskWithStakworkWorkflow({
     title: recommendation.title,
     description: recommendation.description,
-    workspaceId: recommendation.janitorRun.janitorConfig.workspace.id,
+    workspaceId: recommendation.workspaceId,
     assigneeId: options.assigneeId,
     repositoryId: options.repositoryId,
     priority: recommendation.priority,
@@ -545,13 +544,10 @@ export async function dismissJanitorRecommendation(
   const recommendation = await db.janitorRecommendation.findUnique({
     where: { id: recommendationId },
     include: {
-      janitorRun: {
-        include: {
-          janitorConfig: {
-            include: {
-              workspace: true
-            }
-          }
+      workspace: {
+        select: {
+          id: true,
+          slug: true,
         }
       }
     }
@@ -562,9 +558,9 @@ export async function dismissJanitorRecommendation(
   }
 
   // Verify user has permission - use proper workspace validation
-  const workspaceSlug = recommendation.janitorRun.janitorConfig.workspace.slug;
+  const workspaceSlug = recommendation.workspace.slug;
   const validation = await validateWorkspaceAccess(workspaceSlug, userId);
-  
+
   if (!validation.hasAccess || !validation.canWrite) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
@@ -600,30 +596,46 @@ export async function dismissJanitorRecommendation(
  * Process Stakwork webhook for janitor run completion
  */
 export async function processJanitorWebhook(webhookData: StakworkWebhookPayload) {
-  const { projectId, status, results, error } = webhookData;
+  const { projectId, status, results, error, workspaceId } = webhookData;
 
   const isCompleted = status.toLowerCase() === "completed" || status.toLowerCase() === "success";
   const isFailed = status.toLowerCase() === "failed" || status.toLowerCase() === "error";
 
   if (isCompleted) {
-    // Use atomic updateMany to prevent race conditions
-    const updateResult = await db.janitorRun.updateMany({
+    // First, try to find an existing janitor run
+    const existingRun = await db.janitorRun.findFirst({
       where: {
         stakworkProjectId: projectId,
-        status: { in: ["PENDING", "RUNNING"] }
       },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
+      include: {
+        janitorConfig: {
+          include: {
+            workspace: true
+          }
+        }
       }
     });
 
-    if (updateResult.count === 0) {
-      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
-    }
+    // If there's an existing run, update it
+    if (existingRun) {
+      // Use atomic updateMany to prevent race conditions
+      const updateResult = await db.janitorRun.updateMany({
+        where: {
+          stakworkProjectId: projectId,
+          status: { in: ["PENDING", "RUNNING"] }
+        },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+        }
+      });
 
-    // Get the updated run for processing recommendations
-    const janitorRun = await db.janitorRun.findFirst({
+      if (updateResult.count === 0) {
+        throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+      }
+
+      // Get the updated run for processing recommendations
+      const janitorRun = await db.janitorRun.findFirst({
       where: {
         stakworkProjectId: projectId,
         status: "COMPLETED"
@@ -680,6 +692,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
           return {
             janitorRunId: janitorRun.id,
+            workspaceId: janitorRun.janitorConfig.workspace.id,
             title: rec.title,
             description: rec.description,
             priority,
@@ -689,7 +702,6 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
               ...rec.metadata,
               source: "stakwork_webhook",
               janitorType: janitorRun.janitorType,
-              workspaceId: janitorRun.janitorConfig.workspace.id,
             }
           };
         });
@@ -709,11 +721,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         // Get total recommendation count for this workspace
         const totalCount = await db.janitorRecommendation.count({
           where: {
-            janitorRun: {
-              janitorConfig: {
-                workspaceId: janitorRun.janitorConfig.workspace.id
-              }
-            },
+            workspaceId: janitorRun.janitorConfig.workspace.id,
             status: "PENDING"
           }
         });
@@ -735,11 +743,96 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       }
     }
 
-    return {
-      runId: janitorRun.id,
-      status: "COMPLETED" as JanitorStatus,
-      recommendationCount: results?.recommendations?.length || 0
-    };
+      return {
+        runId: janitorRun.id,
+        status: "COMPLETED" as JanitorStatus,
+        recommendationCount: results?.recommendations?.length || 0
+      };
+    } else if (!workspaceId) {
+      // No existing run and no workspaceId provided - can't create standalone recommendations
+      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+    } else {
+      // No existing run - create standalone recommendations for external workflow
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: {
+          id: true,
+          slug: true,
+        }
+      });
+
+      if (!workspace) {
+        throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
+      }
+
+      // Create recommendations directly without a janitor run
+      if (results?.recommendations?.length) {
+        const recommendations = results.recommendations.map(rec => {
+          let priority: Priority = "MEDIUM";
+
+          if (rec.priority) {
+            const priorityUpper = rec.priority.toUpperCase();
+            if (["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priorityUpper)) {
+              priority = priorityUpper as Priority;
+            }
+          }
+
+          return {
+            janitorRunId: null, // Standalone recommendation
+            workspaceId: workspace.id,
+            title: rec.title,
+            description: rec.description,
+            priority,
+            impact: rec.impact,
+            status: "PENDING" as RecommendationStatus,
+            metadata: {
+              ...rec.metadata,
+              source: "external_workflow",
+              projectId: projectId,
+            }
+          };
+        });
+
+        await db.janitorRecommendation.createMany({
+          data: recommendations
+        });
+
+        // Trigger Pusher event for real-time recommendations update
+        const newRecommendationCount = recommendations.length;
+        try {
+          const channelName = getWorkspaceChannelName(workspace.slug);
+
+          // Get total recommendation count for this workspace
+          const totalCount = await db.janitorRecommendation.count({
+            where: {
+              workspaceId: workspace.id,
+              status: "PENDING"
+            }
+          });
+
+          const eventPayload = {
+            workspaceSlug: workspace.slug,
+            newRecommendationCount,
+            totalRecommendationCount: totalCount,
+            timestamp: new Date(),
+          };
+
+          await pusherServer.trigger(
+            channelName,
+            PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
+            eventPayload,
+          );
+        } catch (error) {
+          console.error("Error broadcasting recommendations update to Pusher:", error);
+        }
+      }
+
+      return {
+        runId: null,
+        status: "COMPLETED" as JanitorStatus,
+        recommendationCount: results?.recommendations?.length || 0
+      };
+    }
   } else if (isFailed) {
     // Use atomic updateMany to prevent race conditions
     const updateResult = await db.janitorRun.updateMany({
