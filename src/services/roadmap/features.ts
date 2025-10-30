@@ -15,6 +15,7 @@ export async function listFeatures({
   limit = 10,
   statuses,
   assigneeId,
+  search,
   sortBy,
   sortOrder,
 }: {
@@ -24,6 +25,7 @@ export async function listFeatures({
   limit?: number;
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
   assigneeId?: string; // String including "UNASSIGNED" special value
+  search?: string; // Text search for feature title
   sortBy?: "title" | "createdAt";
   sortOrder?: "asc" | "desc";
 }) {
@@ -54,12 +56,20 @@ export async function listFeatures({
     }
   }
 
+  // Handle search - case-insensitive title search
+  if (search && search.trim()) {
+    whereClause.title = {
+      contains: search.trim(),
+      mode: "insensitive",
+    };
+  }
+
   // Build orderBy clause
   const orderByClause: any = sortBy
     ? { [sortBy]: sortOrder || "asc" }
     : { createdAt: "desc" };
 
-  const [features, totalCount] = await Promise.all([
+  const [features, totalCount, totalCountWithoutFilters] = await Promise.all([
     db.feature.findMany({
       where: whereClause,
       select: {
@@ -88,6 +98,13 @@ export async function listFeatures({
     db.feature.count({
       where: whereClause,
     }),
+    // Count total features in workspace without any filters (for UI logic)
+    db.feature.count({
+      where: {
+        workspaceId,
+        deleted: false,
+      },
+    }),
   ]);
 
   const totalPages = Math.ceil(totalCount / limit);
@@ -101,6 +118,7 @@ export async function listFeatures({
       totalCount,
       totalPages,
       hasMore,
+      totalCountWithoutFilters,
     },
   };
 }
