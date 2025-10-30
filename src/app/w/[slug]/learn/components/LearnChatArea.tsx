@@ -47,7 +47,7 @@ export function LearnChatArea({
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       // Consider user at bottom if within 100px of bottom
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 80;
       setShouldAutoScroll(isNearBottom);
     };
 

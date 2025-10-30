@@ -59,7 +59,7 @@ export function ChatArea({
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       // Consider user at bottom if within 100px of bottom
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 80;
       setShouldAutoScroll(isNearBottom);
     };
 
@@ -73,11 +73,11 @@ export function ChatArea({
 
     const scrollToBottom = () => {
       const ref = messagesEndRef.current;
-      if (ref && typeof ref.scrollIntoView === 'function') {
-        ref.scrollIntoView({ behavior: 'smooth' });
+      if (ref && typeof ref.scrollIntoView === "function") {
+        ref.scrollIntoView({ behavior: "smooth" });
       }
     };
-  
+
     // Use setTimeout for next tick; requestAnimationFrame is another option for smoother perf
     const timer = setTimeout(scrollToBottom, 0);
     return () => clearTimeout(timer);
