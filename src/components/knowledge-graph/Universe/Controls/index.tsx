@@ -44,7 +44,6 @@ export const Controls = ({ disableAnimations, enableRotation = false }: Props) =
       dollyToCursor
       enabled={!isUserScrollingOnHtmlPanel}
       makeDefault
-      rotate={true}
       maxDistance={12000}
       minDistance={100}
       onEnd={() => setIsUserDragging(false)}
