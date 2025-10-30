@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -183,6 +183,32 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             <Sparkles className="w-3 h-3" />
             Janitor
           </Badge>
+        )}
+
+        {/* PR Status Badge */}
+        {task.prArtifact && task.prArtifact.content && (
+          <a
+            href={task.prArtifact.content.prUrls?.[0]}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex"
+          >
+            <Badge 
+              variant="secondary" 
+              className={`gap-1 h-5 ${
+                task.prArtifact.content.status === 'MERGED' 
+                  ? 'bg-purple-100 text-purple-800 border-purple-200' 
+                  : task.prArtifact.content.status === 'CLOSED'
+                  ? 'bg-red-100 text-red-800 border-red-200'
+                  : 'bg-green-100 text-green-800 border-green-200'
+              }`}
+            >
+              <GitPullRequest className="w-3 h-3" />
+              PR {task.prArtifact.content.status || 'OPEN'}
+              <ExternalLink className="w-3 h-3 ml-0.5" />
+            </Badge>
+          </a>
         )}
       </div>
     </motion.div>
