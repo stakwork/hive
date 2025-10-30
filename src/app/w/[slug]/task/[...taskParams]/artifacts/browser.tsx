@@ -33,11 +33,13 @@ export function BrowserArtifactPanel({
   ide,
   onDebugMessage,
   onUserJourneySave,
+  externalTestCode,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  externalTestCode?: string | null;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -108,6 +110,22 @@ export function BrowserArtifactPanel({
       toggleActionsView();
     }
   }, [isPlaywrightReplaying, showActions, toggleActionsView]);
+
+  // Auto-start replay when externalTestCode is provided
+  useEffect(() => {
+    if (externalTestCode && isSetup && isRecorderReady && !isPlaywrightReplaying) {
+      // Show actions list
+      if (!showActions) {
+        toggleActionsView();
+      }
+      // Start replay after a short delay to ensure everything is ready
+      const timer = setTimeout(() => {
+        startPlaywrightReplay(externalTestCode);
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [externalTestCode, isSetup, isRecorderReady, isPlaywrightReplaying, showActions, toggleActionsView, startPlaywrightReplay]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {

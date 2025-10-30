@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 
@@ -40,6 +40,9 @@ export default function UserJourneys() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [hidePending, setHidePending] = useState(false);
+  // Replay-related state
+  const [replayTestCode, setReplayTestCode] = useState<string | null>(null); // Test code to replay
+  const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null); // ID of task being replayed (for loading state)
   const open = useModal();
 
   const fetchUserJourneyTasks = useCallback(async () => {
@@ -134,13 +137,70 @@ export default function UserJourneys() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Fetch test code from either ChatMessages (pending) or Graph API (merged)
+  const fetchTestCode = async (task: UserJourneyTask): Promise<string | null> => {
+    try {
+      // Path 1: Pending/Recording tests - Get from ChatMessage (first message contains the code)
+      if (task.status !== "DONE") {
+        const response = await fetch(`/api/tasks/${task.id}/messages`);
+
+        if (!response.ok) {
+          console.error("Failed to fetch task messages");
+          return null;
+        }
+
+        const result = await response.json();
+        if (result.success && result.data?.messages && result.data.messages.length > 0) {
+          // First message contains the test code
+          return result.data.messages[0].message;
+        }
+
+        console.error("No messages found for pending task");
+        return null;
+      }
+
+      // Path 2: Merged tests - Get from Graph API
+      const response = await fetch(
+        `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
+      );
+
+      if (!response.ok) {
+        console.error("Failed to fetch E2E tests from graph");
+        return null;
+      }
+
+      const result = await response.json();
+      if (result.success && result.data && Array.isArray(result.data)) {
+        // Find the matching test by comparing task.testFilePath with node.properties.file
+        const matchingTest = result.data.find(
+          (node: any) => node.properties?.file === task.testFilePath
+        );
+
+        if (matchingTest && matchingTest.properties?.body) {
+          return matchingTest.properties.body;
+        }
+
+        console.error("No matching test found in graph for testFilePath:", task.testFilePath);
+        console.error("Available test files:", result.data.map((n: any) => n.properties?.file));
+        return null;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error fetching test code:", error);
+      return null;
+    }
+  };
+
   const handleCloseBrowser = () => {
     // Close iframe immediately for better UX
     setFrontend(null);
     // Drop pod in background (no await)
     dropPod();
-    // Clear podId
+    // Clear podId and replay state
     setClaimedPodId(null);
+    setReplayTestCode(null);
+    setIsReplayingTask(null);
   };
 
   const handleCreateUserJourney = async () => {
@@ -186,6 +246,70 @@ export default function UserJourneys() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleReplay = async (task: UserJourneyTask) => {
+    // Check if services are set up
+    if (workspace?.poolState !== "COMPLETE") {
+      toast({
+        variant: "destructive",
+        title: "Services Not Set Up",
+        description: "Please complete the services setup before replaying tests.",
+      });
+      open("ServicesWizard");
+      return;
+    }
+
+    try {
+      setIsReplayingTask(task.id);
+
+      // Step 1: Fetch test code
+      const testCode = await fetchTestCode(task);
+      if (!testCode) {
+        toast({
+          variant: "destructive",
+          title: "Test Code Not Found",
+          description: "Unable to retrieve test code for this journey.",
+        });
+        setIsReplayingTask(null);
+        return;
+      }
+
+      // Step 2: Claim a pod
+      const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        toast({
+          variant: "destructive",
+          title: "Unable to Start Replay",
+          description: "No virtual machines are available right now. Please try again later.",
+        });
+        setIsReplayingTask(null);
+        return;
+      }
+
+      const data = await response.json();
+
+      // Step 3: Set state to trigger replay
+      if (data.frontend) {
+        setReplayTestCode(testCode);
+        setFrontend(data.frontend);
+        setClaimedPodId(data.podId);
+      }
+    } catch (error) {
+      console.error("Error starting replay:", error);
+      toast({
+        variant: "destructive",
+        title: "Replay Error",
+        description: "An unexpected error occurred. Please try again.",
+      });
+      setIsReplayingTask(null);
     }
   };
 
@@ -292,7 +416,12 @@ export default function UserJourneys() {
 
       {frontend ? (
         <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel artifacts={browserArtifacts} ide={false} onUserJourneySave={saveUserJourneyTest} />
+          <BrowserArtifactPanel
+            artifacts={browserArtifacts}
+            ide={false}
+            onUserJourneySave={saveUserJourneyTest}
+            externalTestCode={replayTestCode}
+          />
         </div>
       ) : (
         <div className="space-y-6">
@@ -326,6 +455,7 @@ export default function UserJourneys() {
                     <TableHeader className="bg-muted/50">
                       <TableRow>
                         <TableHead>Title</TableHead>
+                        <TableHead className="w-[80px]">Replay</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Test File</TableHead>
                         <TableHead>Created</TableHead>
@@ -336,6 +466,22 @@ export default function UserJourneys() {
                       {filteredTasks.map((task) => (
                         <TableRow key={task.id}>
                           <TableCell className="font-medium">{task.title}</TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleReplay(task)}
+                              disabled={isReplayingTask === task.id}
+                              className="h-8 w-8 p-0"
+                              title="Replay test"
+                            >
+                              {isReplayingTask === task.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Play className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TableCell>
                           <TableCell>{getStatusBadge(task.status, task.workflowStatus)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
