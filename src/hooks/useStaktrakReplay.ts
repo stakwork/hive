@@ -181,6 +181,8 @@ export function usePlaywrightReplay(
           break;
 
         case "staktrak-playwright-screenshot-captured":
+          console.log('[Screenshot] Captured:', { actionIndex: data.actionIndex, url: data.url, workspaceId, taskId });
+
           // Add screenshot to local state immediately for display
           const newScreenshot: Screenshot = {
             id: data.id,
@@ -194,6 +196,7 @@ export function usePlaywrightReplay(
 
           // Upload to S3 asynchronously (don't block replay)
           if (workspaceId && data.screenshot) {
+            console.log('[Screenshot] Starting S3 upload...', { workspaceId, taskId });
             fetch('/api/screenshots/upload', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -214,6 +217,7 @@ export function usePlaywrightReplay(
                 return response.json();
               })
               .then((uploaded) => {
+                console.log('[Screenshot] S3 upload successful:', uploaded);
                 // Update screenshot in state with S3 details
                 setReplayScreenshots((prev) =>
                   prev.map((s) =>
@@ -224,9 +228,11 @@ export function usePlaywrightReplay(
                 );
               })
               .catch((error) => {
-                console.error('Screenshot upload to S3 failed:', error);
+                console.error('[Screenshot] S3 upload failed:', error);
                 // Continue anyway - screenshot is still available locally via dataUrl
               });
+          } else {
+            console.log('[Screenshot] Skipping S3 upload - missing workspaceId or screenshot data');
           }
           break;
 

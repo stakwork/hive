@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error uploading screenshot:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -157,7 +158,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }

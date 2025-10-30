@@ -38,8 +38,19 @@ export default function TaskChatPage() {
   const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
   const { toast } = useToast();
   const params = useParams();
-  const { id: workspaceId } = useWorkspace();
+  const { id: workspaceId, workspace } = useWorkspace();
   const { resolvedTheme } = useTheme();
+
+  // Fallback: use workspace.id if workspaceId (from context) is null
+  const effectiveWorkspaceId = workspaceId || workspace?.id;
+
+  // Debug logging
+  console.log('[TaskPage] Workspace context:', {
+    workspaceId,
+    workspaceObject: workspace,
+    effectiveWorkspaceId,
+    currentTaskId
+  });
 
   const { taskMode, setTaskMode } = useTaskMode();
 
@@ -816,7 +827,7 @@ export default function TaskChatPage() {
                 <div className="h-full min-h-0 min-w-0">
                   <ArtifactsPanel
                     artifacts={allArtifacts}
-                    workspaceId={workspaceId || undefined}
+                    workspaceId={effectiveWorkspaceId || undefined}
                     taskId={currentTaskId || undefined}
                     onDebugMessage={handleDebugMessage}
                   />
@@ -868,7 +879,7 @@ export default function TaskChatPage() {
                 <div className="h-full min-h-0 min-w-0">
                   <ArtifactsPanel
                     artifacts={allArtifacts}
-                    workspaceId={workspaceId || undefined}
+                    workspaceId={effectiveWorkspaceId || undefined}
                     taskId={currentTaskId || undefined}
                     onDebugMessage={handleDebugMessage}
                   />
