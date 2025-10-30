@@ -214,6 +214,22 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Save test code in ChatMessage for immediate replay access
+      // This makes the test code available instantly without waiting for Stakwork processing
+      try {
+        await db.chatMessage.create({
+          data: {
+            taskId: task.id,
+            role: "USER",
+            message: message, // Store the test code
+            timestamp: new Date(),
+          },
+        });
+      } catch (error) {
+        console.error("Error saving test code to ChatMessage:", error);
+        // Non-fatal - task was still created successfully
+      }
+
       if (!stakworkProjectId) {
         console.warn("Task created without stakworkProjectId (Stakwork call failed)");
       }

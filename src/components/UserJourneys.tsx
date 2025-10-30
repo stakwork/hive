@@ -137,42 +137,39 @@ export default function UserJourneys() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Fetch test code from either ChatMessages (pending) or Graph API (merged)
+  // Fetch test code from ChatMessages (fast) or Graph API (fallback for old migrated tests)
   const fetchTestCode = async (task: UserJourneyTask): Promise<string | null> => {
     try {
-      // Path 1: Pending/Recording tests - Get from ChatMessage (first message contains the code)
-      if (task.status !== "DONE") {
-        const response = await fetch(`/api/tasks/${task.id}/messages`);
+      // Path 1: Try ChatMessages first (works for newly recorded tests)
+      // This is fast and works immediately after recording
+      const messagesResponse = await fetch(`/api/tasks/${task.id}/messages`);
 
-        if (!response.ok) {
-          console.error("Failed to fetch task messages");
-          return null;
-        }
-
-        const result = await response.json();
+      if (messagesResponse.ok) {
+        const result = await messagesResponse.json();
         if (result.success && result.data?.messages && result.data.messages.length > 0) {
           // First message contains the test code
-          return result.data.messages[0].message;
+          const testCode = result.data.messages[0].message;
+          if (testCode && testCode.trim().length > 0) {
+            return testCode;
+          }
         }
-
-        console.error("No messages found for pending task");
-        return null;
       }
 
-      // Path 2: Merged tests - Get from Graph API
-      const response = await fetch(
+      // Path 2: Fallback to Graph API (for old migrated tests that don't have ChatMessages)
+      // This works for tests that were created before we added ChatMessage storage
+      const graphResponse = await fetch(
         `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
       );
 
-      if (!response.ok) {
+      if (!graphResponse.ok) {
         console.error("Failed to fetch E2E tests from graph");
         return null;
       }
 
-      const result = await response.json();
-      if (result.success && result.data && Array.isArray(result.data)) {
+      const graphResult = await graphResponse.json();
+      if (graphResult.success && graphResult.data && Array.isArray(graphResult.data)) {
         // Find the matching test by comparing task.testFilePath with node.properties.file
-        const matchingTest = result.data.find(
+        const matchingTest = graphResult.data.find(
           (node: any) => node.properties?.file === task.testFilePath
         );
 
@@ -181,8 +178,7 @@ export default function UserJourneys() {
         }
 
         console.error("No matching test found in graph for testFilePath:", task.testFilePath);
-        console.error("Available test files:", result.data.map((n: any) => n.properties?.file));
-        return null;
+        console.error("Available test files:", graphResult.data.map((n: any) => n.properties?.file));
       }
 
       return null;
