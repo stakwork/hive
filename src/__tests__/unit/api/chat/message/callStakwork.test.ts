@@ -44,6 +44,7 @@ async function callStakwork(
   webhook?: string,
   mode?: string,
   history?: Record<string, unknown>[],
+  workspaceId?: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -85,6 +86,7 @@ async function callStakwork(
       attachments: attachmentUrls,
       taskMode: mode,
       history: history || [],
+      workspaceId,
     };
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -432,6 +434,54 @@ describe("callStakwork (Chat Message API) - Unit Tests", () => {
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
       expect(payload.name).toBe("hive_autogen");
+    });
+
+    it("should include workspaceId in payload when provided", async () => {
+      const workspaceId = "workspace-test-123";
+
+      await callStakwork(
+        "task-123",
+        "Test message",
+        [],
+        "testuser",
+        "token",
+        "https://swarm.com/api",
+        "secret-alias",
+        "pool-name",
+        mockRequest as NextRequest,
+        "https://swarm.com:3355",
+        [],
+        undefined,
+        undefined,
+        undefined,
+        workspaceId,
+      );
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(payload.workflow_params.set_var.attributes.vars.workspaceId).toBe(workspaceId);
+    });
+
+    it("should handle undefined workspaceId in payload", async () => {
+      await callStakwork(
+        "task-123",
+        "Test message",
+        [],
+        "testuser",
+        "token",
+        "https://swarm.com/api",
+        "secret-alias",
+        "pool-name",
+        mockRequest as NextRequest,
+        "https://swarm.com:3355",
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(payload.workflow_params.set_var.attributes.vars.workspaceId).toBeUndefined();
     });
   });
 

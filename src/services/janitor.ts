@@ -177,6 +177,7 @@ export async function createJanitorRun(
       webhookUrl: webhookUrl,
       swarmUrl: swarmUrl,
       swarmSecretAlias: swarmSecretAlias,
+      workspaceId: workspaceId,
     };
 
     // Create Stakwork project using the stakworkRequest method (following existing pattern)
