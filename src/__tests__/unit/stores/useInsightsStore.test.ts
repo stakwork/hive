@@ -11,9 +11,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
     global.fetch = mockFetch;
     
     // Reset store state before each test
-    // First reset to get fresh state, then clear the Set to ensure complete isolation
     useInsightsStore.getState().reset();
-    useInsightsStore.setState({ dismissedSuggestions: new Set<string>() });
   });
 
   afterEach(() => {
@@ -21,9 +19,10 @@ describe("useInsightsStore - acceptRecommendation", () => {
   });
 
   describe("Success Cases", () => {
-    test("should accept recommendation and update state correctly", async () => {
+    test("should accept recommendation and re-fetch recommendations", async () => {
       // Arrange
       const recommendationId = "rec-123";
+      const workspaceSlug = "test-workspace";
       const mockResponse = {
         success: true,
         task: {
@@ -38,13 +37,25 @@ describe("useInsightsStore - acceptRecommendation", () => {
         },
       };
 
+      // Mock accept API call
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => mockResponse,
       });
 
+      // Mock fetchRecommendations API call
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ recommendations: [] }),
+      });
+
       const { result } = renderHook(() => useInsightsStore());
+
+      // Set workspace slug
+      act(() => {
+        result.current.setWorkspaceSlug(workspaceSlug);
+      });
 
       // Act
       let returnedResult;
@@ -52,9 +63,10 @@ describe("useInsightsStore - acceptRecommendation", () => {
         returnedResult = await result.current.acceptRecommendation(recommendationId);
       });
 
-      // Assert - Verify API call
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch).toHaveBeenCalledWith(
+      // Assert - Verify API calls
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
         `/api/janitors/recommendations/${recommendationId}/accept`,
         {
           method: "POST",
@@ -62,10 +74,10 @@ describe("useInsightsStore - acceptRecommendation", () => {
           body: JSON.stringify({}),
         }
       );
-
-      // Assert - Verify state update
-      expect(result.current.dismissedSuggestions.has(recommendationId)).toBe(true);
-      expect(result.current.dismissedSuggestions.size).toBe(1);
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        `/api/workspaces/${workspaceSlug}/janitors/recommendations?limit=10`
+      );
 
       // Assert - Verify return value
       expect(returnedResult).toEqual(mockResponse);
@@ -78,6 +90,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
 
     test("should handle multiple recommendation acceptances", async () => {
       // Arrange
+      const workspaceSlug = "test-workspace";
       const recommendationIds = ["rec-1", "rec-2", "rec-3"];
       const mockResponses = recommendationIds.map((id) => ({
         success: true,
@@ -85,14 +98,24 @@ describe("useInsightsStore - acceptRecommendation", () => {
         recommendation: { id, status: "ACCEPTED" },
       }));
 
+      // Mock accept calls and fetchRecommendations calls
       mockResponses.forEach((response) => {
         mockFetch.mockResolvedValueOnce({
           ok: true,
           json: async () => response,
         });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ recommendations: [] }),
+        });
       });
 
       const { result } = renderHook(() => useInsightsStore());
+
+      // Set workspace slug
+      act(() => {
+        result.current.setWorkspaceSlug(workspaceSlug);
+      });
 
       // Act - Accept multiple recommendations
       await act(async () => {
@@ -101,43 +124,36 @@ describe("useInsightsStore - acceptRecommendation", () => {
         }
       });
 
-      // Assert - All recommendations should be in dismissedSuggestions
-      expect(result.current.dismissedSuggestions.size).toBe(3);
-      recommendationIds.forEach((id) => {
-        expect(result.current.dismissedSuggestions.has(id)).toBe(true);
-      });
+      // Assert - Verify all API calls were made (accept + fetch for each)
+      expect(mockFetch).toHaveBeenCalledTimes(6); // 3 accepts + 3 fetches
     });
 
-    test("should preserve existing dismissed suggestions when accepting new recommendation", async () => {
+    test("should not re-fetch when workspaceSlug is not set", async () => {
       // Arrange
-      const existingId = "rec-existing";
-      const newId = "rec-new";
-
-      const { result } = renderHook(() => useInsightsStore());
-
-      // Pre-populate with existing dismissed suggestion
-      act(() => {
-        result.current.dismissedSuggestions.add(existingId);
-      });
+      const recommendationId = "rec-new";
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           success: true,
           task: { id: "task-new" },
-          recommendation: { id: newId, status: "ACCEPTED" },
+          recommendation: { id: recommendationId, status: "ACCEPTED" },
         }),
       });
 
-      // Act
+      const { result } = renderHook(() => useInsightsStore());
+
+      // Act - Don't set workspaceSlug
       await act(async () => {
-        await result.current.acceptRecommendation(newId);
+        await result.current.acceptRecommendation(recommendationId);
       });
 
-      // Assert - Both old and new should be present
-      expect(result.current.dismissedSuggestions.size).toBe(2);
-      expect(result.current.dismissedSuggestions.has(existingId)).toBe(true);
-      expect(result.current.dismissedSuggestions.has(newId)).toBe(true);
+      // Assert - Only accept API call, no fetch
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `/api/janitors/recommendations/${recommendationId}/accept`,
+        expect.any(Object)
+      );
     });
   });
 
@@ -162,9 +178,8 @@ describe("useInsightsStore - acceptRecommendation", () => {
         });
       }).rejects.toThrow(errorMessage);
 
-      // State should not be updated on error
-      expect(result.current.dismissedSuggestions.has(recommendationId)).toBe(false);
-      expect(result.current.dismissedSuggestions.size).toBe(0);
+      // No re-fetch should happen on error
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     test("should throw 'Unknown error' when API returns error without message", async () => {
@@ -264,9 +279,6 @@ describe("useInsightsStore - acceptRecommendation", () => {
           await result.current.acceptRecommendation(recommendationId);
         });
       }).rejects.toThrow("Network request failed");
-
-      // State should not be updated on network error
-      expect(result.current.dismissedSuggestions.has(recommendationId)).toBe(false);
     });
 
     test("should handle fetch rejection without error message", async () => {
@@ -352,27 +364,30 @@ describe("useInsightsStore - acceptRecommendation", () => {
   });
 
   describe("State Management", () => {
-    test("should reset dismissedSuggestions when reset is called", async () => {
+    test("should store workspaceSlug for re-fetching", async () => {
       // Arrange
-      const recommendationId = "rec-reset-test";
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          success: true,
-          task: { id: "task" },
-          recommendation: { id: recommendationId },
-        }),
-      });
-
+      const workspaceSlug = "test-workspace";
       const { result } = renderHook(() => useInsightsStore());
 
-      // Accept recommendation to populate state
-      await act(async () => {
-        await result.current.acceptRecommendation(recommendationId);
+      // Act
+      act(() => {
+        result.current.setWorkspaceSlug(workspaceSlug);
       });
 
-      expect(result.current.dismissedSuggestions.size).toBe(1);
+      // Assert
+      expect(result.current.workspaceSlug).toBe(workspaceSlug);
+    });
+
+    test("should clear workspaceSlug on reset", async () => {
+      // Arrange
+      const workspaceSlug = "test-workspace";
+      const { result } = renderHook(() => useInsightsStore());
+
+      act(() => {
+        result.current.setWorkspaceSlug(workspaceSlug);
+      });
+
+      expect(result.current.workspaceSlug).toBe(workspaceSlug);
 
       // Act - Reset store
       act(() => {
@@ -380,63 +395,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
       });
 
       // Assert - State should be cleared
-      expect(result.current.dismissedSuggestions.size).toBe(0);
-      expect(result.current.dismissedSuggestions.has(recommendationId)).toBe(false);
-    });
-
-    test("should maintain dismissedSuggestions as a Set data structure", async () => {
-      // Arrange
-      const recommendationId = "rec-set-test";
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          success: true,
-          task: { id: "task" },
-          recommendation: { id: recommendationId },
-        }),
-      });
-
-      const { result } = renderHook(() => useInsightsStore());
-
-      // Act
-      await act(async () => {
-        await result.current.acceptRecommendation(recommendationId);
-      });
-
-      // Assert - Should be a Set with Set methods
-      expect(result.current.dismissedSuggestions).toBeInstanceOf(Set);
-      expect(typeof result.current.dismissedSuggestions.has).toBe("function");
-      expect(typeof result.current.dismissedSuggestions.add).toBe("function");
-    });
-
-    test("should not add duplicate IDs to dismissedSuggestions (Set behavior)", async () => {
-      // Arrange
-      const recommendationId = "rec-duplicate";
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          success: true,
-          task: { id: "task" },
-          recommendation: { id: recommendationId },
-        }),
-      });
-
-      const { result } = renderHook(() => useInsightsStore());
-
-      // Act - Accept same recommendation twice
-      await act(async () => {
-        await result.current.acceptRecommendation(recommendationId);
-      });
-
-      await act(async () => {
-        await result.current.acceptRecommendation(recommendationId);
-      });
-
-      // Assert - Should only have one entry (Set prevents duplicates)
-      expect(result.current.dismissedSuggestions.size).toBe(1);
-      expect(result.current.dismissedSuggestions.has(recommendationId)).toBe(true);
+      expect(result.current.workspaceSlug).toBeNull();
     });
   });
 
@@ -560,7 +519,6 @@ describe("useInsightsStore - acceptRecommendation", () => {
       });
 
       // Assert
-      expect(result.current.dismissedSuggestions.has(longId)).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(
         `/api/janitors/recommendations/${longId}/accept`,
         expect.any(Object)
@@ -569,8 +527,10 @@ describe("useInsightsStore - acceptRecommendation", () => {
 
     test("should handle concurrent acceptance calls", async () => {
       // Arrange
+      const workspaceSlug = "test-workspace";
       const ids = ["rec-concurrent-1", "rec-concurrent-2", "rec-concurrent-3"];
 
+      // Mock each accept and fetch pair
       ids.forEach((id) => {
         mockFetch.mockResolvedValueOnce({
           ok: true,
@@ -580,9 +540,18 @@ describe("useInsightsStore - acceptRecommendation", () => {
             recommendation: { id },
           }),
         });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ recommendations: [] }),
+        });
       });
 
       const { result } = renderHook(() => useInsightsStore());
+
+      // Set workspace slug
+      act(() => {
+        result.current.setWorkspaceSlug(workspaceSlug);
+      });
 
       // Act - Fire all requests concurrently
       await act(async () => {
@@ -591,11 +560,8 @@ describe("useInsightsStore - acceptRecommendation", () => {
         );
       });
 
-      // Assert - All should be in state
-      expect(result.current.dismissedSuggestions.size).toBe(3);
-      ids.forEach((id) => {
-        expect(result.current.dismissedSuggestions.has(id)).toBe(true);
-      });
+      // Assert - All API calls should have been made
+      expect(mockFetch).toHaveBeenCalledTimes(6); // 3 accepts + 3 fetches
     });
   });
 });

@@ -213,10 +213,21 @@ export async function claimPodAndGetFrontend(
     frontend = workspace.portMappings[POD_PORTS.FRONTEND_FALLBACK];
 
     if (!frontend && controlPortUrl) {
-      // Final fallback: replace control port (15552) with frontend port (3000) in controlPortUrl
-      frontend = controlPortUrl.replace(POD_PORTS.CONTROL, POD_PORTS.FRONTEND_FALLBACK);
+      // Final fallback: try to find frontend port from process list if we have it
+      let frontendPort = POD_PORTS.FRONTEND_FALLBACK as string; // default to 3000 if we can't find it
+
+      if (processList) {
+        const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
+        if (frontendProcess?.port) {
+          frontendPort = frontendProcess.port;
+          console.log(`>>> Found frontend process on port ${frontendPort} from process list`);
+        }
+      }
+
+      // Replace control port with dynamically discovered frontend port in controlPortUrl
+      frontend = controlPortUrl.replace(POD_PORTS.CONTROL, frontendPort);
       console.log(
-        `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${POD_PORTS.FRONTEND_FALLBACK} in controlPortUrl:`,
+        `>>> Using final fallback - replacing port ${POD_PORTS.CONTROL} with ${frontendPort} in controlPortUrl:`,
         frontend,
       );
     } else if (frontend) {

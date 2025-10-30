@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "5");
     const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
     const sourceType = searchParams.get("sourceType");
+    const includeArchived = searchParams.get("includeArchived");
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -84,12 +85,20 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Build where clause
-    // Always show USER_JOURNEY tasks regardless of TODO status
-    // These represent E2E tests that should be visible for tracking
+    // Filter by archived status based on includeArchived param
+    // - includeArchived="true" -> show only archived tasks
+    // - includeArchived="false" or not provided -> show only non-archived tasks
+    const isShowingArchived = includeArchived === "true";
+
     const whereClause: Prisma.TaskWhereInput = {
       workspaceId,
       deleted: false,
-      OR: [
+      archived: isShowingArchived,
+    };
+
+    // If showing non-archived tasks (Recent tab), apply visibility rules
+    if (!isShowingArchived) {
+      whereClause.OR = [
         // Show non-TODO tasks (active work)
         { status: { not: TaskStatus.TODO } },
         // Show agent mode tasks regardless of status
@@ -98,8 +107,8 @@ export async function GET(request: NextRequest) {
         { stakworkProjectId: { not: null } },
         // Show user journey tasks regardless of status
         { sourceType: TaskSourceType.USER_JOURNEY },
-      ],
-    };
+      ];
+    }
 
     // Add sourceType filter if provided
     if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
@@ -135,6 +144,7 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               repositoryUrl: true,
+              branch: true,
             },
           },
           createdBy: {

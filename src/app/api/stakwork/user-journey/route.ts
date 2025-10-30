@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
       // Get workspace's primary repository if available
       const repository = await db.repository.findFirst({
         where: { workspaceId: workspace.id },
-        select: { id: true, repositoryUrl: true },
+        select: { id: true, repositoryUrl: true, branch: true },
       });
 
       // Extract stakworkProjectId from response if Stakwork succeeded
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
           priority: "MEDIUM",
           testFilePath,
           testFileUrl: repository?.repositoryUrl
-            ? `${repository.repositoryUrl}/blob/main/${testFilePath}`
+            ? `${repository.repositoryUrl}/blob/${repository.branch || 'main'}/${testFilePath}`
             : null,
           stakworkProjectId: stakworkProjectId ? parseInt(String(stakworkProjectId)) : null,
           repositoryId: repository?.id || null,

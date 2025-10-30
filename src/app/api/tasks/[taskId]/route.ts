@@ -17,7 +17,7 @@ export async function PATCH(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { startWorkflow, mode, status, workflowStatus } = body;
+    const { startWorkflow, mode, status, workflowStatus, archived } = body;
 
     // Verify task exists and user has access
     const task = await db.task.findFirst({
@@ -92,8 +92,8 @@ export async function PATCH(
       );
     }
 
-    // Handle status and workflowStatus updates
-    if (status || workflowStatus) {
+    // Handle status, workflowStatus, and archived updates
+    if (status || workflowStatus || archived !== undefined) {
       // Validate status if provided
       if (status && !Object.values(TaskStatus).includes(status as TaskStatus)) {
         return NextResponse.json(
@@ -114,12 +114,26 @@ export async function PATCH(
         );
       }
 
+      // Validate archived if provided
+      if (archived !== undefined && typeof archived !== 'boolean') {
+        return NextResponse.json(
+          {
+            error: 'Invalid archived value. Must be a boolean.'
+          },
+          { status: 400 }
+        );
+      }
+
       // Update task
       const updatedTask = await db.task.update({
         where: { id: taskId },
         data: {
           ...(status && { status: status as TaskStatus }),
           ...(workflowStatus && { workflowStatus: workflowStatus as WorkflowStatus }),
+          ...(archived !== undefined && {
+            archived,
+            archivedAt: archived ? new Date() : null
+          }),
           updatedById: userOrResponse.id,
         },
         select: {
@@ -130,6 +144,8 @@ export async function PATCH(
           priority: true,
           workflowStatus: true,
           stakworkProjectId: true,
+          archived: true,
+          archivedAt: true,
           updatedAt: true,
         },
       });
@@ -140,6 +156,8 @@ export async function PATCH(
           taskId: updatedTask.id,
           status: updatedTask.status,
           workflowStatus: updatedTask.workflowStatus,
+          archived: updatedTask.archived,
+          archivedAt: updatedTask.archivedAt,
           timestamp: new Date(),
         };
 
