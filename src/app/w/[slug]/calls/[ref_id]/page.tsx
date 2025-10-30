@@ -29,27 +29,41 @@ export default function CallPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [seekToTime, setSeekToTime] = useState<number | undefined>(undefined);
 
-  const nodesNormalized = useDataStore((s) => s.nodesNormalized);
+  const dataInitial = useDataStore((s) => s.dataInitial);
+
+  // Extract call node and video nodes from dataInitial
+  const { callNode, videoNodes } = useMemo(() => {
+    if (!dataInitial?.nodes) {
+      return { callNode: null, videoNodes: [] };
+    }
+
+    const callNode = dataInitial.nodes.find(node =>
+      (node.node_type === "Episode" || node.node_type === "Clip") && node.ref_id === ref_id
+    );
+
+    const videoNodes = dataInitial.nodes.filter(node =>
+      node.node_type === "Video" && node.properties?.text && node.properties?.timestamp
+    );
+
+    return { callNode, videoNodes };
+  }, [dataInitial, ref_id]);
 
   // Extract transcript from Video nodes in the store
   const transcript = useMemo(() => {
-    const videoNodes = Array.from(nodesNormalized.values())
-      .filter(node => node.node_type === "Video" && node.properties?.text && node.properties?.timestamp);
-
     return videoNodes.map(node => {
       const timestampStr = node?.properties?.timestamp || "0-0";
       const [startStr, endStr] = timestampStr.split('-');
-      const startTime = parseInt(startStr) / 1000; // Convert from milliseconds to seconds
-      const endTime = parseInt(endStr) / 1000; // Convert from milliseconds to seconds
+      const startTime = Number.parseInt(startStr) / 1000; // Convert from milliseconds to seconds
+      const endTime = Number.parseInt(endStr) / 1000; // Convert from milliseconds to seconds
 
       return {
         id: node.ref_id,
         text: node?.properties?.text || "",
-        startTime: isNaN(startTime) ? 0 : startTime,
-        endTime: isNaN(endTime) ? startTime + 10 : endTime, // Default to 10 seconds if endTime is invalid
+        startTime: Number.isNaN(startTime) ? 0 : startTime,
+        endTime: Number.isNaN(endTime) ? startTime + 10 : endTime, // Default to 10 seconds if endTime is invalid
       };
     }).sort((a, b) => a.startTime - b.startTime); // Sort by start time
-  }, [nodesNormalized]);
+  }, [videoNodes]);
 
   const handleBackClick = () => {
     router.push(`/w/${slug}/calls`);
@@ -78,40 +92,25 @@ export default function CallPage() {
       return;
     }
 
-    const fetchCall = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch(
-          `/api/workspaces/${slug}/calls?limit=1000`,
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to fetch call");
-        }
-
-        const data = await response.json();
-        const foundCall = data.calls.find((c: CallRecording) => c.ref_id === ref_id);
-
-        if (!foundCall) {
-          throw new Error("Call not found");
-        }
-
-        setCall(foundCall);
-      } catch (err) {
-        console.error("Error fetching call:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load call recording",
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCall();
-  }, [slug, ref_id]);
+    // Use call node from the store
+    if (callNode) {
+      const callFromStore: CallRecording = {
+        ref_id: callNode.ref_id,
+        episode_title: callNode.properties?.episode_title || "Untitled Call",
+        date_added_to_graph: callNode.date_added_to_graph || 0,
+        description: callNode.properties?.description,
+        source_link: callNode.properties?.source_link,
+        media_url: callNode.properties?.media_url,
+        image_url: callNode.properties?.image_url,
+      };
+      setCall(callFromStore);
+      setLoading(false);
+    } else {
+      // If not found in store, show error
+      setError("Call not found in loaded data");
+      setLoading(false);
+    }
+  }, [slug, ref_id, callNode]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
