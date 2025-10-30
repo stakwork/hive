@@ -27,6 +27,7 @@ interface UserJourneyTask {
     id: string;
     name: string;
     repositoryUrl: string;
+    branch: string;
   };
 }
 
@@ -178,6 +179,28 @@ export default function UserJourneys() {
     await navigator.clipboard.writeText(code);
     setCopiedId(task.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const getTestFileUrl = (task: UserJourneyTask): string | null => {
+    // Prefer constructing URL dynamically from repository data (source of truth)
+    if (task.repository?.repositoryUrl && task.testFilePath) {
+      const branch = task.repository.branch || 'main';
+
+      // Remove owner/repo prefix from path if present (e.g., "stakwork/hive/src/..." -> "src/...")
+      let path = task.testFilePath;
+      const pathParts = path.split('/');
+
+      // If path starts with owner/repo that matches the repository URL, strip it
+      if (pathParts.length >= 3 &&
+          task.repository.repositoryUrl.toLowerCase().includes(`/${pathParts[0]}/${pathParts[1]}`.toLowerCase())) {
+        path = pathParts.slice(2).join('/');
+      }
+
+      return `${task.repository.repositoryUrl}/blob/${branch}/${path}`;
+    }
+
+    // Fallback to stored URL only if we can't construct it
+    return task.testFileUrl;
   };
 
   const handleCloseBrowser = () => {
@@ -386,12 +409,16 @@ export default function UserJourneys() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
-                              {task.testFileUrl && (
+                              {getTestFileUrl(task) && (
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => window.open(task.testFileUrl!, "_blank")}
+                                  onClick={() => {
+                                    const url = getTestFileUrl(task);
+                                    if (url) window.open(url, "_blank");
+                                  }}
                                   className="h-6 w-6 p-0"
+                                  title="Open test file in GitHub"
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                 </Button>
