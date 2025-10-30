@@ -168,6 +168,41 @@ export const workspaceMockSetup = {
   },
 };
 
+export const workspaceAccessMocks = {
+  mockWorkspaceAccessGranted(
+    validateWorkspaceAccess: any,
+    workspace: { id: string; name: string; description: string | null; slug: string; ownerId: string; createdAt: Date; updatedAt: Date },
+    userRole: WorkspaceRole = "OWNER"
+  ) {
+    vi.mocked(validateWorkspaceAccess).mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
+        description: workspace.description,
+        slug: workspace.slug,
+        ownerId: workspace.ownerId,
+        createdAt: workspace.createdAt.toISOString(),
+        updatedAt: workspace.updatedAt.toISOString(),
+      },
+      userRole,
+    });
+  },
+
+  mockWorkspaceAccessDenied(validateWorkspaceAccess: any) {
+    vi.mocked(validateWorkspaceAccess).mockResolvedValue({
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+      workspace: undefined,
+    });
+  },
+};
+
 export const memberMockSetup = {
   mockAddMemberSuccess(
     findUserByGitHubUsername: any,
