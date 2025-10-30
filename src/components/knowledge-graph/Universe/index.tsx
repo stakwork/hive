@@ -19,7 +19,7 @@ const Fallback = () => (
   </Html>
 )
 
-const Content = () => {
+const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
   const dataInitial = useDataStore((s) => s.dataInitial)
 
@@ -27,7 +27,7 @@ const Content = () => {
     <>
       <color args={[colors.BLUE_PRESS_STATE]} attach="transparent" />
 
-      <Controls />
+      <Controls enableRotation={enableRotation} />
 
       <>{dataInitial?.nodes?.length ? <Graph /> : null}</>
     </>
@@ -42,7 +42,7 @@ const cameraProps = {
   position: [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z],
 } as const
 
-const _Universe = () => {
+const _Universe = ({ enableRotation = false }: { enableRotation?: boolean }) => {
   const [setIsUserScrollingOnHtmlPanel, setIsUserScrolling, setUserMovedCamera] = [
     useControlStore((s) => s.setIsUserScrollingOnHtmlPanel),
     useControlStore((s) => s.setIsUserScrolling),
@@ -97,7 +97,7 @@ const _Universe = () => {
 
             <AdaptiveEvents />
 
-            <Content />
+            <Content enableRotation={enableRotation} />
           </Suspense>
         </Canvas>
         <CursorTooltip />

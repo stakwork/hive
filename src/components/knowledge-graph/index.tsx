@@ -37,6 +37,7 @@ interface GraphComponentProps {
   endpoint?: string;
   title?: string;
   enablePolling?: boolean;
+  enableRotation?: boolean;
   className?: string;
   height?: string;
   width?: string;
@@ -47,6 +48,7 @@ export const GraphComponent = ({
   endpoint: propEndpoint,
   title = "Code Universe",
   enablePolling = false,
+  enableRotation = false,
   className,
   height = "h-full",
   width = "w-full",
@@ -148,7 +150,7 @@ export const GraphComponent = ({
             </div>
           </div>
         ) : (
-          <Universe />
+          <Universe enableRotation={enableRotation} />
         )}
       </div>
 
