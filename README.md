@@ -1,6 +1,8 @@
-# Hive Platform
+# 🐝 Hive Platform 🚀
 
 Hive Platform is an AI-first PM toolkit that hardens your codebase and lifts test coverage with async "janitor" workflows—delivering actionable recommendations to improve testing, maintainability, performance, and security.
+
+> *"Building better software, one workflow at a time!"*
 
 ## Tech Stack
 
@@ -15,9 +17,10 @@ Hive Platform is an AI-first PM toolkit that hardens your codebase and lifts tes
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- PostgreSQL database  
+- Node.js 18+ ⚡
+- PostgreSQL database 🐘
 - GitHub OAuth application ([Setup Guide](https://github.com/settings/developers))
+- A cup of coffee ☕ (optional but recommended)
 
 ### Installation
 
