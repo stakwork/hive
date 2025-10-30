@@ -35,11 +35,31 @@ export function LearnChatArea({
   workspaceSlug,
 }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
+  // Handle scroll events to detect user scrolling
   useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Consider user at bottom if within 100px of bottom
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShouldAutoScroll(isNearBottom);
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll only if user hasn't manually scrolled up
+  useEffect(() => {
+    if (!shouldAutoScroll) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, shouldAutoScroll]);
 
   // Only show download if there's at least one Q&A exchange (not counting initial greeting)
   const hasValidConversation =
@@ -104,7 +124,7 @@ export function LearnChatArea({
       </motion.div>
 
       {/* Messages - Scrollable area with bottom padding for input */}
-      <div className="flex-1 px-6 py-6 pb-24 bg-muted/40 border-l border-r">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 pb-24 bg-muted/40 border-l border-r">
         <motion.div
           className="space-y-4"
           initial={{ opacity: 0 }}
