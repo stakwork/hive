@@ -80,16 +80,14 @@ export default function CallPage() {
   };
 
   const extractS3KeyFromUrl = (url: string): string => {
-    // Extract S3 key from presigned URL
-    // Input: "https://sphinx-livekit-recordings.s3.amazonaws.com/2025-10-30T11%3A21%3A23.293Z-sphinx.call.-swarm38.sphinx.chat-.783516079.620162.mp4?AWSAccessKeyId=..."
-    // Output: "2025-10-30T11%3A21%3A23.293Z-sphinx.call.-swarm38.sphinx.chat-.783516079.620162.mp4"
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
-      // Remove leading slash and return the S3 key
-      return pathname.startsWith('/') ? pathname.substring(1) : pathname;
+      const rawKey = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+
+      return decodeURIComponent(rawKey);
     } catch {
-      return url; // Fallback to original if URL parsing fails
+      return url;
     }
   };
 
