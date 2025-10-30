@@ -44,14 +44,6 @@ export default function TaskChatPage() {
   // Fallback: use workspace.id if workspaceId (from context) is null
   const effectiveWorkspaceId = workspaceId || workspace?.id;
 
-  // Debug logging
-  console.log('[TaskPage] Workspace context:', {
-    workspaceId,
-    workspaceObject: workspace,
-    effectiveWorkspaceId,
-    currentTaskId
-  });
-
   const { taskMode, setTaskMode } = useTaskMode();
 
   const slug = params.slug as string;
@@ -64,6 +56,14 @@ export default function TaskChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
+
+  // Debug logging
+  console.log('[TaskPage] Workspace context:', {
+    workspaceId,
+    workspaceObject: workspace,
+    effectiveWorkspaceId,
+    currentTaskId
+  });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);

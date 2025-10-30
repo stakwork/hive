@@ -365,7 +365,6 @@ export default function UserJourneys() {
             artifacts={browserArtifacts}
             ide={false}
             workspaceId={id || workspace?.id}
-            taskId={null}
             onUserJourneySave={saveUserJourneyTest}
           />
         </div>
