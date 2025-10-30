@@ -1476,7 +1476,7 @@ describe('usePlaywrightReplay', () => {
         const callback2 = vi.fn();
 
         const { rerender } = renderHook(
-          ({ callback }) => usePlaywrightReplay(mockIframeRef, callback),
+          ({ callback }) => usePlaywrightReplay(mockIframeRef, null, null, callback),
           {
             initialProps: { callback: callback1 },
           }
