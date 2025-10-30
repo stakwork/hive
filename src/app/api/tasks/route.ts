@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               repositoryUrl: true,
+              branch: true,
             },
           },
           createdBy: {
