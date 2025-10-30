@@ -3,6 +3,8 @@ import { Screenshot } from "@/types/common";
 
 export function usePlaywrightReplay(
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
+  workspaceId: string | null = null,
+  taskId: string | null = null,
   onScreenshotError?: (message: string) => void,
 ) {
   const [isPlaywrightReplaying, setIsPlaywrightReplaying] = useState(false);
@@ -179,16 +181,53 @@ export function usePlaywrightReplay(
           break;
 
         case "staktrak-playwright-screenshot-captured":
-          setReplayScreenshots((prev) => [
-            ...prev,
-            {
-              id: data.id,
-              actionIndex: data.actionIndex,
-              dataUrl: data.screenshot,
-              timestamp: data.timestamp,
-              url: data.url,
-            },
-          ]);
+          // Add screenshot to local state immediately for display
+          const newScreenshot: Screenshot = {
+            id: data.id,
+            actionIndex: data.actionIndex,
+            dataUrl: data.screenshot,
+            timestamp: data.timestamp,
+            url: data.url,
+          };
+
+          setReplayScreenshots((prev) => [...prev, newScreenshot]);
+
+          // Upload to S3 asynchronously (don't block replay)
+          if (workspaceId && data.screenshot) {
+            fetch('/api/screenshots/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dataUrl: data.screenshot,
+                workspaceId,
+                taskId: taskId || null,
+                actionIndex: data.actionIndex,
+                pageUrl: data.url,
+                timestamp: data.timestamp,
+              }),
+            })
+              .then(async (response) => {
+                if (!response.ok) {
+                  const error = await response.json();
+                  throw new Error(error.error || 'Upload failed');
+                }
+                return response.json();
+              })
+              .then((uploaded) => {
+                // Update screenshot in state with S3 details
+                setReplayScreenshots((prev) =>
+                  prev.map((s) =>
+                    s.id === data.id
+                      ? { ...s, s3Key: uploaded.s3Key, s3Url: uploaded.s3Url, hash: uploaded.hash }
+                      : s
+                  )
+                );
+              })
+              .catch((error) => {
+                console.error('Screenshot upload to S3 failed:', error);
+                // Continue anyway - screenshot is still available locally via dataUrl
+              });
+          }
           break;
 
         case "staktrak-playwright-screenshot-error":
@@ -206,7 +245,7 @@ export function usePlaywrightReplay(
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onScreenshotError]);
+  }, [onScreenshotError, workspaceId, taskId]);
 
   return {
     isPlaywrightReplaying,

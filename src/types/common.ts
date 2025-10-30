@@ -78,7 +78,10 @@ export interface SwarmService {
 export interface Screenshot {
   id: string;
   actionIndex: number;
-  dataUrl: string; // Base64-encoded screenshot data URL
+  dataUrl: string; // Base64-encoded screenshot data URL (for in-memory/local display)
   timestamp: number;
   url: string; // Page URL when screenshot was taken
+  s3Key?: string; // S3 key after upload
+  s3Url?: string; // Presigned download URL after upload
+  hash?: string; // Content hash for deduplication
 }

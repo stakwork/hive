@@ -230,6 +230,9 @@ model Workspace {
   logoUrl String? @map("logo_url")
   logoKey String? @map("logo_key") // S3 path for deletion/updates
 
+  // Screenshots
+  screenshots Screenshot[]
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
@@ -406,6 +409,7 @@ model Task {
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   chatMessages ChatMessage[]
+  screenshots  Screenshot[]
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -881,5 +885,42 @@ enum StakworkRunDecision {
   ACCEPTED
   REJECTED
   FEEDBACK
+}
+
+// =============================================
+// SCREENSHOTS
+// =============================================
+
+model Screenshot {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  taskId      String?   @map("task_id")
+  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  // S3 Storage
+  s3Key       String    @unique @map("s3_key") // screenshots/{workspaceId}/{hash}.jpg
+  s3Url       String?   @map("s3_url") // Cached presigned download URL
+  urlExpiresAt DateTime? @map("url_expires_at") // When cached URL expires
+
+  // Metadata for context & comparison
+  actionIndex Int       @map("action_index") // Position in test sequence
+  pageUrl     String    @map("page_url") // URL where screenshot was taken
+  timestamp   BigInt    // Capture time (Unix timestamp in milliseconds)
+  hash        String    @unique // Content hash for deduplication (SHA-256 truncated to 12 chars)
+
+  // Image dimensions
+  width       Int?
+  height      Int?
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([taskId])
+  @@index([hash])
+  @@index([pageUrl])
+  @@index([createdAt])
+  @@map("screenshots")
 }
 

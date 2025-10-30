@@ -1214,7 +1214,7 @@ describe('usePlaywrightReplay', () => {
     describe('staktrak-playwright-screenshot-error', () => {
       test('should call onScreenshotError callback when provided', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, onScreenshotError));
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1267,7 +1267,7 @@ describe('usePlaywrightReplay', () => {
 
       test('should not stop replay when screenshot error occurs', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, onScreenshotError));
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
         const validCode = TestDataFactories.createValidPlaywrightTest();
 
         act(() => result.current.startPlaywrightReplay(validCode));
@@ -1291,7 +1291,7 @@ describe('usePlaywrightReplay', () => {
 
       test('should handle multiple screenshot errors', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, onScreenshotError));
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
 
         act(() => {
           TestUtils.simulateMessageEvent({

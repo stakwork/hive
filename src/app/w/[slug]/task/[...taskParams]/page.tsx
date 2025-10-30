@@ -814,7 +814,12 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                  <ArtifactsPanel
+                    artifacts={allArtifacts}
+                    workspaceId={workspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                  />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -861,7 +866,12 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                  <ArtifactsPanel
+                    artifacts={allArtifacts}
+                    workspaceId={workspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                  />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
