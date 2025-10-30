@@ -562,6 +562,7 @@ describe("Janitor API Integration Tests", () => {
         data: [
           {
             janitorRunId: janitorRun.id,
+            workspaceId: workspace.id,
             title: "Add unit tests for UserService",
             description: "UserService needs test coverage",
             priority: "HIGH",
@@ -569,7 +570,8 @@ describe("Janitor API Integration Tests", () => {
           },
           {
             janitorRunId: janitorRun.id,
-            title: "Add integration tests", 
+            workspaceId: workspace.id,
+            title: "Add integration tests",
             description: "Missing integration test coverage",
             priority: "MEDIUM",
             status: "ACCEPTED",
@@ -632,6 +634,7 @@ describe("Janitor API Integration Tests", () => {
         data: [
           {
             janitorRunId: janitorRun.id,
+            workspaceId: workspace.id,
             title: "Pending recommendation",
             description: "This is pending",
             priority: "HIGH",
@@ -639,6 +642,7 @@ describe("Janitor API Integration Tests", () => {
           },
           {
             janitorRunId: janitorRun.id,
+            workspaceId: workspace.id,
             title: "Accepted recommendation",
             description: "This is accepted",
             priority: "MEDIUM",
@@ -688,6 +692,7 @@ describe("Janitor API Integration Tests", () => {
         data: [
           {
             janitorRunId: janitorRun.id,
+            workspaceId: workspace.id,
             title: "High priority recommendation",
             description: "This is high priority",
             priority: "HIGH",
@@ -695,6 +700,7 @@ describe("Janitor API Integration Tests", () => {
           },
           {
             janitorRunId: janitorRun.id,
+            workspaceId: workspace.id,
             title: "Low priority recommendation",
             description: "This is low priority",
             priority: "LOW",
@@ -774,6 +780,7 @@ describe("Janitor API Integration Tests", () => {
       const recommendation = await db.janitorRecommendation.create({
         data: {
           janitorRunId: janitorRun.id,
+          workspaceId: workspace.id,
           title: "Add unit tests",
           description: "Need more test coverage",
           priority: "HIGH",
@@ -837,6 +844,7 @@ describe("Janitor API Integration Tests", () => {
       const recommendation = await db.janitorRecommendation.create({
         data: {
           janitorRunId: janitorRun.id,
+          workspaceId: workspace.id,
           title: "Add unit tests",
           description: "Need more test coverage",
           priority: "LOW",
