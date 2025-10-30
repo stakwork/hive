@@ -232,3 +232,35 @@ export const memberMockSetup = {
     vi.mocked(softDeleteMember).mockResolvedValue(undefined);
   },
 };
+
+/**
+ * Creates a mock response for validateWorkspaceAccess
+ * Accepts a Workspace object and serializes dates to ISO strings
+ */
+export function createValidateWorkspaceAccessMock(
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+    ownerId: string;
+    description: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  hasAccess: boolean = true,
+) {
+  return {
+    hasAccess,
+    workspace: hasAccess
+      ? {
+          id: workspace.id,
+          name: workspace.name,
+          slug: workspace.slug,
+          ownerId: workspace.ownerId,
+          description: workspace.description,
+          createdAt: workspace.createdAt.toISOString(),
+          updatedAt: workspace.updatedAt.toISOString(),
+        }
+      : null,
+  };
+}
