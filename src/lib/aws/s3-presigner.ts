@@ -21,7 +21,7 @@ export async function generatePresignedUrl(
 export async function generateCallPresignedUrl(s3Key: string): Promise<string> {
   const bucket = "sphinx-livekit-recordings";
   // Decode URL-encoded S3 key (e.g., %3A becomes :)
-  const decodedKey = decodeURIComponent(s3Key);
+  const decodedKey = s3Key;
 
   console.log('[S3 Presigner] Input key:', s3Key);
   console.log('[S3 Presigner] Decoded key:', decodedKey);
