@@ -6,9 +6,10 @@ import { useCameraAnimations } from './CameraAnimations'
 
 type Props = {
   disableAnimations?: boolean
+  enableRotation?: boolean
 }
 
-export const Controls = ({ disableAnimations }: Props) => {
+export const Controls = ({ disableAnimations, enableRotation = false }: Props) => {
   const { setDisableCameraRotation } = useGraphStore((s) => s)
 
   const isCameraControlsRefSet = useRef(false)
@@ -23,13 +24,13 @@ export const Controls = ({ disableAnimations }: Props) => {
   const setCameraControlsRef = useControlStore((s) => s.setCameraControlsRef)
   const setIsUserDragging = useControlStore((s) => s.setIsUserDragging)
 
-  useCameraAnimations({ enabled: !disableAnimations && !isUserScrolling && !isUserDragging })
+  useCameraAnimations({ enabled: !disableAnimations && !isUserScrolling && !isUserDragging, enableRotation })
 
   useEffect(() => {
-    if (isUserDragging) {
+    if (isUserDragging || isUserScrolling) {
       setDisableCameraRotation(true)
     }
-  }, [isUserDragging, setDisableCameraRotation])
+  }, [isUserDragging, isUserScrolling, setDisableCameraRotation])
 
   return (
     <CameraControls
@@ -43,6 +44,7 @@ export const Controls = ({ disableAnimations }: Props) => {
       dollyToCursor
       enabled={!isUserScrollingOnHtmlPanel}
       makeDefault
+      rotate={true}
       maxDistance={12000}
       minDistance={100}
       onEnd={() => setIsUserDragging(false)}
