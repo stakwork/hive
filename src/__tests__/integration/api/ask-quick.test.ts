@@ -241,7 +241,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         { name: "final_answer" },
       ]);
 
-      streamText.mockResolvedValue({
+      streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
@@ -428,7 +428,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       ]);
       askTools.mockImplementation(askToolsSpy);
 
-      streamText.mockResolvedValue({
+      streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
@@ -493,7 +493,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       ]);
       askTools.mockImplementation(askToolsSpy);
 
-      streamText.mockResolvedValue({
+      streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
@@ -561,7 +561,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       ]);
       askTools.mockImplementation(askToolsSpy);
 
-      streamText.mockResolvedValue({
+      streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
@@ -628,7 +628,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
 
-      streamText.mockResolvedValue({
+      streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(mockStreamResponse),
       });
 
