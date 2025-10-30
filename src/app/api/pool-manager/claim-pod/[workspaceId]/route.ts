@@ -109,11 +109,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolId = workspace.swarm.id || workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
+    // Get services from swarm
+    const services = workspace.swarm.services as Array<{ name: string; port: number; scripts?: Record<string, string> }> | null | undefined;
+
     const {
       frontend,
       workspace: podWorkspace,
       processList,
-    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain);
+    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
