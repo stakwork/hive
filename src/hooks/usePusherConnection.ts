@@ -27,6 +27,7 @@ export interface TaskTitleUpdateEvent {
   taskId: string;
   newTitle: string;
   previousTitle: string;
+  archived?: boolean;
   timestamp: Date;
 }
 

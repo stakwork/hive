@@ -39,7 +39,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     workspaceId,
     workspaceSlug,
     true,
-    5,
+    10,
     activeTab === "archived"
   );
   const { stats } = useTaskStats(workspaceId);
