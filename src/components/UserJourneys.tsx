@@ -30,12 +30,28 @@ interface UserJourneyTask {
   };
 }
 
+interface E2eTestNode {
+  node_type: string;
+  ref_id: string;
+  properties: {
+    name: string;
+    file: string;
+    body: string;
+    test_kind: string;
+    node_key: string;
+    start: number;
+    end: number;
+    token_count: number;
+  };
+}
+
 export default function UserJourneys() {
   const { id, slug, workspace } = useWorkspace();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [userJourneyTasks, setUserJourneyTasks] = useState<UserJourneyTask[]>([]);
+  const [e2eTestsGraph, setE2eTestsGraph] = useState<E2eTestNode[]>([]);
   const [fetchingTasks, setFetchingTasks] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
@@ -65,11 +81,32 @@ export default function UserJourneys() {
     }
   }, [id]);
 
+  const fetchE2eTestsFromGraph = useCallback(async () => {
+    if (!slug) return;
+
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
+
+      if (!response.ok) {
+        console.error("Failed to fetch E2E tests from graph");
+        return;
+      }
+
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setE2eTestsGraph(data);
+      }
+    } catch (error) {
+      console.error("Error fetching E2E tests from graph:", error);
+    }
+  }, [slug]);
+
   useEffect(() => {
     if (!frontend) {
       fetchUserJourneyTasks();
+      fetchE2eTestsFromGraph();
     }
-  }, [frontend, fetchUserJourneyTasks]);
+  }, [frontend, fetchUserJourneyTasks, fetchE2eTestsFromGraph]);
 
   // Filter tasks based on hidePending toggle
   const filteredTasks = hidePending
@@ -128,9 +165,18 @@ export default function UserJourneys() {
     };
   }, [frontend, dropPod]);
 
-  const handleCopyTitle = async (title: string, taskId: string) => {
-    await navigator.clipboard.writeText(title);
-    setCopiedId(taskId);
+  const handleCopyCode = async (task: UserJourneyTask) => {
+    // Find matching test in graph by file path
+    const graphTest = e2eTestsGraph.find(
+      (t) =>
+        t.properties.file === task.testFilePath ||
+        t.properties.file.endsWith(task.testFilePath || "")
+    );
+
+    // Copy test body if found, otherwise fall back to title
+    const code = graphTest?.properties.body || task.title;
+    await navigator.clipboard.writeText(code);
+    setCopiedId(task.id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -359,9 +405,9 @@ export default function UserJourneys() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCopyTitle(task.title, task.id)}
+                              onClick={() => handleCopyCode(task)}
                               className="h-8 w-8 p-0"
-                              title="Copy title"
+                              title="Copy test code"
                             >
                               {copiedId === task.id ? (
                                 <Check className="h-4 w-4 text-green-500" />
