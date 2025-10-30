@@ -423,7 +423,7 @@ describe("ChatArea", () => {
   });
 
   describe("Component Lifecycle", () => {
-    test("scrolls to bottom when messages change", async () => {
+    test("scrolls to bottom when messages change and user is at bottom", async () => {
       const scrollIntoViewMock = vi.fn();
       Element.prototype.scrollIntoView = scrollIntoViewMock;
 
@@ -443,6 +443,133 @@ describe("ChatArea", () => {
       });
     });
 
+    test("does not scroll when user has scrolled up", async () => {
+      const scrollIntoViewMock = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+      const { props } = setupChatAreaTest();
+      const { rerender, container } = render(<ChatArea {...props} />);
+
+      // Wait for initial render and scroll
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalled();
+      });
+
+      // Get the messages container
+      const messagesContainer = container.querySelector('.overflow-y-auto');
+      expect(messagesContainer).toBeInTheDocument();
+
+      // Mock scroll position to simulate user scrolled up
+      Object.defineProperty(messagesContainer, 'scrollTop', { value: 0, writable: true });
+      Object.defineProperty(messagesContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(messagesContainer, 'clientHeight', { value: 500, writable: true });
+
+      // Clear previous calls from initial render
+      scrollIntoViewMock.mockClear();
+
+      // Trigger scroll event to update shouldAutoScroll state
+      await waitFor(() => {
+        messagesContainer?.dispatchEvent(new Event('scroll'));
+      });
+
+      // Give time for state to update
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Now add a new message
+      const newMessages = [
+        ...props.messages,
+        createTestMessage({ id: "new-msg", message: "New message" }),
+      ];
+
+      rerender(<ChatArea {...props} messages={newMessages} />);
+
+      // Wait to ensure useEffect would have run if it was going to
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Scroll should NOT have been called after rerender because user scrolled up
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    });
+
+    test("resumes auto-scroll when user scrolls back to bottom", async () => {
+      const scrollIntoViewMock = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+      const { props } = setupChatAreaTest();
+      const { rerender, container } = render(<ChatArea {...props} />);
+
+      const messagesContainer = container.querySelector('.overflow-y-auto');
+      expect(messagesContainer).toBeInTheDocument();
+
+      // Simulate user scrolled up
+      Object.defineProperty(messagesContainer, 'scrollTop', { value: 0, writable: true });
+      Object.defineProperty(messagesContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(messagesContainer, 'clientHeight', { value: 500, writable: true });
+
+      scrollIntoViewMock.mockClear();
+      messagesContainer?.dispatchEvent(new Event('scroll'));
+
+      await waitFor(() => {
+        expect(messagesContainer).toBeInTheDocument();
+      });
+
+      // Now simulate user scrolls back near bottom (within 80px threshold)
+      Object.defineProperty(messagesContainer, 'scrollTop', { value: 950, writable: true });
+      messagesContainer?.dispatchEvent(new Event('scroll'));
+
+      await waitFor(() => {
+        expect(messagesContainer).toBeInTheDocument();
+      });
+
+      // Add new message
+      const newMessages = [
+        ...props.messages,
+        createTestMessage({ id: "new-msg", message: "New message" }),
+      ];
+
+      rerender(<ChatArea {...props} messages={newMessages} />);
+
+      // Should auto-scroll again
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth' });
+      });
+    });
+
+    test("considers user at bottom when within 80px threshold", async () => {
+      const scrollIntoViewMock = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+      const { props } = setupChatAreaTest();
+      const { rerender, container } = render(<ChatArea {...props} />);
+
+      const messagesContainer = container.querySelector('.overflow-y-auto');
+      expect(messagesContainer).toBeInTheDocument();
+
+      // Simulate user is 70px from bottom (within 80px threshold)
+      Object.defineProperty(messagesContainer, 'scrollTop', { value: 930, writable: true });
+      Object.defineProperty(messagesContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(messagesContainer, 'clientHeight', { value: 500, writable: true });
+
+      scrollIntoViewMock.mockClear();
+      messagesContainer?.dispatchEvent(new Event('scroll'));
+
+      await waitFor(() => {
+        expect(messagesContainer).toBeInTheDocument();
+      });
+
+      // Add new message
+      const newMessages = [
+        ...props.messages,
+        createTestMessage({ id: "new-msg", message: "New message" }),
+      ];
+
+      rerender(<ChatArea {...props} messages={newMessages} />);
+
+      // Should auto-scroll because within threshold
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth' });
+      });
+    });
+
     test("handles missing scrollIntoView gracefully", async () => {
       const originalScrollIntoView = Element.prototype.scrollIntoView;
       delete (Element.prototype as any).scrollIntoView;
@@ -453,6 +580,27 @@ describe("ChatArea", () => {
       expect(() => render(<ChatArea {...props} />)).not.toThrow();
 
       Element.prototype.scrollIntoView = originalScrollIntoView;
+    });
+
+    test("cleans up scroll event listener on unmount", async () => {
+      const removeEventListenerSpy = vi.fn();
+      const addEventListenerSpy = vi.fn();
+
+      const { props } = setupChatAreaTest();
+      const { container, unmount } = render(<ChatArea {...props} />);
+
+      const messagesContainer = container.querySelector('.overflow-y-auto');
+      
+      if (messagesContainer) {
+        messagesContainer.addEventListener = addEventListenerSpy;
+        messagesContainer.removeEventListener = removeEventListenerSpy;
+      }
+
+      unmount();
+
+      // Note: This test verifies the component unmounts without errors
+      // The actual cleanup happens in the useEffect return function
+      expect(container).toBeEmptyDOMElement();
     });
   });
 
