@@ -3,16 +3,15 @@
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { MediaPlayer } from "@/components/calls/MediaPlayer";
 import { SynchronizedGraphComponent } from "@/components/calls/SynchronizedGraphComponent";
-import { TranscriptPanel } from "@/components/calls/TranscriptPanel";
+import { TranscriptPanel, TranscriptSegment } from "@/components/calls/TranscriptPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
 import { CallRecording } from "@/types/calls";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const nodeTypes = ['-Clip', '-Episode']
 const nodeTypeParam = JSON.stringify(nodeTypes)
@@ -28,42 +27,7 @@ export default function CallPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [seekToTime, setSeekToTime] = useState<number | undefined>(undefined);
-
-  const dataInitial = useDataStore((s) => s.dataInitial);
-
-  // Extract call node and video nodes from dataInitial
-  const { callNode, videoNodes } = useMemo(() => {
-    if (!dataInitial?.nodes) {
-      return { callNode: null, videoNodes: [] };
-    }
-
-    const callNode = dataInitial.nodes.find(node =>
-      (node.node_type === "Episode" || node.node_type === "Clip") && node.ref_id === ref_id
-    );
-
-    const videoNodes = dataInitial.nodes.filter(node =>
-      node.node_type === "Video" && node.properties?.text && node.properties?.timestamp
-    );
-
-    return { callNode, videoNodes };
-  }, [dataInitial, ref_id]);
-
-  // Extract transcript from Video nodes in the store
-  const transcript = useMemo(() => {
-    return videoNodes.map(node => {
-      const timestampStr = node?.properties?.timestamp || "0-0";
-      const [startStr, endStr] = timestampStr.split('-');
-      const startTime = Number.parseInt(startStr) / 1000; // Convert from milliseconds to seconds
-      const endTime = Number.parseInt(endStr) / 1000; // Convert from milliseconds to seconds
-
-      return {
-        id: node.ref_id,
-        text: node?.properties?.text || "",
-        startTime: Number.isNaN(startTime) ? 0 : startTime,
-        endTime: Number.isNaN(endTime) ? startTime + 10 : endTime, // Default to 10 seconds if endTime is invalid
-      };
-    }).sort((a, b) => a.startTime - b.startTime); // Sort by start time
-  }, [videoNodes]);
+  const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
 
   const handleBackClick = () => {
     router.push(`/w/${slug}/calls`);
@@ -92,25 +56,79 @@ export default function CallPage() {
       return;
     }
 
-    // Use call node from the store
-    if (callNode) {
-      const callFromStore: CallRecording = {
-        ref_id: callNode.ref_id,
-        episode_title: callNode.properties?.episode_title || "Untitled Call",
-        date_added_to_graph: callNode.date_added_to_graph || 0,
-        description: callNode.properties?.description,
-        source_link: callNode.properties?.source_link,
-        media_url: callNode.properties?.media_url,
-        image_url: callNode.properties?.image_url,
-      };
-      setCall(callFromStore);
-      setLoading(false);
-    } else {
-      // If not found in store, show error
-      setError("Call not found in loaded data");
-      setLoading(false);
-    }
-  }, [slug, ref_id, callNode]);
+    const fetchCallData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Fetch the subgraph data for this specific call
+        const response = await fetch(
+          `/api/swarm/jarvis/nodes?id=${slug}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Clip","Video"]&depth=2&include_properties=true`)}`
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch call data");
+        }
+
+        const data = await response.json();
+
+        if (!data.success || !data.data?.nodes) {
+          throw new Error("Invalid response data");
+        }
+
+        // Find the main call node
+        const callNode = data.data.nodes.find((node: any) =>
+          (node.node_type === "Episode" || node.node_type === "Clip") && node.ref_id === ref_id
+        );
+
+        if (!callNode) {
+          throw new Error("Call not found");
+        }
+
+        // Extract call data
+        const callData: CallRecording = {
+          ref_id: callNode.ref_id,
+          episode_title: callNode.properties?.episode_title || "Untitled Call",
+          date_added_to_graph: callNode.date_added_to_graph || 0,
+          description: callNode.properties?.description,
+          source_link: callNode.properties?.source_link,
+          media_url: callNode.properties?.media_url,
+          image_url: callNode.properties?.image_url,
+        };
+
+        setCall(callData);
+
+        // Extract transcript from video nodes
+        const videoNodes = data.data.nodes.filter((node: any) =>
+          node.node_type === "Video" && node.properties?.text && node.properties?.timestamp
+        );
+
+        const transcriptSegments = videoNodes.map((node: any) => {
+          const timestampStr = node.properties.timestamp || "0-0";
+          const [startStr, endStr] = timestampStr.split('-');
+          const startTime = Number.parseInt(startStr) / 1000;
+          const endTime = Number.parseInt(endStr) / 1000;
+
+          return {
+            id: node.ref_id,
+            text: node.properties.text || "",
+            startTime: Number.isNaN(startTime) ? 0 : startTime,
+            endTime: Number.isNaN(endTime) ? startTime + 10 : endTime,
+          };
+        }).sort((a: any, b: any) => a.startTime - b.startTime);
+
+        setTranscript(transcriptSegments);
+
+      } catch (err) {
+        console.error("Error fetching call data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load call data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCallData();
+  }, [slug, ref_id]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
