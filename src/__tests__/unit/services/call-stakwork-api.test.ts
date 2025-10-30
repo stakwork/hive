@@ -24,6 +24,7 @@ const createTestParams = (overrides = {}) => ({
   attachments: [],
   mode: "default",
   taskSource: "USER",
+  workspaceId: "test-workspace-123",
   ...overrides,
 });
 
@@ -220,6 +221,7 @@ describe("callStakworkAPI", () => {
         repo2GraphUrl: "https://repo2graph.example.com",
         attachments: ["file1.txt", "file2.pdf"],
         taskSource: "CODEBASE_RECOMMENDATION",
+        workspaceId: "workspace-789",
       });
 
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
@@ -240,6 +242,7 @@ describe("callStakworkAPI", () => {
         repo2graph_url: "https://repo2graph.example.com",
         attachments: ["file1.txt", "file2.pdf"],
         taskSource: "codebase_recommendation", // Should be lowercase
+        workspaceId: "workspace-789",
       });
     });
 

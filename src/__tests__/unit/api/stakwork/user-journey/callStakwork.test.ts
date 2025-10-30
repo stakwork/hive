@@ -18,6 +18,7 @@ async function callStakwork(
   repo2GraphUrl: string,
   accessToken: string | null,
   username: string | null,
+  workspaceId?: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -37,6 +38,7 @@ async function callStakwork(
       swarmSecretAlias,
       poolName,
       repo2graph_url: repo2GraphUrl,
+      workspaceId,
     };
 
     const workflowId = config.STAKWORK_USER_JOURNEY_WORKFLOW_ID || "";
@@ -749,6 +751,41 @@ describe("callStakwork - Unit Tests", () => {
         "Error calling Stakwork:",
         testError
       );
+    });
+  });
+
+  describe("workspaceId Parameter", () => {
+    it("should include workspaceId in payload when provided", async () => {
+      const workspaceId = "workspace-test-123";
+      
+      await callStakwork(
+        "Test message",
+        "https://test.com/api",
+        "secret-alias",
+        "pool-name",
+        "https://test.com:3355",
+        "token",
+        "username",
+        workspaceId
+      );
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(payload.workflow_params.set_var.attributes.vars.workspaceId).toBe(workspaceId);
+    });
+
+    it("should handle undefined workspaceId in payload", async () => {
+      await callStakwork(
+        "Test message",
+        "https://test.com/api",
+        "secret-alias",
+        "pool-name",
+        "https://test.com:3355",
+        "token",
+        "username"
+      );
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(payload.workflow_params.set_var.attributes.vars.workspaceId).toBeUndefined();
     });
   });
 });

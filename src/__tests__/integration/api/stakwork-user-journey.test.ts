@@ -369,6 +369,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
                 swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
                 poolName: "test-pool",
                 repo2graph_url: "https://test-swarm.sphinx.chat:3355",
+                workspaceId: workspace.id,
               },
             },
           },

@@ -22,6 +22,7 @@ async function callStakwork(
   repo2GraphUrl: string,
   accessToken: string | null,
   username: string | null,
+  workspaceId: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -41,6 +42,7 @@ async function callStakwork(
       swarmSecretAlias,
       poolName,
       repo2graph_url: repo2GraphUrl,
+      workspaceId,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
@@ -158,6 +160,7 @@ export async function POST(request: NextRequest) {
       repo2GraphUrl,
       accessToken,
       username,
+      workspaceId,
     );
 
     // Create a task to track this user journey test
