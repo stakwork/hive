@@ -45,6 +45,11 @@ export interface TaskData {
   createdAt: string;
   updatedAt: string;
   hasActionArtifact?: boolean;
+  prArtifact?: {
+    id: string;
+    type: string;
+    content: any;
+  } | null;
   assignee?: {
     id: string;
     name: string | null;

@@ -212,9 +212,8 @@ export async function POST(request: NextRequest) {
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
 
-    // Create PR URLs directly from workspace repositories
-    // Format: https://github.com/owner/repo/pull/new/branchName
-    const prUrls = workspace.repositories
+    // Parse repositories to extract owner/repo and create PR URLs
+    const repositoriesData = workspace.repositories
       .map((repo) => {
         try {
           // Parse repositoryUrl to extract owner/repo
@@ -222,7 +221,12 @@ export async function POST(request: NextRequest) {
           const match = repo.repositoryUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
           if (match) {
             const [, owner, repoName] = match;
-            return `https://github.com/${owner}/${repoName}/pull/new/${branchName}`;
+            return {
+              url: repo.repositoryUrl,
+              owner,
+              repo: repoName,
+              prUrl: `https://github.com/${owner}/${repoName}/pull/new/${branchName}`,
+            };
           }
           return null;
         } catch (error) {
@@ -230,7 +234,38 @@ export async function POST(request: NextRequest) {
           return null;
         }
       })
-      .filter((url: string | null): url is string => url !== null);
+      .filter((data): data is { url: string; owner: string; repo: string; prUrl: string } => data !== null);
+
+    const prUrls = repositoriesData.map((r) => r.prUrl);
+
+    // Create a chat message with PR artifact
+    const assistantMessage = await db.chatMessage.create({
+      data: {
+        taskId: taskId,
+        message: "Commit and push successful! Open a PR to continue.",
+        role: "ASSISTANT",
+        status: "SENT",
+      },
+    });
+
+    // Create PR artifact with structured data
+    await db.artifact.create({
+      data: {
+        messageId: assistantMessage.id,
+        type: "PULL_REQUEST",
+        content: {
+          branchName,
+          commitMessage,
+          repositories: repositoriesData.map((r) => ({
+            url: r.url,
+            owner: r.owner,
+            repo: r.repo,
+          })),
+          prUrls,
+          status: "OPEN",
+        },
+      },
+    });
 
     return NextResponse.json(
       {
@@ -238,6 +273,7 @@ export async function POST(request: NextRequest) {
         message: "Commit and push successful",
         data: {
           prUrls,
+          messageId: assistantMessage.id,
         },
       },
       { status: 200 },

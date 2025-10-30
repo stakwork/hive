@@ -713,37 +713,16 @@ export default function TaskChatPage() {
       // Display success message
       toast({
         title: "Success",
-        description: "Changes committed and pushed successfully!",
+        description: "Changes committed and pushed successfully! Check the chat for PR links.",
       });
 
-      // Save PR URLs as assistant message
-      if (result.data?.prUrls && result.data.prUrls.length > 0) {
-        const isDark = resolvedTheme === "dark";
-        const iconPath = isDark ? "/svg-icons/Github-dark.svg" : "/svg-icons/Github-light.svg";
-        const prMessageText = result.data.prUrls
-          .map((prUrl: string) => `![GitHub](${iconPath}) [Open PR](${prUrl})`)
-          .join("\n\n");
-
-        // Save the PR URLs as an assistant message
-        await fetch(`/api/tasks/${currentTaskId}/messages/save`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: prMessageText,
-            role: "ASSISTANT",
-          }),
-        });
-
-        // Add the message to the UI immediately
-        const newMessage: ChatMessage = createChatMessage({
-          id: generateUniqueId(),
-          message: prMessageText,
-          role: ChatRole.ASSISTANT,
-          status: ChatStatus.SENT,
-        });
-        setMessages((msgs) => [...msgs, newMessage]);
+      // Refresh messages to show the new PR artifact message
+      if (currentTaskId) {
+        const messagesResponse = await fetch(`/api/tasks/${currentTaskId}/messages`);
+        if (messagesResponse.ok) {
+          const messagesData = await messagesResponse.json();
+          setMessages(messagesData);
+        }
       }
     } catch (error) {
       console.error("Error committing:", error);
