@@ -250,12 +250,12 @@ export async function POST(request: NextRequest) {
         content: {
           branchName,
           commitMessage,
-          repositories: repositoriesData.map((r) => ({
-            url: r.url,
-            owner: r.owner,
-            repo: r.repo,
-          })),
-          prUrls,
+          repositories: {
+            url: repositoriesData[0].url,
+            owner: repositoriesData[0].owner,
+            repo: repositoriesData[0].repo,
+          },
+          prUrl: repositoriesData[0].prUrl,
           status: "OPEN",
         },
       },

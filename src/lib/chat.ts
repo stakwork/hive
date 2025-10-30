@@ -89,12 +89,12 @@ export interface PullRequestContent {
   status: string;
   branchName: string;
   commitMessage: string;
-  repositories: Array<{
+  repositories: {
     url: string;
     owner: string;
     repo: string;
-  }>;
-  prUrls: string[];
+  };
+  prUrl: string;
   status?: "OPEN" | "CLOSED" | "MERGED";
   prNumber?: number;
 }
