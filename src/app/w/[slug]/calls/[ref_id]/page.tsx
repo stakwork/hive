@@ -19,7 +19,7 @@ const nodeTypeParam = JSON.stringify(nodeTypes)
 export default function CallPage() {
   const params = useParams();
   const router = useRouter();
-  const { slug } = useWorkspace();
+  const { slug, id: workspaceId } = useWorkspace();
   const ref_id = params.ref_id as string;
 
   const [call, setCall] = useState<CallRecording | null>(null);
@@ -51,7 +51,7 @@ export default function CallPage() {
 
 
   useEffect(() => {
-    if (!slug || !ref_id) {
+    if (!workspaceId || !ref_id) {
       setLoading(false);
       return;
     }
@@ -63,7 +63,7 @@ export default function CallPage() {
       try {
         // Fetch the subgraph data for this specific call
         const response = await fetch(
-          `/api/swarm/jarvis/nodes?id=${slug}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Clip","Video"]&depth=2&include_properties=true`)}`
+          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Clip","Video"]&depth=2&include_properties=true`)}`
         );
 
         if (!response.ok) {
@@ -128,7 +128,7 @@ export default function CallPage() {
     };
 
     fetchCallData();
-  }, [slug, ref_id]);
+  }, [workspaceId, ref_id]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
