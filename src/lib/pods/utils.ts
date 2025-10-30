@@ -1,4 +1,5 @@
 import { config } from "@/lib/env";
+import { parsePM2Content } from "@/utils/devContainerUtils";
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
@@ -167,9 +168,22 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
   return frontend;
 }
 
+interface ServiceInfo {
+  name: string;
+  port: number;
+  scripts?: {
+    start?: string;
+    install?: string;
+    build?: string;
+    test?: string;
+    [key: string]: string | undefined;
+  };
+}
+
 export async function claimPodAndGetFrontend(
   poolName: string,
   poolApiKey: string,
+  services?: ServiceInfo[],
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
@@ -184,12 +198,44 @@ export async function claimPodAndGetFrontend(
 
   const controlPortUrl = workspace.portMappings[POD_PORTS.CONTROL];
 
-  // Try to get frontend from process discovery if control port exists
+  // Always try to fetch process list if control port exists
   if (controlPortUrl) {
     try {
-      // Get the process list from the control port
       processList = await getProcessList(controlPortUrl, workspace.password);
+      console.log(`>>> Successfully fetched process list with ${processList.length} processes`);
+    } catch (error) {
+      console.error(">>> Failed to fetch process list:", error);
+    }
+  }
 
+  // FIRST: Try to get frontend port from services array if provided
+  if (services && services.length > 0) {
+    try {
+      const frontendService = services.find((svc) => svc.name === "frontend");
+
+      if (frontendService?.port) {
+        console.log(`>>> Found frontend port ${frontendService.port} from services array`);
+
+        // Try to find the port in port mappings
+        frontend = workspace.portMappings[frontendService.port.toString()];
+
+        if (frontend) {
+          console.log(`>>> Using frontend from services array on port ${frontendService.port}:`, frontend);
+          return { frontend, workspace, processList };
+        } else {
+          console.log(`>>> Port ${frontendService.port} from services not found in port mappings, trying fallbacks`);
+        }
+      } else {
+        console.log(">>> No frontend service found in services array, trying fallbacks");
+      }
+    } catch (error) {
+      console.error(">>> Error getting port from services array, trying fallbacks:", error);
+    }
+  }
+
+  // SECOND: Try to get frontend from process discovery if we have process list
+  if (processList) {
+    try {
       // Get the frontend URL from port mappings
       frontend = getFrontendUrl(processList, workspace.portMappings);
     } catch (error) {
@@ -199,11 +245,10 @@ export async function claimPodAndGetFrontend(
       );
       // frontend remains undefined, will try fallback below
     }
-  } else {
+  } else if (!controlPortUrl) {
     // Control port not available, will try fallback
     console.error(
-      `>>> Failed to get frontend from process list, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}:`,
-      new Error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`),
+      `>>> Control port (${POD_PORTS.CONTROL}) not found in port mappings, falling back to port ${POD_PORTS.FRONTEND_FALLBACK}`,
     );
   }
 
@@ -342,6 +387,35 @@ export async function startGoose(
     return null;
   } catch (error) {
     console.error("Error starting goose service:", error);
+    return null;
+  }
+}
+
+/**
+ * Get the port for a service from the PM2 config
+ * @param pm2ConfigContent - The PM2 config file content (plain text or base64)
+ * @param serviceName - The name of the service to find (default: "frontend")
+ * @returns The port number for the service, or null if not found
+ */
+export function getPortFromPM2Config(pm2ConfigContent: string | undefined, serviceName = "frontend"): number | null {
+  if (!pm2ConfigContent) {
+    console.error("No PM2 config content provided");
+    return null;
+  }
+
+  try {
+    const services = parsePM2Content(pm2ConfigContent);
+    console.log(">>> services", JSON.stringify(services, null, 2));
+    const service = services.find((svc) => svc.name === serviceName);
+
+    if (!service) {
+      console.error(`Service "${serviceName}" not found in PM2 config`);
+      return null;
+    }
+
+    return service.port;
+  } catch (error) {
+    console.error("Error parsing PM2 config:", error);
     return null;
   }
 }

@@ -149,7 +149,7 @@ async function seedForUser(userId: string) {
 
   const services = [
     {
-      name: "web",
+      name: "frontend",
       port: 3000,
       env: { NODE_ENV: "development" },
       scripts: { start: "npm run dev", install: "npm install" },
