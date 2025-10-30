@@ -7,12 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { useMemo, useEffect, useState } from "react";
+import { useMemo } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
 import { formatNumber } from "@/lib/utils/format";
+import { AdvancedFiltersPopover } from "./AdvancedFiltersPopover";
 
 interface SortableHeaderProps {
   label: string;
@@ -36,12 +36,12 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
         <span className={isActive ? "text-foreground" : ""}>{label}</span>
         {isActive ? (
           sortDirection === "asc" ? (
-            <ArrowUp className="h-4 w-4 transition-transform flex-shrink-0" />
+            <ArrowUp className="h-4 w-4 transition-transform shrink-0" />
           ) : (
-            <ArrowDown className="h-4 w-4 transition-transform flex-shrink-0" />
+            <ArrowDown className="h-4 w-4 transition-transform shrink-0" />
           )
         ) : (
-          <ArrowUpDown className="h-4 w-4 opacity-30 group-hover:opacity-50 transition-opacity flex-shrink-0" />
+          <ArrowUpDown className="h-4 w-4 opacity-30 group-hover:opacity-50 transition-opacity shrink-0" />
         )}
       </button>
     </TableHead>
@@ -82,112 +82,6 @@ export function CoverageInsights() {
     setE2eGlob,
   } = useCoverageNodes();
 
-  const [inputValue, setInputValue] = useState(ignoreDirs);
-  const [repoInputValue, setRepoInputValue] = useState(repo);
-  const [unitGlobInputValue, setUnitGlobInputValue] = useState(unitGlob);
-  const [integrationGlobInputValue, setIntegrationGlobInputValue] = useState(integrationGlob);
-  const [e2eGlobInputValue, setE2eGlobInputValue] = useState(e2eGlob);
-
-  useEffect(() => {
-    setInputValue(ignoreDirs);
-  }, [ignoreDirs]);
-
-  useEffect(() => {
-    setRepoInputValue(repo);
-  }, [repo]);
-
-  useEffect(() => {
-    setUnitGlobInputValue(unitGlob);
-  }, [unitGlob]);
-
-  useEffect(() => {
-    setIntegrationGlobInputValue(integrationGlob);
-  }, [integrationGlob]);
-
-  useEffect(() => {
-    setE2eGlobInputValue(e2eGlob);
-  }, [e2eGlob]);
-
-  const handleApplyFilter = () => {
-    const cleaned = inputValue
-      .split(",")
-      .map((dir) => dir.trim())
-      .filter((dir) => dir.length > 0)
-      .join(",");
-
-    if (cleaned !== ignoreDirs) {
-      setIgnoreDirs(cleaned);
-    }
-  };
-
-  const handleApplyRepoFilter = () => {
-    const cleaned = repoInputValue
-      .split(",")
-      .map((r) => r.trim())
-      .filter((r) => r.length > 0)
-      .join(",");
-
-    if (cleaned !== repo) {
-      setRepo(cleaned);
-    }
-  };
-
-  const handleApplyUnitGlobFilter = () => {
-    const cleaned = unitGlobInputValue.trim();
-    if (cleaned !== unitGlob) {
-      setUnitGlob(cleaned);
-    }
-  };
-
-  const handleApplyIntegrationGlobFilter = () => {
-    const cleaned = integrationGlobInputValue.trim();
-    if (cleaned !== integrationGlob) {
-      setIntegrationGlob(cleaned);
-    }
-  };
-
-  const handleApplyE2eGlobFilter = () => {
-    const cleaned = e2eGlobInputValue.trim();
-    if (cleaned !== e2eGlob) {
-      setE2eGlob(cleaned);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleApplyFilter();
-      e.currentTarget.blur();
-    }
-  };
-
-  const handleRepoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleApplyRepoFilter();
-      e.currentTarget.blur();
-    }
-  };
-
-  const handleUnitGlobKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleApplyUnitGlobFilter();
-      e.currentTarget.blur();
-    }
-  };
-
-  const handleIntegrationGlobKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleApplyIntegrationGlobFilter();
-      e.currentTarget.blur();
-    }
-  };
-
-  const handleE2eGlobKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleApplyE2eGlobFilter();
-      e.currentTarget.blur();
-    }
-  };
-
   const hasItems = items && items.length > 0;
 
   const rows = useMemo(
@@ -219,7 +113,7 @@ export function CoverageInsights() {
             </CardDescription>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">Type:</span>
               <Select
@@ -263,74 +157,17 @@ export function CoverageInsights() {
               </Select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Ignore dirs:</span>
-              <Input
-                type="text"
-                placeholder="e.g. testing, examples"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onBlur={handleApplyFilter}
-                onKeyDown={handleKeyDown}
-                className="h-8 w-[200px] text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Filter by test patterns (glob):</div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Unit:</span>
-                <Input
-                  type="text"
-                  placeholder="**/*.test.ts, **/*.spec.ts"
-                  value={unitGlobInputValue}
-                  onChange={(e) => setUnitGlobInputValue(e.target.value)}
-                  onBlur={handleApplyUnitGlobFilter}
-                  onKeyDown={handleUnitGlobKeyDown}
-                  className="h-8 w-[220px] text-xs"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Integration:</span>
-                <Input
-                  type="text"
-                  placeholder="**/integration/*.test.ts"
-                  value={integrationGlobInputValue}
-                  onChange={(e) => setIntegrationGlobInputValue(e.target.value)}
-                  onBlur={handleApplyIntegrationGlobFilter}
-                  onKeyDown={handleIntegrationGlobKeyDown}
-                  className="h-8 w-[220px] text-xs"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">E2E:</span>
-                <Input
-                  type="text"
-                  placeholder="**/e2e/**/*.spec.ts"
-                  value={e2eGlobInputValue}
-                  onChange={(e) => setE2eGlobInputValue(e.target.value)}
-                  onBlur={handleApplyE2eGlobFilter}
-                  onKeyDown={handleE2eGlobKeyDown}
-                  className="h-8 w-[220px] text-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Repo:</span>
-            <Input
-              type="text"
-              placeholder="all, /path/repo1, or /path/repo1,/path/repo2"
-              value={repoInputValue}
-              onChange={(e) => setRepoInputValue(e.target.value)}
-              onBlur={handleApplyRepoFilter}
-              onKeyDown={handleRepoKeyDown}
-              className="h-8 w-[400px] text-xs"
+            <AdvancedFiltersPopover
+              ignoreDirs={ignoreDirs}
+              setIgnoreDirs={setIgnoreDirs}
+              repo={repo}
+              setRepo={setRepo}
+              unitGlob={unitGlob}
+              setUnitGlob={setUnitGlob}
+              integrationGlob={integrationGlob}
+              setIntegrationGlob={setIntegrationGlob}
+              e2eGlob={e2eGlob}
+              setE2eGlob={setE2eGlob}
             />
           </div>
         </div>
@@ -458,7 +295,7 @@ export function CoverageInsights() {
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={!hasPrevPage || filterLoading}
                   onMouseEnter={() => hasPrevPage && prefetchPrev()}
-                  className="min-w-[80px]"
+                  className="min-w-20"
                 >
                   Previous
                 </Button>
@@ -468,7 +305,7 @@ export function CoverageInsights() {
                   onClick={() => setPage(page + 1)}
                   disabled={!hasNextPage || filterLoading}
                   onMouseEnter={() => hasNextPage && prefetchNext()}
-                  className="min-w-[80px]"
+                  className="min-w-20"
                 >
                   Next
                 </Button>
