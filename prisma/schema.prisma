@@ -216,6 +216,7 @@ model Workspace {
 
   // Janitor configuration
   janitorConfig JanitorConfig?
+  janitorRecommendations JanitorRecommendation[]
 
   // Roadmap features
   features Feature[]
@@ -564,8 +565,9 @@ model JanitorRun {
 }
 
 model JanitorRecommendation {
-  id           String @id @default(cuid())
-  janitorRunId String @map("janitor_run_id")
+  id           String  @id @default(cuid())
+  janitorRunId String? @map("janitor_run_id")
+  workspaceId  String  @map("workspace_id")
 
   // Recommendation details
   title       String
@@ -583,11 +585,13 @@ model JanitorRecommendation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  janitorRun  JanitorRun @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
-  acceptedBy  User?      @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
-  dismissedBy User?      @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
+  janitorRun  JanitorRun? @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  acceptedBy  User?       @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
+  dismissedBy User?       @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
 
   @@index([janitorRunId])
+  @@index([workspaceId])
   @@index([status])
   @@index([priority])
   @@index([createdAt])

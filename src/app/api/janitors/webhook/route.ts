@@ -6,6 +6,7 @@ import { z } from "zod";
 const stakworkWebhookSchema = z.object({
   projectId: z.number(),
   status: z.string(),
+  workspaceId: z.string().optional(), // For external workflows without janitor run
   results: z.object({
     recommendations: z.array(z.object({
       title: z.string(),
@@ -25,14 +26,18 @@ export async function POST(request: NextRequest) {
 
     const result = await processJanitorWebhook(webhookData);
 
-    console.log(`Janitor run ${result.runId} processed: ${result.status}${
+    const logMessage = result.runId
+      ? `Janitor run ${result.runId} processed: ${result.status}`
+      : `Standalone recommendations processed: ${result.status}`;
+
+    console.log(`${logMessage}${
       'recommendationCount' in result ? ` with ${result.recommendationCount} recommendations` : ''
     }`);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       message: "Webhook processed successfully",
-      runId: result.runId,
+      ...(result.runId && { runId: result.runId }),
       status: result.status,
       ...('recommendationCount' in result ? { recommendationCount: result.recommendationCount } : {}),
       ...('error' in result ? { error: result.error } : {})
