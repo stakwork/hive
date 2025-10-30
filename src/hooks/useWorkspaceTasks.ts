@@ -98,34 +98,6 @@ export function useWorkspaceTasks(
   const [currentPage, setCurrentPage] = useState(1);
   const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
 
-  // Handle real-time task title updates (also handles archive status changes)
-  const handleTaskTitleUpdate = useCallback(
-    (update: TaskTitleUpdateEvent) => {
-      setTasks(prevTasks => {
-        // If task is archived/unarchived, remove it from current list
-        // (it will now belong to the opposite tab)
-        if ('archived' in update && update.archived !== showArchived) {
-          return prevTasks.filter(task => task.id !== update.taskId);
-        }
-
-        // Otherwise update the task in place
-        return prevTasks.map(task =>
-          task.id === update.taskId
-            ? { ...task, title: update.newTitle }
-            : task
-        );
-      });
-    },
-    [showArchived],
-  );
-
-  // Subscribe to workspace-level updates if workspaceSlug is provided
-  usePusherConnection({
-    workspaceSlug,
-    enabled: !!workspaceSlug,
-    onTaskTitleUpdate: handleTaskTitleUpdate,
-  });
-
   const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
     if (!workspaceId || !session?.user) {
       setTasks([]);
@@ -190,7 +162,7 @@ export function useWorkspaceTasks(
 
       for (let page = 1; page <= storedPage; page++) {
         const archivedParam = showArchived ? '&includeArchived=true' : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=5${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -227,6 +199,45 @@ export function useWorkspaceTasks(
       setIsRestoringFromStorage(false);
     }
   }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived]);
+
+  // Handle real-time task title updates (also handles archive status changes)
+  const handleTaskTitleUpdate = useCallback(
+    (update: TaskTitleUpdateEvent) => {
+      setTasks(prevTasks => {
+        // If task is archived/unarchived, remove it from current list
+        // (it will now belong to the opposite tab)
+        if ('archived' in update && update.archived !== showArchived) {
+          const filteredTasks = prevTasks.filter(task => task.id !== update.taskId);
+
+          // Only refetch if there might be more tasks to load (pagination.hasMore is true)
+          // Use setTimeout to avoid state updates during render
+          setTimeout(() => {
+            // Access pagination via closure - check if there are more tasks to fetch
+            if (pagination?.hasMore) {
+              fetchTasks(currentPage, true, includeNotifications);
+            }
+          }, 0);
+
+          return filteredTasks;
+        }
+
+        // Otherwise update the task in place
+        return prevTasks.map(task =>
+          task.id === update.taskId
+            ? { ...task, title: update.newTitle }
+            : task
+        );
+      });
+    },
+    [showArchived, fetchTasks, currentPage, includeNotifications, pagination?.hasMore],
+  );
+
+  // Subscribe to workspace-level updates if workspaceSlug is provided
+  usePusherConnection({
+    workspaceSlug,
+    enabled: !!workspaceSlug,
+    onTaskTitleUpdate: handleTaskTitleUpdate,
+  });
 
   const loadMore = useCallback(async () => {
     if (pagination?.hasMore && workspaceId) {

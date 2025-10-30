@@ -28,6 +28,8 @@ export default function CallPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [seekToTime, setSeekToTime] = useState<number | undefined>(undefined);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
+  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
+  const [mediaLoading, setMediaLoading] = useState(false);
 
   const handleBackClick = () => {
     router.push(`/w/${slug}/calls`);
@@ -47,6 +49,48 @@ export default function CallPage() {
     setSeekToTime(time);
     // Clear the seek request after a short delay
     setTimeout(() => setSeekToTime(undefined), 100);
+  };
+
+  const generatePresignedUrl = async (s3Key: string): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/calls/presigned-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ s3Key }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate presigned URL');
+      }
+
+      const { presignedUrl } = await response.json();
+      return presignedUrl;
+    } catch (error) {
+      console.error('Error generating presigned URL:', error);
+      return null;
+    }
+  };
+
+  const isS3PresignedUrl = (url: string): boolean => {
+    // Check if this is an S3 presigned URL that needs refreshing
+    // Your URLs: "https://sphinx-livekit-recordings.s3.amazonaws.com/filename.mp4?AWSAccessKeyId=..."
+    return url.includes('sphinx-livekit-recordings.s3.amazonaws.com') && url.includes('?');
+  };
+
+  const extractS3KeyFromUrl = (url: string): string => {
+    // Extract S3 key from presigned URL
+    // Input: "https://sphinx-livekit-recordings.s3.amazonaws.com/2025-10-30T11%3A21%3A23.293Z-sphinx.call.-swarm38.sphinx.chat-.783516079.620162.mp4?AWSAccessKeyId=..."
+    // Output: "2025-10-30T11%3A21%3A23.293Z-sphinx.call.-swarm38.sphinx.chat-.783516079.620162.mp4"
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      // Remove leading slash and return the S3 key
+      return pathname.startsWith('/') ? pathname.substring(1) : pathname;
+    } catch {
+      return url; // Fallback to original if URL parsing fails
+    }
   };
 
 
@@ -97,6 +141,27 @@ export default function CallPage() {
         };
 
         setCall(callData);
+
+        // Generate fresh presigned URL if media_url is an expired S3 presigned URL
+        if (callData.media_url && isS3PresignedUrl(callData.media_url)) {
+          console.log('[Call Page] Detected S3 presigned URL:', callData.media_url);
+          setMediaLoading(true);
+          try {
+            const s3Key = extractS3KeyFromUrl(callData.media_url);
+            console.log('[Call Page] Extracted S3 key:', s3Key);
+            const url = await generatePresignedUrl(s3Key);
+            console.log('[Call Page] Generated fresh presigned URL');
+            setPresignedUrl(url);
+          } catch (error) {
+            console.error('[Call Page] Failed to generate presigned URL:', error);
+            // Fall back to original media_url if presigning fails
+            setPresignedUrl(null);
+          } finally {
+            setMediaLoading(false);
+          }
+        } else {
+          console.log('[Call Page] Not an S3 presigned URL, using media_url directly:', callData.media_url);
+        }
 
         // Extract transcript from video nodes
         const videoNodes = data.data.nodes.filter((node: any) =>
@@ -215,13 +280,22 @@ export default function CallPage() {
           <div className="w-80 border-r flex flex-col min-h-0">
             {/* Media Player */}
             <div className="flex-none p-4">
-              <MediaPlayer
-                src={call.source_link || call.media_url}
-                title={call.episode_title}
-                imageUrl={call.image_url}
-                onTimeUpdate={handleTimeUpdate}
-                seekToTime={seekToTime}
-              />
+              {mediaLoading ? (
+                <div className="flex items-center justify-center h-64 bg-muted rounded-md">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Loading media...</span>
+                  </div>
+                </div>
+              ) : (
+                <MediaPlayer
+                  src={presignedUrl || ""}
+                  title={call.episode_title}
+                  imageUrl={call.image_url}
+                  onTimeUpdate={handleTimeUpdate}
+                  seekToTime={seekToTime}
+                />
+              )}
             </div>
 
             {/* Transcript Panel */}
