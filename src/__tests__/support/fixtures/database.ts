@@ -69,9 +69,14 @@ export const cleanup = {
 
 export async function resetDatabase() {
   try {
+    // Delete in order respecting foreign key constraints
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
+    await db.stakworkRun.deleteMany();
+    await db.phase.deleteMany();
+    await db.userStory.deleteMany();
+    await db.feature.deleteMany();
     await db.task.deleteMany();
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
@@ -99,6 +104,10 @@ async function aggressiveReset() {
       "attachments",
       "artifacts",
       "chat_messages",
+      "stakwork_runs",
+      "phases",
+      "user_stories",
+      "features",
       "tasks",
       "janitor_recommendations",
       "janitor_runs",

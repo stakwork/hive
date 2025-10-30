@@ -36,10 +36,26 @@ async function setupTestDatabase() {
 
     // Clean up any existing test data
     console.log("🧹 Cleaning up existing test data...");
-    await prisma.verificationToken.deleteMany();
+    await prisma.attachment.deleteMany();
+    await prisma.artifact.deleteMany();
+    await prisma.chatMessage.deleteMany();
+    await prisma.stakworkRun.deleteMany();
+    await prisma.phase.deleteMany();
+    await prisma.userStory.deleteMany();
+    await prisma.feature.deleteMany();
+    await prisma.task.deleteMany();
+    await prisma.janitorRecommendation.deleteMany();
+    await prisma.janitorRun.deleteMany();
+    await prisma.janitorConfig.deleteMany();
+    await prisma.repository.deleteMany();
+    await prisma.swarm.deleteMany();
+    await prisma.workspaceMember.deleteMany();
+    await prisma.workspace.deleteMany();
     await prisma.session.deleteMany();
     await prisma.account.deleteMany();
     await prisma.gitHubAuth.deleteMany();
+    await prisma.sourceControlToken.deleteMany();
+    await prisma.sourceControlOrg.deleteMany();
     await prisma.user.deleteMany();
 
     // Create some test users for integration tests

@@ -6,7 +6,7 @@ import { resetDatabase } from "../support/fixtures";
 import { ensureTestEnv } from "./env";
 
 const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  process.env.TEST_DATABASE_URL || "postgresql://test:test@localhost:5433/hive_test";
 
 if (!TEST_DATABASE_URL) {
   throw new Error(
@@ -37,7 +37,8 @@ beforeAll(async () => {
   }
 
   try {
-    execSync("npx prisma db push --accept-data-loss", {
+    // Use migrate deploy instead of db push to avoid system catalog conflicts
+    execSync("npx prisma migrate deploy", {
       stdio: "pipe",
       env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
     });

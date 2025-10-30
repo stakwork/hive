@@ -30,31 +30,37 @@ async function cleanupTestDatabase() {
     console.log("🗑️  Removing all test data...");
 
     // Clean up tables if they exist (handle gracefully if they don't)
+    const cleanup = async (fn, name) => {
+      try {
+        await fn();
+      } catch (error) {
+        console.log(`⚠️  ${name} table does not exist, skipping...`);
+      }
+    };
 
-    try {
-      await prisma.session.deleteMany();
-      console.log("✅ Cleared all sessions");
-    } catch (error) {
-      console.log("⚠️  Session table does not exist, skipping...");
-    }
-
-    try {
-      await prisma.account.deleteMany();
-    } catch (error) {
-      console.log("⚠️  Account table does not exist, skipping...");
-    }
-
-    try {
-      await prisma.gitHubAuth.deleteMany();
-    } catch (error) {
-      console.log("⚠️  GitHubAuth table does not exist, skipping...");
-    }
-
-    try {
-      await prisma.user.deleteMany();
-    } catch (error) {
-      console.log("⚠️  User table does not exist, skipping...");
-    }
+    await cleanup(() => prisma.attachment.deleteMany(), "Attachment");
+    await cleanup(() => prisma.artifact.deleteMany(), "Artifact");
+    await cleanup(() => prisma.chatMessage.deleteMany(), "ChatMessage");
+    await cleanup(() => prisma.stakworkRun.deleteMany(), "StakworkRun");
+    await cleanup(() => prisma.phase.deleteMany(), "Phase");
+    await cleanup(() => prisma.userStory.deleteMany(), "UserStory");
+    await cleanup(() => prisma.feature.deleteMany(), "Feature");
+    await cleanup(() => prisma.task.deleteMany(), "Task");
+    await cleanup(() => prisma.janitorRecommendation.deleteMany(), "JanitorRecommendation");
+    await cleanup(() => prisma.janitorRun.deleteMany(), "JanitorRun");
+    await cleanup(() => prisma.janitorConfig.deleteMany(), "JanitorConfig");
+    await cleanup(() => prisma.repository.deleteMany(), "Repository");
+    await cleanup(() => prisma.swarm.deleteMany(), "Swarm");
+    await cleanup(() => prisma.workspaceMember.deleteMany(), "WorkspaceMember");
+    await cleanup(() => prisma.workspace.deleteMany(), "Workspace");
+    await cleanup(() => prisma.session.deleteMany(), "Session");
+    await cleanup(() => prisma.account.deleteMany(), "Account");
+    await cleanup(() => prisma.gitHubAuth.deleteMany(), "GitHubAuth");
+    await cleanup(() => prisma.sourceControlToken.deleteMany(), "SourceControlToken");
+    await cleanup(() => prisma.sourceControlOrg.deleteMany(), "SourceControlOrg");
+    await cleanup(() => prisma.user.deleteMany(), "User");
+    
+    console.log("✅ Cleared all sessions");
 
     await prisma.$disconnect();
     console.log("✅ Test database cleanup complete!");
