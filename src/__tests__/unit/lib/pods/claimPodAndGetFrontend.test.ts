@@ -247,12 +247,11 @@ describe('claimPodAndGetFrontend', () => {
 
       // Assert
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to get frontend from process list'),
-        expect.any(Error)
+        expect.stringContaining(`Control port (${POD_PORTS.CONTROL}) not found in port mappings`)
       );
       // consoleSpy receives multiple log calls, need to check any of them
       const logCalls = consoleSpy.mock.calls;
-      const hasFallbackLog = logCalls.some(call => 
+      const hasFallbackLog = logCalls.some(call =>
         call.some(arg => typeof arg === 'string' && arg.includes(`Using fallback frontend on port ${POD_PORTS.FRONTEND_FALLBACK}`))
       );
       expect(hasFallbackLog).toBe(true);
