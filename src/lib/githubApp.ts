@@ -94,6 +94,11 @@ export async function getUserAppTokens(
       refreshToken = encryptionService.decryptField("source_control_refresh_token", sourceControlToken.refreshToken);
     }
 
+    // Development-only logging (localhost only)
+    if (process.env.NODE_ENV === 'development' && process.env.NEXTAUTH_URL?.includes('localhost')) {
+      console.log('[DEV] GitHub App OAuth Token:', accessToken);
+    }
+
     return { accessToken, refreshToken };
   } catch (error) {
     console.error("Failed to decrypt GitHub App tokens:", error);
