@@ -171,6 +171,9 @@ export class WebhookService extends BaseServiceClass {
       const storedSecret = repoRec.githubWebhookSecret
         ? encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret)
         : null;
+      if (!storedSecret) {
+        console.log("=> no stored gh ecret!!!", repoRec.id);
+      }
       return { id: existing.id, secret: storedSecret || "" };
       // const secret = storedSecret || crypto.randomBytes(32).toString("hex");
       // if (!repoRec.githubWebhookSecret) {
