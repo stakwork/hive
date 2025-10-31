@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateCallPresignedUrl } from '@/lib/aws/s3-presigner';
+import { getS3Service } from '@/services/s3';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +15,11 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[Presigned URL] Generating presigned URL for key:', s3Key);
-    const presignedUrl = await generateCallPresignedUrl(s3Key);
+    const s3Service = getS3Service();
+    const presignedUrl = await s3Service.generatePresignedDownloadUrlForBucket(
+      'sphinx-livekit-recordings',
+      s3Key
+    );
     console.log('[Presigned URL] Successfully generated URL');
 
     return NextResponse.json({ presignedUrl });
