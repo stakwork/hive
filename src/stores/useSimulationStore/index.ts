@@ -72,6 +72,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   addNodesAndLinks: (newNodes, newLinks, replace) => {
     const { simulation, simulationRestart } = get()
+    const { graphStyle } = useGraphStore.getState()
+    const { nodeTypes } = useDataStore.getState()
 
     if (!simulation) {
       return
@@ -97,8 +99,19 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
         nodes.some((n: NodeExtended) => n.ref_id === i.target),
     )
 
+    const nodesPositioned = graphStyle === 'split' ? nodes.map((n: Node) => {
+      console.log('node-position', n);
+      const index = nodeTypes.indexOf(n.node_type) + 1
+      const yOffset = Math.floor(index / 2) * 500
+
+      return {
+        ...n,
+        fy: index % 2 === 0 ? yOffset : -yOffset,
+      }
+    }) : nodes;
+
     try {
-      simulation.nodes(nodes)
+      simulation.nodes(nodesPositioned)
       simulation.force('link').links(filteredLinks)
 
       simulationRestart()
