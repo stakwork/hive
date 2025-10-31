@@ -14,7 +14,13 @@ export async function generatePresignedUrl(
 
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
 
+  console.log('[S3 Presigner] Command:', bucket);
+
+  console.log('[S3 Presigner] Command:', key);
+
   const url = await getSignedUrl(s3, command, { expiresIn });
+
+  console.log('[S3 Presigner] URL:', url);
   return url;
 }
 
