@@ -324,6 +324,365 @@ describe("Workspace Member Management", () => {
       expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
       expect(result.user.github?.username).toBe("johndoe");
     });
+
+    test("should add member with VIEWER role successfully", async () => {
+      const mockViewerMember = mockData.memberWithGithub("VIEWER", {
+        id: "member2",
+        userId: "user2",
+        workspaceId: "workspace1",
+        username: "viewer-user",
+        name: "Viewer User",
+        email: "viewer@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user2",
+        githubId: 123456,
+        githubUsername: "viewer-user",
+        accessToken: "test-token",
+        user: {
+          id: "user2",
+          name: "Viewer User",
+          email: "viewer@example.com",
+          image: "https://github.com/viewer-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockViewerMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member2",
+        userId: "user2",
+        role: "VIEWER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user2",
+          name: "Viewer User",
+          email: "viewer@example.com",
+          image: "https://github.com/viewer-user.png",
+          github: {
+            username: "viewer-user",
+            name: "Viewer User",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "viewer-user", "VIEWER");
+
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user2", "VIEWER");
+      expect(result.role).toBe("VIEWER");
+    });
+
+    test("should add member with PM role successfully", async () => {
+      const mockPmMember = mockData.memberWithGithub("PM", {
+        id: "member3",
+        userId: "user3",
+        workspaceId: "workspace1",
+        username: "pm-user",
+        name: "Product Manager",
+        email: "pm@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user3",
+        githubId: 123456,
+        githubUsername: "pm-user",
+        accessToken: "test-token",
+        user: {
+          id: "user3",
+          name: "Product Manager",
+          email: "pm@example.com",
+          image: "https://github.com/pm-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockPmMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member3",
+        userId: "user3",
+        role: "PM",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user3",
+          name: "Product Manager",
+          email: "pm@example.com",
+          image: "https://github.com/pm-user.png",
+          github: {
+            username: "pm-user",
+            name: "Product Manager",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "pm-user", "PM");
+
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user3", "PM");
+      expect(result.role).toBe("PM");
+    });
+
+    test("should add member with ADMIN role successfully", async () => {
+      const mockAdminMember = mockData.memberWithGithub("ADMIN", {
+        id: "member4",
+        userId: "user4",
+        workspaceId: "workspace1",
+        username: "admin-user",
+        name: "Admin User",
+        email: "admin@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user4",
+        githubId: 123456,
+        githubUsername: "admin-user",
+        accessToken: "test-token",
+        user: {
+          id: "user4",
+          name: "Admin User",
+          email: "admin@example.com",
+          image: "https://github.com/admin-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockAdminMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member4",
+        userId: "user4",
+        role: "ADMIN",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user4",
+          name: "Admin User",
+          email: "admin@example.com",
+          image: "https://github.com/admin-user.png",
+          github: {
+            username: "admin-user",
+            name: "Admin User",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "admin-user", "ADMIN");
+
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user4", "ADMIN");
+      expect(result.role).toBe("ADMIN");
+    });
+
+    test("should reactivate member with role upgrade from VIEWER to ADMIN", async () => {
+      const previousMember = {
+        id: "previous-member-2",
+        workspaceId: "workspace1",
+        userId: "user5",
+        role: "VIEWER" as const,
+        leftAt: new Date("2024-01-01"),
+      };
+
+      const mockReactivatedAdmin = mockData.memberWithGithub("ADMIN", {
+        id: "previous-member-2",
+        userId: "user5",
+        workspaceId: "workspace1",
+        username: "upgraded-user",
+        name: "Upgraded User",
+        email: "upgraded@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user5",
+        githubId: 123456,
+        githubUsername: "upgraded-user",
+        accessToken: "test-token",
+        user: {
+          id: "user5",
+          name: "Upgraded User",
+          email: "upgraded@example.com",
+          image: "https://github.com/upgraded-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(previousMember);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedReactivateWorkspaceMember.mockResolvedValue(mockReactivatedAdmin);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "previous-member-2",
+        userId: "user5",
+        role: "ADMIN",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user5",
+          name: "Upgraded User",
+          email: "upgraded@example.com",
+          image: "https://github.com/upgraded-user.png",
+          github: {
+            username: "upgraded-user",
+            name: "Upgraded User",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "upgraded-user", "ADMIN");
+
+      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-2", "ADMIN");
+      expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
+      expect(result.role).toBe("ADMIN");
+    });
+
+    test("should reactivate member with role downgrade from PM to DEVELOPER", async () => {
+      const previousMember = {
+        id: "previous-member-3",
+        workspaceId: "workspace1",
+        userId: "user6",
+        role: "PM" as const,
+        leftAt: new Date("2024-01-01"),
+      };
+
+      const mockReactivatedDeveloper = mockData.memberWithGithub("DEVELOPER", {
+        id: "previous-member-3",
+        userId: "user6",
+        workspaceId: "workspace1",
+        username: "downgraded-user",
+        name: "Downgraded User",
+        email: "downgraded@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user6",
+        githubId: 123456,
+        githubUsername: "downgraded-user",
+        accessToken: "test-token",
+        user: {
+          id: "user6",
+          name: "Downgraded User",
+          email: "downgraded@example.com",
+          image: "https://github.com/downgraded-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(previousMember);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedReactivateWorkspaceMember.mockResolvedValue(mockReactivatedDeveloper);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "previous-member-3",
+        userId: "user6",
+        role: "DEVELOPER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user6",
+          name: "Downgraded User",
+          email: "downgraded@example.com",
+          image: "https://github.com/downgraded-user.png",
+          github: {
+            username: "downgraded-user",
+            name: "Downgraded User",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "downgraded-user", "DEVELOPER");
+
+      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-3", "DEVELOPER");
+      expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
+      expect(result.role).toBe("DEVELOPER");
+    });
+
+    test("should verify correct role is passed to createWorkspaceMember", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockCreatedMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member1",
+        userId: "user1",
+        role: "PM",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user1",
+          name: "John Doe",
+          email: "john@example.com",
+          image: "https://github.com/johndoe.png",
+          github: {
+            username: "johndoe",
+            name: "John Doe",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      await addWorkspaceMember("workspace1", "johndoe", "PM");
+
+      const createCall = mockedCreateWorkspaceMember.mock.calls[0];
+      expect(createCall[0]).toBe("workspace1");
+      expect(createCall[1]).toBe("user1");
+      expect(createCall[2]).toBe("PM");
+    });
+
+    test("should verify correct role is passed to reactivateWorkspaceMember", async () => {
+      const previousMember = {
+        id: "previous-member-4",
+        workspaceId: "workspace1",
+        userId: "user1",
+        role: "DEVELOPER" as const,
+        leftAt: new Date("2024-01-01"),
+      };
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(previousMember);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedReactivateWorkspaceMember.mockResolvedValue(mockCreatedMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member1",
+        userId: "user1",
+        role: "VIEWER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user1",
+          name: "John Doe",
+          email: "john@example.com",
+          image: "https://github.com/johndoe.png",
+          github: {
+            username: "johndoe",
+            name: "John Doe",
+            bio: "Software Developer",
+            publicRepos: 25,
+            followers: 100,
+          },
+        },
+      });
+
+      await addWorkspaceMember("workspace1", "johndoe", "VIEWER");
+
+      const reactivateCall = mockedReactivateWorkspaceMember.mock.calls[0];
+      expect(reactivateCall[0]).toBe("previous-member-4");
+      expect(reactivateCall[1]).toBe("VIEWER");
+    });
   });
 
   describe("updateWorkspaceMemberRole", () => {
