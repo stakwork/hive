@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Monitor,
   RefreshCw,
@@ -35,6 +35,8 @@ export function BrowserArtifactPanel({
   taskId,
   onDebugMessage,
   onUserJourneySave,
+  externalTestCode,
+  externalTestTitle,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
@@ -42,6 +44,8 @@ export function BrowserArtifactPanel({
   taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  externalTestCode?: string | null;
+  externalTestTitle?: string | null;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -112,6 +116,13 @@ export function BrowserArtifactPanel({
       toggleActionsView();
     }
   }, [isPlaywrightReplaying, showActions, toggleActionsView]);
+
+  // Auto-show actions list when externalTestCode is loaded and recorder is ready
+  useEffect(() => {
+    if (externalTestCode && isSetup && isRecorderReady && !showActions) {
+      toggleActionsView();
+    }
+  }, [externalTestCode, isSetup, isRecorderReady, showActions, toggleActionsView]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -242,8 +253,12 @@ export function BrowserArtifactPanel({
   const handleReplayToggle = () => {
     if (isPlaywrightReplaying) {
       stopPlaywrightReplay();
-    } else if (generatedPlaywrightTest) {
-      startPlaywrightReplay(generatedPlaywrightTest);
+    } else {
+      // Use externalTestCode if available, otherwise use generated test
+      const testCode = externalTestCode || generatedPlaywrightTest;
+      if (testCode) {
+        startPlaywrightReplay(testCode);
+      }
     }
   };
 
@@ -375,7 +390,7 @@ export function BrowserArtifactPanel({
                       </TooltipProvider>
                     )}
 
-                    {generatedPlaywrightTest && (
+                    {(generatedPlaywrightTest || externalTestCode) && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -496,6 +511,7 @@ export function BrowserArtifactPanel({
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
+                    title={externalTestTitle || undefined}
                   />
                 </div>
               )}
