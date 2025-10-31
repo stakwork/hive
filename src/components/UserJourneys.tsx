@@ -319,11 +319,6 @@ export default function UserJourneys() {
   const handleReplay = async (task: UserJourneyTask) => {
     // Check if services are set up
     if (workspace?.poolState !== "COMPLETE") {
-      toast({
-        variant: "destructive",
-        title: "Services Not Set Up",
-        description: "Please complete the services setup before replaying tests.",
-      });
       open("ServicesWizard");
       return;
     }
