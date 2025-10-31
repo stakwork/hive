@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
 import type { Channel } from "pusher-js";
 
@@ -645,29 +645,39 @@ describe("usePusherConnection Hook", () => {
 
   describe("Configuration Options", () => {
     test("should respect connectionReadyDelay parameter", async () => {
-      const taskId = "task-123";
-      const delay = 200;
-      
-      const { result } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        connectionReadyDelay: delay,
-      }));
+      vi.useFakeTimers();
+      try {
+        const taskId = "task-123";
+        const delay = 200;
+        
+        const { result } = renderHook(() => usePusherConnection({ 
+          taskId, 
+          enabled: true,
+          connectionReadyDelay: delay,
+        }));
 
-      // Simulate successful subscription
-      const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
-      )?.[1];
-      
-      subscriptionSuccessCallback?.();
+        // Simulate successful subscription
+        const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
+          (call) => call[0] === "pusher:subscription_succeeded"
+        )?.[1];
+        
+        act(() => {
+          subscriptionSuccessCallback?.();
+        });
 
-      // Should not be connected immediately
-      expect(result.current.isConnected).toBe(false);
+        // Should not be connected immediately
+        expect(result.current.isConnected).toBe(false);
 
-      // Should be connected after delay
-      await waitFor(() => {
+        // Advance timers by the delay amount
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(delay);
+        });
+
+        // Should be connected after delay
         expect(result.current.isConnected).toBe(true);
-      }, { timeout: delay + 100 });
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     test("should work without optional callback parameters", () => {
