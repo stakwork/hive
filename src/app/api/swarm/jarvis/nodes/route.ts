@@ -9,20 +9,19 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// Helper function to extract S3 key from media_url
-function extractS3KeyFromUrl(url: string): string | null {
+// Helper function to extract S3 key from media_url (matching frontend logic)
+function extractS3KeyFromUrl(url: string): string {
   try {
-    // Check if it's a sphinx-livekit-recordings URL
-    if (url.includes('sphinx-livekit-recordings.s3.amazonaws.com')) {
-      const urlObj = new URL(url);
-      // Remove leading slash from pathname to get the S3 key
-      return urlObj.pathname.substring(1);
-    }
-    return null;
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const rawKey = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+
+    return decodeURIComponent(rawKey);
   } catch {
-    return null;
+    return url;
   }
 }
+
 
 // Helper function to process nodes and presign media_url fields
 async function processNodesMediaUrls(nodes: JarvisNode[], s3Service: ReturnType<typeof getS3Service>): Promise<JarvisNode[]> {
@@ -31,26 +30,37 @@ async function processNodesMediaUrls(nodes: JarvisNode[], s3Service: ReturnType<
   for (const node of nodes) {
     const processedNode = { ...node };
 
-    // Check if node has properties.media_url
+    // Check if node has properties.media_url and if it's an S3 URL
     if (node.properties?.media_url && typeof node.properties.media_url === 'string') {
-      const s3Key = extractS3KeyFromUrl(node.properties.media_url);
-      if (s3Key) {
+      console.log(`[Jarvis Nodes] Processing node ${node.ref_id} with media_url: ${node.properties.media_url}`);
+
+      // Only presign if it's a sphinx-livekit-recordings URL
+      if (node.properties.media_url.includes('sphinx-livekit-recordings')) {
+        console.log(`[Jarvis Nodes] Found sphinx-livekit-recordings URL for node ${node.ref_id}`);
         try {
+          const s3Key = extractS3KeyFromUrl(node.properties.media_url);
+          console.log(`[Jarvis Nodes] Extracted S3 key for node ${node.ref_id}: "${s3Key}"`);
+
           // Generate presigned URL with 1 hour expiration
           const presignedUrl = await s3Service.generatePresignedDownloadUrlForBucket(
             'sphinx-livekit-recordings',
             s3Key,
             3600
           );
+          console.log(`[Jarvis Nodes] Generated presigned URL for node ${node.ref_id}: ${presignedUrl}`);
+
           processedNode.properties = {
             ...node.properties,
             media_url: presignedUrl
           };
-          console.log(`[Jarvis Nodes] Presigned media_url for node ${node.ref_id}: ${s3Key}`);
+          console.log(`[Jarvis Nodes] Successfully presigned media_url for node ${node.ref_id}`);
         } catch (error) {
           console.error(`[Jarvis Nodes] Failed to presign media_url for node ${node.ref_id}:`, error);
+          console.error(`[Jarvis Nodes] Original URL was: ${node.properties.media_url}`);
           // Keep original URL if presigning fails
         }
+      } else {
+        console.log(`[Jarvis Nodes] Skipping non-sphinx-livekit URL for node ${node.ref_id}: ${node.properties.media_url}`);
       }
     }
 
