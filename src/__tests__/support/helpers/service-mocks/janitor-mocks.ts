@@ -102,7 +102,7 @@ export const janitorMocks = {
   createMockRunWithConfig(runOverrides: MockJanitorRunOptions = {}, configOverrides: MockJanitorConfigOptions = {}) {
     const config = this.createMockConfig(configOverrides);
     const run = this.createMockRun({ janitorConfigId: config.id, ...runOverrides });
-    
+
     return {
       ...run,
       janitorConfig: {
@@ -111,6 +111,7 @@ export const janitorMocks = {
           id: config.workspaceId,
           name: "Test Workspace",
           slug: "test-workspace",
+          ownerId: "owner-1",
           swarm: {
             id: "swarm-1",
             swarmUrl: "https://test.sphinx.chat/api",
@@ -118,6 +119,13 @@ export const janitorMocks = {
             poolName: "test-pool",
             name: "test-swarm",
           },
+          repositories: [
+            {
+              id: "repo-1",
+              repositoryUrl: "https://github.com/test/repo",
+              branch: "main",
+            },
+          ],
         },
       },
     };
