@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus, Priority } from "@prisma/client";
+import type { CronExecutionResult } from "@/services/janitor-cron";
 
 export const TEST_DATE = new Date("2024-01-01T00:00:00.000Z");
 export const TEST_DATE_ISO = "2024-01-01T00:00:00.000Z";
@@ -154,6 +155,16 @@ export const janitorMocks = {
       ...obj,
       createdAt: typeof obj.createdAt === "string" ? obj.createdAt : obj.createdAt.toISOString(),
       updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : obj.updatedAt.toISOString(),
+    };
+  },
+
+  createMockCronExecutionResult(overrides: Partial<CronExecutionResult> = {}): CronExecutionResult {
+    return {
+      success: overrides.success ?? true,
+      workspacesProcessed: overrides.workspacesProcessed ?? 0,
+      runsCreated: overrides.runsCreated ?? 0,
+      errors: overrides.errors ?? [],
+      timestamp: overrides.timestamp ?? new Date(),
     };
   },
 };
