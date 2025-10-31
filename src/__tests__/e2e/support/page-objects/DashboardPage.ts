@@ -49,6 +49,14 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to roadmap page
+   */
+  async goToRoadmap(): Promise<void> {
+    await this.page.locator(selectors.navigation.roadmapLink).first().click();
+    await this.page.waitForURL(/\/w\/.*\/roadmap/, { timeout: 10000 });
+  }
+
+  /**
    * Reload the page
    */
   async reload(): Promise<void> {
