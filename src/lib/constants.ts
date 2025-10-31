@@ -97,7 +97,7 @@ export const RESERVED_WORKSPACE_SLUGS = [
   "sw",
 ] as const;
 
-// Workspace slug validation patterns
+// Workspace slug validation patterns (RFC 1035 compliant domain labels)
 export const WORKSPACE_SLUG_PATTERNS = {
   VALID: /^[a-z0-9]([a-z0-9]|-[a-z0-9])*$/,
   MIN_LENGTH: 2,
@@ -128,7 +128,7 @@ export const WORKSPACE_ERRORS = {
   SLUG_RESERVED:
     "This workspace name is reserved. Please choose a different name.",
   SLUG_INVALID_FORMAT:
-    "Workspace name must start and end with letters or numbers, and can only contain letters, numbers, and hyphens.",
+    "Use only letters, numbers, and hyphens. Must start and end with a letter or number.",
   SLUG_INVALID_LENGTH: "Workspace name must be between 2 and 50 characters.",
   SLUG_ALREADY_EXISTS:
     "A workspace with this name already exists. Please choose a different name.",

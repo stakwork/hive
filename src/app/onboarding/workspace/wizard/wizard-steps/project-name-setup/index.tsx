@@ -9,6 +9,7 @@ import {
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { validateDomainLabel } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
@@ -53,6 +54,7 @@ export function ProjectNameSetupStep() {
   const [swarmIsLoading, setSwarmIsLoading] = useState<boolean>(false);
 
   const [projectName, setProjectName] = useState<string>("");
+  const [validationError, setValidationError] = useState<string>("");
   const [infoMessage, setInfoMessage] = useState<string>("");
   const [isLookingForAvailableName, setIsLookingForAvailableName] = useState<boolean>(false);
   const [hasWorkspaceConflict, setHasWorkspaceConflict] = useState<boolean>(false);
@@ -382,16 +384,34 @@ export function ProjectNameSetupStep() {
                     id="graphDomain"
                     placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter workspace name"}
                     value={isLookingForAvailableName ? "" : projectName}
-                    className={`${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
+                    className={`${hasWorkspaceConflict || validationError ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
                     onChange={(e) => {
                       // Remove spaces and convert to lowercase
                       const value = e.target.value.replace(/\s+/g, '').toLowerCase();
                       setProjectName(value);
+
+                      // Validate immediately on change
+                      if (value) {
+                        const validation = validateDomainLabel(value);
+                        if (!validation.isValid) {
+                          setValidationError(validation.error || "Invalid workspace name");
+                        } else {
+                          setValidationError("");
+                        }
+                      } else {
+                        setValidationError("");
+                      }
                     }}
                   />
-                  <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
-                    This will be the unique name for your workspace
-                  </p>
+                  {validationError ? (
+                    <p className="text-xs text-red-500 mt-1.5">
+                      {validationError}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
+                      This will be the unique name for your workspace
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex justify-between items-center pt-6">
@@ -404,7 +424,7 @@ export function ProjectNameSetupStep() {
                     Cancel
                   </Button>
                   <Button
-                    disabled={swarmIsLoading || hasWorkspaceConflict}
+                    disabled={swarmIsLoading || hasWorkspaceConflict || !!validationError}
                     className="px-8 bg-primary text-primary-foreground hover:bg-primary/90"
                     type="button"
                     onClick={handleCreateWorkspace}
