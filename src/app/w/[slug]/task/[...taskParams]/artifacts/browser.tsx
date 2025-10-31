@@ -117,6 +117,13 @@ export function BrowserArtifactPanel({
     }
   }, [isPlaywrightReplaying, showActions, toggleActionsView]);
 
+  // Auto-show actions list when recording starts
+  useEffect(() => {
+    if (isRecording && !showActions) {
+      toggleActionsView();
+    }
+  }, [isRecording, showActions, toggleActionsView]);
+
   // Auto-show actions list when externalTestCode is loaded and recorder is ready
   useEffect(() => {
     if (externalTestCode && isSetup && isRecorderReady && !showActions) {
