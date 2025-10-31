@@ -54,6 +54,8 @@ function createDbMock() {
 
   const model = () => createModelMock(register);
 
+  const $transaction = register(vi.fn());
+
   const db = {
     workspace: model(),
     workspaceMember: model(),
@@ -73,7 +75,10 @@ function createDbMock() {
     artifact: model(),
     attachment: model(),
     product: model(),
-  } satisfies Record<string, ReturnType<typeof model>>;
+    feature: model(),
+    phase: model(),
+    $transaction,
+  } satisfies Record<string, ReturnType<typeof model> | MockFn>;
 
   const reset = () => {
     mocks.forEach((mock) => mock.mockReset());
