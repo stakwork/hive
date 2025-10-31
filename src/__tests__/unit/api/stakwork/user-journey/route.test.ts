@@ -98,6 +98,20 @@ describe("POST /api/stakwork/user-journey", () => {
       findUnique: mockDbSwarmFindUnique,
     } as any;
 
+    // Mock task and repository for tests that don't override them
+    vi.mocked(db).task = {
+      create: vi.fn().mockResolvedValue({ id: "task-123" }),
+      update: vi.fn().mockResolvedValue({ id: "task-123" }),
+    } as any;
+
+    vi.mocked(db).repository = {
+      findFirst: vi.fn().mockResolvedValue(null),
+    } as any;
+
+    vi.mocked(db).chatMessage = {
+      create: vi.fn().mockResolvedValue({ id: "msg-123" }),
+    } as any;
+
     // Mock environment variables
     vi.stubEnv('STAKWORK_API_KEY', 'test-api-key');
     vi.stubEnv('STAKWORK_USER_JOURNEY_WORKFLOW_ID', '123');
@@ -292,7 +306,10 @@ describe("POST /api/stakwork/user-journey", () => {
         success: true,
         message: "called stakwork",
         workflow: mockStakworkResponseData.data,
-        task: null,
+        task: expect.objectContaining({
+          id: expect.any(String),
+          stakworkProjectId: 456,
+        }),
       });
     });
 
@@ -466,13 +483,16 @@ describe("POST /api/stakwork/user-journey", () => {
       });
 
       // The error should be handled by callStakwork internally and return 201 with null workflow
+      // Task is still created even if Stakwork fails
       expect(result.status).toBe(201);
       const json = await result.json();
       expect(json).toEqual({
         success: true,
         message: "called stakwork",
         workflow: null,
-        task: null,
+        task: expect.objectContaining({
+          id: expect.any(String),
+        }),
       });
     });
   });
@@ -525,18 +545,27 @@ describe("POST /api/stakwork/user-journey", () => {
 
   describe("Task Creation", () => {
     let mockDbTaskCreate: ReturnType<typeof vi.fn>;
+    let mockDbTaskUpdate: ReturnType<typeof vi.fn>;
     let mockDbRepositoryFindFirst: ReturnType<typeof vi.fn>;
+    let mockDbChatMessageCreate: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
       mockDbTaskCreate = vi.fn();
+      mockDbTaskUpdate = vi.fn();
       mockDbRepositoryFindFirst = vi.fn();
+      mockDbChatMessageCreate = vi.fn();
 
       vi.mocked(db).task = {
         create: mockDbTaskCreate,
+        update: mockDbTaskUpdate,
       } as any;
 
       vi.mocked(db).repository = {
         findFirst: mockDbRepositoryFindFirst,
+      } as any;
+
+      vi.mocked(db).chatMessage = {
+        create: mockDbChatMessageCreate,
       } as any;
     });
 
@@ -587,23 +616,31 @@ describe("POST /api/stakwork/user-journey", () => {
       const json = await result.json();
       expect(json.task).toEqual(mockTask);
 
-      // Verify task was created with correct data
+      // Verify task was created with correct data (task created before Stakwork call)
       expect(mockDbTaskCreate).toHaveBeenCalledWith({
         data: expect.objectContaining({
           title: "My Test",
           workspaceId: "workspace-123",
           sourceType: expect.any(String), // Will be TaskSourceType.USER_JOURNEY enum
-          status: "IN_PROGRESS",
+          status: "TODO", // Changed from IN_PROGRESS
           workflowStatus: "PENDING",
           priority: "MEDIUM",
           testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
           testFileUrl: "https://github.com/testuser/test-repo/blob/main/src/__tests__/e2e/specs/my-test.spec.ts",
-          stakworkProjectId: 456,
+          stakworkProjectId: null, // Changed: task created before Stakwork returns
           repositoryId: "repo-123",
           createdById: "user-123",
           updatedById: "user-123",
         }),
         select: expect.any(Object),
+      });
+
+      // Verify task was updated with stakworkProjectId after Stakwork call
+      expect(mockDbTaskUpdate).toHaveBeenCalledWith({
+        where: { id: "task-123" },
+        data: {
+          stakworkProjectId: 456,
+        },
       });
     });
 
@@ -618,8 +655,8 @@ describe("POST /api/stakwork/user-journey", () => {
       const mockTask = {
         id: "task-124",
         title: "My Test",
-        status: "IN_PROGRESS",
-        workflowStatus: null, // No workflow status when Stakwork fails
+        status: "TODO", // Changed from IN_PROGRESS
+        workflowStatus: "PENDING", // Changed: task always created with PENDING status
         testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
         stakworkProjectId: null, // No project ID when Stakwork fails
       };
@@ -652,14 +689,17 @@ describe("POST /api/stakwork/user-journey", () => {
       expect(json.task).toEqual(mockTask);
       expect(json.workflow).toBeNull();
 
-      // Verify task was created with null stakworkProjectId and workflowStatus
+      // Verify task was created with PENDING workflowStatus and null stakworkProjectId
       expect(mockDbTaskCreate).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          workflowStatus: null,
+          workflowStatus: "PENDING", // Changed: always PENDING when task is created
           stakworkProjectId: null,
         }),
         select: expect.any(Object),
       });
+
+      // Verify task was NOT updated (Stakwork failed, so no stakworkProjectId to update)
+      expect(mockDbTaskUpdate).not.toHaveBeenCalled();
     });
 
     it("should use default title when title is not provided", async () => {
@@ -726,12 +766,10 @@ describe("POST /api/stakwork/user-journey", () => {
         }),
       });
 
-      // Should still return success with Stakwork data, but task will be null
-      expect(result.status).toBe(201);
+      // Changed: Now returns 500 when task creation fails (task ID needed for Stakwork)
+      expect(result.status).toBe(500);
       const json = await result.json();
-      expect(json.success).toBe(true);
-      expect(json.workflow).toEqual({ project_id: 456 });
-      expect(json.task).toBeNull();
+      expect(json.error).toBe("Failed to create task");
     });
 
     it("should construct testFileUrl correctly when repository exists", async () => {
