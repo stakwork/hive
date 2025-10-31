@@ -361,7 +361,12 @@ export default function UserJourneys() {
 
       {frontend ? (
         <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel artifacts={browserArtifacts} ide={false} onUserJourneySave={saveUserJourneyTest} />
+          <BrowserArtifactPanel
+            artifacts={browserArtifacts}
+            ide={false}
+            workspaceId={id || workspace?.id}
+            onUserJourneySave={saveUserJourneyTest}
+          />
         </div>
       ) : (
         <div className="space-y-6">
