@@ -31,11 +31,15 @@ import { ActionsList } from "@/components/ActionsList";
 export function BrowserArtifactPanel({
   artifacts,
   ide,
+  workspaceId,
+  taskId,
   onDebugMessage,
   onUserJourneySave,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
+  workspaceId?: string;
+  taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
 }) {
@@ -98,7 +102,7 @@ export function BrowserArtifactPanel({
     stopPlaywrightReplay,
     replayScreenshots,
     replayActions,
-  } = usePlaywrightReplay(iframeRef, (message) => {
+  } = usePlaywrightReplay(iframeRef, workspaceId, taskId, (message) => {
     showActionToast("Screenshot Error", message);
   });
 

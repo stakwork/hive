@@ -8,10 +8,12 @@ import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowAr
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
+  workspaceId?: string;
+  taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
 }
 
-export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -116,7 +118,12 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               forceMount
               hidden={activeTab !== "BROWSER"}
             >
-              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} />
+              <BrowserArtifactPanel
+                artifacts={browserArtifacts}
+                workspaceId={workspaceId}
+                taskId={taskId}
+                onDebugMessage={onDebugMessage}
+              />
             </TabsContent>
           )}
           {ideArtifacts.length > 0 && (
@@ -126,7 +133,13 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               forceMount
               hidden={activeTab !== "IDE"}
             >
-              <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} onDebugMessage={onDebugMessage} />
+              <BrowserArtifactPanel
+                artifacts={ideArtifacts}
+                ide={true}
+                workspaceId={workspaceId}
+                taskId={taskId}
+                onDebugMessage={onDebugMessage}
+              />
             </TabsContent>
           )}
           {graphArtifacts.length > 0 && (
