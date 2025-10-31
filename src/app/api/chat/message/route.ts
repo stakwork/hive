@@ -130,6 +130,7 @@ async function callStakwork(
   webhook?: string,
   mode?: string,
   history?: Record<string, unknown>[],
+  workspaceId?: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -170,6 +171,7 @@ async function callStakwork(
       attachments: attachmentUrls,
       taskMode: mode,
       history: history || [],
+      workspaceId,
     };
 
     const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -409,6 +411,7 @@ export async function POST(request: NextRequest) {
         webhook,
         mode,
         history,
+        task.workspaceId,
       );
 
       if (stakworkData.success) {

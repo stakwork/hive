@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, Plus, List, LayoutGrid, Trash2, X } from "lucide-react";
+import { Lightbulb, List, LayoutGrid, Trash2, X, Search } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -93,7 +94,8 @@ function FeatureRow({
   );
 }
 
-export function FeaturesList({ workspaceId }: FeaturesListProps) {
+const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, FeaturesListProps>(
+  function FeaturesList({ workspaceId }, ref) {
   const router = useRouter();
   const { slug: workspaceSlug } = useWorkspace();
 
@@ -102,6 +104,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
   const [features, setFeatures] = useState<FeatureWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [workspaceHasFeatures, setWorkspaceHasFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -168,6 +172,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     return "asc";
   });
 
+  const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Debounce search query to reduce API calls
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   // New feature creation state
   const [isCreating, setIsCreating] = useState(false);
   const [newFeatureTitle, setNewFeatureTitle] = useState("");
@@ -190,6 +199,15 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
     return "list";
   });
+
+  // Expose triggerCreate method to parent via ref
+  useImperativeHandle(ref, () => ({
+    triggerCreate: () => {
+      setIsCreating(true);
+      setViewType("list");
+      localStorage.setItem("features-view-preference", "list");
+    }
+  }));
 
   const fetchFeatures = async (pageNum: number) => {
     try {
@@ -218,6 +236,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         params.append("sortOrder", sortOrder);
       }
 
+      // Add search param if set (using debounced value)
+      if (debouncedSearchQuery.trim()) {
+        params.append("search", debouncedSearchQuery.trim());
+      }
+
       const response = await fetch(`/api/features?${params.toString()}`);
 
       if (!response.ok) {
@@ -228,6 +251,8 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
 
       if (data.success) {
         setFeatures(data.data);
+        setHasLoadedOnce(true);
+        setWorkspaceHasFeatures((data.pagination.totalCountWithoutFilters || 0) > 0);
         setHasMore(data.pagination.hasMore);
         setTotalPages(data.pagination.totalPages);
       } else {
@@ -241,7 +266,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   };
 
   // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null;
+  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -273,16 +298,16 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, assigneeFilter, sortBy, sortOrder]);
+  }, [workspaceId, viewType, page, statusFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
 
-  // Auto-open creation form when no features exist AND no filters are active
+  // Auto-open creation form when no features exist AND no filters are active (only on initial load)
   useEffect(() => {
-    if (!loading && features.length === 0 && !isCreating && !hasActiveFilters) {
+    if (!loading && hasLoadedOnce && !workspaceHasFeatures && !isCreating && !hasActiveFilters) {
       setIsCreating(true);
       setViewType("list");
       localStorage.setItem("features-view-preference", "list");
     }
-  }, [loading, features.length, isCreating, hasActiveFilters]);
+  }, [loading, hasLoadedOnce, workspaceHasFeatures, isCreating, hasActiveFilters]);
 
   // Auto-focus after feature creation completes
   useEffect(() => {
@@ -327,6 +352,11 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setPage(1);
   };
 
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setPage(1);
+  };
+
   // Handle sort changes - reset to page 1 when changing sort field
   const handleSort = (field: "title" | "createdAt", order: "asc" | "desc" | null) => {
     if (order === null) {
@@ -346,6 +376,7 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     setAssigneeFilter("ALL");
     setSortBy(null);
     setSortOrder("asc");
+    setSearchQuery("");
     setPage(1);
   };
 
@@ -470,23 +501,58 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
     }
   };
 
-  if (loading && features.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 justify-between">
-            <span>Features</span>
-            <span className="font-normal text-sm text-muted-foreground">Loading...</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4">
-            <Button variant="default" size="sm" disabled>
-              <Plus className="h-4 w-4 mr-2" />
-              New feature
-            </Button>
-          </div>
+  // Prepare filter options
+  const statusOptions = [
+    { value: "ALL", label: "All Statuses" },
+    ...Object.entries(FEATURE_STATUS_LABELS).map(([value, label]) => ({
+      value,
+      label,
+    })),
+  ];
 
+  const assigneeOptions = [
+    { value: "ALL", label: "All Assignees", image: null, name: null },
+    { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
+    ...members.map((member) => ({
+      value: member.user.id,
+      label: member.user.name || member.user.email || "Unknown",
+      image: member.user.image,
+      name: member.user.name,
+    })),
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 justify-between">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-5 w-5" />
+            Features
+          </div>
+          <ToggleGroup
+            type="single"
+            value={viewType}
+            onValueChange={handleViewChange}
+          >
+            <ToggleGroupItem
+              value="list"
+              aria-label="List view"
+              className="h-8 px-2"
+            >
+              <List className="h-4 w-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="kanban"
+              aria-label="Kanban view"
+              className="h-8 px-2"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading && !hasLoadedOnce ? (
           <div className="rounded-md border">
             <Table className="table-fixed">
               <TableHeader className="bg-muted/50">
@@ -519,82 +585,33 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-red-600">Error loading features</CardTitle>
-          <CardDescription>{error}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  // Prepare filter options
-  const statusOptions = [
-    { value: "ALL", label: "All Statuses" },
-    ...Object.entries(FEATURE_STATUS_LABELS).map(([value, label]) => ({
-      value,
-      label,
-    })),
-  ];
-
-  const assigneeOptions = [
-    { value: "ALL", label: "All Assignees", image: null, name: null },
-    { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
-    ...members.map((member) => ({
-      value: member.user.id,
-      label: member.user.name || member.user.email || "Unknown",
-      image: member.user.image,
-      name: member.user.name,
-    })),
-  ];
-
-  // Always show table if creating, have features, or filters are active
-  const showTable = features.length > 0 || isCreating || hasActiveFilters;
-
-  return showTable ? (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 justify-between">
-          <div className="flex items-center gap-2">
-            <Lightbulb className="h-5 w-5" />
-            Features
+        ) : error ? (
+          <div className="text-center py-8">
+            <p className="text-red-600 font-medium">Error loading features</p>
+            <p className="text-muted-foreground mt-2">{error}</p>
           </div>
-          <ToggleGroup
-            type="single"
-            value={viewType}
-            onValueChange={handleViewChange}
-          >
-            <ToggleGroupItem
-              value="list"
-              aria-label="List view"
-              className="h-8 px-2"
-            >
-              <List className="h-4 w-4" />
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="kanban"
-              aria-label="Kanban view"
-              className="h-8 px-2"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {!isCreating && (
-          <div className="mb-4 flex items-center justify-between">
-            <Button variant="default" size="sm" onClick={() => setIsCreating(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New feature
-            </Button>
+        ) : (
+          <>
+            {!isCreating && (
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search features..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => handleSearchChange("")}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
             {hasActiveFilters && viewType === "list" && (
               <Button variant="outline" size="sm" onClick={handleClearFilters}>
                 <X className="h-4 w-4 mr-2" />
@@ -666,74 +683,76 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
         )}
 
         {viewType === "list" ? (
-          <div className="rounded-md border">
-          <Table className="table-fixed">
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead className="w-[300px]">
-                  <SortableColumnHeader
-                    label="Title"
-                    field="title"
-                    currentSort={sortBy === "title" ? sortOrder : null}
-                    onSort={(order) => handleSort("title", order)}
-                  />
-                </TableHead>
-                <TableHead className="w-[120px]">
-                  <FilterDropdownHeader
-                    label="Status"
-                    options={statusOptions}
-                    value={statusFilters}
-                    onChange={handleStatusFiltersChange}
-                    showSearch={false}
-                    multiSelect={true}
-                    showStatusBadges={true}
-                  />
-                </TableHead>
-                <TableHead className="w-[180px]">
-                  <FilterDropdownHeader
-                    label="Assigned"
-                    options={assigneeOptions}
-                    value={assigneeFilter}
-                    onChange={handleAssigneeFilterChange}
-                    showSearch={true}
-                    showAvatars={true}
-                  />
-                </TableHead>
-                <TableHead className="w-[150px] text-right">
-                  <SortableColumnHeader
-                    label="Created"
-                    field="createdAt"
-                    currentSort={sortBy === "createdAt" ? sortOrder : null}
-                    onSort={(order) => handleSort("createdAt", order)}
-                    align="right"
-                  />
-                </TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {features.length === 0 ? (
+          hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
+            <div className="rounded-md border">
+            <Table className="table-fixed">
+              <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center">
-                    <p className="text-muted-foreground">No features match your filters</p>
-                  </TableCell>
+                  <TableHead className="w-[300px]">
+                    <SortableColumnHeader
+                      label="Title"
+                      field="title"
+                      currentSort={sortBy === "title" ? sortOrder : null}
+                      onSort={(order) => handleSort("title", order)}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[120px]">
+                    <FilterDropdownHeader
+                      label="Status"
+                      options={statusOptions}
+                      value={statusFilters}
+                      onChange={handleStatusFiltersChange}
+                      showSearch={false}
+                      multiSelect={true}
+                      showStatusBadges={true}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[180px]">
+                    <FilterDropdownHeader
+                      label="Assigned"
+                      options={assigneeOptions}
+                      value={assigneeFilter}
+                      onChange={handleAssigneeFilterChange}
+                      showSearch={true}
+                      showAvatars={true}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[150px] text-right">
+                    <SortableColumnHeader
+                      label="Created"
+                      field="createdAt"
+                      currentSort={sortBy === "createdAt" ? sortOrder : null}
+                      onSort={(order) => handleSort("createdAt", order)}
+                      align="right"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
-              ) : (
-                features.map((feature) => (
-                  <FeatureRow
-                    key={feature.id}
-                    feature={feature}
-                    workspaceSlug={workspaceSlug}
-                    onStatusUpdate={handleUpdateStatus}
-                    onAssigneeUpdate={handleUpdateAssignee}
-                    onDelete={handleDeleteFeature}
-                    onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-          </div>
+              </TableHeader>
+              <TableBody>
+                {features.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center">
+                      <p className="text-muted-foreground">No features match your filters</p>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  features.map((feature) => (
+                    <FeatureRow
+                      key={feature.id}
+                      feature={feature}
+                      workspaceSlug={workspaceSlug}
+                      onStatusUpdate={handleUpdateStatus}
+                      onAssigneeUpdate={handleUpdateAssignee}
+                      onDelete={handleDeleteFeature}
+                      onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            </div>
+          ) : null
         ) : (
           <KanbanView
             items={features}
@@ -857,7 +876,13 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
             </Pagination>
           </div>
         )}
+          </>
+        )}
       </CardContent>
     </Card>
-  ) : null;
-}
+  );
+});
+
+FeaturesListComponent.displayName = "FeaturesList";
+
+export { FeaturesListComponent as FeaturesList };

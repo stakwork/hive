@@ -548,9 +548,7 @@ describe("Janitor Service", () => {
 
       expect(db.janitorRecommendation.findMany).toHaveBeenCalledWith({
         where: {
-          janitorRun: {
-            janitorConfigId: mockConfig.id,
-          },
+          workspaceId: mockValidation.workspace.id,
           status: "PENDING",
         },
         orderBy: [
@@ -593,8 +591,8 @@ describe("Janitor Service", () => {
 
       expect(db.janitorRecommendation.findMany).toHaveBeenCalledWith({
         where: {
+          workspaceId: mockValidation.workspace.id,
           janitorRun: {
-            janitorConfigId: mockConfig.id,
             janitorType: "UNIT_TESTS",
           },
           status: "ACCEPTED",

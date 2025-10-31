@@ -8,13 +8,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { FileText, Play, List, LayoutGrid } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useTaskStats } from "@/hooks/useTaskStats";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
-import { KanbanView } from "./KanbanView";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
 import { useEffect, useState } from "react";
@@ -26,30 +24,31 @@ interface TasksListProps {
 
 export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const { waitingForInputCount } = useWorkspace();
-  
-  // View state management with localStorage persistence
-  const [viewType, setViewType] = useState<"list" | "kanban">(() => {
+
+  // Archive tab state with localStorage persistence
+  const [activeTab, setActiveTab] = useState<"active" | "archived">(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("tasks-view-preference");
-      return (saved === "kanban" ? "kanban" : "list") as "list" | "kanban";
+      const saved = localStorage.getItem("tasks-tab-preference");
+      return (saved === "archived" ? "archived" : "active") as "active" | "archived";
     }
-    return "list";
+    return "active";
   });
-  
-  // Pass 100 limit for Kanban view, 5 for List view
+
+  // showArchived is true when activeTab is "archived"
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
-    workspaceId, 
-    workspaceSlug, 
+    workspaceId,
+    workspaceSlug,
     true,
-    viewType === "kanban" ? 100 : 5
+    10,
+    activeTab === "archived"
   );
   const { stats } = useTaskStats(workspaceId);
 
-  // Save view preference to localStorage
-  const handleViewChange = (value: string) => {
-    if (value === "list" || value === "kanban") {
-      setViewType(value);
-      localStorage.setItem("tasks-view-preference", value);
+  // Save tab preference to localStorage
+  const handleTabChange = (value: string) => {
+    if (value === "active" || value === "archived") {
+      setActiveTab(value);
+      localStorage.setItem("tasks-tab-preference", value);
     }
   };
 
@@ -73,87 +72,90 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     );
   }
 
-  if (tasks.length === 0) {
+  // Only show EmptyState if there are truly no tasks in the workspace (not just in the current tab)
+  // Check if both stats total and current tasks are 0, AND we're on the Active tab
+  const hasTotallyNoTasks = (stats?.total === 0 || (!stats && tasks.length === 0)) && activeTab === "active";
+
+  if (hasTotallyNoTasks && !loading) {
     return <EmptyState workspaceSlug={workspaceSlug} />;
   }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            {viewType === "list" ? "Recent Tasks" : "Tasks"}
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            {stats?.inProgress && stats.inProgress > 0 && (
-              <span className="flex items-center gap-1 font-normal text-green-600">
-                <Play className="h-4 w-4" />
-                {stats.inProgress} running
-              </span>
-            )}
-            <span className="font-normal text-muted-foreground">
-              {stats?.total ?? pagination?.totalCount ?? tasks.length} task{(stats?.total ?? pagination?.totalCount ?? tasks.length) !== 1 ? 's' : ''}
-            </span>
-            <ToggleGroup 
-              type="single" 
-              value={viewType} 
-              onValueChange={handleViewChange}
-              className="ml-4"
-            >
-              <ToggleGroupItem 
-                value="list" 
-                aria-label="List view"
-                className="h-8 px-2"
-              >
-                <List className="h-4 w-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem 
-                value="kanban" 
-                aria-label="Kanban view"
-                className="h-8 px-2"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-        </CardTitle>
-        <CardDescription>
-          Your latest tasks in this workspace
-        </CardDescription>
-      </CardHeader>
-      <CardContent className={viewType === "kanban" ? "p-0" : "space-y-3"}>
-        {viewType === "list" ? (
-          <>
-            {tasks.map((task) => (
-              <TaskCard 
-                key={task.id} 
-                task={task} 
-                workspaceSlug={workspaceSlug} 
-              />
-            ))}
-            
-            {pagination?.hasMore && (
-              <div className="pt-3 border-t flex justify-center">
-                <Button 
-                  variant="outline" 
-                  onClick={loadMore}
-                  disabled={loading}
-                  size="sm"
-                >
-                  {loading ? "Loading..." : "Load More"}
-                </Button>
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <CardHeader>
+          <TabsList>
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="archived">Archived</TabsTrigger>
+          </TabsList>
+        </CardHeader>
+
+        <CardContent>
+          <TabsContent value="active" className="mt-4 space-y-3">
+            {tasks.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No active tasks
               </div>
+            ) : (
+              <>
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    workspaceSlug={workspaceSlug}
+                    isArchived={false}
+                  />
+                ))}
+
+                {pagination?.hasMore && (
+                  <div className="pt-3 border-t flex justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={loadMore}
+                      disabled={loading}
+                      size="sm"
+                    >
+                      {loading ? "Loading..." : "Load More"}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
-          </>
-        ) : (
-          <KanbanView 
-            tasks={tasks}
-            workspaceSlug={workspaceSlug}
-            loading={loading}
-          />
-        )}
-      </CardContent>
+          </TabsContent>
+
+          <TabsContent value="archived" className="mt-4 space-y-3">
+            {tasks.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No archived tasks
+              </div>
+            ) : (
+              <>
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    workspaceSlug={workspaceSlug}
+                    isArchived={true}
+                  />
+                ))}
+
+                {pagination?.hasMore && (
+                  <div className="pt-3 border-t flex justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={loadMore}
+                      disabled={loading}
+                      size="sm"
+                    >
+                      {loading ? "Loading..." : "Load More"}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+        </CardContent>
+      </Tabs>
     </Card>
   );
 }

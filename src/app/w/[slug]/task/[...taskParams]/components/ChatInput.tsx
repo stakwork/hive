@@ -99,7 +99,7 @@ export function ChatInput({
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{mode}</span>
         <span>|</span>
-        <WorkflowStatusBadge logs={logs} status={workflowStatus} />
+        <WorkflowStatusBadge status={workflowStatus} />
       </div>
 
       {/* Debug attachment display */}

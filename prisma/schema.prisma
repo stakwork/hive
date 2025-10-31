@@ -216,6 +216,7 @@ model Workspace {
 
   // Janitor configuration
   janitorConfig JanitorConfig?
+  janitorRecommendations JanitorRecommendation[]
 
   // Roadmap features
   features Feature[]
@@ -229,6 +230,9 @@ model Workspace {
   // Workspace logo/image
   logoUrl String? @map("logo_url")
   logoKey String? @map("logo_key") // S3 path for deletion/updates
+
+  // Screenshots
+  screenshots Screenshot[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -398,17 +402,21 @@ model Task {
   updatedById String @map("updated_by_id")
   updatedBy   User   @relation("TaskUpdater", fields: [updatedById], references: [id])
 
-  deleted   Boolean   @default(false)
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  deleted    Boolean   @default(false)
+  deletedAt  DateTime? @map("deleted_at")
+  archived   Boolean   @default(false)
+  archivedAt DateTime? @map("archived_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   chatMessages ChatMessage[]
+  screenshots  Screenshot[]
 
   @@index([workspaceId])
   @@index([assigneeId])
   @@index([status])
   @@index([deleted])
+  @@index([archived])
   @@index([featureId])
   @@index([phaseId])
   @@index([systemAssigneeType])
@@ -561,8 +569,9 @@ model JanitorRun {
 }
 
 model JanitorRecommendation {
-  id           String @id @default(cuid())
-  janitorRunId String @map("janitor_run_id")
+  id           String  @id @default(cuid())
+  janitorRunId String? @map("janitor_run_id")
+  workspaceId  String  @map("workspace_id")
 
   // Recommendation details
   title       String
@@ -580,11 +589,13 @@ model JanitorRecommendation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  janitorRun  JanitorRun @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
-  acceptedBy  User?      @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
-  dismissedBy User?      @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
+  janitorRun  JanitorRun? @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  acceptedBy  User?       @relation("RecommendationAcceptor", fields: [acceptedById], references: [id])
+  dismissedBy User?       @relation("RecommendationDismissor", fields: [dismissedById], references: [id])
 
   @@index([janitorRunId])
+  @@index([workspaceId])
   @@index([status])
   @@index([priority])
   @@index([createdAt])
@@ -878,5 +889,42 @@ enum StakworkRunDecision {
   ACCEPTED
   REJECTED
   FEEDBACK
+}
+
+// =============================================
+// SCREENSHOTS
+// =============================================
+
+model Screenshot {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  taskId      String?   @map("task_id")
+  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  // S3 Storage
+  s3Key       String    @unique @map("s3_key") // screenshots/{workspaceId}/{hash}.jpg
+  s3Url       String?   @map("s3_url") // Cached presigned download URL
+  urlExpiresAt DateTime? @map("url_expires_at") // When cached URL expires
+
+  // Metadata for context & comparison
+  actionIndex Int       @map("action_index") // Position in test sequence
+  pageUrl     String    @map("page_url") // URL where screenshot was taken
+  timestamp   BigInt    // Capture time (Unix timestamp in milliseconds)
+  hash        String    @unique // Content hash for deduplication (SHA-256 truncated to 12 chars)
+
+  // Image dimensions
+  width       Int?
+  height      Int?
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([taskId])
+  @@index([hash])
+  @@index([pageUrl])
+  @@index([createdAt])
+  @@map("screenshots")
 }
 

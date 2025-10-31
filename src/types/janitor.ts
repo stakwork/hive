@@ -29,6 +29,7 @@ export interface DismissRecommendationRequest {
 export interface StakworkWebhookPayload {
   projectId: number;
   status: string;
+  workspaceId?: string; // For external workflows without janitor run
   results?: {
     recommendations: Array<{
       title: string;

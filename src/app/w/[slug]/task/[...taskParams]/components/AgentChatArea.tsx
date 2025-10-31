@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, GitCommit } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -41,9 +41,30 @@ export function AgentChatArea({
   isCommitting = false,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const router = useRouter();
 
+  // Handle scroll events to detect user scrolling
   useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Consider user at bottom if within 100px of bottom
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 80;
+      setShouldAutoScroll(isNearBottom);
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll only if user hasn't manually scrolled up
+  useEffect(() => {
+    if (!shouldAutoScroll) return;
+
     const scrollToBottom = () => {
       const ref = messagesEndRef.current;
       if (ref && typeof ref.scrollIntoView === "function") {
@@ -53,7 +74,7 @@ export function AgentChatArea({
 
     const timer = setTimeout(scrollToBottom, 0);
     return () => clearTimeout(timer);
-  }, [messages]);
+  }, [messages, shouldAutoScroll]);
 
   const handleBackToTasks = () => {
     if (workspaceSlug) {
@@ -123,7 +144,7 @@ export function AgentChatArea({
       </AnimatePresence>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
         {messages.map((msg) => (
           <AgentChatMessage key={msg.id} message={msg} />
         ))}

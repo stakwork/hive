@@ -22,6 +22,7 @@ async function callStakwork(
   repo2GraphUrl: string,
   accessToken: string | null,
   username: string | null,
+  workspaceId: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -41,6 +42,7 @@ async function callStakwork(
       swarmSecretAlias,
       poolName,
       repo2graph_url: repo2GraphUrl,
+      workspaceId,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
@@ -158,6 +160,7 @@ export async function POST(request: NextRequest) {
       repo2GraphUrl,
       accessToken,
       username,
+      workspaceId,
     );
 
     // Create a task to track this user journey test
@@ -174,7 +177,7 @@ export async function POST(request: NextRequest) {
       // Get workspace's primary repository if available
       const repository = await db.repository.findFirst({
         where: { workspaceId: workspace.id },
-        select: { id: true, repositoryUrl: true },
+        select: { id: true, repositoryUrl: true, branch: true },
       });
 
       // Extract stakworkProjectId from response if Stakwork succeeded
@@ -197,7 +200,7 @@ export async function POST(request: NextRequest) {
           priority: "MEDIUM",
           testFilePath,
           testFileUrl: repository?.repositoryUrl
-            ? `${repository.repositoryUrl}/blob/main/${testFilePath}`
+            ? `${repository.repositoryUrl}/blob/${repository.branch || 'main'}/${testFilePath}`
             : null,
           stakworkProjectId: stakworkProjectId ? parseInt(String(stakworkProjectId)) : null,
           repositoryId: repository?.id || null,

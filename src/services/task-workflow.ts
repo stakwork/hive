@@ -333,6 +333,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         taskSource: task.sourceType,
         generateChatTitle,
         featureContext,
+        workspaceId: task.workspace.id,
       });
 
       if (stakworkData.success) {
@@ -406,6 +407,7 @@ export async function callStakworkAPI(params: {
   taskSource?: string;
   generateChatTitle?: boolean;
   featureContext?: object;
+  workspaceId: string;
 }) {
   const {
     taskId,
@@ -422,6 +424,7 @@ export async function callStakworkAPI(params: {
     taskSource = "USER",
     generateChatTitle,
     featureContext,
+    workspaceId,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -449,6 +452,7 @@ export async function callStakworkAPI(params: {
     attachments,
     taskMode: mode,
     taskSource: taskSource.toLowerCase(),
+    workspaceId,
   };
 
   // Add optional parameters if provided

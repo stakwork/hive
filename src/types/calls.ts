@@ -3,6 +3,9 @@ export interface CallRecording {
   episode_title: string;
   date_added_to_graph: number;
   description?: string;
+  source_link?: string;
+  media_url?: string;
+  image_url?: string;
 }
 
 export interface CallsResponse {

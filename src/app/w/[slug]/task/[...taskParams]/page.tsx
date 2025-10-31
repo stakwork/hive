@@ -38,8 +38,11 @@ export default function TaskChatPage() {
   const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
   const { toast } = useToast();
   const params = useParams();
-  const { id: workspaceId } = useWorkspace();
+  const { id: workspaceId, workspace } = useWorkspace();
   const { resolvedTheme } = useTheme();
+
+  // Fallback: use workspace.id if workspaceId (from context) is null
+  const effectiveWorkspaceId = workspaceId || workspace?.id;
 
   const { taskMode, setTaskMode } = useTaskMode();
 
@@ -53,6 +56,14 @@ export default function TaskChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
+
+  // Debug logging
+  console.log('[TaskPage] Workspace context:', {
+    workspaceId,
+    workspaceObject: workspace,
+    effectiveWorkspaceId,
+    currentTaskId
+  });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -814,7 +825,12 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                  <ArtifactsPanel
+                    artifacts={allArtifacts}
+                    workspaceId={effectiveWorkspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                  />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -861,7 +877,12 @@ export default function TaskChatPage() {
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={60} minSize={25}>
                 <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
+                  <ArtifactsPanel
+                    artifacts={allArtifacts}
+                    workspaceId={effectiveWorkspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                  />
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
