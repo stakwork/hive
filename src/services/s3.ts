@@ -64,6 +64,19 @@ export class S3Service {
     return await getSignedUrl(this.client, command, { expiresIn })
   }
 
+  async generatePresignedDownloadUrlForBucket(
+    bucket: string,
+    key: string,
+    expiresIn: number = 3600 // 1 hour
+  ): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    })
+
+    return await getSignedUrl(this.client, command, { expiresIn })
+  }
+
   generateS3Path(workspaceId: string, swarmId: string, taskId: string, filename: string): string {
     const timestamp = Date.now()
     const randomId = Math.random().toString(36).substring(2, 15)

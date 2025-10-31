@@ -29,6 +29,7 @@ interface ActionsListProps {
   currentActionIndex?: number;
   totalActions?: number;
   screenshots?: Screenshot[];
+  title?: string;
 }
 
 // Helper function to extract the most descriptive element identifier
@@ -177,6 +178,7 @@ export function ActionsList({
   currentActionIndex = -1,
   totalActions = 0,
   screenshots = [],
+  title,
 }: ActionsListProps) {
   const actionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -225,24 +227,31 @@ export function ActionsList({
 
   return (
     <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm" data-testid="actions-list">
-      <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
-        <h3 className="text-sm font-semibold">
-          {isReplaying ? (
-            <>
-              Replaying ({currentActionIndex + 1}/{totalActions})
-            </>
-          ) : (
-            <>Test Actions ({actions.length})</>
-          )}
-        </h3>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={onClearAll}
-          disabled={!isRecording || isReplaying || actions.length === 0}
-        >
-          Clear All
-        </Button>
+      <div className="flex flex-col gap-2 p-3 border-b flex-shrink-0">
+        {title && (
+          <div className="text-xs font-medium text-muted-foreground truncate" title={title}>
+            {title}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">
+            {isReplaying ? (
+              <>
+                Replaying ({currentActionIndex + 1}/{totalActions})
+              </>
+            ) : (
+              <>Test Actions ({actions.length})</>
+            )}
+          </h3>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onClearAll}
+            disabled={!isRecording || isReplaying || actions.length === 0}
+          >
+            Clear All
+          </Button>
+        </div>
       </div>
 
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
