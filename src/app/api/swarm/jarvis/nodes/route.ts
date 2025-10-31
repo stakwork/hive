@@ -5,6 +5,7 @@ import { getS3Service } from "@/services/s3";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ function extractS3KeyFromUrl(url: string): string | null {
 }
 
 // Helper function to process nodes and presign media_url fields
-async function processNodesMediaUrls(nodes: any[], s3Service: any): Promise<any[]> {
+async function processNodesMediaUrls(nodes: JarvisNode[], s3Service: ReturnType<typeof getS3Service>): Promise<JarvisNode[]> {
   const processedNodes = [];
 
   for (const node of nodes) {
@@ -106,14 +107,17 @@ export async function GET(request: NextRequest) {
     let processedData = apiResult.data;
     if (apiResult.ok && apiResult?.data?.nodes) {
       try {
-        const s3Service = getS3Service();
-        // Only process the nodes array, keep edges and other data unchanged
-        const processedNodes = await processNodesMediaUrls(apiResult.data.nodes, s3Service);
-        processedData = {
-          ...apiResult.data,
-          nodes: processedNodes
-        };
-        console.log('[Jarvis Nodes] Successfully processed media URLs in nodes');
+        const data = apiResult.data as JarvisResponse;
+        if (data.nodes) {
+          const s3Service = getS3Service();
+          // Only process the nodes array, keep edges and other data unchanged
+          const processedNodes = await processNodesMediaUrls(data.nodes, s3Service);
+          processedData = {
+            ...data,
+            nodes: processedNodes
+          };
+          console.log('[Jarvis Nodes] Successfully processed media URLs in nodes');
+        }
       } catch (error) {
         console.error('[Jarvis Nodes] Error processing media URLs:', error);
         // Continue with original data if processing fails
