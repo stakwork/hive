@@ -40,7 +40,7 @@ export class WebhookService extends BaseServiceClass {
     // Get workspace slug for GitHub credentials
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
@@ -138,7 +138,7 @@ export class WebhookService extends BaseServiceClass {
     if (!slug) {
       const workspace = await db.workspace.findUnique({
         where: { id: workspaceId },
-        select: { slug: true }
+        select: { slug: true },
       });
       if (!workspace) {
         throw new Error("Workspace not found");
@@ -160,33 +160,34 @@ export class WebhookService extends BaseServiceClass {
     const existing = hooks.find((h) => h.config?.url === callbackUrl);
 
     if (existing) {
-      await this.updateHook({
-        token,
-        owner,
-        repo,
-        hookId: existing.id,
-        events,
-        active,
-      });
+      // await this.updateHook({
+      //   token,
+      //   owner,
+      //   repo,
+      //   hookId: existing.id,
+      //   events,
+      //   active,
+      // });
       const storedSecret = repoRec.githubWebhookSecret
         ? encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret)
         : null;
-      const secret = storedSecret || crypto.randomBytes(32).toString("hex");
-      if (!repoRec.githubWebhookSecret) {
-        await db.repository.update({
-          where: { id: repoRec.id },
-          data: {
-            githubWebhookId: String(existing.id),
-            githubWebhookSecret: JSON.stringify(encryptionService.encryptField("githubWebhookSecret", secret)),
-          },
-        });
-      } else if (!repoRec.githubWebhookId) {
-        await db.repository.update({
-          where: { id: repoRec.id },
-          data: { githubWebhookId: String(existing.id) },
-        });
-      }
-      return { id: existing.id, secret };
+      return { id: existing.id, secret: storedSecret || "" };
+      // const secret = storedSecret || crypto.randomBytes(32).toString("hex");
+      // if (!repoRec.githubWebhookSecret) {
+      //   await db.repository.update({
+      //     where: { id: repoRec.id },
+      //     data: {
+      //       githubWebhookId: String(existing.id),
+      //       githubWebhookSecret: JSON.stringify(encryptionService.encryptField("githubWebhookSecret", secret)),
+      //     },
+      //   });
+      // } else if (!repoRec.githubWebhookId) {
+      //   await db.repository.update({
+      //     where: { id: repoRec.id },
+      //     data: { githubWebhookId: String(existing.id) },
+      //   });
+      // }
+      // return { id: existing.id, secret };
     }
 
     const secret = crypto.randomBytes(32).toString("hex");
@@ -200,6 +201,7 @@ export class WebhookService extends BaseServiceClass {
       active,
     });
 
+    console.log("=> create/update webhook secret!!!", repoRec.id);
     await db.repository.update({
       where: { id: repoRec.id },
       data: {
@@ -215,7 +217,7 @@ export class WebhookService extends BaseServiceClass {
     // Get workspace slug for GitHub credentials
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
