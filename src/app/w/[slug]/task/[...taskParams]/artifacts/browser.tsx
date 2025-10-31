@@ -113,6 +113,13 @@ export function BrowserArtifactPanel({
     }
   }, [isPlaywrightReplaying, showActions, toggleActionsView]);
 
+  // Auto-show actions list when recording starts
+  useEffect(() => {
+    if (isRecording && !showActions) {
+      toggleActionsView();
+    }
+  }, [isRecording, showActions, toggleActionsView]);
+
   // Use debug selection hook with iframeRef from staktrak
   const {
     debugMode,
