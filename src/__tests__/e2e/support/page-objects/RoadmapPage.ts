@@ -27,14 +27,28 @@ export class RoadmapPage {
   }
 
   /**
-   * Create a new feature by typing title and pressing Enter
+   * Click the "New feature" button to open the create form
+   */
+  async clickNewFeature(): Promise<void> {
+    await this.page.locator(selectors.roadmap.newFeatureButton).click();
+    // Wait for the input to appear - this requires the features list to finish loading first
+    await waitForElement(this.page, selectors.roadmap.featureInput, { timeout: 20000 });
+  }
+
+  /**
+   * Create a new feature by typing title and clicking Create button
    */
   async createFeature(title: string): Promise<string> {
-    // Type the feature title - the component auto-creates when input is filled
-    const input = this.page.locator('input.border-input.flex.h-9').first();
+    // Click "New feature" button first
+    await this.clickNewFeature();
+    
+    // Type the feature title
+    const input = this.page.locator(selectors.roadmap.featureInput);
     await input.waitFor({ state: 'visible', timeout: 10000 });
     await input.fill(title);
-    await input.press('Enter');
+    
+    // Click the Create button
+    await this.page.locator(selectors.roadmap.createFeatureButton).click();
     
     // Wait for navigation to feature detail page
     await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });

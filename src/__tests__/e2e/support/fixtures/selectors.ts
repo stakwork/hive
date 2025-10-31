@@ -137,7 +137,9 @@ export const selectors = {
 
   // Roadmap & Features
   roadmap: {
+    newFeatureButton: '[data-testid="new-feature-button"]',
     featureInput: '[data-testid="feature-title-input"]',
+    createFeatureButton: '[data-testid="create-feature-button"]',
     featureCard: '[data-testid="feature-card"]',
     addFeatureButton: '[data-testid="add-feature-button"]',
   },

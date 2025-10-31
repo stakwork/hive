@@ -20,7 +20,7 @@ export default function RoadmapPage() {
       <PageHeader
         title="Roadmap"
         actions={
-          <Button onClick={handleNewFeature}>
+          <Button data-testid="new-feature-button" onClick={handleNewFeature}>
             <Plus className="w-4 h-4 mr-2" />
             New feature
           </Button>

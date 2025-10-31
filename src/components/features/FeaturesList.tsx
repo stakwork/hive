@@ -628,6 +628,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 <div>
                   <Input
                     ref={featureInputRef}
+                    data-testid="feature-title-input"
                     placeholder="Feature title..."
                     value={newFeatureTitle}
                     onChange={(e) => setNewFeatureTitle(e.target.value)}
@@ -662,6 +663,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     Cancel
                   </Button>
                   <Button
+                    data-testid="create-feature-button"
                     variant="default"
                     size="sm"
                     onClick={handleCreateFeature}
