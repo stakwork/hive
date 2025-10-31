@@ -3,9 +3,9 @@ import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
+import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 
 export const runtime = "nodejs";
 
@@ -105,23 +105,21 @@ export async function GET(request: NextRequest) {
 
     // Process the response data to presign any media_url fields in nodes
     let processedData = apiResult.data;
-    if (apiResult.ok && apiResult?.data?.nodes) {
-      try {
-        const data = apiResult.data as JarvisResponse;
-        if (data.nodes) {
-          const s3Service = getS3Service();
-          // Only process the nodes array, keep edges and other data unchanged
-          const processedNodes = await processNodesMediaUrls(data.nodes, s3Service);
-          processedData = {
-            ...data,
-            nodes: processedNodes
-          };
-          console.log('[Jarvis Nodes] Successfully processed media URLs in nodes');
-        }
-      } catch (error) {
-        console.error('[Jarvis Nodes] Error processing media URLs:', error);
-        // Continue with original data if processing fails
+    try {
+      const data = apiResult.data as JarvisResponse;
+      if (apiResult.ok && data?.nodes) {
+        const s3Service = getS3Service();
+        // Only process the nodes array, keep edges and other data unchanged
+        const processedNodes = await processNodesMediaUrls(data.nodes, s3Service);
+        processedData = {
+          ...data,
+          nodes: processedNodes
+        };
+        console.log('[Jarvis Nodes] Successfully processed media URLs in nodes');
       }
+    } catch (error) {
+      console.error('[Jarvis Nodes] Error processing media URLs:', error);
+      // Continue with original data if processing fails
     }
 
     return NextResponse.json(
