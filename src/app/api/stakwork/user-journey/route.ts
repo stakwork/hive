@@ -219,11 +219,12 @@ export async function POST(request: NextRequest) {
 
       // Save test code in ChatMessage for immediate replay access
       // This makes the test code available instantly without waiting for Stakwork processing
+      // Using ASSISTANT role since test code is system-generated content
       try {
         await db.chatMessage.create({
           data: {
             taskId: task.id,
-            role: "USER",
+            role: "ASSISTANT",
             message: message, // Store the test code
             timestamp: new Date(),
           },

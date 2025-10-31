@@ -97,9 +97,9 @@ export default function UserJourneys() {
         return;
       }
 
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setE2eTestsGraph(data);
+      const result = await response.json();
+      if (result.success && result.data && Array.isArray(result.data)) {
+        setE2eTestsGraph(result.data);
       }
     } catch (error) {
       console.error("Error fetching E2E tests from graph:", error);
@@ -482,6 +482,7 @@ export default function UserJourneys() {
           <BrowserArtifactPanel
             artifacts={browserArtifacts}
             ide={false}
+            workspaceId={id || workspace?.id}
             onUserJourneySave={saveUserJourneyTest}
             externalTestCode={replayTestCode}
             externalTestTitle={replayTitle}
