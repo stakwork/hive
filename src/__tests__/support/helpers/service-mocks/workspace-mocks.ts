@@ -231,4 +231,89 @@ export const memberMockSetup = {
     vi.mocked(findActiveMember).mockResolvedValue(mockMember);
     vi.mocked(softDeleteMember).mockResolvedValue(undefined);
   },
+
+  /**
+   * Mock the initial validation steps for adding a member (up to and including findUserByGitHubUsername)
+   */
+  mockAddMemberValidationSteps(
+    findUserByGitHubUsername: any,
+    findActiveMember: any,
+    isWorkspaceOwner: any,
+    findPreviousMember: any,
+    mockGitHubAuth: any,
+    mockCreatedMember: any,
+    options: {
+      userFound?: boolean;
+      isActive?: boolean;
+      isOwner?: boolean;
+      hasPreviousMember?: boolean;
+    } = {}
+  ) {
+    const {
+      userFound = true,
+      isActive = false,
+      isOwner = false,
+      hasPreviousMember = false,
+    } = options;
+
+    if (userFound) {
+      vi.mocked(findUserByGitHubUsername).mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+    } else {
+      vi.mocked(findUserByGitHubUsername).mockResolvedValue(null);
+    }
+
+    vi.mocked(findActiveMember).mockResolvedValue(isActive ? { id: "existing-member" } : null);
+    vi.mocked(isWorkspaceOwner).mockResolvedValue(isOwner);
+    vi.mocked(findPreviousMember).mockResolvedValue(
+      hasPreviousMember
+        ? {
+            id: "previous-member-1",
+            workspaceId: "workspace1",
+            userId: "user1",
+            role: "VIEWER" as const,
+            leftAt: new Date("2024-01-01"),
+          }
+        : null
+    );
+  },
+
+  /**
+   * Create a mapped member response for tests
+   */
+  createMappedMemberResponse(
+    memberId: string,
+    userId: string,
+    role: WorkspaceRole,
+    username: string,
+    name: string,
+    email: string | null = "test@example.com",
+    githubData?: {
+      bio?: string | null;
+      publicRepos?: number | null;
+      followers?: number | null;
+    }
+  ) {
+    return {
+      id: memberId,
+      userId,
+      role,
+      joinedAt: TEST_DATE_ISO,
+      user: {
+        id: userId,
+        name,
+        email,
+        image: `https://github.com/${username}.png`,
+        github: {
+          username,
+          name,
+          bio: githubData?.bio ?? null,
+          publicRepos: githubData?.publicRepos ?? null,
+          followers: githubData?.followers ?? null,
+        },
+      },
+    };
+  },
 };

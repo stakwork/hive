@@ -685,6 +685,473 @@ describe("Workspace Member Management", () => {
     });
   });
 
+  describe("addWorkspaceMember - Additional Edge Cases and Error Handling", () => {
+    const mockGitHubAuth = mockData.githubAuth({
+      userId: "user1",
+      githubUsername: "testuser",
+    });
+
+    const mockCreatedMember = mockData.memberWithGithub("DEVELOPER", {
+      id: "member1",
+      userId: "user1",
+      workspaceId: "workspace1",
+      username: "testuser",
+      name: "Test User",
+      email: "test@example.com",
+    });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    test("should throw error for empty GitHub username", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue(null);
+
+      await expect(
+        addWorkspaceMember("workspace1", "", "DEVELOPER")
+      ).rejects.toThrow("User not found. They must sign up to Hive first.");
+
+      expect(mockedFindUserByGitHubUsername).toHaveBeenCalledWith("");
+    });
+
+    test("should handle database error from findUserByGitHubUsername", async () => {
+      const dbError = new Error("Database connection failed");
+      mockedFindUserByGitHubUsername.mockRejectedValue(dbError);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Database connection failed");
+    });
+
+    test("should handle database error from createWorkspaceMember", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+
+      const dbError = new Error("Unique constraint violation");
+      mockedCreateWorkspaceMember.mockRejectedValue(dbError);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Unique constraint violation");
+    });
+
+    test("should handle database error from reactivateWorkspaceMember", async () => {
+      const previousMember = {
+        id: "previous-member-1",
+        workspaceId: "workspace1",
+        userId: "user1",
+        role: "VIEWER" as const,
+        leftAt: new Date("2024-01-01"),
+      };
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(previousMember);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+
+      const dbError = new Error("Update failed");
+      mockedReactivateWorkspaceMember.mockRejectedValue(dbError);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Update failed");
+    });
+
+    test("should handle error from mapWorkspaceMember", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockCreatedMember);
+
+      const mapperError = new Error("Mapper transformation failed");
+      mockedMapWorkspaceMember.mockImplementation(() => {
+        throw mapperError;
+      });
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Mapper transformation failed");
+    });
+
+    test("should handle case when findActiveMember throws error", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+
+      const dbError = new Error("Query timeout");
+      mockedFindActiveMember.mockRejectedValue(dbError);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Query timeout");
+    });
+
+    test("should handle case when isWorkspaceOwner throws error", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+
+      const dbError = new Error("Workspace query failed");
+      mockedIsWorkspaceOwner.mockRejectedValue(dbError);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Workspace query failed");
+    });
+
+    test("should handle case when findPreviousMember throws error", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+
+      const dbError = new Error("Previous member query failed");
+      mockedFindPreviousMember.mockRejectedValue(dbError);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Previous member query failed");
+    });
+
+    test("should successfully add member with protected role OWNER (validation at API layer)", async () => {
+      // Note: Role validation happens at API layer via isAssignableMemberRole
+      // Service layer accepts any WorkspaceRole type
+      const mockOwnerMember = mockData.memberWithGithub("OWNER", {
+        id: "member-owner",
+        userId: "user-owner",
+        workspaceId: "workspace1",
+        username: "owner-user",
+        name: "Owner User",
+        email: "owner@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user-owner",
+        githubId: 999999,
+        githubUsername: "owner-user",
+        accessToken: "test-token",
+        user: {
+          id: "user-owner",
+          name: "Owner User",
+          email: "owner@example.com",
+          image: "https://github.com/owner-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockOwnerMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member-owner",
+        userId: "user-owner",
+        role: "OWNER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user-owner",
+          name: "Owner User",
+          email: "owner@example.com",
+          image: "https://github.com/owner-user.png",
+          github: {
+            username: "owner-user",
+            name: "Owner User",
+            bio: null,
+            publicRepos: null,
+            followers: null,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "owner-user", "OWNER");
+
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user-owner", "OWNER");
+      expect(result.role).toBe("OWNER");
+    });
+
+    test("should successfully add member with protected role STAKEHOLDER (validation at API layer)", async () => {
+      const mockStakeholderMember = mockData.memberWithGithub("STAKEHOLDER", {
+        id: "member-stakeholder",
+        userId: "user-stakeholder",
+        workspaceId: "workspace1",
+        username: "stakeholder-user",
+        name: "Stakeholder User",
+        email: "stakeholder@example.com",
+      });
+
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user-stakeholder",
+        githubId: 888888,
+        githubUsername: "stakeholder-user",
+        accessToken: "test-token",
+        user: {
+          id: "user-stakeholder",
+          name: "Stakeholder User",
+          email: "stakeholder@example.com",
+          image: "https://github.com/stakeholder-user.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue(mockStakeholderMember);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member-stakeholder",
+        userId: "user-stakeholder",
+        role: "STAKEHOLDER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user-stakeholder",
+          name: "Stakeholder User",
+          email: "stakeholder@example.com",
+          image: "https://github.com/stakeholder-user.png",
+          github: {
+            username: "stakeholder-user",
+            name: "Stakeholder User",
+            bio: null,
+            publicRepos: null,
+            followers: null,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "stakeholder-user", "STAKEHOLDER");
+
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user-stakeholder", "STAKEHOLDER");
+      expect(result.role).toBe("STAKEHOLDER");
+    });
+
+    test("should handle user with null email", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: {
+          id: "user1",
+          name: "Test User",
+          email: null,
+          image: "https://github.com/testuser.png",
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      mockedCreateWorkspaceMember.mockResolvedValue({
+        ...mockCreatedMember,
+        user: {
+          ...mockCreatedMember.user,
+          email: null,
+        },
+      });
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member1",
+        userId: "user1",
+        role: "DEVELOPER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user1",
+          name: "Test User",
+          email: null,
+          image: "https://github.com/testuser.png",
+          github: {
+            username: "testuser",
+            name: "Test User",
+            bio: null,
+            publicRepos: null,
+            followers: null,
+          },
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "testuser", "DEVELOPER");
+
+      expect(result.user.email).toBeNull();
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalled();
+    });
+
+    test("should handle user without GitHub auth data", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        userId: "user1",
+        githubId: 123456,
+        githubUsername: "testuser",
+        accessToken: "test-token",
+        user: {
+          id: "user1",
+          name: "Test User",
+          email: "test@example.com",
+          image: null,
+        },
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedFindPreviousMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(false);
+      
+      const memberWithoutGithubAuth = {
+        id: "member1",
+        userId: "user1",
+        role: "DEVELOPER" as const,
+        joinedAt: TEST_DATE,
+        user: {
+          id: "user1",
+          name: "Test User",
+          email: "test@example.com",
+          image: null,
+          githubAuth: null,
+        },
+      };
+      
+      mockedCreateWorkspaceMember.mockResolvedValue(memberWithoutGithubAuth);
+      mockedMapWorkspaceMember.mockReturnValue({
+        id: "member1",
+        userId: "user1",
+        role: "DEVELOPER",
+        joinedAt: "2024-01-01T00:00:00.000Z",
+        user: {
+          id: "user1",
+          name: "Test User",
+          email: "test@example.com",
+          image: null,
+          github: null,
+        },
+      });
+
+      const result = await addWorkspaceMember("workspace1", "testuser", "DEVELOPER");
+
+      expect(result.user.github).toBeNull();
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalled();
+    });
+
+    test("should verify execution order of validation checks", async () => {
+      const callOrder: string[] = [];
+
+      mockedFindUserByGitHubUsername.mockImplementation(async () => {
+        callOrder.push("findUserByGitHubUsername");
+        return {
+          ...mockGitHubAuth,
+          user: mockCreatedMember.user,
+        };
+      });
+
+      mockedFindActiveMember.mockImplementation(async () => {
+        callOrder.push("findActiveMember");
+        return null;
+      });
+
+      mockedIsWorkspaceOwner.mockImplementation(async () => {
+        callOrder.push("isWorkspaceOwner");
+        return false;
+      });
+
+      mockedFindPreviousMember.mockImplementation(async () => {
+        callOrder.push("findPreviousMember");
+        return null;
+      });
+
+      mockedCreateWorkspaceMember.mockImplementation(async () => {
+        callOrder.push("createWorkspaceMember");
+        return mockCreatedMember;
+      });
+
+      mockedMapWorkspaceMember.mockImplementation(() => {
+        callOrder.push("mapWorkspaceMember");
+        return {
+          id: "member1",
+          userId: "user1",
+          role: "DEVELOPER",
+          joinedAt: "2024-01-01T00:00:00.000Z",
+          user: {
+            id: "user1",
+            name: "Test User",
+            email: "test@example.com",
+            image: "https://github.com/testuser.png",
+            github: {
+              username: "testuser",
+              name: "Test User",
+              bio: null,
+              publicRepos: null,
+              followers: null,
+            },
+          },
+        };
+      });
+
+      await addWorkspaceMember("workspace1", "testuser", "DEVELOPER");
+
+      expect(callOrder).toEqual([
+        "findUserByGitHubUsername",
+        "findActiveMember",
+        "isWorkspaceOwner",
+        "findPreviousMember",
+        "createWorkspaceMember",
+        "mapWorkspaceMember",
+      ]);
+    });
+
+    test("should stop execution after findUserByGitHubUsername returns null", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue(null);
+
+      await expect(
+        addWorkspaceMember("workspace1", "nonexistent", "DEVELOPER")
+      ).rejects.toThrow("User not found. They must sign up to Hive first.");
+
+      expect(mockedFindUserByGitHubUsername).toHaveBeenCalledTimes(1);
+      expect(mockedFindActiveMember).not.toHaveBeenCalled();
+      expect(mockedIsWorkspaceOwner).not.toHaveBeenCalled();
+      expect(mockedFindPreviousMember).not.toHaveBeenCalled();
+      expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
+    });
+
+    test("should stop execution after findActiveMember returns existing member", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue({ id: "existing-member" });
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("User is already a member of this workspace");
+
+      expect(mockedFindUserByGitHubUsername).toHaveBeenCalledTimes(1);
+      expect(mockedFindActiveMember).toHaveBeenCalledTimes(1);
+      expect(mockedIsWorkspaceOwner).not.toHaveBeenCalled();
+      expect(mockedFindPreviousMember).not.toHaveBeenCalled();
+      expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
+    });
+
+    test("should stop execution after isWorkspaceOwner returns true", async () => {
+      mockedFindUserByGitHubUsername.mockResolvedValue({
+        ...mockGitHubAuth,
+        user: mockCreatedMember.user,
+      });
+      mockedFindActiveMember.mockResolvedValue(null);
+      mockedIsWorkspaceOwner.mockResolvedValue(true);
+
+      await expect(
+        addWorkspaceMember("workspace1", "testuser", "DEVELOPER")
+      ).rejects.toThrow("Cannot add workspace owner as a member");
+
+      expect(mockedFindUserByGitHubUsername).toHaveBeenCalledTimes(1);
+      expect(mockedFindActiveMember).toHaveBeenCalledTimes(1);
+      expect(mockedIsWorkspaceOwner).toHaveBeenCalledTimes(1);
+      expect(mockedFindPreviousMember).not.toHaveBeenCalled();
+      expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
+    });
+  });
+
   describe("updateWorkspaceMemberRole", () => {
     const mockMember = {
       id: "member1",
