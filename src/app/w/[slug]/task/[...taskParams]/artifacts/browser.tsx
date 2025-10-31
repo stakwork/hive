@@ -508,7 +508,6 @@ export function BrowserArtifactPanel({
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
                     title={externalTestTitle || undefined}
-                    onReplayToggle={handleReplayToggle}
                   />
                 </div>
               )}
