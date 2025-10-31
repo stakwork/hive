@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { X, CheckCircle2, Loader2, Camera } from "lucide-react";
+import { X, CheckCircle2, Loader2, Camera, Play, Square } from "lucide-react";
 import { useRef, useEffect, useState } from "react";
 import { Screenshot } from "@/types/common";
 import { ScreenshotModal } from "@/components/ScreenshotModal";
@@ -30,6 +30,7 @@ interface ActionsListProps {
   totalActions?: number;
   screenshots?: Screenshot[];
   title?: string;
+  onReplayToggle?: () => void;
 }
 
 // Helper function to extract the most descriptive element identifier
@@ -179,6 +180,7 @@ export function ActionsList({
   totalActions = 0,
   screenshots = [],
   title,
+  onReplayToggle,
 }: ActionsListProps) {
   const actionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -243,14 +245,27 @@ export function ActionsList({
               <>Test Actions ({actions.length})</>
             )}
           </h3>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={onClearAll}
-            disabled={!isRecording || isReplaying || actions.length === 0}
-          >
-            Clear All
-          </Button>
+          <div className="flex items-center gap-2">
+            {onReplayToggle && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onReplayToggle}
+                className="h-8 w-8 p-0"
+                title={isReplaying ? "Stop replay" : "Start replay"}
+              >
+                {isReplaying ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+            )}
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onClearAll}
+              disabled={!isRecording || isReplaying || actions.length === 0}
+            >
+              Clear All
+            </Button>
+          </div>
         </div>
       </div>
 
