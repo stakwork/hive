@@ -434,14 +434,25 @@ export default function UserJourneys() {
   };
 
   const getStatusBadge = (status: string, workflowStatus: string | null) => {
-    if (status === "DONE") {
+    // Use workflowStatus to show automatic updates from Stakwork webhooks
+
+    // Green: Workflow completed successfully (test deployed to graph)
+    if (workflowStatus === "COMPLETED") {
       return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Merged</Badge>;
-    } else if (status === "IN_PROGRESS") {
-      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">Recording</Badge>;
-    } else if (status === "TODO") {
-      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">Pending Review</Badge>;
     }
-    return <Badge variant="secondary">{status}</Badge>;
+
+    // Red: Workflow failed (permanent failure, error, or halted)
+    if (workflowStatus === "FAILED" || workflowStatus === "HALTED" || workflowStatus === "ERROR") {
+      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">Failed</Badge>;
+    }
+
+    // Yellow: Workflow in progress (pending or actively running)
+    if (workflowStatus === "IN_PROGRESS" || workflowStatus === "PENDING") {
+      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">In Progress</Badge>;
+    }
+
+    // Default: No workflow status yet (shouldn't happen with new code)
+    return <Badge variant="secondary">Pending</Badge>;
   };
 
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
