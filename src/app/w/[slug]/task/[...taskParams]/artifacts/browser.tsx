@@ -35,6 +35,7 @@ export function BrowserArtifactPanel({
   onUserJourneySave,
   externalTestCode,
   externalTestTitle,
+  isMobile = false,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
@@ -44,6 +45,7 @@ export function BrowserArtifactPanel({
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
   externalTestCode?: string | null;
   externalTestTitle?: string | null;
+  isMobile?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -332,7 +334,7 @@ export function BrowserArtifactPanel({
                         <TooltipContent side="bottom">Go back</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    <Monitor className="w-4 h-4 flex-shrink-0" />
+                    {/* <Monitor className="w-4 h-4 flex-shrink-0" /> */}
                     <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
                       <Input
                         type="text"
@@ -419,7 +421,7 @@ export function BrowserArtifactPanel({
                       </TooltipProvider>
                     )}
 
-                    {!onUserJourneySave && (
+                    {!onUserJourneySave && !isMobile && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -436,7 +438,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {!onUserJourneySave && (
+                    {!onUserJourneySave && !isMobile && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>

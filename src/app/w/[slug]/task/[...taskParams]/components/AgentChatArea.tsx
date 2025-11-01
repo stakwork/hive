@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, GitCommit } from "lucide-react";
+import { ArrowLeft, GitCommit, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -24,6 +24,9 @@ interface AgentChatAreaProps {
   workspaceSlug?: string;
   onCommit?: () => Promise<void>;
   isCommitting?: boolean;
+  showPreviewToggle?: boolean;
+  showPreview?: boolean;
+  onTogglePreview?: () => void;
 }
 
 export function AgentChatArea({
@@ -39,6 +42,9 @@ export function AgentChatArea({
   workspaceSlug,
   onCommit,
   isCommitting = false,
+  showPreviewToggle = false,
+  showPreview = false,
+  onTogglePreview,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -124,6 +130,19 @@ export function AgentChatArea({
                   </motion.h2>
                 </AnimatePresence>
               </div>
+
+              {/* Preview Toggle Button (Mobile Only) */}
+              {showPreviewToggle && onTogglePreview && (
+                <Button
+                  variant={showPreview ? "default" : "ghost"}
+                  size="sm"
+                  onClick={onTogglePreview}
+                  className="flex-shrink-0"
+                  title={showPreview ? "Show Chat" : "Show Live Preview"}
+                >
+                  <Monitor className="w-4 h-4" />
+                </Button>
+              )}
 
               {/* Commit Button */}
               {onCommit && (
