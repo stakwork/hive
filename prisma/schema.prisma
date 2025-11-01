@@ -513,6 +513,7 @@ enum ArtifactType {
   BUG_REPORT
   GRAPH
   WORKFLOW
+  PULL_REQUEST
 }
 
 // =============================================
