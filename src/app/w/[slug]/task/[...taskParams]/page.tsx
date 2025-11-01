@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
+import { Monitor } from "lucide-react";
 import {
   ChatMessage,
   ChatRole,
@@ -79,6 +81,7 @@ export default function TaskChatPage() {
   const [commitMessage, setCommitMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -773,6 +776,7 @@ export default function TaskChatPage() {
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
+  const browserArtifact = allArtifacts.find((a) => a.type === "BROWSER");
 
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
@@ -802,25 +806,39 @@ export default function TaskChatPage() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
-          className="h-[92vh] md:h-[97vh] flex"
+          className="h-[92vh] md:h-[97vh] flex overflow-hidden"
         >
           {taskMode === "agent" && hasNonFormArtifacts ? (
             isMobile ? (
-              <div className="flex-1 min-w-0">
-                <AgentChatArea
-                  messages={messages}
-                  onSend={handleSend}
-                  inputDisabled={inputDisabled}
-                  isLoading={isLoading}
-                  logs={logs}
-                  pendingDebugAttachment={pendingDebugAttachment}
-                  onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
-                  workflowStatus={workflowStatus}
-                  taskTitle={taskTitle}
-                  workspaceSlug={slug}
-                  onCommit={handleCommit}
-                  isCommitting={isGeneratingCommitInfo || isCommitting}
-                />
+              <div className="flex-1 min-w-0 flex flex-col">
+                {showPreview && browserArtifact ? (
+                  <ArtifactsPanel
+                    artifacts={[browserArtifact]}
+                    workspaceId={effectiveWorkspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                    isMobile={isMobile}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
+                  />
+                ) : (
+                  <AgentChatArea
+                    messages={messages}
+                    onSend={handleSend}
+                    inputDisabled={inputDisabled}
+                    isLoading={isLoading}
+                    logs={logs}
+                    pendingDebugAttachment={pendingDebugAttachment}
+                    onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                    workflowStatus={workflowStatus}
+                    taskTitle={taskTitle}
+                    workspaceSlug={slug}
+                    onCommit={handleCommit}
+                    isCommitting={isGeneratingCommitInfo || isCommitting}
+                    showPreviewToggle={!!browserArtifact}
+                    showPreview={showPreview}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
+                  />
+                )}
               </div>
             ) : (
               <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
@@ -874,24 +892,38 @@ export default function TaskChatPage() {
             </div>
           ) : hasNonFormArtifacts ? (
             isMobile ? (
-              <div className="flex-1 min-w-0">
-                <ChatArea
-                  logs={logs}
-                  messages={messages}
-                  onSend={handleSend}
-                  onArtifactAction={handleArtifactAction}
-                  inputDisabled={inputDisabled}
-                  isLoading={isLoading}
-                  hasNonFormArtifacts={hasNonFormArtifacts}
-                  isChainVisible={isChainVisible}
-                  lastLogLine={lastLogLine}
-                  pendingDebugAttachment={pendingDebugAttachment}
-                  onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
-                  workflowStatus={workflowStatus}
-                  taskTitle={taskTitle}
-                  stakworkProjectId={stakworkProjectId}
-                  workspaceSlug={slug}
-                />
+              <div className="flex-1 min-w-0 flex flex-col">
+                {showPreview && browserArtifact ? (
+                  <ArtifactsPanel
+                    artifacts={[browserArtifact]}
+                    workspaceId={effectiveWorkspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                    isMobile={isMobile}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
+                  />
+                ) : (
+                  <ChatArea
+                    logs={logs}
+                    messages={messages}
+                    onSend={handleSend}
+                    onArtifactAction={handleArtifactAction}
+                    inputDisabled={inputDisabled}
+                    isLoading={isLoading}
+                    hasNonFormArtifacts={hasNonFormArtifacts}
+                    isChainVisible={isChainVisible}
+                    lastLogLine={lastLogLine}
+                    pendingDebugAttachment={pendingDebugAttachment}
+                    onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                    workflowStatus={workflowStatus}
+                    taskTitle={taskTitle}
+                    stakworkProjectId={stakworkProjectId}
+                    workspaceSlug={slug}
+                    showPreviewToggle={!!browserArtifact}
+                    showPreview={showPreview}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
+                  />
+                )}
               </div>
             ) : (
               <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">

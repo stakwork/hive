@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
@@ -28,6 +28,9 @@ interface ChatAreaProps {
   taskTitle?: string | null;
   stakworkProjectId?: number | null;
   workspaceSlug?: string;
+  showPreviewToggle?: boolean;
+  showPreview?: boolean;
+  onTogglePreview?: () => void;
 }
 
 export function ChatArea({
@@ -45,6 +48,9 @@ export function ChatArea({
   taskTitle,
   stakworkProjectId,
   workspaceSlug,
+  showPreviewToggle = false,
+  showPreview = false,
+  onTogglePreview,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -133,6 +139,19 @@ export function ChatArea({
                   </motion.h2>
                 </AnimatePresence>
               </div>
+
+              {/* Preview Toggle Button (Mobile Only) */}
+              {showPreviewToggle && onTogglePreview && (
+                <Button
+                  variant={showPreview ? "default" : "ghost"}
+                  size="sm"
+                  onClick={onTogglePreview}
+                  className="flex-shrink-0"
+                  title={showPreview ? "Show Chat" : "Show Live Preview"}
+                >
+                  <Monitor className="w-4 h-4" />
+                </Button>
+              )}
 
               {/* Stakwork Project Link */}
               {stakworkProjectId && (
