@@ -162,7 +162,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
 
       expect(response?.status).toBe(400);
       const data = await response?.json();
-      expect(data.error).toBe("Message is required");
+      expect(data.error).toBe("Message or artifacts are required");
     });
 
     it("should return 400 when role is missing", async () => {
@@ -341,14 +341,25 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
   });
 
   describe("PR Detection and Task Auto-Completion", () => {
-    it("should mark task as DONE when message contains [Open PR]", async () => {
+    it("should mark task as DONE when PULL_REQUEST artifact is present", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const prMessage = "![GitHub](/svg-icons/Github-dark.svg) [Open PR](https://github.com/user/repo/pull/123)";
 
       const request = createPostRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: prMessage, role: "ASSISTANT" }
+        {
+          message: "",
+          role: "ASSISTANT",
+          artifacts: [
+            {
+              type: "PULL_REQUEST",
+              content: {
+                repo: "user/repo",
+                url: "https://github.com/user/repo/pull/123",
+                status: "open",
+              },
+            },
+          ],
+        }
       );
 
       const response = await POST(request, {
@@ -359,27 +370,44 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       const data = await response?.json();
 
       expect(data.success).toBe(true);
-      expect(data.data.message).toBe(prMessage);
 
       // Verify task status was updated
       const updatedTask = await db.task.findUnique({
         where: { id: testTask.id },
-        select: { status: true },
+        select: { status: true, workflowStatus: true },
       });
 
       expect(updatedTask?.status).toBe("DONE");
+      expect(updatedTask?.workflowStatus).toBe("COMPLETED");
     });
 
-    it("should mark task as DONE with multiple PR links", async () => {
+    it("should mark task as DONE with multiple PULL_REQUEST artifacts", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
-
-      const prMessage = `![GitHub](/svg-icons/Github-dark.svg) [Open PR](https://github.com/user/repo/pull/123)
-
-![GitHub](/svg-icons/Github-dark.svg) [Open PR](https://github.com/user/repo/pull/456)`;
 
       const request = createPostRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: prMessage, role: "ASSISTANT" }
+        {
+          message: "",
+          role: "ASSISTANT",
+          artifacts: [
+            {
+              type: "PULL_REQUEST",
+              content: {
+                repo: "user/repo",
+                url: "https://github.com/user/repo/pull/123",
+                status: "open",
+              },
+            },
+            {
+              type: "PULL_REQUEST",
+              content: {
+                repo: "user/repo-2",
+                url: "https://github.com/user/repo-2/pull/456",
+                status: "open",
+              },
+            },
+          ],
+        }
       );
 
       const response = await POST(request, {
@@ -391,13 +419,14 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       // Verify task status was updated
       const updatedTask = await db.task.findUnique({
         where: { id: testTask.id },
-        select: { status: true },
+        select: { status: true, workflowStatus: true },
       });
 
       expect(updatedTask?.status).toBe("DONE");
+      expect(updatedTask?.workflowStatus).toBe("COMPLETED");
     });
 
-    it("should NOT mark task as DONE when message does not contain [Open PR]", async () => {
+    it("should NOT mark task as DONE when no PULL_REQUEST artifact is present", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const request = createPostRequest(
@@ -461,11 +490,22 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
         },
       });
 
-      const prMessage = "![GitHub](/svg-icons/Github-dark.svg) [Open PR](https://github.com/user/repo/pull/123)";
-
       const request = createPostRequest(
         `http://localhost:3000/api/tasks/${todoTask.id}/messages/save`,
-        { message: prMessage, role: "ASSISTANT" }
+        {
+          message: "",
+          role: "ASSISTANT",
+          artifacts: [
+            {
+              type: "PULL_REQUEST",
+              content: {
+                repo: "user/repo",
+                url: "https://github.com/user/repo/pull/123",
+                status: "open",
+              },
+            },
+          ],
+        }
       );
 
       const response = await POST(request, {
@@ -477,10 +517,11 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       // Verify task status was updated from TODO to DONE
       const updatedTask = await db.task.findUnique({
         where: { id: todoTask.id },
-        select: { status: true },
+        select: { status: true, workflowStatus: true },
       });
 
       expect(updatedTask?.status).toBe("DONE");
+      expect(updatedTask?.workflowStatus).toBe("COMPLETED");
     });
   });
 
