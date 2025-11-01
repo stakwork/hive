@@ -91,6 +91,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const hasPullRequest = artifacts?.some(
       (artifact: { type: ArtifactType }) => artifact.type === ArtifactType.PULL_REQUEST,
     );
+
     if (hasPullRequest) {
       await db.task.update({
         where: { id: taskId },
