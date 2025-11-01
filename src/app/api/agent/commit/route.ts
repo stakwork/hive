@@ -166,31 +166,8 @@ export async function POST(request: NextRequest) {
     console.log(">>> Commit payload:", commitPayload);
     console.log(">>> Posting to control port:", controlPortUrl);
 
-    // POST to /commit on the control port
-    const commitUrl = `${controlPortUrl}/commit`;
-    const commitResponse = await fetch(commitUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${podWorkspace.password}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(commitPayload),
-    });
-
-    if (!commitResponse.ok) {
-      const errorText = await commitResponse.text();
-      console.error(`Failed to commit: ${commitResponse.status} - ${errorText}`);
-      return NextResponse.json(
-        { error: `Failed to commit: ${commitResponse.status}`, details: errorText },
-        { status: commitResponse.status },
-      );
-    }
-
-    const commitData = await commitResponse.json();
-    console.log(">>> Commit successful:", commitData);
-
     // POST to /push on the control port with the same payload
-    const pushUrl = `${controlPortUrl}/push`;
+    const pushUrl = `${controlPortUrl}/push?pr=true&commit=true`;
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {
@@ -212,32 +189,12 @@ export async function POST(request: NextRequest) {
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
 
-    // Create PR URLs directly from workspace repositories
-    // Format: https://github.com/owner/repo/pull/new/branchName
-    const prUrls = workspace.repositories
-      .map((repo) => {
-        try {
-          // Parse repositoryUrl to extract owner/repo
-          // Format: https://github.com/owner/repo or https://github.com/owner/repo.git
-          const match = repo.repositoryUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
-          if (match) {
-            const [, owner, repoName] = match;
-            return `https://github.com/${owner}/${repoName}/pull/new/${branchName}`;
-          }
-          return null;
-        } catch (error) {
-          console.error("Error constructing PR URL from repository:", repo.repositoryUrl, error);
-          return null;
-        }
-      })
-      .filter((url: string | null): url is string => url !== null);
-
     return NextResponse.json(
       {
         success: true,
         message: "Commit and push successful",
         data: {
-          prUrls,
+          prs: pushData.prs || {},
         },
       },
       { status: 200 },

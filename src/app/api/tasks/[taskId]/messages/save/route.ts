@@ -2,12 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { ChatRole, ChatStatus } from "@prisma/client";
+import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -21,10 +18,10 @@ export async function POST(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { message, role } = body;
+    const { message, role, artifacts } = body;
 
-    if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    if (!message && (!artifacts || artifacts.length === 0)) {
+      return NextResponse.json({ error: "Message or artifacts are required" }, { status: 400 });
     }
 
     if (!role || (role !== "USER" && role !== "ASSISTANT")) {
@@ -67,19 +64,34 @@ export async function POST(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Create the chat message
+    // Create the chat message with artifacts
     const chatMessage = await db.chatMessage.create({
       data: {
         taskId,
-        message,
+        message: message || "",
         role: role as ChatRole,
         contextTags: JSON.stringify([]),
         status: ChatStatus.SENT,
+        artifacts: artifacts
+          ? {
+              create: artifacts.map((artifact: { type: ArtifactType; content: unknown; icon?: string }) => ({
+                type: artifact.type,
+                content: artifact.content,
+                icon: artifact.icon || null,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        artifacts: true,
       },
     });
 
-    // Check if message contains [Open PR] to auto-complete task
-    if (message.includes("[Open PR]")) {
+    // Check if artifacts contain PULL_REQUEST to auto-complete task
+    const hasPullRequest = artifacts?.some(
+      (artifact: { type: ArtifactType }) => artifact.type === ArtifactType.PULL_REQUEST,
+    );
+    if (hasPullRequest) {
       await db.task.update({
         where: { id: taskId },
         data: {
@@ -94,7 +106,7 @@ export async function POST(
         success: true,
         data: chatMessage,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error saving chat message:", error);

@@ -16,6 +16,7 @@ import {
   Option,
   Artifact,
   ArtifactType,
+  PullRequestContent,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
@@ -28,7 +29,6 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useTheme } from "@/hooks/use-theme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 // Generate unique IDs to prevent collisions
@@ -42,7 +42,6 @@ export default function TaskChatPage() {
   const { toast } = useToast();
   const params = useParams();
   const { id: workspaceId, workspace } = useWorkspace();
-  const { resolvedTheme } = useTheme();
   const isMobile = useIsMobile();
 
   // Fallback: use workspace.id if workspaceId (from context) is null
@@ -732,34 +731,51 @@ export default function TaskChatPage() {
         description: "Changes committed and pushed successfully!",
       });
 
-      // Save PR URLs as assistant message
-      if (result.data?.prUrls && result.data.prUrls.length > 0) {
-        const isDark = resolvedTheme === "dark";
-        const iconPath = isDark ? "/svg-icons/Github-dark.svg" : "/svg-icons/Github-light.svg";
-        const prMessageText = result.data.prUrls
-          .map((prUrl: string) => `![GitHub](${iconPath}) [Open PR](${prUrl})`)
-          .join("\n\n");
+      // Save PR URLs as PULL_REQUEST artifacts
+      if (result.data?.prs && Object.keys(result.data.prs).length > 0) {
+        const artifacts = Object.entries(result.data.prs).map(([repo, prUrl]) =>
+          createArtifact({
+            id: generateUniqueId(),
+            messageId: "", // Will be set by the API
+            type: ArtifactType.PULL_REQUEST,
+            content: {
+              repo,
+              url: prUrl as string,
+              status: "open",
+            } as PullRequestContent,
+          })
+        );
 
-        // Save the PR URLs as an assistant message
-        await fetch(`/api/tasks/${currentTaskId}/messages/save`, {
+        // Save the PR artifacts as an assistant message
+        const response = await fetch(`/api/tasks/${currentTaskId}/messages/save`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: prMessageText,
+            message: "",
             role: "ASSISTANT",
+            artifacts: artifacts.map((artifact) => ({
+              type: artifact.type,
+              content: artifact.content,
+              icon: artifact.icon,
+            })),
           }),
         });
 
+        const savedMessage = await response.json();
+
         // Add the message to the UI immediately
-        const newMessage: ChatMessage = createChatMessage({
-          id: generateUniqueId(),
-          message: prMessageText,
-          role: ChatRole.ASSISTANT,
-          status: ChatStatus.SENT,
-        });
-        setMessages((msgs) => [...msgs, newMessage]);
+        if (savedMessage.success) {
+          const newMessage: ChatMessage = createChatMessage({
+            id: savedMessage.data.id,
+            message: "",
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: savedMessage.data.artifacts,
+          });
+          setMessages((msgs) => [...msgs, newMessage]);
+        }
       }
     } catch (error) {
       console.error("Error committing:", error);
