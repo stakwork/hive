@@ -27,7 +27,7 @@ import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useTheme } from "@/hooks/use-theme";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -41,7 +41,7 @@ export default function TaskChatPage() {
   const params = useParams();
   const { id: workspaceId, workspace } = useWorkspace();
   const { resolvedTheme } = useTheme();
-  const isMobile = useMediaQuery('(max-width: 767px)');
+  const isMobile = useIsMobile();
 
   // Fallback: use workspace.id if workspaceId (from context) is null
   const effectiveWorkspaceId = workspaceId || workspace?.id;
