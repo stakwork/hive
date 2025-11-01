@@ -1,10 +1,6 @@
 import { getS3Service } from '@/services/s3'
 import { getWorkspaceBySlug } from '@/services/workspace'
 import { db } from '@/lib/db'
-import {
-  resizeWorkspaceLogo,
-  isSupportedImageType,
-} from '@/lib/image-processing'
 import type { WorkspaceWithAccess } from '@/types/workspace'
 import type { WorkspaceRole } from '@prisma/client'
 
@@ -106,6 +102,10 @@ export class WorkspaceLogoService {
     userId: string,
     confirmation: ConfirmUploadRequest
   ): Promise<ConfirmUploadResponse> {
+    const { isSupportedImageType, resizeWorkspaceLogo } = await import(
+      '@/lib/image-processing'
+    )
+
     const workspace = await this.validateWorkspaceAccess(slug, userId)
     const { s3Path, mimeType } = confirmation
 

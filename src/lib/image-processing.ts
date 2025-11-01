@@ -1,5 +1,3 @@
-import sharp from 'sharp'
-
 const WORKSPACE_LOGO_MAX_WIDTH = 1200
 const WORKSPACE_LOGO_MAX_HEIGHT = 400
 const IMAGE_QUALITY = 80
@@ -27,6 +25,7 @@ export async function resizeWorkspaceLogo(
   maxHeight: number = WORKSPACE_LOGO_MAX_HEIGHT
 ): Promise<ProcessedImage> {
   try {
+    const sharp = (await import('sharp')).default
     const image = sharp(buffer)
     const metadata = await image.metadata()
 
@@ -50,7 +49,8 @@ export async function resizeWorkspaceLogo(
       .jpeg({ quality: IMAGE_QUALITY, mozjpeg: true })
       .toBuffer()
 
-    const processedMetadata = await sharp(processedBuffer).metadata()
+    const processedImage = sharp(processedBuffer)
+    const processedMetadata = await processedImage.metadata()
 
     return {
       buffer: processedBuffer,

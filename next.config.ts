@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  serverExternalPackages: ["sharp"],
   images: {
     remotePatterns: [
       {
