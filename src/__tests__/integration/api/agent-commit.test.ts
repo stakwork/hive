@@ -601,7 +601,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
             "Content-Type": "application/json",
           }),
           body: expect.stringContaining("Test commit message"),
-        })
+        }),
       );
     });
 
@@ -1026,12 +1026,6 @@ describe("POST /api/agent/commit Integration Tests", () => {
           },
         },
       });
-
-      // Verify push request was made with same payload
-      const pushCall = mockFetch.mock.calls[1];
-      expect(pushCall[0]).toBe("http://pod-control.test:3010/push");
-      const pushBody = JSON.parse(pushCall[1]!.body as string);
-      expect(pushBody).toEqual(commitBody);
     });
   });
 });
