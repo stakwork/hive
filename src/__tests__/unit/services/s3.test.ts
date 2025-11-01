@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest'
-import sharp from 'sharp'
 import { getS3Service } from '@/services/s3'
 
 describe('S3 Service', () => {
@@ -14,77 +13,52 @@ describe('S3 Service', () => {
   })
 
   describe('validateImageBuffer', () => {
-    it('should validate JPEG magic numbers', async () => {
-      const jpegBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 255, g: 0, b: 0 },
-        },
-      })
-        .jpeg()
-        .toBuffer()
+    it('should validate JPEG magic numbers', () => {
+      // JPEG magic numbers: FF D8 FF
+      const jpegBuffer = Buffer.from([
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x01,
+      ])
 
       expect(s3Service.validateImageBuffer(jpegBuffer, 'image/jpeg')).toBe(true)
     })
 
-    it('should validate PNG magic numbers', async () => {
-      const pngBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 4,
-          background: { r: 0, g: 255, b: 0, alpha: 1 },
-        },
-      })
-        .png()
-        .toBuffer()
+    it('should validate PNG magic numbers', () => {
+      // PNG magic numbers: 89 50 4E 47 0D 0A 1A 0A
+      const pngBuffer = Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52,
+      ])
 
       expect(s3Service.validateImageBuffer(pngBuffer, 'image/png')).toBe(true)
     })
 
-    it('should validate GIF magic numbers', async () => {
-      const gifBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 0, g: 0, b: 255 },
-        },
-      })
-        .gif()
-        .toBuffer()
+    it('should validate GIF magic numbers', () => {
+      // GIF magic numbers: 47 49 46 38 (GIF8)
+      const gifBuffer = Buffer.from([
+        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00,
+        0x00, 0x21, 0xf9, 0x04,
+      ])
 
       expect(s3Service.validateImageBuffer(gifBuffer, 'image/gif')).toBe(true)
     })
 
-    it('should validate WebP magic numbers', async () => {
-      const webpBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 255, g: 255, b: 0 },
-        },
-      })
-        .webp()
-        .toBuffer()
+    it('should validate WebP magic numbers', () => {
+      // WebP magic numbers: RIFF....WEBP
+      const webpBuffer = Buffer.from([
+        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+        0x56, 0x50, 0x38, 0x20,
+      ])
 
       expect(s3Service.validateImageBuffer(webpBuffer, 'image/webp')).toBe(true)
     })
 
-    it('should reject buffer with mismatched MIME type', async () => {
-      const jpegBuffer = await sharp({
-        create: {
-          width: 100,
-          height: 100,
-          channels: 3,
-          background: { r: 255, g: 0, b: 0 },
-        },
-      })
-        .jpeg()
-        .toBuffer()
+    it('should reject buffer with mismatched MIME type', () => {
+      // JPEG magic numbers but claiming to be PNG
+      const jpegBuffer = Buffer.from([
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x01,
+      ])
 
       expect(s3Service.validateImageBuffer(jpegBuffer, 'image/png')).toBe(false)
     })
