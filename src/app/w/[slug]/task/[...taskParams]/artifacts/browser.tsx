@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Monitor,
   RefreshCw,
@@ -12,8 +12,6 @@ import {
   Target,
   FlaskConical,
   Bug,
-  Play,
-  Pause,
   List,
   CheckCircle2,
   ArrowLeft,
@@ -31,13 +29,23 @@ import { ActionsList } from "@/components/ActionsList";
 export function BrowserArtifactPanel({
   artifacts,
   ide,
+  workspaceId,
+  taskId,
   onDebugMessage,
   onUserJourneySave,
+  externalTestCode,
+  externalTestTitle,
+  isMobile = false,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
+  workspaceId?: string;
+  taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  externalTestCode?: string | null;
+  externalTestTitle?: string | null;
+  isMobile?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -98,7 +106,7 @@ export function BrowserArtifactPanel({
     stopPlaywrightReplay,
     replayScreenshots,
     replayActions,
-  } = usePlaywrightReplay(iframeRef, (message) => {
+  } = usePlaywrightReplay(iframeRef, workspaceId, taskId, (message) => {
     showActionToast("Screenshot Error", message);
   });
 
@@ -108,6 +116,20 @@ export function BrowserArtifactPanel({
       toggleActionsView();
     }
   }, [isPlaywrightReplaying, showActions, toggleActionsView]);
+
+  // Auto-show actions list when recording starts
+  useEffect(() => {
+    if (isRecording && !showActions) {
+      toggleActionsView();
+    }
+  }, [isRecording, showActions, toggleActionsView]);
+
+  // Auto-show actions list when externalTestCode is loaded and recorder is ready
+  useEffect(() => {
+    if (externalTestCode && isSetup && isRecorderReady && !showActions) {
+      toggleActionsView();
+    }
+  }, [externalTestCode, isSetup, isRecorderReady, showActions, toggleActionsView]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -238,8 +260,12 @@ export function BrowserArtifactPanel({
   const handleReplayToggle = () => {
     if (isPlaywrightReplaying) {
       stopPlaywrightReplay();
-    } else if (generatedPlaywrightTest) {
-      startPlaywrightReplay(generatedPlaywrightTest);
+    } else {
+      // Use externalTestCode if available, otherwise use generated test
+      const testCode = externalTestCode || generatedPlaywrightTest;
+      if (testCode) {
+        startPlaywrightReplay(testCode);
+      }
     }
   };
 
@@ -308,7 +334,7 @@ export function BrowserArtifactPanel({
                         <TooltipContent side="bottom">Go back</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    <Monitor className="w-4 h-4 flex-shrink-0" />
+                    {/* <Monitor className="w-4 h-4 flex-shrink-0" /> */}
                     <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
                       <Input
                         type="text"
@@ -371,29 +397,6 @@ export function BrowserArtifactPanel({
                       </TooltipProvider>
                     )}
 
-                    {generatedPlaywrightTest && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleReplayToggle}
-                              className={`h-8 w-8 p-0 ${
-                                isPlaywrightReplaying
-                                  ? "bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:hover:bg-orange-800"
-                                  : "hover:bg-accent hover:text-accent-foreground"
-                              }`}
-                            >
-                              {isPlaywrightReplaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            {isPlaywrightReplaying ? "Stop replay" : "Start replay"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
                     {isSetup && isRecorderReady && (
                       <TooltipProvider>
                         <Tooltip>
@@ -418,7 +421,7 @@ export function BrowserArtifactPanel({
                       </TooltipProvider>
                     )}
 
-                    {!onUserJourneySave && (
+                    {!onUserJourneySave && !isMobile && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -435,7 +438,7 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {!onUserJourneySave && (
+                    {!onUserJourneySave && !isMobile && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -492,6 +495,8 @@ export function BrowserArtifactPanel({
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
+                    title={externalTestTitle || undefined}
+                    onReplayToggle={(generatedPlaywrightTest || externalTestCode) ? handleReplayToggle : undefined}
                   />
                 </div>
               )}

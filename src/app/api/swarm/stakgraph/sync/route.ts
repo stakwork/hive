@@ -11,7 +11,6 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    console.log("SESSION", session);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
@@ -22,19 +21,37 @@ export async function POST(request: NextRequest) {
       swarmId?: string;
     };
 
+    console.log("[Sync] Request initiated", {
+      userId: session.user.id,
+      workspaceId,
+      swarmId,
+    });
+
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
+      console.error("[Sync] Swarm not found or misconfigured", { workspaceId, swarmId });
       return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
     }
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repositoryUrl = primaryRepo?.repositoryUrl;
 
     if (!repositoryUrl) {
+      console.error("[Sync] Repository URL not set", {
+        workspaceId: swarm.workspaceId,
+        swarmId: swarm.id,
+      });
       return NextResponse.json({ success: false, message: "Repository URL not set" }, { status: 400 });
     }
+
+    console.log("[Sync] Repository found", {
+      workspaceId: swarm.workspaceId,
+      swarmId: swarm.id,
+      repositoryUrl,
+      swarmName: swarm.name,
+    });
 
     let username: string | undefined;
     let pat: string | undefined;
@@ -55,6 +72,12 @@ export async function POST(request: NextRequest) {
       username = creds.username;
       pat = creds.token;
     }
+
+    console.log("[Sync] GitHub credentials", {
+      workspaceId: swarm.workspaceId,
+      hasCredentials: !!(username && pat),
+    });
+
     try {
       await db.repository.update({
         where: {
@@ -70,7 +93,15 @@ export async function POST(request: NextRequest) {
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
-    console.log("SYNC CALLBACK URL", callbackUrl);
+    console.log("[Sync] Triggering async sync", {
+      workspaceId: swarm.workspaceId,
+      swarmId: swarm.id,
+      swarmName: swarm.name,
+      repositoryUrl,
+      callbackUrl,
+      hasGithubAuth: !!(username && pat),
+    });
+
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarm.name,
       swarm.swarmApiKey,
@@ -79,47 +110,41 @@ export async function POST(request: NextRequest) {
       callbackUrl,
     );
 
-    console.log("STAKGRAPH SYNC API RESPONSE", {
+    console.log("[Sync] Async sync response", {
+      workspaceId: swarm.workspaceId,
+      swarmId: swarm.id,
       ok: apiResult.ok,
       status: apiResult.status,
-      data: apiResult.data,
       hasRequestId: !!apiResult.data?.request_id,
     });
 
     const requestId = apiResult.data?.request_id;
     if (requestId) {
-      console.log("STAKGRAPH SYNC START", {
+      console.log("[Sync] Request ID received", {
         requestId,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
-        repositoryUrl: repositoryUrl,
+        repositoryUrl,
       });
       try {
-        console.log("ABOUT TO SAVE INGEST REF ID", {
-          requestId,
-          workspaceId: swarm.workspaceId,
-          swarmId: swarm.id,
-        });
-
         const updatedSwarm = await saveOrUpdateSwarm({
           workspaceId: swarm.workspaceId,
           ingestRefId: requestId,
         });
 
-        console.log("STAKGRAPH SYNC START SAVED INGEST REF ID", {
+        console.log("[Sync] Saved ingest reference", {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
           savedIngestRefId: updatedSwarm?.ingestRefId,
-          swarmUpdatedAt: updatedSwarm?.updatedAt,
         });
       } catch (err) {
-        console.error("Failed to store ingestRefId for sync", err, {
+        console.error("[Sync] Failed to store ingestRefId", {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
+          error: err,
         });
-        // Return error instead of success
         return NextResponse.json(
           { success: false, message: "Failed to store sync reference", requestId },
           { status: 500 },
@@ -127,6 +152,13 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!apiResult.ok || !requestId) {
+      console.error("[Sync] Failed to start sync", {
+        workspaceId: swarm.workspaceId,
+        swarmId: swarm.id,
+        ok: apiResult.ok,
+        hasRequestId: !!requestId,
+        repositoryUrl,
+      });
       try {
         await db.repository.update({
           where: {
@@ -137,8 +169,16 @@ export async function POST(request: NextRequest) {
           },
           data: { status: RepositoryStatus.FAILED },
         });
+        console.log("[Sync] Repository status → FAILED", {
+          workspaceId: swarm.workspaceId,
+          repositoryUrl,
+        });
       } catch (e) {
-        console.error("Failed to mark repository FAILED after sync start error", e);
+        console.error("[Sync] Failed to update repository status", {
+          workspaceId: swarm.workspaceId,
+          repositoryUrl,
+          error: e,
+        });
       }
     }
 
@@ -146,7 +186,8 @@ export async function POST(request: NextRequest) {
       { success: apiResult.ok, status: apiResult.status, requestId },
       { status: apiResult.status },
     );
-  } catch {
+  } catch (error) {
+    console.error("[Sync] Unhandled error", { error });
     return NextResponse.json({ success: false, message: "Failed to sync" }, { status: 500 });
   }
 }

@@ -3,15 +3,21 @@
 import { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel } from "../artifacts";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
+  workspaceId?: string;
+  taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
+  isMobile?: boolean;
+  onTogglePreview?: () => void;
 }
 
-export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage, isMobile = false, onTogglePreview }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -58,40 +64,60 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
           setActiveTab(value as ArtifactType);
         }}
       >
-        <motion.div
-          className="border-b bg-background/80 backdrop-blur"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4 }}
-        >
-          <TabsList className="w-full flex">
-            {codeArtifacts.length > 0 && (
-              <TabsTrigger className="cursor-pointer" value="CODE">
-                Code / Files
-              </TabsTrigger>
-            )}
-            {browserArtifacts.length > 0 && (
-              <TabsTrigger className="cursor-pointer" value="BROWSER">
-                Live Preview
-              </TabsTrigger>
-            )}
-            {ideArtifacts.length > 0 && (
-              <TabsTrigger className="cursor-pointer" value="IDE">
-                IDE
-              </TabsTrigger>
-            )}
-            {graphArtifacts.length > 0 && (
-              <TabsTrigger className="cursor-pointer" value="GRAPH">
-                Graph
-              </TabsTrigger>
-            )}
-            {workflowArtifacts.length > 0 && (
-              <TabsTrigger className="cursor-pointer" value="WORKFLOW">
-                Workflow
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </motion.div>
+        {!isMobile && (
+          <motion.div
+            className="border-b bg-background/80 backdrop-blur"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            <TabsList className="w-full flex">
+              {codeArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="CODE">
+                  Code / Files
+                </TabsTrigger>
+              )}
+              {browserArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="BROWSER">
+                  Live Preview
+                </TabsTrigger>
+              )}
+              {ideArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="IDE">
+                  IDE
+                </TabsTrigger>
+              )}
+              {graphArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="GRAPH">
+                  Graph
+                </TabsTrigger>
+              )}
+              {workflowArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="WORKFLOW">
+                  Workflow
+                </TabsTrigger>
+              )}
+            </TabsList>
+          </motion.div>
+        )}
+        {isMobile && onTogglePreview && (
+          <motion.div
+            className="border-b bg-background/80 backdrop-blur px-3 py-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onTogglePreview}
+              className="gap-2"
+            >
+              <Monitor className="w-4 h-4" />
+              Back to Chat
+            </Button>
+          </motion.div>
+        )}
 
         <motion.div
           className="flex-1 overflow-hidden min-h-0"
@@ -116,7 +142,13 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               forceMount
               hidden={activeTab !== "BROWSER"}
             >
-              <BrowserArtifactPanel artifacts={browserArtifacts} onDebugMessage={onDebugMessage} />
+              <BrowserArtifactPanel
+                artifacts={browserArtifacts}
+                workspaceId={workspaceId}
+                taskId={taskId}
+                onDebugMessage={onDebugMessage}
+                isMobile={isMobile}
+              />
             </TabsContent>
           )}
           {ideArtifacts.length > 0 && (
@@ -126,7 +158,14 @@ export function ArtifactsPanel({ artifacts, onDebugMessage }: ArtifactsPanelProp
               forceMount
               hidden={activeTab !== "IDE"}
             >
-              <BrowserArtifactPanel artifacts={ideArtifacts} ide={true} onDebugMessage={onDebugMessage} />
+              <BrowserArtifactPanel
+                artifacts={ideArtifacts}
+                ide={true}
+                workspaceId={workspaceId}
+                taskId={taskId}
+                onDebugMessage={onDebugMessage}
+                isMobile={isMobile}
+              />
             </TabsContent>
           )}
           {graphArtifacts.length > 0 && (

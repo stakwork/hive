@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
+import { Monitor } from "lucide-react";
 import {
   ChatMessage,
   ChatRole,
@@ -27,6 +29,7 @@ import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useTheme } from "@/hooks/use-theme";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -38,8 +41,12 @@ export default function TaskChatPage() {
   const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
   const { toast } = useToast();
   const params = useParams();
-  const { id: workspaceId } = useWorkspace();
+  const { id: workspaceId, workspace } = useWorkspace();
   const { resolvedTheme } = useTheme();
+  const isMobile = useIsMobile();
+
+  // Fallback: use workspace.id if workspaceId (from context) is null
+  const effectiveWorkspaceId = workspaceId || workspace?.id;
 
   const { taskMode, setTaskMode } = useTaskMode();
 
@@ -53,6 +60,14 @@ export default function TaskChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [started, setStarted] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
+
+  // Debug logging
+  console.log('[TaskPage] Workspace context:', {
+    workspaceId,
+    workspaceObject: workspace,
+    effectiveWorkspaceId,
+    currentTaskId
+  });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,6 +81,7 @@ export default function TaskChatPage() {
   const [commitMessage, setCommitMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -760,6 +776,7 @@ export default function TaskChatPage() {
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
   const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
+  const browserArtifact = allArtifacts.find((a) => a.type === "BROWSER");
 
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
@@ -789,12 +806,21 @@ export default function TaskChatPage() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
-          className="h-[92vh] md:h-[97vh] flex"
+          className="h-[92vh] md:h-[97vh] flex overflow-hidden"
         >
           {taskMode === "agent" && hasNonFormArtifacts ? (
-            <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0 min-h-0 gap-2">
-              <ResizablePanel defaultSize={40} minSize={25}>
-                <div className="h-full min-h-0 min-w-0">
+            isMobile ? (
+              <div className="flex-1 min-w-0 flex flex-col">
+                {showPreview && browserArtifact ? (
+                  <ArtifactsPanel
+                    artifacts={[browserArtifact]}
+                    workspaceId={effectiveWorkspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                    isMobile={isMobile}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
+                  />
+                ) : (
                   <AgentChatArea
                     messages={messages}
                     onSend={handleSend}
@@ -808,16 +834,45 @@ export default function TaskChatPage() {
                     workspaceSlug={slug}
                     onCommit={handleCommit}
                     isCommitting={isGeneratingCommitInfo || isCommitting}
+                    showPreviewToggle={!!browserArtifact}
+                    showPreview={showPreview}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
                   />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={60} minSize={25}>
-                <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                )}
+              </div>
+            ) : (
+              <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
+                <ResizablePanel defaultSize={40} minSize={25}>
+                  <div className="h-full min-h-0 min-w-0">
+                    <AgentChatArea
+                      messages={messages}
+                      onSend={handleSend}
+                      inputDisabled={inputDisabled}
+                      isLoading={isLoading}
+                      logs={logs}
+                      pendingDebugAttachment={pendingDebugAttachment}
+                      onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                      workflowStatus={workflowStatus}
+                      taskTitle={taskTitle}
+                      workspaceSlug={slug}
+                      onCommit={handleCommit}
+                      isCommitting={isGeneratingCommitInfo || isCommitting}
+                    />
+                  </div>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={60} minSize={25}>
+                  <div className="h-full min-h-0 min-w-0">
+                    <ArtifactsPanel
+                      artifacts={allArtifacts}
+                      workspaceId={effectiveWorkspaceId || undefined}
+                      taskId={currentTaskId || undefined}
+                      onDebugMessage={handleDebugMessage}
+                    />
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )
           ) : taskMode === "agent" ? (
             <div className="flex-1 min-w-0">
               <AgentChatArea
@@ -836,9 +891,18 @@ export default function TaskChatPage() {
               />
             </div>
           ) : hasNonFormArtifacts ? (
-            <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0 min-h-0 gap-2">
-              <ResizablePanel defaultSize={40} minSize={25}>
-                <div className="h-full min-h-0 min-w-0">
+            isMobile ? (
+              <div className="flex-1 min-w-0 flex flex-col">
+                {showPreview && browserArtifact ? (
+                  <ArtifactsPanel
+                    artifacts={[browserArtifact]}
+                    workspaceId={effectiveWorkspaceId || undefined}
+                    taskId={currentTaskId || undefined}
+                    onDebugMessage={handleDebugMessage}
+                    isMobile={isMobile}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
+                  />
+                ) : (
                   <ChatArea
                     logs={logs}
                     messages={messages}
@@ -855,16 +919,48 @@ export default function TaskChatPage() {
                     taskTitle={taskTitle}
                     stakworkProjectId={stakworkProjectId}
                     workspaceSlug={slug}
+                    showPreviewToggle={!!browserArtifact}
+                    showPreview={showPreview}
+                    onTogglePreview={() => setShowPreview(!showPreview)}
                   />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={60} minSize={25}>
-                <div className="h-full min-h-0 min-w-0">
-                  <ArtifactsPanel artifacts={allArtifacts} onDebugMessage={handleDebugMessage} />
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                )}
+              </div>
+            ) : (
+              <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
+                <ResizablePanel defaultSize={40} minSize={25}>
+                  <div className="h-full min-h-0 min-w-0">
+                    <ChatArea
+                      logs={logs}
+                      messages={messages}
+                      onSend={handleSend}
+                      onArtifactAction={handleArtifactAction}
+                      inputDisabled={inputDisabled}
+                      isLoading={isLoading}
+                      hasNonFormArtifacts={hasNonFormArtifacts}
+                      isChainVisible={isChainVisible}
+                      lastLogLine={lastLogLine}
+                      pendingDebugAttachment={pendingDebugAttachment}
+                      onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                      workflowStatus={workflowStatus}
+                      taskTitle={taskTitle}
+                      stakworkProjectId={stakworkProjectId}
+                      workspaceSlug={slug}
+                    />
+                  </div>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={60} minSize={25}>
+                  <div className="h-full min-h-0 min-w-0">
+                    <ArtifactsPanel
+                      artifacts={allArtifacts}
+                      workspaceId={effectiveWorkspaceId || undefined}
+                      taskId={currentTaskId || undefined}
+                      onDebugMessage={handleDebugMessage}
+                    />
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )
           ) : (
             <div className="flex-1 min-w-0">
               <ChatArea

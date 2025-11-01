@@ -1,11 +1,13 @@
 import { useControlStore } from '@/stores/useControlStore'
 import { useDataStore } from '@/stores/useDataStore'
 import { useSimulationStore } from '@/stores/useSimulationStore'
-import { Billboard, Text } from '@react-three/drei'
+import { Billboard, Edges, RoundedBox, Text } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'
 import * as THREE from 'three'
-import { nodeSize } from '../Cubes/constants'
+
+
+const padding = 8
 
 // Helper function to distribute neighborhoods based on node_type positioning
 const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; name?: string }[], nodeTypes: string[]) => {
@@ -104,16 +106,30 @@ export const LayerLabels = () => {
         box.getSize(size)
         box.getCenter(geometricCenter)
 
-        const width = size.x + nodeSize
-        const height = size.y + nodeSize
-        const depth = size.z + nodeSize
+        // const width = size.x + nodeSize
+        // const height = size.y + nodeSize
+        // const depth = size.z + nodeSize
 
         return (
-          <Billboard key={nodeTypeId} position={geometricCenter.toArray()}>
-            <mesh>
-
-              <Text fontSize={45} color="lightgrey" anchorX="center" anchorY="middle">{name}</Text>
-            </mesh>
+          <Billboard key={nodeTypeId} position={[0, geometricCenter.y + 40, 0]}>
+            {/* White border background */}
+            <RoundedBox args={[name.length * 25 + 10, 68, 10]} radius={8} smoothness={4} position={[0, 0, -0.1]}>
+              <meshBasicMaterial color="white" transparent opacity={0} />
+              <Edges color="grey" opacity={0.5} transparent />
+            </RoundedBox>
+            {/* Dark background */}
+            {/* <RoundedBox args={[name.length * 25, 60, 6]} radius={6} smoothness={4}>
+              <meshBasicMaterial color="rgba(0, 0, 0, 0.8)" transparent />
+            </RoundedBox> */}
+            <Text
+              fontSize={35}
+              color="grey"
+              anchorX="center"
+              anchorY="middle"
+              position={[0, 0, -0.1]}
+            >
+              {name}
+            </Text>
           </Billboard>
         )
       })}

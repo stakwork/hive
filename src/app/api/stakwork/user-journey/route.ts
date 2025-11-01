@@ -23,6 +23,7 @@ async function callStakwork(
   accessToken: string | null,
   username: string | null,
   workspaceId: string,
+  taskId: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -43,6 +44,7 @@ async function callStakwork(
       poolName,
       repo2graph_url: repo2GraphUrl,
       workspaceId,
+      task_id: taskId,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
@@ -150,21 +152,8 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.poolName || swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
-    let stakworkData = null;
-
-    stakworkData = await callStakwork(
-      message,
-      swarmUrl,
-      swarmSecretAlias,
-      poolName,
-      repo2GraphUrl,
-      accessToken,
-      username,
-      workspaceId,
-    );
-
-    // Create a task to track this user journey test
-    // This allows filtering, viewing, and managing E2E tests alongside other tasks
+    // Create a task FIRST to track this user journey test
+    // This allows us to send the task ID to Stakwork so webhooks can update the task
     // The test code itself is stored in the graph; this task tracks metadata and status
     let task = null;
     try {
@@ -180,29 +169,21 @@ export async function POST(request: NextRequest) {
         select: { id: true, repositoryUrl: true, branch: true },
       });
 
-      // Extract stakworkProjectId from response if Stakwork succeeded
-      const stakworkProjectId = (stakworkData?.success && stakworkData?.data)
-        ? (stakworkData.data.project_id || stakworkData.data.id || null)
-        : null;
-
-      // Determine workflow status based on Stakwork success
-      const workflowStatus = stakworkProjectId ? "PENDING" : null;
-
-      // Create task record
+      // Create task record (stakworkProjectId will be updated after Stakwork call)
       task = await db.task.create({
         data: {
           title: taskTitle,
           description: description || `User journey test: ${taskTitle}`,
           workspaceId: workspace.id,
           sourceType: TaskSourceType.USER_JOURNEY,
-          status: "IN_PROGRESS",
-          workflowStatus: workflowStatus,
+          status: "TODO",
+          workflowStatus: "PENDING",
           priority: "MEDIUM",
           testFilePath,
           testFileUrl: repository?.repositoryUrl
             ? `${repository.repositoryUrl}/blob/${repository.branch || 'main'}/${testFilePath}`
             : null,
-          stakworkProjectId: stakworkProjectId ? parseInt(String(stakworkProjectId)) : null,
+          stakworkProjectId: null,
           repositoryId: repository?.id || null,
           createdById: userId,
           updatedById: userId,
@@ -217,12 +198,61 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      if (!stakworkProjectId) {
-        console.warn("Task created without stakworkProjectId (Stakwork call failed)");
+      // Save test code in ChatMessage for immediate replay access
+      // This makes the test code available instantly without waiting for Stakwork processing
+      // Using ASSISTANT role since test code is system-generated content
+      try {
+        await db.chatMessage.create({
+          data: {
+            taskId: task.id,
+            role: "ASSISTANT",
+            message: message, // Store the test code
+            timestamp: new Date(),
+          },
+        });
+      } catch (error) {
+        console.error("Error saving test code to ChatMessage:", error);
+        // Non-fatal - task was still created successfully
       }
     } catch (error) {
       console.error("Error creating task for user journey:", error);
-      // Continue anyway - we still want to return the Stakwork response
+      return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
+    }
+
+    // Now call Stakwork with the task ID so webhooks can update the task
+    let stakworkData = null;
+    stakworkData = await callStakwork(
+      message,
+      swarmUrl,
+      swarmSecretAlias,
+      poolName,
+      repo2GraphUrl,
+      accessToken,
+      username,
+      workspaceId,
+      task.id,
+    );
+
+    // Update task with stakworkProjectId if Stakwork succeeded
+    try {
+      const stakworkProjectId = (stakworkData?.success && stakworkData?.data)
+        ? (stakworkData.data.project_id || stakworkData.data.id || null)
+        : null;
+
+      if (stakworkProjectId) {
+        await db.task.update({
+          where: { id: task.id },
+          data: {
+            stakworkProjectId: parseInt(String(stakworkProjectId)),
+          },
+        });
+        task.stakworkProjectId = parseInt(String(stakworkProjectId));
+      } else {
+        console.warn("Task created without stakworkProjectId (Stakwork call failed)");
+      }
+    } catch (error) {
+      console.error("Error updating task with stakworkProjectId:", error);
+      // Non-fatal - task was still created successfully
     }
 
     return NextResponse.json(

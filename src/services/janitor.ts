@@ -21,6 +21,7 @@ import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
 import { config as envConfig } from "@/lib/env";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -142,6 +143,13 @@ export async function createJanitorRun(
                   name: true,
                   id: true,
                 }
+              },
+              repositories: {
+                select: {
+                  id: true,
+                  repositoryUrl: true,
+                  branch: true,
+                }
               }
             }
           }
@@ -171,13 +179,35 @@ export async function createJanitorRun(
     const swarmUrl = swarm?.swarmUrl || "";
     const swarmSecretAlias = swarm?.swarmSecretAlias || "";
 
-    // Prepare variables - include janitorType, webhookUrl, swarmUrl, and swarmSecretAlias
+    // Determine which user's credentials to use
+    // For manual triggers: use the triggering userId
+    // For cron triggers: use the workspace ownerId
+    const credentialUserId = userId || janitorRun.janitorConfig.workspace.ownerId;
+
+    // Fetch GitHub username and PAT using helper function
+    const githubCreds = await getGithubUsernameAndPAT(credentialUserId, workspaceSlug);
+
+    if (!githubCreds) {
+      console.warn(`[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`);
+    }
+
+    // Get repository URL from first repository
+    const repositoryUrl = janitorRun.janitorConfig.workspace.repositories[0]?.repositoryUrl || null;
+
+    if (!repositoryUrl) {
+      console.warn(`[Janitor] No repository linked to workspace: ${workspaceSlug}`);
+    }
+
+    // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, and GitHub context
     const vars = {
       janitorType: janitorType,
       webhookUrl: webhookUrl,
       swarmUrl: swarmUrl,
       swarmSecretAlias: swarmSecretAlias,
       workspaceId: workspaceId,
+      repositoryUrl: repositoryUrl,
+      username: githubCreds?.username || null,
+      pat: githubCreds?.token || null,
     };
 
     // Create Stakwork project using the stakworkRequest method (following existing pattern)

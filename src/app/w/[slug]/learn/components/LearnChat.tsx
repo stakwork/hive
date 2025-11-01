@@ -6,12 +6,14 @@ import { LearnSidebar } from "./LearnSidebar";
 import { useStreamProcessor } from "@/lib/streaming";
 import { learnToolProcessors, ASK_QUESTION_TOOL, type AskQuestionResponse } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface LearnChatProps {
   workspaceSlug: string;
 }
 
 export function LearnChat({ workspaceSlug }: LearnChatProps) {
+  const isMobile = useIsMobile();
   const [mode, setMode] = useState<"learn" | "chat" | "mic">("chat");
   const [messages, setMessages] = useState<LearnMessage[]>([
     {
@@ -147,7 +149,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
 
   return (
     <div className="relative h-full">
-      <div className="h-full pr-80">
+      <div className={isMobile ? "h-full" : "h-full pr-80"}>
         <LearnChatArea
           messages={messages}
           onSend={handleSend}
@@ -160,14 +162,16 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           workspaceSlug={workspaceSlug}
         />
       </div>
-      <div className="fixed top-1 right-1 h-full">
-        <LearnSidebar
-          workspaceSlug={workspaceSlug}
-          onPromptClick={handlePromptClick}
-          currentQuestion={currentInput.trim() || undefined}
-          refetchTrigger={refetchTrigger}
-        />
-      </div>
+      {!isMobile && (
+        <div className="fixed top-1 right-1 h-full">
+          <LearnSidebar
+            workspaceSlug={workspaceSlug}
+            onPromptClick={handlePromptClick}
+            currentQuestion={currentInput.trim() || undefined}
+            refetchTrigger={refetchTrigger}
+          />
+        </div>
+      )}
     </div>
   );
 }
