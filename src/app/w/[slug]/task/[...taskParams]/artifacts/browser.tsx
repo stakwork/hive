@@ -12,8 +12,6 @@ import {
   Target,
   FlaskConical,
   Bug,
-  Play,
-  Pause,
   List,
   CheckCircle2,
   ArrowLeft,
@@ -397,29 +395,6 @@ export function BrowserArtifactPanel({
                       </TooltipProvider>
                     )}
 
-                    {(generatedPlaywrightTest || externalTestCode) && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleReplayToggle}
-                              className={`h-8 w-8 p-0 ${
-                                isPlaywrightReplaying
-                                  ? "bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:hover:bg-orange-800"
-                                  : "hover:bg-accent hover:text-accent-foreground"
-                              }`}
-                            >
-                              {isPlaywrightReplaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            {isPlaywrightReplaying ? "Stop replay" : "Start replay"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
                     {isSetup && isRecorderReady && (
                       <TooltipProvider>
                         <Tooltip>
@@ -519,6 +494,7 @@ export function BrowserArtifactPanel({
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
                     title={externalTestTitle || undefined}
+                    onReplayToggle={(generatedPlaywrightTest || externalTestCode) ? handleReplayToggle : undefined}
                   />
                 </div>
               )}
