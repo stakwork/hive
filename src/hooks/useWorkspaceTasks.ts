@@ -21,7 +21,12 @@ export const saveCurrentPage = (workspaceId: string, page: number) => {
 export const getStoredPage = (workspaceId: string): number => {
   if (typeof window !== "undefined") {
     const stored = window.sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-    return stored ? parseInt(stored, 10) : 1;
+    if (stored) {
+      const parsed = parseInt(stored, 10);
+      // Return default if parsing resulted in NaN (corrupted data)
+      return isNaN(parsed) ? 1 : parsed;
+    }
+    return 1;
   }
   return 1;
 };
