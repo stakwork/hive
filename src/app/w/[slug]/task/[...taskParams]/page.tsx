@@ -4,8 +4,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui/use-toast";
-import { Button } from "@/components/ui/button";
-import { Monitor } from "lucide-react";
 import {
   ChatMessage,
   ChatRole,
@@ -61,11 +59,11 @@ export default function TaskChatPage() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
 
   // Debug logging
-  console.log('[TaskPage] Workspace context:', {
+  console.log("[TaskPage] Workspace context:", {
     workspaceId,
     workspaceObject: workspace,
     effectiveWorkspaceId,
-    currentTaskId
+    currentTaskId,
   });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
@@ -340,7 +338,7 @@ export default function TaskChatPage() {
                 headers: {
                   "Content-Type": "application/json",
                 },
-              }
+              },
             );
 
             if (podResponse.ok) {
@@ -725,14 +723,15 @@ export default function TaskChatPage() {
       // Close modal
       setShowCommitModal(false);
 
-      // Display success message
-      toast({
-        title: "Success",
-        description: "Changes committed and pushed successfully!",
-      });
-
-      // Save PR URLs as PULL_REQUEST artifacts
+      // Check if PRs were created
       if (result.data?.prs && Object.keys(result.data.prs).length > 0) {
+        // Display success message
+        toast({
+          title: "Success",
+          description: "Changes committed and pushed successfully!",
+        });
+
+        // Save PR URLs as PULL_REQUEST artifacts
         const artifacts = Object.entries(result.data.prs).map(([repo, prUrl]) =>
           createArtifact({
             id: generateUniqueId(),
@@ -743,7 +742,7 @@ export default function TaskChatPage() {
               url: prUrl as string,
               status: "open",
             } as PullRequestContent,
-          })
+          }),
         );
 
         // Save the PR artifacts as an assistant message
@@ -776,6 +775,13 @@ export default function TaskChatPage() {
           });
           setMessages((msgs) => [...msgs, newMessage]);
         }
+      } else {
+        // No PRs were created - show error
+        toast({
+          title: "Error",
+          description: "Changes were pushed but no pull requests were created.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error committing:", error);
