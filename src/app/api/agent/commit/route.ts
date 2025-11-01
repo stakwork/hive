@@ -75,6 +75,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: "Commit successful (mock)" }, { status: 200 });
     }
 
+    // Mock PR response for testing when CUSTOM_GOOSE_URL is set
+    if (process.env.CUSTOM_GOOSE_URL) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Commit and push successful",
+          data: {
+            prs: {
+              "stakwork/hive": "https://github.com/stakwork/hive/pull/1634",
+            },
+          },
+        },
+        { status: 200 },
+      );
+    }
+
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
 
