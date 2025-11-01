@@ -165,12 +165,25 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
     return;
   }
 
-  console.log(`   Found ${tests.length} E2E tests in graph`);
+  console.log(`   Found ${tests.length} E2E test cases in graph`);
   stats.testsFound += tests.length;
+
+  // Group tests by file path to create one task per file (matching pre-PR-1498 behavior)
+  const testsByFile = new Map<string, E2eTestNode>();
+  tests.forEach(test => {
+    const filePath = test.properties.file;
+    // Only keep the first test case we encounter for each file
+    if (!testsByFile.has(filePath)) {
+      testsByFile.set(filePath, test);
+    }
+  });
+
+  const uniqueTests = Array.from(testsByFile.values());
+  console.log(`   Grouped into ${uniqueTests.length} unique test files`);
 
   // Group tests by test_kind for analysis
   const testsByKind: Record<string, E2eTestNode[]> = {};
-  tests.forEach(test => {
+  uniqueTests.forEach(test => {
     const kind = test.properties.test_kind || 'unknown';
     if (!testsByKind[kind]) {
       testsByKind[kind] = [];
@@ -183,14 +196,13 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
   // Log test breakdown by kind
   console.log(`   Test breakdown by kind:`);
   Object.entries(testsByKind).forEach(([kind, tests]) => {
-    console.log(`     - ${kind}: ${tests.length} tests`);
+    console.log(`     - ${kind}: ${tests.length} files`);
   });
 
   if (options.verbose) {
-    console.log(`\n   📝 Detailed test list from graph:`);
-    tests.forEach((test, index) => {
-      console.log(`     ${index + 1}. ${test.properties.name}`);
-      console.log(`        File: ${test.properties.file}`);
+    console.log(`\n   📝 Detailed test file list:`);
+    uniqueTests.forEach((test, index) => {
+      console.log(`     ${index + 1}. ${test.properties.file}`);
       console.log(`        Kind: ${test.properties.test_kind || 'unknown'}`);
       console.log(`        Ref ID: ${test.ref_id}`);
     });
@@ -204,37 +216,35 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
     console.log(`              GitHub URLs will not be generated for tasks`);
   }
 
-  console.log(`\n   Processing tests...`);
+  console.log(`\n   Processing test files...`);
 
-  // Process each test
-  for (const test of tests) {
+  // Process each unique test file
+  for (const test of uniqueTests) {
     try {
-      const testName = test.properties.name;
       const testFilePath = test.properties.file;
+
+      // Generate title from file name (not individual test name)
+      const fileName = testFilePath.split('/').pop()?.replace(/\.spec\.ts$/, '').replace(/\.test\.ts$/, '') || 'E2E Test';
+      const title = fileName;
 
       // Log test being processed (verbose mode)
       if (options.verbose) {
-        console.log(`\n   📝 Processing: ${testName}`);
-        console.log(`      File: ${testFilePath}`);
+        console.log(`\n   📝 Processing file: ${testFilePath}`);
+        console.log(`      Title: ${title}`);
         console.log(`      Kind: ${test.properties.test_kind || 'unknown'}`);
         console.log(`      Ref ID: ${test.ref_id}`);
       }
 
-      // Generate title from test name (do this before duplicate check)
-      const title = testName || testFilePath.split('/').pop()?.replace('.spec.ts', '') || 'E2E Test';
-
-      // Check if task already exists for this specific test case
-      // We check both testFilePath AND title to create one task per test case,
-      // not just one task per file
+      // Check if task already exists for this file
+      // We only check testFilePath to create one task per file (pre-PR-1498 behavior)
       if (options.verbose) {
-        console.log(`      🔍 Checking for duplicate with testFilePath: "${testFilePath}" AND title: "${title}"`);
+        console.log(`      🔍 Checking for duplicate with testFilePath: "${testFilePath}"`);
       }
 
       const existingTask = await prisma.task.findFirst({
         where: {
           workspaceId: workspace.id,
           testFilePath: testFilePath,
-          title: title,
           deleted: false,
         },
         select: {
@@ -249,7 +259,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
       if (existingTask) {
         const status = options.verbose ? `exists with status=${existingTask.status}` : 'exists';
-        console.log(`   ⏭️  Skipped (${status}): ${testName}`);
+        console.log(`   ⏭️  Skipped (${status}): ${title}`);
         if (options.verbose) {
           console.log(`      ✅ Found existing task:`);
           console.log(`         Task ID: ${existingTask.id}`);
@@ -314,7 +324,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
       // Create task (or just log in dry-run mode)
       if (options.dryRun) {
-        console.log(`   🔍 Would create: ${testName}`);
+        console.log(`   🔍 Would create: ${title}`);
         if (options.verbose) {
           console.log(`      (Dry-run mode - no database changes)`);
         }
@@ -325,7 +335,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         await prisma.task.create({
           data: {
             title,
-            description: `E2E test: ${testName}`,
+            description: `E2E test file: ${testFilePath}`,
             workspaceId: workspace.id,
             sourceType: TaskSourceType.USER_JOURNEY,
             status: "DONE",
@@ -338,20 +348,18 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
             updatedById: ownerId,
           },
         });
-        console.log(`   ✅ Created: ${testName}`);
+        console.log(`   ✅ Created: ${title}`);
       }
       stats.tasksCreated++;
 
     } catch (error) {
       // Enhanced error logging
-      console.error(`\n   ❌ ERROR creating task for: ${test.properties.name}`);
-      console.error(`      File: ${test.properties.file}`);
+      console.error(`\n   ❌ ERROR creating task for file: ${test.properties.file}`);
       console.error(`      Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
       console.error(`      Error message: ${error instanceof Error ? error.message : String(error)}`);
 
       // Log the problematic test data
       console.error(`\n      🔍 Test data that caused error:`);
-      console.error(`         testName: ${test.properties.name || 'undefined'}`);
       console.error(`         testFilePath: ${test.properties.file || 'undefined'}`);
       console.error(`         testFilePath length: ${test.properties.file?.length || 0} chars`);
       console.error(`         test_kind: ${test.properties.test_kind || 'undefined'}`);
