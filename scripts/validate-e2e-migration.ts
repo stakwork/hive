@@ -130,7 +130,20 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
     decryptedApiKey
   );
 
-  console.log(`   Found ${graphTests.length} tests in graph`);
+  console.log(`   Found ${graphTests.length} test cases in graph`);
+
+  // Group tests by file path (matching migration script behavior)
+  const testsByFile = new Map<string, E2eTestNode>();
+  graphTests.forEach(test => {
+    const filePath = test.properties.file;
+    // Only keep the first test case we encounter for each file
+    if (!testsByFile.has(filePath)) {
+      testsByFile.set(filePath, test);
+    }
+  });
+
+  const uniqueTestFiles = Array.from(testsByFile.values());
+  console.log(`   Grouped into ${uniqueTestFiles.length} unique test files`);
 
   // Fetch tasks from database
   console.log(`\n💾 Fetching tasks from database...`);
@@ -154,7 +167,7 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
 
   // Group tests by test_kind
   const testsByKind: Record<string, E2eTestNode[]> = {};
-  graphTests.forEach(test => {
+  uniqueTestFiles.forEach(test => {
     const kind = test.properties.test_kind || 'unknown';
     if (!testsByKind[kind]) {
       testsByKind[kind] = [];
@@ -162,11 +175,11 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
     testsByKind[kind].push(test);
   });
 
-  console.log(`\n📈 Test Breakdown by Kind:`);
+  console.log(`\n📈 Test File Breakdown by Kind:`);
   Object.entries(testsByKind)
     .sort((a, b) => b[1].length - a[1].length)
     .forEach(([kind, tests]) => {
-      console.log(`   ${kind}: ${tests.length} tests`);
+      console.log(`   ${kind}: ${tests.length} files`);
     });
 
   // Create lookup map for database tasks
@@ -177,21 +190,22 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
     }
   });
 
-  // Find missing tests
+  // Find missing test files
   console.log(`\n🔎 Analysis:`);
-  console.log(`   Tests in graph:    ${graphTests.length}`);
-  console.log(`   Tasks in database: ${dbTasks.length}`);
-  console.log(`   Missing:           ${Math.max(0, graphTests.length - dbTasks.length)}`);
+  console.log(`   Test files in graph: ${uniqueTestFiles.length}`);
+  console.log(`   Tasks in database:   ${dbTasks.length}`);
+  console.log(`   Missing:             ${Math.max(0, uniqueTestFiles.length - dbTasks.length)}`);
 
-  if (graphTests.length > dbTasks.length) {
-    console.log(`\n❌ Missing Tests (in graph but not in database):\n`);
+  if (uniqueTestFiles.length > dbTasks.length) {
+    console.log(`\n❌ Missing Test Files (in graph but not in database):\n`);
 
-    const missingTests = graphTests.filter(test => {
+    const missingTestFiles = uniqueTestFiles.filter(test => {
       return !dbTasksByPath.has(test.properties.file);
     });
 
-    missingTests.forEach((test, index) => {
-      console.log(`   ${index + 1}. ${test.properties.name}`);
+    missingTestFiles.forEach((test, index) => {
+      const fileName = test.properties.file.split('/').pop() || test.properties.file;
+      console.log(`   ${index + 1}. ${fileName}`);
       console.log(`      File: ${test.properties.file}`);
       console.log(`      Kind: ${test.properties.test_kind || 'unknown'}`);
       console.log(`      Ref ID: ${test.ref_id}`);
@@ -201,26 +215,26 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
     // Analyze why they might be missing
     console.log(`\n📋 Potential Issues:`);
     const missingByKind: Record<string, number> = {};
-    missingTests.forEach(test => {
+    missingTestFiles.forEach(test => {
       const kind = test.properties.test_kind || 'unknown';
       missingByKind[kind] = (missingByKind[kind] || 0) + 1;
     });
 
     Object.entries(missingByKind).forEach(([kind, count]) => {
-      console.log(`   - ${count} ${kind} tests missing`);
+      console.log(`   - ${count} ${kind} test files missing`);
     });
 
     if (!workspace.repositories[0]) {
       console.log(`   - No repository configured (GitHub URLs cannot be generated)`);
     }
-  } else if (dbTasks.length > graphTests.length) {
-    console.log(`\n⚠️  More tasks in database than tests in graph!`);
+  } else if (dbTasks.length > uniqueTestFiles.length) {
+    console.log(`\n⚠️  More tasks in database than test files in graph!`);
     console.log(`   This could indicate:`);
     console.log(`   - Tests were deleted from the graph`);
     console.log(`   - Tests were manually created via recording`);
     console.log(`   - Tests were moved/renamed in the graph`);
   } else {
-    console.log(`\n✅ All graph tests are migrated to database!`);
+    console.log(`\n✅ All graph test files are migrated to database!`);
   }
 
   // Show detailed comparison
@@ -228,16 +242,18 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
   console.log(`📝 Detailed Comparison`);
   console.log(`${'='.repeat(80)}\n`);
 
-  console.log(`Graph Tests:`);
-  graphTests.forEach((test, index) => {
+  console.log(`Graph Test Files:`);
+  uniqueTestFiles.forEach((test, index) => {
     const inDb = dbTasksByPath.has(test.properties.file);
     const status = inDb ? '✅' : '❌';
-    console.log(`   ${status} ${index + 1}. ${test.properties.name}`);
+    const fileName = test.properties.file.split('/').pop() || test.properties.file;
+    console.log(`   ${status} ${index + 1}. ${fileName}`);
     console.log(`      Path: ${test.properties.file}`);
     console.log(`      Kind: ${test.properties.test_kind || 'unknown'}`);
     if (inDb) {
       const task = dbTasksByPath.get(test.properties.file)!;
       console.log(`      Task ID: ${task.id}`);
+      console.log(`      Task Title: ${task.title}`);
       console.log(`      Status: ${task.status} / ${task.workflowStatus || 'N/A'}`);
     }
     console.log();
