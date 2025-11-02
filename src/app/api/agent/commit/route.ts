@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
       url: repo.repositoryUrl,
       commit_name: commitMessage,
       branch_name: branchName,
+      base_branch: repo.branch,
     }));
 
     const commitPayload = {
