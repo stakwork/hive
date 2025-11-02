@@ -12,13 +12,11 @@ interface ApiResponse {
 }
 
 interface UseGraphPollingOptions {
-  endpoint?: string;
   enabled?: boolean;
   interval?: number;
 }
 
 export function useGraphPolling({
-  endpoint: propEndpoint,
   enabled = false,
   interval = 3000
 }: UseGraphPollingOptions = {}) {
@@ -27,7 +25,8 @@ export function useGraphPolling({
   const [isPollingActive, setIsPollingActive] = useState(false);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
-  const dataInitial = useDataStore((s) => s.dataInitial);
+
+
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRequestInProgress = useRef<boolean>(false);
@@ -38,6 +37,8 @@ export function useGraphPolling({
 
     if (!workspaceId || !enabled || isPollingRequestInProgress.current) return;
 
+    const { dataInitial } = useDataStore.getState();
+
     // Mark request as in progress
     isPollingRequestInProgress.current = true;
     setIsPollingActive(true);
@@ -47,10 +48,11 @@ export function useGraphPolling({
 
     try {
       // Use graph/search as base endpoint for polling
-      let pollingEndpoint = propEndpoint || "graph/search?limit=20&top_node_count=20";
+      let pollingEndpoint = "/graph/search/latest?limit=1000&top_node_count=500";
+
 
       // Add start_date_added_to_graph parameter if we have nodes (use latest node's date)
-      const latestNode = dataInitial?.nodes?.[0]; // Nodes are sorted by date_added_to_graph
+      const latestNode = dataInitial?.nodes?.at(-1); // Nodes are sorted by date_added_to_graph
       if (latestNode?.date_added_to_graph) {
         const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
         pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
@@ -96,7 +98,7 @@ export function useGraphPolling({
       setIsPollingActive(false);
       abortControllerRef.current = null;
     }
-  }, [workspaceId, addNewNode, propEndpoint, enabled, dataInitial]);
+  }, [workspaceId, addNewNode, enabled]);
 
   // Start polling
   const startPolling = useCallback(() => {
@@ -137,14 +139,14 @@ export function useGraphPolling({
 
   // Start polling when enabled and data is available
   useEffect(() => {
-    if (enabled && dataInitial?.nodes && dataInitial.nodes.length > 0 && !isPolling) {
+    if (enabled && !isPolling) {
       const timer = setTimeout(() => {
         startPolling();
-      }, 1000);
+      }, 3000);
 
       return () => clearTimeout(timer);
     }
-  }, [enabled, dataInitial, isPolling, startPolling]);
+  }, [enabled, isPolling, startPolling]);
 
   // Stop polling when disabled
   useEffect(() => {
