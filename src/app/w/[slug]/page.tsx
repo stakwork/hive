@@ -27,7 +27,7 @@ export default function DashboardPage() {
     <div className="h-full flex flex-col">
       <SwarmSetupHandler onServicesStarted={setServicesStarted} />
 
-      {showDashboard && <Dashboard setupInProgress={!setupCompleted} />}
+      {showDashboard && <Dashboard />}
     </div>
   );
 }
