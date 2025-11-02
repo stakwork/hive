@@ -48,7 +48,7 @@ export function useGraphPolling({
 
     try {
       // Use graph/search as base endpoint for polling
-      let pollingEndpoint = "/graph/search/latest?limit=1000&top_node_count=500";
+      let pollingEndpoint = "/graph/search/latest?skip_cache=true&limit=1000&top_node_count=500";
 
 
       // Add start_date_added_to_graph parameter if we have nodes (use latest node's date)
