@@ -74,6 +74,9 @@ function FeatureRow({
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
       </TableCell>
+      <TableCell className="w-[150px] text-muted-foreground text-sm">
+        {feature.createdBy?.name || "Unknown"}
+      </TableCell>
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu
           actions={[
@@ -561,6 +564,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
+                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -578,6 +582,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     </TableCell>
                     <TableCell className="w-[150px] text-right">
                       <Skeleton className="h-4 w-24 ml-auto" />
+                    </TableCell>
+                    <TableCell className="w-[150px]">
+                      <Skeleton className="h-4 w-32" />
                     </TableCell>
                     <TableCell className="w-[50px]"></TableCell>
                   </TableRow>
@@ -726,13 +733,14 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       align="right"
                     />
                   </TableHead>
+                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {features.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-32 text-center">
+                    <TableCell colSpan={6} className="h-32 text-center">
                       <p className="text-muted-foreground">No features match your filters</p>
                     </TableCell>
                   </TableRow>

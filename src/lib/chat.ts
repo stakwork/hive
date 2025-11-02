@@ -83,6 +83,12 @@ export interface WorkflowContent {
   projectId: string;
 }
 
+export interface PullRequestContent {
+  repo: string;
+  url: string;
+  status: string;
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?:
@@ -93,12 +99,12 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | LongformContent
     | BugReportContent
     | GraphContent
-    | WorkflowContent;
+    | WorkflowContent
+    | PullRequestContent;
 }
 
-export interface Attachment extends PrismaAttachment {
-  // No additional fields needed, using Prisma type as-is
-}
+// Using Prisma Attachment type directly (no additional fields needed)
+export type Attachment = PrismaAttachment;
 
 export interface ChatMessage extends Omit<PrismaChatMessage, "contextTags" | "artifacts" | "attachments"> {
   contextTags?: ContextTag[];
@@ -150,7 +156,8 @@ export function createArtifact(data: {
     | LongformContent
     | BugReportContent
     | GraphContent
-    | WorkflowContent;
+    | WorkflowContent
+    | PullRequestContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {
