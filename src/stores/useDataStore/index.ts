@@ -138,7 +138,7 @@ export const useDataStore = create<DataStore>()(
       const normalizedLinksMap = linksNormalized || new Map()
       const nodeLinksNormalized: Record<string, string[]> = existingNodeLinksNormalized || {}
 
-      const nodesFilteredByFilters = data.nodes
+      const nodesFilteredByFilters = data.nodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
       const newNodes: Node[] = []
 
       nodesFilteredByFilters.forEach((node) => {

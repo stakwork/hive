@@ -1,15 +1,14 @@
 "use client";
 
-import { useGraphPolling } from "@/hooks/useGraphPolling";
+import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
+import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
+import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
-import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
-import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
-import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 
 // --- TYPE DEFINITIONS ---
 
@@ -46,8 +45,6 @@ interface GraphComponentProps {
 
 export const GraphComponent = ({
   endpoint: propEndpoint,
-  title = "Code Universe",
-  enablePolling = false,
   enableRotation = false,
   className,
   height = "h-full",
@@ -61,15 +58,6 @@ export const GraphComponent = ({
   const setSchemas = useSchemaStore((s) => s.setSchemas);
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
-
-  // Use polling hook only if enabled
-  const { isPolling, isPollingActive } = useGraphPolling({
-    endpoint: propEndpoint,
-    enabled: enablePolling
-  });
-
-  console.log("isPolling", isPolling);
-  console.log("isPollingActive", isPollingActive);
 
 
   useEffect(() => {
@@ -101,6 +89,7 @@ export const GraphComponent = ({
         const data: ApiResponse = await response.json();
         if (!data.success) throw new Error("Failed to fetch nodes data");
         if (data.data?.nodes && data.data.nodes.length > 0) {
+
           addNewNode({
             nodes: data.data.nodes.map(node => ({
               ...node,
