@@ -7,6 +7,7 @@ import type { ChatMessage } from "@/lib/chat";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { StreamingMessage, StreamErrorBoundary } from "@/components/streaming";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { PullRequestArtifact } from "../artifacts/pull-request";
 import { FINAL_ANSWER_ID } from "../lib/streaming-config";
 
 interface AgentChatMessageProps {
@@ -35,6 +36,9 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
 
   // Show "Thinking..." ONLY if streaming but no visible content yet (no tool calls, no text)
   const showThinking = isAgentStreamingMessage(message) && message.isStreaming && !hasVisibleContent && !isUser;
+
+  // Check if message is ChatMessage with artifacts
+  const chatMessage = !isAgentStreamingMessage(message) ? message as ChatMessage : null;
 
   return (
     <motion.div
@@ -69,6 +73,19 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
           )}
         </div>
       </div>
+
+      {/* Render PULL_REQUEST artifacts */}
+      {chatMessage?.artifacts
+        ?.filter((a) => a.type === "PULL_REQUEST")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PullRequestArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
     </motion.div>
   );
 }
