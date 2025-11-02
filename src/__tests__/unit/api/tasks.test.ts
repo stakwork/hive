@@ -490,7 +490,7 @@ describe("POST /api/tasks - Unit Tests", () => {
     });
 
     const response = await POST(request);
-    const data = await response.json();
+     await response.json();
 
     expect(response.status).toBe(201);
     expect(db.task.create).toHaveBeenCalledWith({
