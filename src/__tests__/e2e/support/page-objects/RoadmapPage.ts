@@ -27,6 +27,14 @@ export class RoadmapPage {
   }
 
   /**
+   * Navigate to roadmap page via sidebar
+   */
+  async navigateViaNavigation(): Promise<void> {
+    await this.page.locator(selectors.navigation.roadmapLink).click();
+    await this.page.waitForURL(/\/w\/.*\/roadmap/, { timeout: 10000 });
+  }
+
+  /**
    * Create a new feature by typing title and pressing Enter
    */
   async createFeature(title: string): Promise<string> {

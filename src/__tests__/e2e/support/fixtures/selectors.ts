@@ -14,6 +14,7 @@ export const selectors = {
   // Navigation
   navigation: {
     settingsButton: '[data-testid="settings-button"]',
+    graphLink: '[data-testid="nav-graph"]',
     tasksLink: '[data-testid="nav-tasks"]',
     dashboardLink: '[data-testid="nav-dashboard"]',
     insightsLink: '[data-testid="nav-insights"]',
@@ -29,6 +30,7 @@ export const selectors = {
     dashboard: '[data-testid="page-title"]:has-text("Dashboard")',
     tasks: '[data-testid="page-title"]:has-text("Tasks")',
     insights: '[data-testid="page-title"]:has-text("Insights")',
+    roadmap: '[data-testid="page-title"]:has-text("Roadmap")',
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
   },

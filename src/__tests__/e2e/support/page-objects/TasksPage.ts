@@ -30,6 +30,14 @@ export class TasksPage {
   }
 
   /**
+   * Navigate to tasks page via sidebar
+   */
+  async navigateViaNavigation(): Promise<void> {
+    await this.page.locator(selectors.navigation.tasksLink).click();
+    await this.page.waitForURL(/\/w\/.*\/tasks/, { timeout: 10000 });
+  }
+
+  /**
    * Verify we're on the tasks page
    */
   async verifyOnTasksPage(): Promise<void> {
