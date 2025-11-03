@@ -95,10 +95,10 @@ export const authOptions: NextAuthOptions = {
           // Create or find the mock user in the database
           const existingUser = user.email
             ? await db.user.findUnique({
-                where: {
-                  email: user.email,
-                },
-              })
+              where: {
+                email: user.email,
+              },
+            })
             : null;
 
           if (!existingUser) {
@@ -161,10 +161,10 @@ export const authOptions: NextAuthOptions = {
           // Check if there's an existing user with the same email
           const existingUser = user.email
             ? await db.user.findUnique({
-                where: {
-                  email: user.email,
-                },
-              })
+              where: {
+                email: user.email,
+              },
+            })
             : null;
 
           if (existingUser) {
@@ -485,30 +485,42 @@ export async function getGithubUsernameAndPAT(
   userId: string,
   workspaceSlug?: string,
 ): Promise<GithubUsernameAndPAT | null> {
+  console.log(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`);
+
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
+    console.log(`[getGithubUsernameAndPAT] User not found: ${userId}`);
     return null;
   }
 
   // Check for mock user (case insensitive, supports subdomains)
   if (user.email?.toLowerCase().includes("@mock.dev")) {
+    console.log(`[getGithubUsernameAndPAT] Mock user detected: ${user.email}, skipping GitHub auth`);
     return null;
   }
+
+  console.log(`[getGithubUsernameAndPAT] User found: ${user.email}`);
 
   // Get GitHub username from GitHubAuth
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
   if (!githubAuth) {
+    console.log(`[getGithubUsernameAndPAT] No GitHubAuth record found for userId: ${userId}`);
     return null;
   }
 
   // Check for valid username
   if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === "") {
+    console.log(`[getGithubUsernameAndPAT] Invalid or empty GitHub username for userId: ${userId}`);
     return null;
   }
 
+  console.log(`[getGithubUsernameAndPAT] GitHub username found: ${githubAuth.githubUsername}`);
+
   // If no workspace provided, use user's OAuth token from Account table
   if (!workspaceSlug) {
+    console.log(`[getGithubUsernameAndPAT] No workspace provided, using OAuth token`);
+
     const account = await db.account.findFirst({
       where: {
         userId,
@@ -517,22 +529,28 @@ export async function getGithubUsernameAndPAT(
     });
 
     if (!account?.access_token) {
+      console.log(`[getGithubUsernameAndPAT] No GitHub account or access token found for userId: ${userId}`);
       return null;
     }
+
+    console.log(`[getGithubUsernameAndPAT] GitHub account found, attempting to decrypt OAuth token`);
 
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
 
+      console.log(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`);
       return {
         username: githubAuth.githubUsername,
         token: token,
       };
     } catch (error) {
-      console.error("Failed to decrypt OAuth access token:", error);
+      console.error(`[getGithubUsernameAndPAT] Failed to decrypt OAuth access token for userId: ${userId}`, error);
       return null;
     }
   }
+
+  console.log(`[getGithubUsernameAndPAT] Workspace provided: ${workspaceSlug}, looking up workspace and source control org`);
 
   // Get workspace and its source control org
   const workspace = await db.workspace.findUnique({
@@ -542,7 +560,14 @@ export async function getGithubUsernameAndPAT(
     },
   });
 
-  if (!workspace?.sourceControlOrg) {
+  if (!workspace) {
+    console.log(`[getGithubUsernameAndPAT] Workspace not found: ${workspaceSlug}`);
+    return null;
+  }
+
+  if (!workspace.sourceControlOrg) {
+    console.log(`[getGithubUsernameAndPAT] No source control org linked to workspace: ${workspaceSlug}, falling back to OAuth token`);
+
     const account = await db.account.findFirst({
       where: {
         userId,
@@ -551,22 +576,25 @@ export async function getGithubUsernameAndPAT(
     });
 
     if (!account?.access_token) {
+      console.log(`[getGithubUsernameAndPAT] No GitHub account or access token found for fallback, userId: ${userId}`);
       return null;
     }
 
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
-      console.error("=> falling back to personal access token!!! Not good");
+      console.log(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`);
       return {
         username: githubAuth.githubUsername,
         token: token,
       };
     } catch (error) {
-      console.error("Failed to decrypt OAuth access token:", error);
+      console.error(`[getGithubUsernameAndPAT] Failed to decrypt OAuth access token during fallback, userId: ${userId}`, error);
       return null;
     }
   }
+
+  console.log(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`);
 
   // Get user's token for this source control org
   const sourceControlToken = await db.sourceControlToken.findUnique({
@@ -579,19 +607,23 @@ export async function getGithubUsernameAndPAT(
   });
 
   if (!sourceControlToken?.token) {
+    console.log(`[getGithubUsernameAndPAT] No source control token found for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`);
     return null;
   }
+
+  console.log(`[getGithubUsernameAndPAT] Source control token found, attempting to decrypt`);
 
   try {
     const encryptionService = EncryptionService.getInstance();
     const token = encryptionService.decryptField("source_control_token", sourceControlToken.token);
 
+    console.log(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`);
     return {
       username: githubAuth.githubUsername,
       token: token,
     };
   } catch (error) {
-    console.error("Failed to decrypt source control token:", error);
+    console.error(`[getGithubUsernameAndPAT] Failed to decrypt source control token for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`, error);
     return null;
   }
 }
