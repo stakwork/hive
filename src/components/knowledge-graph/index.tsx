@@ -9,9 +9,6 @@ import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
-
-// --- TYPE DEFINITIONS ---
-
 interface ApiResponse {
   success: boolean;
   data?: {
@@ -20,16 +17,12 @@ interface ApiResponse {
   };
 }
 
-
 interface SchemaResponse {
   success: boolean;
   data?: {
     schemas: SchemaExtended[];
   };
 }
-
-
-
 
 // --- MAIN COMPONENT ---
 interface GraphComponentProps {
@@ -116,8 +109,8 @@ export const GraphComponent = ({
 
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
-      {/* Ingestion widget in top-left corner */}
-      {showWidgets && <IngestionStatusWidget />}
+      {/* Ingestion widget in top-left corner - only when we have data */}
+      {showWidgets && dataInitial?.nodes && dataInitial.nodes.length > 0 && <IngestionStatusWidget />}
 
       {/* Status widgets in top-right corner - only show on dashboard */}
       {showWidgets && (
@@ -132,11 +125,13 @@ export const GraphComponent = ({
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
           </div>
-        ) : !dataInitial?.nodes || dataInitial.nodes.length === 0 ? (
+        ) : (!dataInitial?.nodes || dataInitial.nodes.length === 0) ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-lg text-gray-300">
-              No data found
-            </div>
+            {showWidgets ? (
+              <IngestionStatusWidget centered />
+            ) : (
+              <div className="text-lg text-gray-300">No data found</div>
+            )}
           </div>
         ) : (
           <Universe enableRotation={enableRotation} />
