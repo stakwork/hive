@@ -64,6 +64,10 @@ model User {
   deletedAt     DateTime? @map("deleted_at")
   lastLoginAt   DateTime? @map("last_login_at")
   poolApiKey    String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
+  
+  // Password authentication (optional - users can also use OAuth)
+  passwordDigest String? @map("password_digest") // bcrypt hashed password
+  passwordUpdatedAt DateTime? @map("password_updated_at") // Last password change timestamp
 
   // Authentication relationships
   accounts   Account[]

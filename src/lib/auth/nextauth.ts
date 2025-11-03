@@ -7,6 +7,7 @@ import axios from "axios";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GitHubProvider from "next-auth/providers/github";
+import bcrypt from "bcryptjs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -80,11 +81,74 @@ const getProviders = () => {
     );
   }
 
+  // Add password-based authentication provider
+  providers.push(
+    CredentialsProvider({
+      id: "credentials",
+      name: "Email and Password",
+      credentials: {
+        email: {
+          label: "Email",
+          type: "email",
+          placeholder: "your.email@example.com",
+        },
+        password: {
+          label: "Password",
+          type: "password",
+        },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        try {
+          // Find user by email
+          const user = await db.user.findUnique({
+            where: { email: credentials.email },
+          });
+
+          if (!user || !user.passwordDigest) {
+            // User doesn't exist or hasn't set a password
+            return null;
+          }
+
+          // Verify password using bcrypt
+          const isPasswordValid = await bcrypt.compare(
+            credentials.password,
+            user.passwordDigest
+          );
+
+          if (!isPasswordValid) {
+            return null;
+          }
+
+          // Update last login timestamp
+          await db.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          });
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+          };
+        } catch (error) {
+          logger.authError("Password authentication failed", "CREDENTIALS_AUTH", error);
+          return null;
+        }
+      },
+    }),
+  );
+
   return providers;
 };
 
 export const authOptions: NextAuthOptions = {
-  // Only use PrismaAdapter when not using credentials provider
+  // Use PrismaAdapter for database sessions (works with GitHub OAuth and password auth)
+  // Only skip adapter in POD_URL mock mode
   ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
   providers: getProviders(),
   callbacks: {
@@ -464,7 +528,8 @@ export const authOptions: NextAuthOptions = {
     error: "/auth/error",
   },
   session: {
-    strategy: "jwt",
+    // Use database strategy when not in POD mode (supports both OAuth and password auth)
+    strategy: process.env.POD_URL ? "jwt" : "database",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
