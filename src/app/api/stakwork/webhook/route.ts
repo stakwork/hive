@@ -4,12 +4,66 @@ import { WorkflowStatus } from "@prisma/client";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
+import { computeHmacSha256Hex, timingSafeEqual } from "@/lib/encryption";
 
 export const fetchCache = "force-no-store";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as StakworkStatusPayload;
+    // Extract signature header for HMAC verification
+    const signature = request.headers.get("x-signature");
+    if (!signature) {
+      console.error("[StakworkWebhook] Missing signature header");
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    // Load webhook secret from environment
+    const secret = process.env.STAKWORK_WEBHOOK_SECRET;
+    if (!secret) {
+      console.error("[StakworkWebhook] STAKWORK_WEBHOOK_SECRET not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 },
+      );
+    }
+
+    // Read raw body for HMAC computation (must be done before JSON parsing)
+    const rawBody = await request.text();
+
+    // Parse JSON payload
+    let body: StakworkStatusPayload;
+    try {
+      body = JSON.parse(rawBody) as StakworkStatusPayload;
+    } catch (error) {
+      console.error("[StakworkWebhook] Invalid JSON payload", { error });
+      return NextResponse.json(
+        { error: "Invalid JSON" },
+        { status: 400 },
+      );
+    }
+
+    // Verify HMAC signature
+    const sigHeader = signature.startsWith("sha256=") ? signature.slice(7) : signature;
+    const expected = computeHmacSha256Hex(secret, rawBody);
+
+    if (!timingSafeEqual(expected, sigHeader)) {
+      console.error("[StakworkWebhook] Signature verification failed", {
+        taskId: body.task_id,
+        signature: "redacted",
+      });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    console.log("[StakworkWebhook] Signature verified successfully", {
+      taskId: body.task_id,
+    });
+
     const { project_status, task_id } = body;
 
     const url = new URL(request.url);

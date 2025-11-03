@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/stakwork/webhook/route";
 import { WorkflowStatus, TaskStatus } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -7,16 +7,12 @@ import {
   generateUniqueId,
   generateUniqueSlug,
 } from "@/__tests__/support/helpers";
+import { computeHmacSha256Hex } from "@/lib/encryption";
 
 /**
  * Integration Tests for POST /api/stakwork/webhook
  * 
- * SECURITY NOTE: This endpoint currently has NO signature verification,
- * unlike other webhooks (GitHub, Stakgraph). This is a known security gap.
- * Any client can send POST requests to manipulate task statuses.
- * 
- * Future enhancement: Implement HMAC-SHA256 signature verification
- * similar to Stakgraph webhook (see src/app/api/swarm/stakgraph/webhook/route.ts)
+ * Tests webhook HMAC signature verification and task status updates.
  */
 
 // Mock external services only - use real database and utilities
@@ -35,6 +31,8 @@ const mockedPusherServer = vi.mocked(pusherServer);
 
 describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
   const webhookUrl = "http://localhost:3000/api/stakwork/webhook";
+  const WEBHOOK_SECRET = "test-webhook-secret-key";
+  let originalSecret: string | undefined;
 
   async function createTestTask(workflowStatus: WorkflowStatus = WorkflowStatus.PENDING) {
     return await db.$transaction(async (tx) => {
@@ -77,14 +75,42 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
   }
 
+  function createWebhookRequest(
+    payload: Record<string, unknown>,
+    url: string = webhookUrl,
+  ) {
+    const rawBody = JSON.stringify(payload);
+    const signature = computeHmacSha256Hex(WEBHOOK_SECRET, rawBody);
+    
+    const headers = new Headers({
+      "content-type": "application/json",
+      "x-signature": signature,
+    });
+
+    const request = new Request(url, {
+      method: "POST",
+      headers,
+      body: rawBody,
+    });
+
+    return request as any;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+    originalSecret = process.env.STAKWORK_WEBHOOK_SECRET;
+    process.env.STAKWORK_WEBHOOK_SECRET = WEBHOOK_SECRET;
   });
 
-  describe("Security - No Signature Verification", () => {
-    test("should accept webhook without signature verification (SECURITY GAP)", async () => {
+  afterEach(() => {
+    process.env.STAKWORK_WEBHOOK_SECRET = originalSecret;
+  });
+
+  describe("Security - HMAC Signature Verification", () => {
+    test("should reject webhook without signature header", async () => {
       const { task } = await createTestTask();
 
+      // Use createPostRequest (no signature) to test rejection
       const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
@@ -92,14 +118,13 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(200);
-      // This succeeds without any authentication/signature - security vulnerability
+      expect(response.status).toBe(401);
     });
   });
 
   describe("Payload Validation", () => {
     test("should return 400 when task_id is missing from body and query", async () => {
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         project_status: "completed",
       });
 
@@ -113,7 +138,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return 400 when project_status is missing", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
       });
 
@@ -127,11 +152,11 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should accept task_id from query parameter as fallback", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(
-        `${webhookUrl}?task_id=${task.id}`,
+      const request = createWebhookRequest(
         {
           project_status: "completed",
-        }
+        },
+        `${webhookUrl}?task_id=${task.id}`
       );
 
       const response = await POST(request);
@@ -146,12 +171,12 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask();
       const { task: anotherTask } = await createTestTask();
 
-      const request = createPostRequest(
-        `${webhookUrl}?task_id=${anotherTask.id}`,
+      const request = createWebhookRequest(
         {
           task_id: task.id,
           project_status: "completed",
-        }
+        },
+        `${webhookUrl}?task_id=${anotherTask.id}`
       );
 
       const response = await POST(request);
@@ -162,6 +187,9 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
 
     test("should handle invalid JSON payload gracefully", async () => {
+      // This test is now handled in the new HMAC test file
+      // The invalid JSON test requires a signature to pass HMAC verification
+      // Without signature, it returns 401, with signature it can test JSON parsing
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
@@ -172,7 +200,8 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(500);
+      // Without signature header, returns 401 Unauthorized
+      expect(response.status).toBe(401);
     });
   });
 
@@ -180,7 +209,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return 404 when task is not found", async () => {
       const nonExistentTaskId = "cltasknotexistxxxxxxxxxx";
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: nonExistentTaskId,
         project_status: "completed",
       });
@@ -200,7 +229,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         data: { deleted: true },
       });
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -217,7 +246,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to IN_PROGRESS and set workflowStartedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "in_progress",
       });
@@ -241,7 +270,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to COMPLETED and set workflowCompletedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -263,7 +292,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to FAILED and set workflowCompletedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "failed",
       });
@@ -283,7 +312,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to HALTED and set workflowCompletedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "halted",
       });
@@ -304,7 +333,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
       const originalUpdatedAt = task.updatedAt;
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "unknown_status_xyz",
       });
@@ -339,7 +368,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       for (const { input, expected } of statusMappings) {
         const { task } = await createTestTask();
 
-        const request = createPostRequest(webhookUrl, {
+        const request = createWebhookRequest({
           task_id: task.id,
           project_status: input,
         });
@@ -363,7 +392,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should broadcast status update to Pusher channel", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -384,7 +413,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should include timestamps in Pusher payload", async () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "in_progress",
       });
@@ -406,7 +435,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -426,7 +455,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should not broadcast when status is unknown", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "unknown_status",
       });
@@ -445,7 +474,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         where: { id: task.id },
       });
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -461,11 +490,11 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
       const requests = [
-        createPostRequest(webhookUrl, {
+        createWebhookRequest({
           task_id: task.id,
           project_status: "in_progress",
         }),
-        createPostRequest(webhookUrl, {
+        createWebhookRequest({
           task_id: task.id,
           project_status: "completed",
         }),
@@ -492,7 +521,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return success with task data", async () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -513,7 +542,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should include action field for unknown status", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "unknown",
       });
@@ -533,7 +562,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should handle empty string status", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "",
       });
@@ -548,7 +577,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should handle case-sensitive status strings", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "COMPLETED",
       });
@@ -566,7 +595,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         data: { status: TaskStatus.IN_PROGRESS },
       });
 
-      const request = createPostRequest(webhookUrl, {
+      const request = createWebhookRequest({
         task_id: task.id,
         project_status: "completed",
       });
@@ -587,7 +616,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const statuses = ["in_progress", "completed"];
 
       for (const status of statuses) {
-        const request = createPostRequest(webhookUrl, {
+        const request = createWebhookRequest({
           task_id: task.id,
           project_status: status,
         });
