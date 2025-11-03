@@ -53,7 +53,7 @@ declare global {
 
 export const useStaktrak = (
   initialUrl?: string,
-  onTestGenerated?: (test: string) => void,
+  onTestGenerated?: (test: string, error?: string) => void,
   onActionCaptured?: (type: string, text: string) => void,
 ) => {
   const [currentUrl, setCurrentUrl] = useState<string | null>(initialUrl || null);
@@ -65,6 +65,7 @@ export const useStaktrak = (
   const [isRecorderReady, setIsRecorderReady] = useState(false);
 
   const [generatedPlaywrightTest, setGeneratedPlaywrightTest] = useState<string>("");
+  const [generationError, setGenerationError] = useState<string>("");
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const recorderRef = useRef<RecordingManager | null>(null);
@@ -225,16 +226,92 @@ export const useStaktrak = (
 
           case "staktrak-results":
             // Generate test from RecordingManager to respect removed actions
-            if (recorderRef.current && initialUrl) {
-              try {
-                const test = recorderRef.current.generateTest(cleanInitialUrl(initialUrl));
+            // Clear any previous generation error
+            setGenerationError("");
+
+            // Validate prerequisites with specific error messages
+            if (!recorderRef.current) {
+              const errorMsg = "Test recorder not initialized. Please refresh the page and try again.";
+              console.error("Test generation failed:", errorMsg);
+              setGenerationError(errorMsg);
+              if (onTestGeneratedRef.current) {
+                onTestGeneratedRef.current("", errorMsg);
+              }
+              break;
+            }
+
+            if (!initialUrl) {
+              const errorMsg =
+                "No URL available for test generation. This can happen if the page was changed during recording.";
+              console.error("Test generation failed:", errorMsg, {
+                recorderReady: !!recorderRef.current,
+                initialUrl,
+                capturedActionsCount: recorderRef.current?.getActions().length || 0,
+              });
+              setGenerationError(errorMsg);
+              if (onTestGeneratedRef.current) {
+                onTestGeneratedRef.current("", errorMsg);
+              }
+              break;
+            }
+
+            // Check if any actions were recorded
+            const actions = recorderRef.current.getActions();
+            if (!actions || actions.length === 0) {
+              const errorMsg =
+                "No actions were recorded. Please try recording again and interact with the page.";
+              console.error("Test generation failed:", errorMsg, {
+                recorderReady: !!recorderRef.current,
+                initialUrl: initialUrl ? "present" : "missing",
+                actionsArray: actions,
+              });
+              setGenerationError(errorMsg);
+              if (onTestGeneratedRef.current) {
+                onTestGeneratedRef.current("", errorMsg);
+              }
+              break;
+            }
+
+            // All prerequisites met, attempt to generate test
+            try {
+              console.log("Generating Playwright test with:", {
+                url: initialUrl,
+                actionsCount: actions.length,
+                actions: actions.map((a) => ({ type: a.type, id: a.id })),
+              });
+
+              const test = recorderRef.current.generateTest(cleanInitialUrl(initialUrl));
+
+              if (!test || test.trim().length === 0) {
+                const errorMsg = "Test generation returned empty code. Please try recording again.";
+                console.error("Test generation failed:", errorMsg);
+                setGenerationError(errorMsg);
+                if (onTestGeneratedRef.current) {
+                  onTestGeneratedRef.current("", errorMsg);
+                }
+              } else {
                 setGeneratedPlaywrightTest(test);
+                console.log("Test generated successfully:", test.length, "characters");
                 // Call the callback if provided
                 if (onTestGeneratedRef.current) {
                   onTestGeneratedRef.current(test);
                 }
-              } catch (error) {
-                console.error("Error generating Playwright test:", error);
+              }
+            } catch (error) {
+              const errorMsg =
+                error instanceof Error
+                  ? `Failed to generate test: ${error.message}`
+                  : "An unexpected error occurred while generating the test. Please try recording again.";
+              console.error("Error generating Playwright test:", {
+                error,
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                url: initialUrl,
+                actionsCount: actions.length,
+              });
+              setGenerationError(errorMsg);
+              if (onTestGeneratedRef.current) {
+                onTestGeneratedRef.current("", errorMsg);
               }
             }
             break;
@@ -274,6 +351,7 @@ export const useStaktrak = (
     disableAssertionMode,
     generatedPlaywrightTest,
     setGeneratedPlaywrightTest,
+    generationError,
     capturedActions,
     showActions,
     removeAction,

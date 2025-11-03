@@ -17,6 +17,7 @@ interface TestManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   generatedCode?: string;
+  errorMessage?: string;
   onUserJourneySave?: (filename: string, generatedCode: string) => void;
   initialTab?: string;
 }
@@ -25,6 +26,7 @@ export function TestManagerModal({
   isOpen,
   onClose,
   generatedCode = "",
+  errorMessage = "",
   onUserJourneySave,
   initialTab = "",
 }: TestManagerModalProps) {
