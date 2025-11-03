@@ -2,6 +2,15 @@
 
 Hive Platform is an AI-first PM toolkit that hardens your codebase and lifts test coverage with async "janitor" workflows—delivering actionable recommendations to improve testing, maintainability, performance, and security.
 
+## Features
+
+- 🤖 **AI-Powered Code Analysis** - Automated recommendations for code improvements
+- 🧪 **Test Coverage Enhancement** - Intelligent suggestions to boost test coverage
+- 🔒 **Security Auditing** - Proactive security vulnerability detection
+- 📊 **Performance Monitoring** - Identify and optimize performance bottlenecks
+- 🔄 **Async Workflows** - Background "janitor" processes that work continuously
+- 📈 **Actionable Insights** - Clear, prioritized recommendations for your team
+
 ## Tech Stack
 
 - **Frontend**: Next.js 15 with App Router, React 19, TypeScript
