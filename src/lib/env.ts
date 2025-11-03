@@ -33,6 +33,8 @@ export const optionalEnvVars = {
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
+  TRUSTED_DOMAINS: process.env.TRUSTED_DOMAINS, // Comma-separated list of domains allowed for CORS (e.g., "https://app.example.com,https://dashboard.example.com")
+  ENABLE_CORS: process.env.ENABLE_CORS === "true", // Set to "true" to enable CORS headers for trusted domains
 } as const;
 
 // Combined environment configuration

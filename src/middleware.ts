@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
 import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
+import { getCorsHeaders, shouldApplyCors } from "@/lib/cors";
 import type { ApiError } from "@/types/errors";
 // Environment validation - fail fast if required secrets are missing
 if (!process.env.NEXTAUTH_SECRET) {
@@ -48,6 +49,22 @@ function continueRequest(headers: Headers, authStatus: string) {
   return response;
 }
 
+function continueRequestWithCors(headers: Headers, authStatus: string, origin: string | null, pathname: string) {
+  const response = continueRequest(headers, authStatus);
+  
+  // Add CORS headers if origin is trusted and route is eligible
+  if (shouldApplyCors(pathname)) {
+    const corsHeaders = getCorsHeaders(origin);
+    if (corsHeaders) {
+      Object.entries(corsHeaders).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+    }
+  }
+  
+  return response;
+}
+
 function respondWithJson(
   body: Record<string, unknown>,
   { status, requestId, authStatus }: { status: number; requestId: string; authStatus: string },
@@ -87,10 +104,29 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
+    // Handle CORS preflight OPTIONS requests before authentication
+    // This must occur before any auth checks to allow browsers to validate CORS
+    if (request.method === "OPTIONS" && shouldApplyCors(pathname)) {
+      const origin = request.headers.get("origin");
+      const corsHeaders = getCorsHeaders(origin);
+      
+      if (corsHeaders) {
+        const response = new NextResponse(null, { status: 204 });
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        response.headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
+        return response;
+      }
+    }
+
     // System and webhook routes bypass all authentication checks
+    // Note: Webhook routes do NOT get CORS headers (server-to-server communication)
     if (routeAccess === "webhook" || routeAccess === "system") {
       return continueRequest(requestHeaders, routeAccess);
     }
+
+    const origin = request.headers.get("origin");
 
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
@@ -99,10 +135,10 @@ export async function middleware(request: NextRequest) {
       const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
       if (!hasValidCookie && !token) {
         if (pathname === "/") {
-          return continueRequest(requestHeaders, "landing_required");
+          return continueRequestWithCors(requestHeaders, "landing_required", origin, pathname);
         }
         if (pathname === "/api/auth/verify-landing") {
-          return continueRequest(requestHeaders, "landing_required");
+          return continueRequestWithCors(requestHeaders, "landing_required", origin, pathname);
         }
         return redirectTo("/", request, { requestId, authStatus: "landing_required" });
       }
@@ -110,7 +146,7 @@ export async function middleware(request: NextRequest) {
 
     // Public routes (auth pages, onboarding) - accessible after landing page check
     if (routeAccess === "public") {
-      return continueRequest(requestHeaders, routeAccess);
+      return continueRequestWithCors(requestHeaders, routeAccess, origin, pathname);
     }
 
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
@@ -126,15 +162,16 @@ export async function middleware(request: NextRequest) {
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
     }
 
-    return continueRequest(requestHeaders, "authenticated");
+    return continueRequestWithCors(requestHeaders, "authenticated", origin, pathname);
   } catch (error) {
+    const origin = request.headers.get("origin");
     if (isApiRoute && typeof error === "object" && error && "kind" in error && "statusCode" in error) {
       return respondWithApiError(error as ApiError, requestId, "error");
     }
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_ID);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_EMAIL);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_NAME);
-    return continueRequest(requestHeaders, "error");
+    return continueRequestWithCors(requestHeaders, "error", origin, pathname);
   }
 }
 
