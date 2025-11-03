@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
-import { WorkflowStatus } from "@/lib/chat";
 import {
-  usePusherConnection,
   TaskTitleUpdateEvent,
+  usePusherConnection,
 } from "@/hooks/usePusherConnection";
+import { WorkflowStatus } from "@/lib/chat";
+import { useSession } from "next-auth/react";
+import { useCallback, useEffect, useState } from "react";
 
 // SessionStorage key for persisting current page across navigation
 export const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
@@ -214,7 +214,7 @@ export function useWorkspaceTasks(
           setTimeout(() => {
             // Access pagination via closure - check if there are more tasks to fetch
             if (pagination?.hasMore) {
-              fetchTasks(currentPage, true, includeNotifications);
+              fetchTasks(currentPage, false, includeNotifications);
             }
           }, 0);
 
