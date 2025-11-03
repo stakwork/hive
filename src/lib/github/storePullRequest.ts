@@ -141,6 +141,8 @@ export async function storePullRequest(
     docsLength: prDocs.length,
   });
 
+  return; // FIXME make a quality AI learning
+
   const response = await fetch(pullRequestUrl, {
     method: "POST",
     headers: {
