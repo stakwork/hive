@@ -1,6 +1,5 @@
 import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Clock } from 'lucide-react'
 
@@ -89,9 +88,8 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 p-0 min-h-0">
-        <ScrollArea className="h-full">
-          <div className="p-4">
+      <CardContent className="flex-1 p-0 min-h-0 overflow-auto">
+        <div className="p-4">
             {currentSegment ? (
               <div className="space-y-4">
                 {/* Timestamp and Speaker */}
@@ -140,8 +138,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 </p>
               </div>
             )}
-          </div>
-        </ScrollArea>
+        </div>
       </CardContent>
     </Card>
   )

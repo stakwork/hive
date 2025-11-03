@@ -2,7 +2,6 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { TaskCard } from "./TaskCard";
 import { WorkflowStatus } from "@prisma/client";
@@ -138,7 +137,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
       </div>
 
       {/* Desktop view - horizontal scrollable */}
-      <ScrollArea className="hidden md:block w-full whitespace-nowrap">
+      <div className="hidden md:block w-full whitespace-nowrap overflow-x-auto pb-2">
         <div className="flex gap-4 pb-4 min-h-[500px]">
           {kanbanColumns.map((column) => {
             const columnTasks = tasksByStatus[column.status] || [];
@@ -192,8 +191,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
             );
           })}
         </div>
-        <ScrollBar orientation="horizontal" className="mt-2" />
-      </ScrollArea>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { ReactNode, useState } from "react";
 import {
@@ -215,7 +214,7 @@ export function KanbanView<T, S extends string>({
       </div>
 
       {/* Desktop view - horizontal scrollable */}
-      <ScrollArea className="hidden md:block w-full whitespace-nowrap">
+      <div className="hidden md:block w-full whitespace-nowrap overflow-x-auto pb-2">
         <div className="flex gap-4 pb-4 min-h-[500px]">
           {columns.map((column) => {
             const columnItems = itemsByStatus[column.status] || [];
@@ -277,8 +276,7 @@ export function KanbanView<T, S extends string>({
             );
           })}
         </div>
-        <ScrollBar orientation="horizontal" className="mt-2" />
-      </ScrollArea>
+      </div>
     </div>
   );
 

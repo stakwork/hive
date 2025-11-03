@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
 import { Copy, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -91,12 +90,10 @@ export function TestManagerModal({
               <Copy className="w-4 h-4 mr-1" /> {copying ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <div className="flex-1 min-h-0 border rounded overflow-hidden">
-            <ScrollArea className="h-full">
-              <pre className="text-sm bg-background/50 p-4 overflow-auto whitespace-pre max-h-[60vh]">
-                <code className="language-javascript">{generatedCode}</code>
-              </pre>
-            </ScrollArea>
+          <div className="flex-1 min-h-0 border rounded overflow-auto">
+            <pre className="text-sm bg-background/50 p-4 whitespace-pre max-h-[60vh]">
+              <code className="language-javascript">{generatedCode}</code>
+            </pre>
           </div>
         </div>
       </DialogContent>
