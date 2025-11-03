@@ -87,6 +87,11 @@ export const useStaktrak = (
   }, []);
 
   const startRecording = () => {
+    console.log("[useStaktrak] Starting recording", {
+      hasRecorder: !!recorderRef.current,
+      hasIframe: !!iframeRef.current,
+      initialUrl,
+    });
     // Clear existing recording data when starting a new recording
     if (recorderRef.current) {
       recorderRef.current.clear();
@@ -98,6 +103,13 @@ export const useStaktrak = (
   };
 
   const stopRecording = () => {
+    const actionsCount = recorderRef.current?.getActions().length || 0;
+    console.log("[useStaktrak] Stopping recording", {
+      actionsCount,
+      hasRecorder: !!recorderRef.current,
+      hasIframe: !!iframeRef.current,
+      initialUrl,
+    });
     sendCommand(iframeRef, "staktrak-stop");
     setIsRecording(false);
     setIsAssertionMode(false);
@@ -225,14 +237,17 @@ export const useStaktrak = (
             break;
 
           case "staktrak-results":
+            console.log("[useStaktrak] Received staktrak-results message");
             // Generate test from RecordingManager to respect removed actions
             // Clear any previous generation error
             setGenerationError("");
 
             // Validate prerequisites with specific error messages
             if (!recorderRef.current) {
-              const errorMsg = "Test recorder not initialized. Please refresh the page and try again.";
-              console.error("Test generation failed:", errorMsg);
+              const errorMsg = "Failed to generate test. Please try again.";
+              console.error("[useStaktrak] Test generation failed - recorder not initialized", {
+                recorderRef: !!recorderRef.current,
+              });
               setGenerationError(errorMsg);
               if (onTestGeneratedRef.current) {
                 onTestGeneratedRef.current("", errorMsg);
@@ -241,9 +256,8 @@ export const useStaktrak = (
             }
 
             if (!initialUrl) {
-              const errorMsg =
-                "No URL available for test generation. This can happen if the page was changed during recording.";
-              console.error("Test generation failed:", errorMsg, {
+              const errorMsg = "Failed to generate test. Please try again.";
+              console.error("[useStaktrak] Test generation failed - no initial URL", {
                 recorderReady: !!recorderRef.current,
                 initialUrl,
                 capturedActionsCount: recorderRef.current?.getActions().length || 0,
@@ -258,9 +272,8 @@ export const useStaktrak = (
             // Check if any actions were recorded
             const actions = recorderRef.current.getActions();
             if (!actions || actions.length === 0) {
-              const errorMsg =
-                "No actions were recorded. Please try recording again and interact with the page.";
-              console.error("Test generation failed:", errorMsg, {
+              const errorMsg = "No actions were recorded. Please interact with the page and try again.";
+              console.error("[useStaktrak] Test generation failed - no actions", {
                 recorderReady: !!recorderRef.current,
                 initialUrl: initialUrl ? "present" : "missing",
                 actionsArray: actions,
@@ -274,35 +287,35 @@ export const useStaktrak = (
 
             // All prerequisites met, attempt to generate test
             try {
-              console.log("Generating Playwright test with:", {
+              console.log("[useStaktrak] Generating Playwright test", {
                 url: initialUrl,
                 actionsCount: actions.length,
-                actions: actions.map((a) => ({ type: a.type, id: a.id })),
+                actionTypes: actions.map((a) => a.type),
               });
 
               const test = recorderRef.current.generateTest(cleanInitialUrl(initialUrl));
 
               if (!test || test.trim().length === 0) {
-                const errorMsg = "Test generation returned empty code. Please try recording again.";
-                console.error("Test generation failed:", errorMsg);
+                const errorMsg = "Failed to generate test. Please try again.";
+                console.error("[useStaktrak] Test generation returned empty code");
                 setGenerationError(errorMsg);
                 if (onTestGeneratedRef.current) {
                   onTestGeneratedRef.current("", errorMsg);
                 }
               } else {
                 setGeneratedPlaywrightTest(test);
-                console.log("Test generated successfully:", test.length, "characters");
+                console.log("[useStaktrak] Test generated successfully", {
+                  codeLength: test.length,
+                  actionsCount: actions.length,
+                });
                 // Call the callback if provided
                 if (onTestGeneratedRef.current) {
                   onTestGeneratedRef.current(test);
                 }
               }
             } catch (error) {
-              const errorMsg =
-                error instanceof Error
-                  ? `Failed to generate test: ${error.message}`
-                  : "An unexpected error occurred while generating the test. Please try recording again.";
-              console.error("Error generating Playwright test:", {
+              const errorMsg = "Failed to generate test. Please try again.";
+              console.error("[useStaktrak] Test generation error", {
                 error,
                 errorMessage: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,

@@ -821,13 +821,13 @@ describe("useStaktrak Hook", () => {
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-          "Error generating Playwright test:",
+          "[useStaktrak] Test generation error",
           expect.objectContaining({
             error: expect.any(Error),
             errorMessage: "Generation error"
           })
         );
-        expect(onTestGenerated).toHaveBeenCalledWith("", "Failed to generate test: Generation error");
+        expect(onTestGenerated).toHaveBeenCalledWith("", "Failed to generate test. Please try again.");
       });
 
       consoleErrorSpy.mockRestore();

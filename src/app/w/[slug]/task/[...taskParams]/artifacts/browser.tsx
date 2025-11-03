@@ -97,6 +97,7 @@ export function BrowserArtifactPanel({
     (test: string, error?: string) => {
       // Show error toast if test generation failed
       if (error) {
+        console.error("[Browser] Test generation failed:", error);
         toast({
           title: "Test Generation Failed",
           description: error,
@@ -106,6 +107,7 @@ export function BrowserArtifactPanel({
       }
 
       // Only open modal on successful test generation
+      console.log("[Browser] Opening test modal");
       setIsTestModalOpen(true);
     },
     showActionToast,
