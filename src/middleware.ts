@@ -18,6 +18,24 @@ function generateRequestId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
+// Add security headers to response (HSTS, X-Content-Type-Options, etc.)
+function addSecurityHeaders(response: NextResponse, request: NextRequest): NextResponse {
+  const host = request.headers.get("host") || "";
+  const isLocalhost = host.includes("localhost");
+
+  // Only add HSTS in production environments (not localhost)
+  if (!isLocalhost) {
+    response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  }
+
+  // Add other security headers for all environments
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  return response;
+}
+
 // Type-safe token property extraction
 function extractTokenProperty(token: Record<string, unknown> | null, property: string): string {
   const value = token?.[property];
@@ -30,7 +48,7 @@ function sanitizeMiddlewareHeaders(headers: Headers) {
   });
 }
 
-function continueRequest(headers: Headers, authStatus: string) {
+function continueRequest(headers: Headers, authStatus: string, request: NextRequest) {
   headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, authStatus);
   const response = NextResponse.next({
     request: {
@@ -45,16 +63,28 @@ function continueRequest(headers: Headers, authStatus: string) {
 
   response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, authStatus);
 
+  // Inject security headers
+  addSecurityHeaders(response, request);
+
   return response;
 }
 
 function respondWithJson(
   body: Record<string, unknown>,
-  { status, requestId, authStatus }: { status: number; requestId: string; authStatus: string },
+  {
+    status,
+    requestId,
+    authStatus,
+    request,
+  }: { status: number; requestId: string; authStatus: string; request: NextRequest },
 ) {
   const response = NextResponse.json(body, { status });
   response.headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
   response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, authStatus);
+
+  // Inject security headers
+  addSecurityHeaders(response, request);
+
   return response;
 }
 function redirectTo(
@@ -66,13 +96,17 @@ function redirectTo(
   const response = NextResponse.redirect(url);
   response.headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
   response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, authStatus);
+
+  // Inject security headers
+  addSecurityHeaders(response, request);
+
   return response;
 }
 
-function respondWithApiError(error: ApiError, requestId: string, authStatus: string) {
+function respondWithApiError(error: ApiError, requestId: string, authStatus: string, request: NextRequest) {
   return respondWithJson(
     { error: error.message, kind: error.kind, details: error.details },
-    { status: error.statusCode, requestId, authStatus },
+    { status: error.statusCode, requestId, authStatus, request },
   );
 }
 
@@ -86,10 +120,25 @@ export async function middleware(request: NextRequest) {
   sanitizeMiddlewareHeaders(requestHeaders);
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
+  // HTTPS Enforcement: Redirect HTTP to HTTPS (except localhost)
+  const protocol = request.headers.get("x-forwarded-proto") || "http";
+  const host = request.headers.get("host") || "";
+  const isLocalhost = host.includes("localhost");
+
+  if (!isLocalhost && protocol === "http") {
+    const httpsUrl = new URL(request.url);
+    httpsUrl.protocol = "https:";
+    const response = NextResponse.redirect(httpsUrl, 301);
+    response.headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
+    response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "https_redirect");
+    addSecurityHeaders(response, request);
+    return response;
+  }
+
   try {
     // System and webhook routes bypass all authentication checks
     if (routeAccess === "webhook" || routeAccess === "system") {
-      return continueRequest(requestHeaders, routeAccess);
+      return continueRequest(requestHeaders, routeAccess, request);
     }
 
     // Landing page protection (when enabled) for all non-system/webhook routes
@@ -99,10 +148,10 @@ export async function middleware(request: NextRequest) {
       const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
       if (!hasValidCookie && !token) {
         if (pathname === "/") {
-          return continueRequest(requestHeaders, "landing_required");
+          return continueRequest(requestHeaders, "landing_required", request);
         }
         if (pathname === "/api/auth/verify-landing") {
-          return continueRequest(requestHeaders, "landing_required");
+          return continueRequest(requestHeaders, "landing_required", request);
         }
         return redirectTo("/", request, { requestId, authStatus: "landing_required" });
       }
@@ -110,13 +159,16 @@ export async function middleware(request: NextRequest) {
 
     // Public routes (auth pages, onboarding) - accessible after landing page check
     if (routeAccess === "public") {
-      return continueRequest(requestHeaders, routeAccess);
+      return continueRequest(requestHeaders, routeAccess, request);
     }
 
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     if (!token) {
       if (isApiRoute) {
-        return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
+        return respondWithJson(
+          { error: "Unauthorized" },
+          { status: 401, requestId, authStatus: "unauthorized", request },
+        );
       }
       return redirectTo("/", request, { requestId, authStatus: "unauthenticated" });
     } else {
@@ -126,15 +178,15 @@ export async function middleware(request: NextRequest) {
       requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
     }
 
-    return continueRequest(requestHeaders, "authenticated");
+    return continueRequest(requestHeaders, "authenticated", request);
   } catch (error) {
     if (isApiRoute && typeof error === "object" && error && "kind" in error && "statusCode" in error) {
-      return respondWithApiError(error as ApiError, requestId, "error");
+      return respondWithApiError(error as ApiError, requestId, "error", request);
     }
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_ID);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_EMAIL);
     requestHeaders.delete(MIDDLEWARE_HEADERS.USER_NAME);
-    return continueRequest(requestHeaders, "error");
+    return continueRequest(requestHeaders, "error", request);
   }
 }
 
