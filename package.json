@@ -30,6 +30,7 @@
     "seed:db": "tsx scripts/helpers/seed-database.ts",
     "seed:auto-seed": "tsx scripts/seed-from-github-account.ts",
     "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts",
+    "test:pr-docs": "tsx scripts/test-pr-docs.ts",
     "decrypt-json": "tsx scripts/decrypt-json-file.ts"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.1",
+    "@octokit/rest": "^22.0.1",
     "@prisma/client": "^6.11.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.15",
