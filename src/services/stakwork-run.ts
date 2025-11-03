@@ -68,6 +68,7 @@ export async function createStakworkRun(
         orderBy: { createdAt: "desc" },
         select: {
           repositoryUrl: true,
+          branch: true,
         },
       },
     },
@@ -178,6 +179,7 @@ export async function createStakworkRun(
 
       // Repository & credentials
       repo_url: workspace.repositories[0]?.repositoryUrl || null,
+      base_branch: workspace.repositories[0]?.branch || null,
       username: githubUsername,
       pat: decryptedPAT,
 
