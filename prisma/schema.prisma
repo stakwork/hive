@@ -65,6 +65,12 @@ model User {
   lastLoginAt   DateTime? @map("last_login_at")
   poolApiKey    String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
 
+  // Brute force protection fields
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lastFailedLoginAt   DateTime? @map("last_failed_login_at")
+  lockedUntil         DateTime? @map("locked_until")
+  permanentlyLocked   Boolean   @default(false) @map("permanently_locked")
+
   // Authentication relationships
   accounts   Account[]
   sessions   Session[]

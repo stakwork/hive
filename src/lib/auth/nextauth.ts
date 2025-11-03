@@ -83,12 +83,128 @@ const getProviders = () => {
   return providers;
 };
 
+/**
+ * Increment failed login attempts and apply account lockout if threshold exceeded
+ */
+async function incrementFailedLoginAttempts(userId: string, email: string): Promise<void> {
+  const LOCKOUT_THRESHOLD = 5;
+  const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+  try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { failedLoginAttempts: true },
+    });
+
+    if (!user) return;
+
+    const newAttemptCount = user.failedLoginAttempts + 1;
+    const now = new Date();
+
+    if (newAttemptCount >= LOCKOUT_THRESHOLD) {
+      // Lock the account
+      const lockedUntil = new Date(now.getTime() + LOCKOUT_DURATION_MS);
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          failedLoginAttempts: newAttemptCount,
+          lastFailedLoginAt: now,
+          lockedUntil,
+        },
+      });
+
+      logger.authError(
+        "Account locked due to excessive failed login attempts",
+        "ACCOUNT_LOCKED",
+        {
+          userId,
+          email,
+          attempts: newAttemptCount,
+          lockedUntil: lockedUntil.toISOString(),
+        }
+      );
+    } else {
+      // Increment counter without locking
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          failedLoginAttempts: newAttemptCount,
+          lastFailedLoginAt: now,
+        },
+      });
+
+      logger.authWarn(
+        "Failed login attempt recorded",
+        "FAILED_LOGIN_ATTEMPT",
+        {
+          userId,
+          email,
+          attempts: newAttemptCount,
+          remainingAttempts: LOCKOUT_THRESHOLD - newAttemptCount,
+        }
+      );
+    }
+  } catch (error) {
+    logger.authError(
+      "Failed to update failed login attempts",
+      "FAILED_ATTEMPT_UPDATE_ERROR",
+      error
+    );
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   // Only use PrismaAdapter when not using credentials provider
   ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
   providers: getProviders(),
   callbacks: {
     async signIn({ user, account }) {
+      // Check for account lockout before processing authentication
+      if (user.email) {
+        const existingUser = await db.user.findUnique({
+          where: { email: user.email },
+          select: {
+            id: true,
+            lockedUntil: true,
+            permanentlyLocked: true,
+            failedLoginAttempts: true,
+          },
+        });
+
+        if (existingUser) {
+          // Check permanent lockout
+          if (existingUser.permanentlyLocked) {
+            logger.authError(
+              "Login attempt blocked - account permanently locked",
+              "SIGNIN_PERMANENT_LOCKOUT",
+              { userId: existingUser.id, email: user.email }
+            );
+            return false;
+          }
+
+          // Check temporary lockout
+          if (existingUser.lockedUntil && existingUser.lockedUntil > new Date()) {
+            const remainingSeconds = Math.ceil(
+              (existingUser.lockedUntil.getTime() - Date.now()) / 1000
+            );
+            logger.authError(
+              "Login attempt blocked - account temporarily locked",
+              "SIGNIN_TEMP_LOCKOUT",
+              {
+                userId: existingUser.id,
+                email: user.email,
+                remainingSeconds,
+                failedAttempts: existingUser.failedLoginAttempts,
+              }
+            );
+            return false;
+          }
+
+          // Update user.id for subsequent logic
+          user.id = existingUser.id;
+        }
+      }
+
       // Handle mock provider sign-in for development
       if (account?.provider === "mock") {
         try {
@@ -148,8 +264,25 @@ export const authOptions: NextAuthOptions = {
             userId: user.id,
             workspaceSlug,
           });
+
+          // Reset failed login attempts on successful authentication
+          await db.user.update({
+            where: { id: user.id as string },
+            data: {
+              failedLoginAttempts: 0,
+              lastFailedLoginAt: null,
+              lockedUntil: null,
+              lastLoginAt: new Date(),
+            },
+          });
         } catch (error) {
           logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
+          
+          // Increment failed login attempts on authentication failure
+          if (user.id) {
+            await incrementFailedLoginAttempts(user.id as string, user.email || "unknown");
+          }
+          
           return false;
         }
         return true;
@@ -221,9 +354,25 @@ export const authOptions: NextAuthOptions = {
                 });
               }
             }
+
+            // Reset failed login attempts on successful GitHub authentication
+            await db.user.update({
+              where: { id: existingUser.id },
+              data: {
+                failedLoginAttempts: 0,
+                lastFailedLoginAt: null,
+                lockedUntil: null,
+                lastLoginAt: new Date(),
+              },
+            });
           }
         } catch (error) {
           logger.authError("Failed to handle GitHub re-authentication", "SIGNIN_GITHUB", error);
+          
+          // Increment failed login attempts on authentication failure
+          if (user.id) {
+            await incrementFailedLoginAttempts(user.id as string, user.email || "unknown");
+          }
         }
       }
       return true;

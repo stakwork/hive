@@ -87,6 +87,29 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
+    // Rate limiting for authentication endpoints (before any other checks)
+    if (pathname.startsWith("/api/auth/")) {
+      const { authRateLimiter, getClientIp } = await import("@/lib/auth/rate-limiter");
+      const clientIp = getClientIp(requestHeaders);
+      const rateLimitResult = authRateLimiter.check(clientIp);
+
+      if (!rateLimitResult.allowed) {
+        const response = NextResponse.json(
+          {
+            error: "Too many requests",
+            message: "Rate limit exceeded. Please try again later.",
+          },
+          { status: 429 }
+        );
+        response.headers.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
+        response.headers.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "rate_limited");
+        if (rateLimitResult.retryAfter) {
+          response.headers.set("Retry-After", rateLimitResult.retryAfter.toString());
+        }
+        return response;
+      }
+    }
+
     // System and webhook routes bypass all authentication checks
     if (routeAccess === "webhook" || routeAccess === "system") {
       return continueRequest(requestHeaders, routeAccess);

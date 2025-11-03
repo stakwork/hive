@@ -1046,6 +1046,294 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     });
   });
 
+  describe("Account Lockout Mechanism", () => {
+    test("should lock account after 5 failed login attempts", async () => {
+      const testUser = await createTestUser({
+        email: "lockout-test@example.com",
+        name: "Lockout Test User",
+      });
+
+      // Simulate 5 failed login attempts by directly updating the database
+      // This reflects what would happen after authentication failures
+      const now = new Date();
+      const lockedUntil = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
+
+      await db.user.update({
+        where: { id: testUser.id },
+        data: {
+          failedLoginAttempts: 5,
+          lastFailedLoginAt: now,
+          lockedUntil: lockedUntil,
+        },
+      });
+
+      // Verify account is locked
+      const lockedUser = await db.user.findUnique({
+        where: { id: testUser.id },
+        select: {
+          failedLoginAttempts: true,
+          lockedUntil: true,
+          lastFailedLoginAt: true,
+        },
+      });
+
+      expect(lockedUser?.failedLoginAttempts).toBe(5);
+      expect(lockedUser?.lockedUntil).toBeTruthy();
+      expect(lockedUser?.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+
+      // Verify that signIn callback blocks the locked account
+      const signInCallback = authOptions.callbacks?.signIn;
+      expect(signInCallback).toBeDefined();
+
+      const result = await signInCallback!({
+        user: {
+          id: testUser.id,
+          email: testUser.email,
+          name: testUser.name,
+        },
+        account: {
+          provider: "github",
+          type: "oauth",
+          providerAccountId: "test-account-id",
+          access_token: "valid_token",
+          refresh_token: null,
+          expires_at: null,
+          token_type: "bearer",
+          scope: "read:user",
+          id_token: null,
+          session_state: null,
+        },
+        profile: undefined,
+        credentials: undefined,
+        email: undefined,
+      });
+
+      // Should be blocked due to lockout
+      expect(result).toBe(false);
+    });
+
+    test("should reject login attempts while account is locked", async () => {
+      const testUser = await createTestUser({
+        email: "locked-user@example.com",
+        name: "Locked User",
+      });
+
+      // Lock the account
+      const lockedUntil = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+      await db.user.update({
+        where: { id: testUser.id },
+        data: {
+          failedLoginAttempts: 5,
+          lockedUntil,
+        },
+      });
+
+      const signInCallback = authOptions.callbacks?.signIn;
+      
+      // Attempt to sign in while locked
+      const result = await signInCallback!({
+        user: {
+          id: testUser.id,
+          email: testUser.email,
+          name: testUser.name,
+        },
+        account: {
+          provider: "github",
+          type: "oauth",
+          providerAccountId: "locked-attempt-id",
+          access_token: "valid_token",
+          refresh_token: null,
+          expires_at: null,
+          token_type: "bearer",
+          scope: "read:user",
+          id_token: null,
+          session_state: null,
+        },
+        profile: undefined,
+        credentials: undefined,
+        email: undefined,
+      });
+
+      // Should be rejected
+      expect(result).toBe(false);
+
+      // Verify lockout state unchanged
+      const stillLockedUser = await db.user.findUnique({
+        where: { id: testUser.id },
+        select: { failedLoginAttempts: true, lockedUntil: true },
+      });
+
+      expect(stillLockedUser?.failedLoginAttempts).toBe(5);
+      expect(stillLockedUser?.lockedUntil).toEqual(lockedUntil);
+    });
+
+    test("should unlock account after lockout duration expires", async () => {
+      const testUser = await createTestUser({
+        email: "expired-lockout@example.com",
+        name: "Expired Lockout User",
+      });
+
+      // Set lockout that has already expired
+      const expiredLockout = new Date(Date.now() - 1000); // 1 second ago
+      await db.user.update({
+        where: { id: testUser.id },
+        data: {
+          failedLoginAttempts: 5,
+          lockedUntil: expiredLockout,
+          lastFailedLoginAt: new Date(Date.now() - 20 * 60 * 1000),
+        },
+      });
+
+      const signInCallback = authOptions.callbacks?.signIn;
+
+      // Create mock provider account for successful authentication
+      const mockAccount = {
+        provider: "mock" as const,
+        type: "oauth" as const,
+        providerAccountId: "expired-lockout-mock",
+        access_token: "mock_token",
+        refresh_token: null,
+        expires_at: null,
+        token_type: "bearer",
+        scope: "read:user",
+        id_token: null,
+        session_state: null,
+      };
+
+      // Attempt to sign in after lockout expired
+      const result = await signInCallback!({
+        user: {
+          id: testUser.id,
+          email: testUser.email,
+          name: testUser.name,
+        },
+        account: mockAccount,
+        profile: undefined,
+        credentials: undefined,
+        email: undefined,
+      });
+
+      // Should be allowed (lockout expired)
+      expect(result).toBe(true);
+
+      // Verify failed attempts counter was reset on successful auth
+      const unlockedUser = await db.user.findUnique({
+        where: { id: testUser.id },
+        select: {
+          failedLoginAttempts: true,
+          lockedUntil: true,
+          lastFailedLoginAt: true,
+        },
+      });
+
+      expect(unlockedUser?.failedLoginAttempts).toBe(0);
+      expect(unlockedUser?.lockedUntil).toBeNull();
+    });
+
+    test("should reset failed attempts counter on successful login", async () => {
+      const testUser = await createTestUser({
+        email: "reset-counter@example.com",
+        name: "Reset Counter User",
+      });
+
+      // Set some failed attempts (but not locked)
+      await db.user.update({
+        where: { id: testUser.id },
+        data: {
+          failedLoginAttempts: 3,
+          lastFailedLoginAt: new Date(),
+        },
+      });
+
+      const signInCallback = authOptions.callbacks?.signIn;
+
+      // Successful mock authentication
+      const result = await signInCallback!({
+        user: {
+          id: testUser.id,
+          email: testUser.email,
+          name: testUser.name,
+        },
+        account: {
+          provider: "mock",
+          type: "oauth",
+          providerAccountId: "reset-counter-mock",
+          access_token: "mock_token",
+          refresh_token: null,
+          expires_at: null,
+          token_type: "bearer",
+          scope: "read:user",
+          id_token: null,
+          session_state: null,
+        },
+        profile: undefined,
+        credentials: undefined,
+        email: undefined,
+      });
+
+      expect(result).toBe(true);
+
+      // Verify counter was reset
+      const resetUser = await db.user.findUnique({
+        where: { id: testUser.id },
+        select: {
+          failedLoginAttempts: true,
+          lastFailedLoginAt: true,
+          lockedUntil: true,
+        },
+      });
+
+      expect(resetUser?.failedLoginAttempts).toBe(0);
+      expect(resetUser?.lastFailedLoginAt).toBeNull();
+      expect(resetUser?.lockedUntil).toBeNull();
+    });
+
+    test("should reject login for permanently locked accounts", async () => {
+      const testUser = await createTestUser({
+        email: "permanent-lock@example.com",
+        name: "Permanently Locked User",
+      });
+
+      // Set permanent lock
+      await db.user.update({
+        where: { id: testUser.id },
+        data: {
+          permanentlyLocked: true,
+          failedLoginAttempts: 10,
+        },
+      });
+
+      const signInCallback = authOptions.callbacks?.signIn;
+
+      // Attempt to sign in with permanently locked account
+      const result = await signInCallback!({
+        user: {
+          id: testUser.id,
+          email: testUser.email,
+          name: testUser.name,
+        },
+        account: {
+          provider: "github",
+          type: "oauth",
+          providerAccountId: "permanent-lock-id",
+          access_token: "valid_token",
+          refresh_token: null,
+          expires_at: null,
+          token_type: "bearer",
+          scope: "read:user",
+          id_token: null,
+          session_state: null,
+        },
+        profile: undefined,
+        credentials: undefined,
+        email: undefined,
+      });
+
+      // Should be rejected
+      expect(result).toBe(false);
+    });
+  });
+
   describe("Security & CSRF Protection", () => {
     test("should verify OAuth tokens are never exposed to client", async () => {
       const testUser = await createTestUser({
