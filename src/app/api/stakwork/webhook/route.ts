@@ -9,7 +9,30 @@ export const fetchCache = "force-no-store";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as StakworkStatusPayload;
+    // TODO: Re-enable webhook signature verification once stakworkWebhookSecret field is added to Workspace schema
+    // Extract signature from headers
+    // const signature = request.headers.get("x-stakwork-signature");
+    // if (!signature) {
+    //   console.error("[StakworkWebhook] Missing signature");
+    //   return NextResponse.json(
+    //     { error: "Missing webhook signature" },
+    //     { status: 401 },
+    //   );
+    // }
+
+    // Get raw body for signature verification
+    const rawBody = await request.text();
+    let body: StakworkStatusPayload;
+    try {
+      body = JSON.parse(rawBody) as StakworkStatusPayload;
+    } catch (error) {
+      console.error("[StakworkWebhook] Invalid JSON payload");
+      return NextResponse.json(
+        { error: "Invalid payload format" },
+        { status: 400 },
+      );
+    }
+
     const { project_status, task_id } = body;
 
     const url = new URL(request.url);
@@ -37,12 +60,28 @@ export async function POST(request: NextRequest) {
         id: finalTaskId,
         deleted: false,
       },
+      include: {
+        workspace: {
+          select: {
+            id: true,
+            stakworkApiKey: true,
+          },
+        },
+      },
     });
 
     if (!task) {
-      console.error(`Task not found: ${finalTaskId}`);
+      console.error(`[StakworkWebhook] Task not found: ${finalTaskId}`);
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+
+    // TODO: Webhook signature verification - requires stakworkWebhookSecret field on Workspace model
+    // Once the database schema is updated, uncomment the verification code below
+    // const encryptionService = EncryptionService.getInstance();
+    // const webhookSecret = encryptionService.decryptField("stakworkWebhookSecret", task.workspace.stakworkWebhookSecret);
+    // const { validateWebhookSignature } = await import("@/lib/webhooks/signature-validation");
+    // const isValid = validateWebhookSignature({ secret: webhookSecret, payload: rawBody, signature, algorithm: "sha256" });
+    // if (!isValid) { return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 }); }
 
     const workflowStatus = mapStakworkStatus(project_status);
 
