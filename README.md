@@ -1,6 +1,8 @@
-# Hive Platform
+# 🐝 Hive Platform
 
 Hive Platform is an AI-first PM toolkit that hardens your codebase and lifts test coverage with async "janitor" workflows—delivering actionable recommendations to improve testing, maintainability, performance, and security.
+
+Built with modern web technologies, Hive helps development teams maintain code quality and security standards through automated analysis and intelligent recommendations.
 
 ## Tech Stack
 
