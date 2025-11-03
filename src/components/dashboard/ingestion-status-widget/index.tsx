@@ -2,15 +2,26 @@
 
 import { useIngestStatus } from "@/hooks/useIngestStatus";
 
-export function IngestionStatusWidget() {
+interface IngestionStatusWidgetProps {
+  centered?: boolean;
+}
+
+export function IngestionStatusWidget({ centered = false }: IngestionStatusWidgetProps) {
   const { isIngesting, statusMessage } = useIngestStatus();
 
   if (!isIngesting) {
     return null;
   }
 
+  console.log('isIngesting---isIngesting--->', isIngesting);
+  console.log('statusMessage---statusMessage--->', statusMessage);
+
+  const positionClasses = centered
+    ? "relative"
+    : "absolute top-4 left-4 z-10";
+
   return (
-    <div className="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm">
+    <div className={`${positionClasses} flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm`}>
       <div className="relative flex items-center justify-center w-4 h-4 flex-shrink-0">
         <div className="absolute inset-0 rounded-full border-2 border-muted-foreground/20" />
         <div className="absolute inset-0 rounded-full border-2 border-t-muted-foreground border-r-transparent border-b-transparent border-l-transparent animate-spin" />
