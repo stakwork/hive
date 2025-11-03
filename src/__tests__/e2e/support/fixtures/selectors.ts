@@ -6,6 +6,7 @@
 export const selectors = {
   // Authentication
   auth: {
+    mockUsernameInput: '#mock-username',
     mockSignInButton: '[data-testid="mock-signin-button"]',
     githubSignInButton: '[data-testid="github-signin-button"]',
     welcomeMessage: 'div.grid.auto-rows-min.items-start:has-text("Welcome to Hive")',
@@ -163,6 +164,22 @@ export const selectors = {
   calls: {
     startCallButton: 'button:has-text("Start Call")',
     callRecordingsCard: 'text=/Call Recordings/i',
+  },
+
+  // Stakgraph/Pool Configuration
+  stakgraph: {
+    backToSettingsButton: 'button:has-text("Back to Settings")',
+    saveButton: 'button:has-text("Save")',
+    addWebhooksButton: 'button:has-text("Add Github Webhooks")',
+    poolSettingsTitle: '[data-testid="pool-settings-title"]',
+    configurationLoadingSpinner: 'text=/Loading settings.../i',
+  },
+
+  poolStatus: {
+    vmConfigSection: '[data-testid="vm-config-section"]',
+    moreActionsMenu: 'button:has([class*="MoreHorizontal"])',
+    editConfigurationLink: 'text=/Edit Configuration/i',
+    launchPodsButton: 'button:has-text("Launch Pods")',
   },
 
   // Common UI elements

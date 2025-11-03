@@ -160,7 +160,7 @@ export default function StakgraphPage() {
 
       <Card className="max-w-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Pool Settings</CardTitle>
+          <CardTitle data-testid="pool-settings-title">Pool Settings</CardTitle>
           <div className="flex gap-2">
             {!formData.webhookEnsured && formData.repositories?.[0]?.repositoryUrl ? (
               <Button type="button" variant="default" onClick={handleEnsureWebhooks}>
