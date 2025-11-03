@@ -788,15 +788,6 @@ export default function TaskChatPage() {
         title: "Success",
         description: "Changes committed and pushed successfully! Check the chat for PR links.",
       });
-
-      // Refresh messages to show the new PR artifact message
-      if (currentTaskId) {
-        const messagesResponse = await fetch(`/api/tasks/${currentTaskId}/messages`);
-        if (messagesResponse.ok) {
-          const messagesData = await messagesResponse.json();
-          setMessages(messagesData);
-        }
-      }
     } catch (error) {
       console.error("Error committing:", error);
       toast({

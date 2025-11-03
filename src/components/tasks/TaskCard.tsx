@@ -9,12 +9,7 @@ import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/compone
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelativeTime } from "@/lib/utils";
 
 interface TaskCardProps {
@@ -106,11 +101,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                     disabled={isUpdating}
                     className="h-8 w-8 p-0 hover:bg-background/80"
                   >
-                    {isArchived ? (
-                      <ArchiveRestore className="h-4 w-4" />
-                    ) : (
-                      <Archive className="h-4 w-4" />
-                    )}
+                    {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -142,9 +133,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                 <User className="w-3 h-3" />
               </AvatarFallback>
             </Avatar>
-            <span>
-              {task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}
-            </span>
+            <span>{task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}</span>
           </div>
         )}
 
@@ -188,24 +177,24 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         {/* PR Status Badge */}
         {task.prArtifact && task.prArtifact.content && (
           <a
-            href={task.prArtifact.content.prUrls?.[0]}
+            href={task.prArtifact.content.url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="inline-flex"
           >
-            <Badge 
-              variant="secondary" 
+            <Badge
+              variant="secondary"
               className={`gap-1 h-5 ${
-                task.prArtifact.content.status === 'MERGED' 
-                  ? 'bg-purple-100 text-purple-800 border-purple-200' 
-                  : task.prArtifact.content.status === 'CLOSED'
-                  ? 'bg-red-100 text-red-800 border-red-200'
-                  : 'bg-green-100 text-green-800 border-green-200'
+                task.prArtifact.content.status === "MERGED"
+                  ? "bg-purple-100 text-purple-800 border-purple-200"
+                  : task.prArtifact.content.status === "CLOSED"
+                    ? "bg-red-100 text-red-800 border-red-200"
+                    : "bg-green-100 text-green-800 border-green-200"
               }`}
             >
               <GitPullRequest className="w-3 h-3" />
-              PR {task.prArtifact.content.status || 'OPEN'}
+              PR {task.prArtifact.content.status || "OPEN"}
               <ExternalLink className="w-3 h-3 ml-0.5" />
             </Badge>
           </a>
