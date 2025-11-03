@@ -133,7 +133,7 @@ function formatPRContent(
   sections.push(formatHeader(prData));
 
   // Description
-  if (prData.body) {
+  if (prData.body && typeof prData.body === "string") {
     sections.push(formatDescription(prData.body));
   }
 
@@ -165,16 +165,20 @@ function formatPRContent(
  * Format PR header with metadata
  */
 function formatHeader(prData: Record<string, unknown>): string {
-  const totalAdditions = prData.additions || 0;
-  const totalDeletions = prData.deletions || 0;
-  const changedFiles = prData.changed_files || 0;
+  const totalAdditions = (prData.additions as number) || 0;
+  const totalDeletions = (prData.deletions as number) || 0;
+  const changedFiles = (prData.changed_files as number) || 0;
+  const user = prData.user as { login: string } | undefined;
+  const mergedBy = prData.merged_by as { login: string } | undefined;
+  const base = prData.base as { ref: string } | undefined;
+  const head = prData.head as { ref: string } | undefined;
 
   return `# Pull Request #${prData.number}: ${prData.title}
 
-**Author:** @${prData.user.login}
-**Merged by:** ${prData.merged_by ? `@${prData.merged_by.login}` : "N/A"}
+**Author:** @${user?.login || "unknown"}
+**Merged by:** ${mergedBy ? `@${mergedBy.login}` : "N/A"}
 **Merged at:** ${prData.merged_at || "N/A"}
-**Base branch:** ${prData.base.ref} → **Head branch:** ${prData.head.ref}
+**Base branch:** ${base?.ref || "unknown"} → **Head branch:** ${head?.ref || "unknown"}
 **Changes:** ${changedFiles} files changed, +${totalAdditions} -${totalDeletions}
 **PR URL:** ${prData.html_url}`;
 }
@@ -195,15 +199,17 @@ function formatFilesChanged(files: Record<string, unknown>[], options: PRContent
   const sections = [`## Files Changed (${files.length} files)`];
 
   for (const file of files) {
-    const status = file.status; // added, modified, removed, renamed
-    const additions = file.additions;
-    const deletions = file.deletions;
+    const status = (file.status as string) || "unknown";
+    const additions = (file.additions as number) || 0;
+    const deletions = (file.deletions as number) || 0;
+    const filename = (file.filename as string) || "unknown";
+    const patch = file.patch as string | undefined;
 
-    sections.push(`### ${file.filename}`);
+    sections.push(`### ${filename}`);
     sections.push(`**Status:** ${status} | **Changes:** +${additions} -${deletions}`);
 
-    if (file.patch) {
-      const truncatedPatch = truncatePatch(file.patch, options.maxPatchLines!);
+    if (patch) {
+      const truncatedPatch = truncatePatch(patch, options.maxPatchLines!);
       sections.push("\n```diff");
       sections.push(truncatedPatch);
       sections.push("```");
@@ -237,31 +243,33 @@ function formatReviewComments(comments: Record<string, unknown>[]): string {
   const sections = ["## Code Review Comments"];
 
   // Group by file
-  const commentsByFile = comments.reduce(
-    (acc, comment) => {
-      const file = (comment.path as string) || "unknown";
-      if (!acc[file]) acc[file] = [];
-      acc[file].push(comment);
-      return acc;
-    },
-    {} as Record<string, Record<string, unknown>[]>,
-  );
+  const commentsByFile: Record<string, Record<string, unknown>[]> = {};
+  for (const comment of comments) {
+    const file = (comment.path as string) || "unknown";
+    if (!commentsByFile[file]) {
+      commentsByFile[file] = [];
+    }
+    commentsByFile[file].push(comment);
+  }
 
   for (const [file, fileComments] of Object.entries(commentsByFile)) {
     sections.push(`\n### ${file}`);
 
     for (const comment of fileComments) {
-      const line = comment.line || comment.original_line || "?";
-      const author = comment.user.login;
-      const createdAt = new Date(comment.created_at).toLocaleString();
+      const line = (comment.line as number) || (comment.original_line as number) || "?";
+      const user = comment.user as { login: string } | undefined;
+      const author = user?.login || "unknown";
+      const createdAt = comment.created_at ? new Date(comment.created_at as string).toLocaleString() : "unknown";
+      const diffHunk = comment.diff_hunk as string | undefined;
+      const body = (comment.body as string) || "";
 
       sections.push(`\n**@${author}** on line ${line} - ${createdAt}`);
-      if (comment.diff_hunk) {
+      if (diffHunk) {
         sections.push("```diff");
-        sections.push(comment.diff_hunk);
+        sections.push(diffHunk);
         sections.push("```");
       }
-      sections.push(`> ${comment.body.replace(/\n/g, "\n> ")}`);
+      sections.push(`> ${body.replace(/\n/g, "\n> ")}`);
     }
   }
 
@@ -275,21 +283,24 @@ function formatReviews(reviews: Record<string, unknown>[]): string {
   const sections = ["## Reviews"];
 
   for (const review of reviews) {
-    if (!review.body || review.state === "COMMENTED") continue; // Skip empty or pure comment reviews
+    const body = review.body as string | undefined;
+    const state = (review.state as string) || "";
 
-    const reviewer = review.user.login;
-    const state = review.state; // APPROVED, CHANGES_REQUESTED, COMMENTED
-    const createdAt = new Date(review.submitted_at).toLocaleString();
+    if (!body || state === "COMMENTED") continue; // Skip empty or pure comment reviews
+
+    const user = review.user as { login: string } | undefined;
+    const reviewer = user?.login || "unknown";
+    const createdAt = review.submitted_at ? new Date(review.submitted_at as string).toLocaleString() : "unknown";
 
     const stateEmoji: Record<string, string> = {
       APPROVED: "✅",
       CHANGES_REQUESTED: "🔄",
       COMMENTED: "💬",
     };
-    const emoji = stateEmoji[state as string] || "";
+    const emoji = stateEmoji[state] || "";
 
     sections.push(`\n${emoji} **@${reviewer}** ${state.toLowerCase().replace("_", " ")} - ${createdAt}`);
-    sections.push(`> ${review.body.replace(/\n/g, "\n> ")}`);
+    sections.push(`> ${body.replace(/\n/g, "\n> ")}`);
   }
 
   return sections.join("\n");
@@ -302,11 +313,13 @@ function formatIssueComments(comments: Record<string, unknown>[]): string {
   const sections = ["## Discussion"];
 
   for (const comment of comments) {
-    const author = comment.user.login;
-    const createdAt = new Date(comment.created_at).toLocaleString();
+    const user = comment.user as { login: string } | undefined;
+    const author = user?.login || "unknown";
+    const createdAt = comment.created_at ? new Date(comment.created_at as string).toLocaleString() : "unknown";
+    const body = (comment.body as string) || "";
 
     sections.push(`\n**@${author}** - ${createdAt}`);
-    sections.push(`> ${comment.body.replace(/\n/g, "\n> ")}`);
+    sections.push(`> ${body.replace(/\n/g, "\n> ")}`);
   }
 
   return sections.join("\n");
@@ -319,9 +332,10 @@ function formatCommits(commits: Record<string, unknown>[]): string {
   const sections = [`## Commits (${commits.length} commits)`];
 
   for (const commit of commits) {
-    const sha = commit.sha.substring(0, 7);
-    const author = commit.commit.author.name;
-    const message = commit.commit.message.split("\n")[0]; // First line only
+    const sha = ((commit.sha as string) || "").substring(0, 7);
+    const commitData = commit.commit as { author?: { name?: string }; message?: string } | undefined;
+    const author = commitData?.author?.name || "unknown";
+    const message = (commitData?.message || "").split("\n")[0]; // First line only
 
     sections.push(`- \`${sha}\` @${author}: ${message}`);
   }
