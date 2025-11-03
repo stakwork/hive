@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         {
           error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
 
     // Process tasks to add hasActionArtifact flag and PR artifact info
     const processedTasks = await Promise.all(
-      tasks.map(async (task: any) => {
+      tasks.map(async (task) => {
         let hasActionArtifact = false;
         let prArtifact = null;
 
@@ -240,7 +240,7 @@ export async function GET(request: NextRequest) {
                               Authorization: `Bearer ${tokens.accessToken}`,
                               "X-GitHub-Api-Version": "2022-11-28",
                             },
-                          }
+                          },
                         );
 
                         if (response.ok) {
@@ -266,6 +266,8 @@ export async function GET(request: NextRequest) {
                       console.error("Error checking PR status:", error);
                     }
                   }
+                } else {
+                  console.error("No PR URL found for task:", task.id);
                 }
 
                 prArtifact = { ...prArt, content };
@@ -282,7 +284,7 @@ export async function GET(request: NextRequest) {
           hasActionArtifact,
           prArtifact,
         };
-      })
+      }),
     );
 
     return NextResponse.json(
@@ -297,7 +299,7 @@ export async function GET(request: NextRequest) {
           hasMore,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error fetching tasks:", error);
@@ -392,7 +394,7 @@ export async function POST(request: NextRequest) {
           {
             error: `Invalid status. Must be one of: ${Object.values(TaskStatus).join(", ")}`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -406,7 +408,7 @@ export async function POST(request: NextRequest) {
         {
           error: `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -437,7 +439,7 @@ export async function POST(request: NextRequest) {
           {
             error: "Repository not found or does not belong to this workspace",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -501,7 +503,7 @@ export async function POST(request: NextRequest) {
         success: true,
         data: sanitizeTask(task),
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error creating task:", error);
