@@ -6,6 +6,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
+import { storePullRequest, type PullRequestPayload } from "@/lib/github/storePullRequest";
 
 //
 export async function POST(request: NextRequest) {
@@ -110,6 +111,26 @@ export async function POST(request: NextRequest) {
       [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
     );
 
+    // Fetch GitHub credentials early for both push and PR events
+    const workspace = await db.workspace.findUnique({
+      where: { id: repository.workspaceId },
+      select: { ownerId: true, slug: true },
+    });
+
+    let githubPat: string | undefined;
+    if (workspace?.ownerId) {
+      const creds = await getGithubUsernameAndPAT(workspace.ownerId, workspace.slug);
+      if (creds) {
+        githubPat = creds.token;
+      }
+    }
+
+    console.log("[GithubWebhook] GitHub credentials", {
+      delivery,
+      workspaceId: repository.workspaceId,
+      hasCredentials: !!githubPat,
+    });
+
     if (event === "push") {
       const ref: string | undefined = payload?.ref;
       if (!ref) {
@@ -142,6 +163,44 @@ export async function POST(request: NextRequest) {
         workspaceId: repository.workspaceId,
         pushedBranch,
       });
+    } else if (event === "pull_request") {
+      const action = payload?.action;
+      const merged = payload?.pull_request?.merged;
+
+      if (action === "closed" && merged === true) {
+        console.log("[GithubWebhook] Processing merged PR", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          prNumber: payload.number,
+        });
+
+        // Store PR data without failing the webhook if this fails
+        try {
+          await storePullRequest(
+            payload as PullRequestPayload,
+            repository.id,
+            repository.workspaceId,
+            githubPat,
+          );
+        } catch (error) {
+          console.error("[GithubWebhook] Failed to store PR, continuing", {
+            delivery,
+            workspaceId: repository.workspaceId,
+            prNumber: payload.number,
+            error,
+          });
+        }
+      } else {
+        console.log("[GithubWebhook] PR action not handled, skipping", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          action,
+          merged,
+        });
+      }
+
+      // For pull_request events, we don't trigger sync, so return here
+      return NextResponse.json({ success: true }, { status: 202 });
     } else {
       console.log("[GithubWebhook] Event type not handled, skipping", {
         delivery,
@@ -178,34 +237,10 @@ export async function POST(request: NextRequest) {
       swarmName: swarm.name,
     });
 
-    const workspace = await db.workspace.findUnique({
-      where: { id: repository.workspaceId },
-      select: { ownerId: true },
-    });
-    const ownerId = workspace?.ownerId;
-
-    let username: string | undefined;
-    let pat: string | undefined;
-    if (ownerId) {
-      const workspaceData = await db.workspace.findUnique({
-        where: { id: repository.workspaceId },
-        select: { slug: true },
-      });
-
-      if (workspaceData) {
-        const creds = await getGithubUsernameAndPAT(ownerId, workspaceData.slug);
-        if (creds) {
-          username = creds.username;
-          pat = creds.token;
-        }
-      }
-    }
-
-    console.log("[GithubWebhook] GitHub credentials", {
-      delivery,
-      workspaceId: repository.workspaceId,
-      hasCredentials: !!(username && pat),
-    });
+    // Get username from credentials for async sync
+    const username = workspace?.ownerId
+      ? (await getGithubUsernameAndPAT(workspace.ownerId, workspace.slug))?.username
+      : undefined;
 
     // Decrypt the swarm API key
     let decryptedSwarmApiKey: string;
@@ -245,14 +280,14 @@ export async function POST(request: NextRequest) {
       swarmHost,
       repositoryUrl: repository.repositoryUrl,
       callbackUrl,
-      hasGithubAuth: !!(username && pat),
+      hasGithubAuth: !!(username && githubPat),
     });
 
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarmHost,
       decryptedSwarmApiKey,
       repository.repositoryUrl,
-      username && pat ? { username, pat } : undefined,
+      username && githubPat ? { username, pat: githubPat } : undefined,
       callbackUrl,
     );
 
