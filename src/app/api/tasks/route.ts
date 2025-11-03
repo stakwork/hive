@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority, WorkflowStatus, TaskSourceType, Prisma } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
+import { getUserAppTokens } from "@/lib/githubApp";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,10 +15,7 @@ export async function GET(request: NextRequest) {
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -29,20 +27,16 @@ export async function GET(request: NextRequest) {
     const includeArchived = searchParams.get("includeArchived");
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "workspaceId query parameter is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
     }
 
     // Validate pagination parameters
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
         {
-          error:
-            "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
+          error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -67,10 +61,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     // Check if user is workspace owner or member
@@ -207,42 +198,92 @@ export async function GET(request: NextRequest) {
     const hasMore = page < totalPages;
 
     // Process tasks to add hasActionArtifact flag and PR artifact info
-    const processedTasks = tasks.map((task: any) => {
-      let hasActionArtifact = false;
-      let prArtifact = null;
-      
-      // Only check for action artifacts if the workflow is pending or in_progress
-      if (includeLatestMessage && 
-          task.chatMessages && 
-          task.chatMessages.length > 0 &&
-          (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)) {
-        const latestMessage = task.chatMessages[0];
-        hasActionArtifact = latestMessage.artifacts?.some(
-          (artifact: any) => artifact.type === 'FORM'
-        ) || false;
-      }
+    const processedTasks = await Promise.all(
+      tasks.map(async (task: any) => {
+        let hasActionArtifact = false;
+        let prArtifact = null;
 
-      // Extract PR artifact if it exists
-      if (task.chatMessages && task.chatMessages.length > 0) {
-        for (const message of task.chatMessages) {
-          if (message.artifacts && message.artifacts.length > 0) {
-            const prArt = message.artifacts.find((a: any) => a.type === 'PULL_REQUEST');
-            if (prArt) {
-              prArtifact = prArt;
-              break;
+        // Only check for action artifacts if the workflow is pending or in_progress
+        if (
+          includeLatestMessage &&
+          task.chatMessages &&
+          task.chatMessages.length > 0 &&
+          (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)
+        ) {
+          const latestMessage = task.chatMessages[0];
+          hasActionArtifact = latestMessage.artifacts?.some((artifact: any) => artifact.type === "FORM") || false;
+        }
+
+        // Extract PR artifact if it exists
+        if (task.chatMessages && task.chatMessages.length > 0) {
+          for (const message of task.chatMessages) {
+            if (message.artifacts && message.artifacts.length > 0) {
+              const prArt = message.artifacts.find((a: any) => a.type === "PULL_REQUEST");
+              if (prArt && prArt.content) {
+                const content = prArt.content as any;
+                const prUrl = content.url;
+
+                // Try to get fresh PR status from GitHub if PR URL exists
+                if (prUrl) {
+                  const prMatch = prUrl.match(/\/pull\/(\d+)/);
+                  if (prMatch) {
+                    const [, owner, repo] = new URL(prMatch.input).pathname.split("/");
+                    const prNumber = parseInt(prMatch[1], 10);
+                    try {
+                      const tokens = await getUserAppTokens(userId, owner);
+                      if (tokens?.accessToken) {
+                        const response = await fetch(
+                          `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+                          {
+                            headers: {
+                              Accept: "application/vnd.github+json",
+                              Authorization: `Bearer ${tokens.accessToken}`,
+                              "X-GitHub-Api-Version": "2022-11-28",
+                            },
+                          }
+                        );
+
+                        if (response.ok) {
+                          const prData = await response.json();
+                          const newStatus = prData.merged_at
+                            ? "DONE"
+                            : prData.state === "open"
+                              ? "IN_PROGRESS"
+                              : "CANCELLED";
+                          content.status = newStatus;
+
+                          // If PR is merged, update task status
+                          if (newStatus === "DONE" && task.status !== TaskStatus.DONE) {
+                            await db.task.update({
+                              where: { id: task.id },
+                              data: { status: TaskStatus.DONE },
+                            });
+                            task.status = TaskStatus.DONE;
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Error checking PR status:", error);
+                    }
+                  }
+                }
+
+                prArtifact = { ...prArt, content };
+                break;
+              }
             }
           }
         }
-      }
 
-      // Return task with hasActionArtifact flag and PR artifact, removing chatMessages array to keep response clean
-      const { chatMessages, ...taskWithoutMessages } = task;
-      return {
-        ...taskWithoutMessages,
-        hasActionArtifact,
-        prArtifact,
-      };
-    });
+        // Return task with hasActionArtifact flag and PR artifact, removing chatMessages array to keep response clean
+        const { chatMessages, ...taskWithoutMessages } = task;
+        return {
+          ...taskWithoutMessages,
+          hasActionArtifact,
+          prArtifact,
+        };
+      })
+    );
 
     return NextResponse.json(
       {
@@ -256,14 +297,11 @@ export async function GET(request: NextRequest) {
           hasMore,
         },
       },
-      { status: 200 },
+      { status: 200 }
     );
   } catch (error) {
     console.error("Error fetching tasks:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch tasks" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 }
 
@@ -276,10 +314,7 @@ export async function POST(request: NextRequest) {
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -298,10 +333,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!title || !workspaceSlug) {
-      return NextResponse.json(
-        { error: "Missing required fields: title, workspaceId" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required fields: title, workspaceId" }, { status: 400 });
     }
 
     // Verify workspace exists and user has access
@@ -325,24 +357,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     const workspaceId = workspace.id;
-    
+
     // Verify that the user exists in the database
     const user = await db.user.findUnique({
       where: { id: userId },
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // Check if user is workspace owner or member
@@ -366,7 +392,7 @@ export async function POST(request: NextRequest) {
           {
             error: `Invalid status. Must be one of: ${Object.values(TaskStatus).join(", ")}`,
           },
-          { status: 400 },
+          { status: 400 }
         );
       }
     }
@@ -380,7 +406,7 @@ export async function POST(request: NextRequest) {
         {
           error: `Invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`,
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -394,10 +420,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (!assignee) {
-        return NextResponse.json(
-          { error: "Assignee not found" },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "Assignee not found" }, { status: 400 });
       }
     }
 
@@ -414,7 +437,7 @@ export async function POST(request: NextRequest) {
           {
             error: "Repository not found or does not belong to this workspace",
           },
-          { status: 400 },
+          { status: 400 }
         );
       }
     }
@@ -478,13 +501,10 @@ export async function POST(request: NextRequest) {
         success: true,
         data: sanitizeTask(task),
       },
-      { status: 201 },
+      { status: 201 }
     );
   } catch (error) {
     console.error("Error creating task:", error);
-    return NextResponse.json(
-      { error: "Failed to create task" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
   }
 }

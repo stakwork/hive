@@ -186,15 +186,15 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             <Badge
               variant="secondary"
               className={`gap-1 h-5 ${
-                task.prArtifact.content.status === "MERGED"
-                  ? "bg-purple-100 text-purple-800 border-purple-200"
-                  : task.prArtifact.content.status === "CLOSED"
-                    ? "bg-red-100 text-red-800 border-red-200"
-                    : "bg-green-100 text-green-800 border-green-200"
+                task.prArtifact.content.status === "IN_PROGRESS"
+                  ? "bg-purple-300 text-purple-800 border-purple-200"
+                  : task.prArtifact.content.status === "CANCELLED"
+                    ? "bg-red-300 text-red-900 border-red-200"
+                    : "bg-gray-100 text-gray-800 border-gray-200"
               }`}
             >
               <GitPullRequest className="w-3 h-3" />
-              PR {task.prArtifact.content.status || "OPEN"}
+              PR {task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}
               <ExternalLink className="w-3 h-3 ml-0.5" />
             </Badge>
           </a>
