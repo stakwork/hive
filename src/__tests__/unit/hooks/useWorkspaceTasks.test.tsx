@@ -77,6 +77,72 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       expect(TASKS_PAGE_STORAGE_KEY(workspaceWithUnderscores)).toBe("tasks_page_workspace_123_456");
       expect(TASKS_PAGE_STORAGE_KEY(workspaceUUID)).toBe("tasks_page_550e8400-e29b-41d4-a716-446655440000");
     });
+
+    test("handles null input gracefully", () => {
+      // @ts-expect-error - Testing runtime behavior with invalid input
+      const key = TASKS_PAGE_STORAGE_KEY(null);
+      expect(key).toBe("tasks_page_null");
+    });
+
+    test("handles undefined input gracefully", () => {
+      // @ts-expect-error - Testing runtime behavior with invalid input
+      const key = TASKS_PAGE_STORAGE_KEY(undefined);
+      expect(key).toBe("tasks_page_undefined");
+    });
+
+    test.each([
+      // Unicode characters
+      ["workspace-🚀-rocket", "tasks_page_workspace-🚀-rocket", "emoji"],
+      ["workspace-你好-hello", "tasks_page_workspace-你好-hello", "Chinese"],
+      ["workspace-مرحبا-greeting", "tasks_page_workspace-مرحبا-greeting", "Arabic"],
+      ["workspace-こんにちは-konnichiwa", "tasks_page_workspace-こんにちは-konnichiwa", "Japanese"],
+      
+      // Whitespace-only
+      ["   ", "tasks_page_   ", "spaces only"],
+      ["\t\t\t", "tasks_page_\t\t\t", "tabs only"],
+      [" \t \t ", "tasks_page_ \t \t ", "mixed whitespace"],
+      
+      // Leading/trailing whitespace
+      [" workspace-123", "tasks_page_ workspace-123", "leading space"],
+      ["workspace-123 ", "tasks_page_workspace-123 ", "trailing space"],
+      [" workspace-123 ", "tasks_page_ workspace-123 ", "both spaces"],
+      ["\tworkspace-123", "tasks_page_\tworkspace-123", "leading tab"],
+      
+      // SQL injection patterns
+      ["'; DROP TABLE workspaces--", "tasks_page_'; DROP TABLE workspaces--", "SQL injection 1"],
+      ["workspace' OR '1'='1", "tasks_page_workspace' OR '1'='1", "SQL injection 2"],
+      ["workspace; DELETE FROM tasks;", "tasks_page_workspace; DELETE FROM tasks;", "SQL injection 3"],
+      
+      // XSS patterns
+      ["<script>alert('xss')</script>", "tasks_page_<script>alert('xss')</script>", "XSS script"],
+      ["<img src=x onerror=alert('xss')>", "tasks_page_<img src=x onerror=alert('xss')>", "XSS img"],
+      ["<iframe src='javascript:alert(1)'></iframe>", "tasks_page_<iframe src='javascript:alert(1)'></iframe>", "XSS iframe"],
+      
+      // Numeric-only
+      ["12345", "tasks_page_12345", "numeric"],
+      ["999999999", "tasks_page_999999999", "large numeric"],
+      ["00123", "tasks_page_00123", "numeric with leading zeros"],
+      
+      // URL special characters
+      ["workspace?param=value", "tasks_page_workspace?param=value", "query string"],
+      ["workspace#section", "tasks_page_workspace#section", "fragment"],
+      ["workspace&param=value", "tasks_page_workspace&param=value", "ampersand"],
+      ["workspace=value", "tasks_page_workspace=value", "equals"],
+      ["workspace/path", "tasks_page_workspace/path", "slash"],
+      
+      // Control characters
+      ["workspace\nline2", "tasks_page_workspace\nline2", "newline"],
+      ["workspace\rline2", "tasks_page_workspace\rline2", "carriage return"],
+      ["workspace\ttab", "tasks_page_workspace\ttab", "tab"],
+      ["work\n\r\tspace", "tasks_page_work\n\r\tspace", "multiple control chars"],
+      
+      // Mixed edge cases
+      [" 🚀 workspace ", "tasks_page_ 🚀 workspace ", "emoji with spaces"],
+      ["123-456_789", "tasks_page_123-456_789", "numeric with special chars"],
+      ["workspace-你好\nline2", "tasks_page_workspace-你好\nline2", "unicode with control chars"],
+    ])("handles edge case: %s (%s)", (input, expected) => {
+      expect(TASKS_PAGE_STORAGE_KEY(input)).toBe(expected);
+    });
   });
 
   describe("saveCurrentPage", () => {
