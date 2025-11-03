@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
-import type { Task, ChatMessage } from "@prisma/client";
+import type { Task, ChatMessage, User, Workspace } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+import { createTestUser } from "./user";
+import { createTestWorkspace } from "./workspace";
 
 export interface CreateTestTaskOptions {
   title?: string;
@@ -90,4 +92,38 @@ export async function updateTestTask(taskId: string, updates: any) {
 
 export async function deleteTestTask(taskId: string) {
   return db.task.delete({ where: { id: taskId } });
+}
+
+/**
+ * Create a complete test setup with user, workspace, and task in one call
+ * Useful for tests that need a basic task context with optional chat messages
+ */
+export async function createTestTaskContext(options?: {
+  userName?: string;
+  taskTitle?: string;
+  messages?: string[];
+}): Promise<{ user: User; workspace: Workspace; task: Task; chatMessages: ChatMessage[] }> {
+  const user = await createTestUser({ name: options?.userName });
+  const workspace = await createTestWorkspace({ ownerId: user.id });
+  const task = await createTestTask({
+    title: options?.taskTitle,
+    workspaceId: workspace.id,
+    createdById: user.id,
+    updatedById: user.id,
+  });
+
+  const chatMessages: ChatMessage[] = [];
+  if (options?.messages) {
+    for (let i = 0; i < options.messages.length; i++) {
+      const role = i % 2 === 0 ? "USER" : "ASSISTANT";
+      const message = await createTestChatMessage({
+        taskId: task.id,
+        message: options.messages[i],
+        role: role as "USER" | "ASSISTANT",
+      });
+      chatMessages.push(message);
+    }
+  }
+
+  return { user, workspace, task, chatMessages };
 }
