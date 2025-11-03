@@ -97,3 +97,28 @@ NEXTAUTH_SECRET="your-jwt-secret"
 GITHUB_CLIENT_ID="your-github-client-id"  
 GITHUB_CLIENT_SECRET="your-github-client-secret"
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+**Database Connection Errors**
+- Ensure PostgreSQL is running: `docker-compose up -d postgres`
+- Verify DATABASE_URL in `.env.local` matches your database credentials
+- Run `npx prisma generate` after any schema changes
+
+**Authentication Issues**
+- Double-check GitHub OAuth credentials are correctly set
+- Ensure NEXTAUTH_URL matches your development URL
+- Regenerate NEXTAUTH_SECRET if needed: `npm run setup`
+
+**Build Errors**
+- Clear Next.js cache: `rm -rf .next`
+- Reinstall dependencies: `rm -rf node_modules && npm install`
+- Ensure Node.js version is 18 or higher
+
+**Test Failures**
+- Reset test database: `npm run test:db:reset`
+- Check that test database is running: `npm run test:db:start`
+
+For more detailed information, check the [docs](./docs) directory.
