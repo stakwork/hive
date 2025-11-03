@@ -8,6 +8,7 @@ import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,24 @@ interface AttachmentRequest {
   mimeType: string;
   size: number;
 }
+
+// Zod schema for request validation
+const chatMessageSchema = z
+  .object({
+    taskId: z.string().min(1, { message: "taskId is required" }),
+    message: z.string().optional().default(""),
+    contextTags: z.array(z.any()).optional().default([]),
+    sourceWebsocketID: z.string().optional(),
+    artifacts: z.array(z.any()).optional().default([]),
+    attachments: z.array(z.any()).optional().default([]),
+    webhook: z.string().optional(),
+    replyId: z.string().optional(),
+    mode: z.string().optional(),
+  })
+  .refine((data) => data.message || (data.artifacts && data.artifacts.length > 0), {
+    message: "Either message or artifacts must be provided",
+    path: ["message"],
+  });
 
 async function fetchChatHistory(taskId: string, excludeMessageId: string): Promise<Record<string, unknown>[]> {
   const chatHistory = await db.chatMessage.findMany({
@@ -236,25 +255,29 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const validationResult = chatMessageSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid request data",
+          details: validationResult.error.format(),
+        },
+        { status: 400 },
+      );
+    }
+
     const {
       taskId,
       message,
-      contextTags = [] as ContextTag[],
+      contextTags,
       sourceWebsocketID,
-      artifacts = [] as ArtifactRequest[],
-      attachments = [] as AttachmentRequest[],
+      artifacts,
+      attachments,
       webhook,
       replyId,
       mode,
-    } = body;
-
-    // Validate required fields
-    if (!message && artifacts.length === 0) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
-    }
-    if (!taskId) {
-      return NextResponse.json({ error: "taskId is required" }, { status: 400 });
-    }
+    } = validationResult.data;
 
     // Find the task and get its workspace with swarm details
     const task = await db.task.findFirst({
@@ -329,7 +352,7 @@ export async function POST(request: NextRequest) {
           create: artifacts.map((artifact: ArtifactRequest) => ({
             type: artifact.type,
             content: artifact.content,
-          })),
+          })) as any,
         },
         attachments: {
           create: attachments.map((attachment: AttachmentRequest) => ({

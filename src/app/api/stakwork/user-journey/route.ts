@@ -8,6 +8,15 @@ import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { z } from "zod";
+
+const userJourneySchema = z.object({
+  message: z.string().min(1, { message: "Message is required" }),
+  workspaceId: z.string().min(1, { message: "Workspace ID is required" }),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  testName: z.string().optional(),
+});
 
 export const runtime = "nodejs";
 
@@ -96,16 +105,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, workspaceId, title, description, testName } = body;
+    const validationResult = userJourneySchema.safeParse(body);
 
-    // Validate required fields
-    if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    if (!validationResult.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid request data",
+          details: validationResult.error.format(),
+        },
+        { status: 400 },
+      );
     }
-
-    if (!workspaceId) {
-      return NextResponse.json({ error: "Workspace ID is required" }, { status: 400 });
-    }
+    const { message, workspaceId, title, description, testName } =
+      validationResult.data;
 
     // Use default title if not provided
     const taskTitle = title || testName || "User Journey Test";

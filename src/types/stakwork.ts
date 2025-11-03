@@ -80,6 +80,15 @@ export const StakworkRunQuerySchema = z.object({
   offset: z.number().int().nonnegative().optional().default(0),
 });
 
+export const StakworkStatusWebhookSchema = z.object({
+  project_output: z.record(z.string(), z.any()).optional(),
+  workflow_id: z.number().optional(),
+  workflow_version_id: z.number().optional(),
+  workflow_version: z.number().optional(),
+  project_status: z.string().min(1, { message: "project_status is required and cannot be empty" }),
+  task_id: z.string().optional(),
+});
+
 // Type inference from Zod schemas
 export type CreateStakworkRunInput = z.infer<typeof CreateStakworkRunSchema>;
 export type StakworkRunWebhookPayload = z.infer<typeof StakworkRunWebhookSchema>;
@@ -87,6 +96,7 @@ export type UpdateStakworkRunDecisionInput = z.infer<
   typeof UpdateStakworkRunDecisionSchema
 >;
 export type StakworkRunQuery = z.infer<typeof StakworkRunQuerySchema>;
+export type StakworkStatusWebhookPayload = z.infer<typeof StakworkStatusWebhookSchema>;
 
 // API Response types
 export interface StakworkRunResponse {

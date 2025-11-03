@@ -127,3 +127,31 @@ export async function expectConflict(
     expect(data.error).toBeDefined();
   }
 }
+
+/**
+ * Assert that a Response contains Zod validation errors
+ * @param response - NextResponse or Response object
+ * @param field - Optional specific field to check for errors
+ * @param errorMessage - Optional expected error message for the field
+ */
+export async function expectZodValidationError(
+  response: Response | NextResponse,
+  field?: string,
+  errorMessage?: string
+): Promise<void> {
+  expect(response.status).toBe(400);
+  const data = await response.json();
+
+  expect(data.error).toBe("Invalid request data");
+  expect(data.details).toBeDefined();
+
+  if (field) {
+    expect(data.details[field]).toBeDefined();
+    
+    if (errorMessage) {
+      expect(data.details[field]._errors).toContain(errorMessage);
+    } else {
+      expect(data.details[field]._errors).toBeDefined();
+    }
+  }
+}

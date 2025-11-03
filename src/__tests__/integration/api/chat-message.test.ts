@@ -166,7 +166,9 @@ describe("POST /api/chat/message Integration Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: "Message is required" });
+      const json = await response.json();
+      expect(json.error).toBe("Invalid request data");
+      expect(json.details).toBeDefined();
     });
 
     test("should return 400 for missing taskId", async () => {
@@ -182,7 +184,9 @@ describe("POST /api/chat/message Integration Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: "taskId is required" });
+      const json = await response.json();
+      expect(json.error).toBe("Invalid request data");
+      expect(json.details).toBeDefined();
     });
   });
 

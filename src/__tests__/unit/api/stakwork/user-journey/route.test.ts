@@ -169,7 +169,8 @@ describe("POST /api/stakwork/user-journey", () => {
 
       expect(result.status).toBe(400);
       const json = await result.json();
-      expect(json).toEqual({ error: "Message is required" });
+      expect(json.error).toBe("Invalid request data");
+      expect(json.details).toBeDefined();
     });
 
     it("should return 400 when message is empty string", async () => {
@@ -181,7 +182,9 @@ describe("POST /api/stakwork/user-journey", () => {
 
       expect(result.status).toBe(400);
       const json = await result.json();
-      expect(json).toEqual({ error: "Message is required" });
+      expect(json.error).toBe("Invalid request data");
+      expect(json.details).toBeDefined();
+      expect(json.details.message._errors).toContain("Message is required");
     });
 
     it("should return 400 when workspaceId is missing", async () => {
@@ -193,7 +196,9 @@ describe("POST /api/stakwork/user-journey", () => {
 
       expect(result.status).toBe(400);
       const json = await result.json();
-      expect(json).toEqual({ error: "Workspace ID is required" });
+      expect(json.error).toBe("Invalid request data");
+      expect(json.details).toBeDefined();
+      expect(json.details.workspaceId).toBeDefined();
     });
 
     it("should return 400 when workspaceId is empty string", async () => {
@@ -205,7 +210,9 @@ describe("POST /api/stakwork/user-journey", () => {
 
       expect(result.status).toBe(400);
       const json = await result.json();
-      expect(json).toEqual({ error: "Workspace ID is required" });
+      expect(json.error).toBe("Invalid request data");
+      expect(json.details).toBeDefined();
+      expect(json.details.workspaceId._errors).toContain("Workspace ID is required");
     });
   });
 

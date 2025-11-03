@@ -235,7 +235,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await expectError(response, "Message is required", 400);
+      await expectError(response, "Invalid request data", 400);
     });
 
     test("should return 400 for empty message", async () => {
@@ -252,7 +252,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await expectError(response, "Message is required", 400);
+      await expectError(response, "Invalid request data", 400);
     });
 
     test("should return 400 for missing workspaceId field", async () => {
@@ -268,7 +268,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await expectError(response, "Workspace ID is required", 400);
+      await expectError(response, "Invalid request data", 400);
     });
 
     test("should return 400 for empty workspaceId", async () => {
@@ -285,7 +285,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await expectError(response, "Workspace ID is required", 400);
+      await expectError(response, "Invalid request data", 400);
     });
   });
 

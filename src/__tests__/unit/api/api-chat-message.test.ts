@@ -189,7 +189,9 @@ describe("POST /api/chat/message", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("Message is required");
+      expect(data.error).toBe("Invalid request data");
+      expect(data.details).toBeDefined();
+      expect(data.details.message._errors).toContain("Either message or artifacts must be provided");
     });
 
     it("should return 400 if taskId is missing", async () => {
@@ -202,7 +204,10 @@ describe("POST /api/chat/message", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("taskId is required");
+      expect(data.error).toBe("Invalid request data");
+      expect(data.details).toBeDefined();
+      expect(data.details.taskId).toBeDefined();
+      expect(data.details.taskId._errors).toHaveLength(1);
     });
 
     it("should accept empty message if there are artifacts", async () => {
