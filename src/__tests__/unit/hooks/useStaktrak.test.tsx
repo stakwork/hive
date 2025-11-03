@@ -684,6 +684,8 @@ describe("useStaktrak Hook", () => {
       const initialUrl = "https://example.com";
       const generatedTest = "// Generated Playwright test";
       mockRecordingManager.generateTest.mockReturnValue(generatedTest);
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const onTestGenerated = vi.fn();
       const { result } = renderHook(() =>
@@ -716,6 +718,8 @@ describe("useStaktrak Hook", () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const workspaceUrl = "https://abc123-3000.workspaces.sphinx.chat";
       const expectedUrl = "http://localhost:3000";
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const { result } = renderHook(() => useStaktrak(workspaceUrl));
 
@@ -743,6 +747,8 @@ describe("useStaktrak Hook", () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const workspaceUrl = "@https://xyz789-8080.workspaces.sphinx.chat";
       const expectedUrl = "http://localhost:8080";
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const { result } = renderHook(() => useStaktrak(workspaceUrl));
 
@@ -792,10 +798,13 @@ describe("useStaktrak Hook", () => {
       mockRecordingManager.generateTest.mockImplementation(() => {
         throw new Error("Generation error");
       });
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const onTestGenerated = vi.fn();
 
-      const { result } = renderHook(() => useStaktrak("https://example.com"));
+      const { result } = renderHook(() => useStaktrak("https://example.com", onTestGenerated));
 
       result.current.iframeRef.current = mockIframe.current;
 
@@ -812,9 +821,13 @@ describe("useStaktrak Hook", () => {
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-          "Error generating Playwright test:",
-          expect.any(Error)
+          "[useStaktrak] Test generation error",
+          expect.objectContaining({
+            error: expect.any(Error),
+            errorMessage: "Generation error"
+          })
         );
+        expect(onTestGenerated).toHaveBeenCalledWith("", "Failed to generate test. Please try again.");
       });
 
       consoleErrorSpy.mockRestore();
@@ -903,6 +916,8 @@ describe("useStaktrak Hook", () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const workspaceUrl = "https://abc123-3000.workspaces.sphinx.chat";
       mockRecordingManager.generateTest.mockImplementation((url) => url);
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const { result } = renderHook(() => useStaktrak(workspaceUrl));
 
@@ -928,6 +943,8 @@ describe("useStaktrak Hook", () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const workspaceUrl = "https://xyz789-8080.workspaces.sphinx.chat";
       mockRecordingManager.generateTest.mockImplementation((url) => url);
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const { result } = renderHook(() => useStaktrak(workspaceUrl));
 
@@ -953,6 +970,8 @@ describe("useStaktrak Hook", () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const regularUrl = "https://example.com";
       mockRecordingManager.generateTest.mockImplementation((url) => url);
+      // Mock getActions to return non-empty array (validation requires actions)
+      mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const { result } = renderHook(() => useStaktrak(regularUrl));
 

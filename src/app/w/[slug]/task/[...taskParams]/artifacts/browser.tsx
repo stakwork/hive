@@ -25,6 +25,7 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/comp
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 import { ActionsList } from "@/components/ActionsList";
+import { useToast } from "@/components/ui/use-toast";
 
 export function BrowserArtifactPanel({
   artifacts,
@@ -60,6 +61,8 @@ export function BrowserArtifactPanel({
   const activeArtifact = artifacts[activeTab];
   const activeContent = activeArtifact?.content as BrowserContent;
 
+  const { toast } = useToast();
+
   // Local toast handler for all action types
   const showActionToast = useCallback((type: string, text: string) => {
     const id = Date.now();
@@ -81,6 +84,7 @@ export function BrowserArtifactPanel({
     enableAssertionMode,
     disableAssertionMode,
     generatedPlaywrightTest,
+    generationError,
     capturedActions,
     showActions,
     removeAction,
@@ -90,8 +94,20 @@ export function BrowserArtifactPanel({
     navigateToUrl,
   } = useStaktrak(
     activeContent?.url,
-    () => {
-      // Open modal when test is generated
+    (test: string, error?: string) => {
+      // Show error toast if test generation failed
+      if (error) {
+        console.error("[Browser] Test generation failed:", error);
+        toast({
+          title: "Test Generation Failed",
+          description: error,
+          variant: "destructive",
+        });
+        return; // Don't open modal on error
+      }
+
+      // Only open modal on successful test generation
+      console.log("[Browser] Opening test modal");
       setIsTestModalOpen(true);
     },
     showActionToast,
@@ -548,6 +564,7 @@ export function BrowserArtifactPanel({
           setIsTestModalOpen(false);
         }}
         generatedCode={generatedPlaywrightTest}
+        errorMessage={generationError}
         initialTab={"generated"}
         onUserJourneySave={onUserJourneySave}
       />
