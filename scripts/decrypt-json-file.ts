@@ -1,6 +1,9 @@
 /**
  * Decrypt JSON File Script
  *
+ * SECURITY NOTICE: This script logs decrypted secrets in plaintext.
+ * It is intended ONLY for local development debugging and must NEVER run in production.
+ *
  * Decrypts encrypted JSON files using the same TOKEN_ENCRYPTION_KEY that production uses.
  *
  * Usage:
@@ -17,6 +20,16 @@
  *   - TOKEN_ENCRYPTION_KEY: The encryption key (same as production)
  *   - TOKEN_ENCRYPTION_KEY_ID: Optional, defaults to "default"
  */
+
+// Production environment guard - MUST be first to prevent execution
+if (process.env.NODE_ENV === 'production') {
+  console.error(
+    '❌ SECURITY ERROR: decrypt-json-file.ts cannot run in production environments.\n' +
+    'This script logs decrypted secrets in plaintext and would expose sensitive data to logs.\n' +
+    'Use this tool only in local development environments.'
+  );
+  process.exit(1);
+}
 
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });

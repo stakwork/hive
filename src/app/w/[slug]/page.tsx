@@ -9,15 +9,6 @@ export default function DashboardPage() {
   const { workspace } = useWorkspace();
   const [servicesStarted, setServicesStarted] = useState(false);
 
-  console.log('here=====>');
-  console.log(workspace?.containerFilesSetUp);
-  console.log(workspace?.swarmId);
-  console.log(workspace?.swarmStatus);
-  console.log(workspace?.ingestRefId);
-  console.log(workspace?.poolState);
-  console.log(workspace?.repositories);
-  console.log('here=====>');
-
   const setupCompleted = workspace?.containerFilesSetUp;
   const hasSwarmId = !!workspace?.swarmId;
 

@@ -1,3 +1,16 @@
+/**
+ * SECURITY NOTICE: This debug script logs decrypted secrets in plaintext.
+ * It is intended ONLY for local development debugging and must NEVER run in production.
+ */
+
+// Production environment guard - MUST be first to prevent execution
+if (process.env.NODE_ENV === 'production') {
+  throw new Error(
+    '❌ SECURITY: decrypt-and-log.ts cannot run in production environments. ' +
+    'This script logs decrypted secrets in plaintext and would expose sensitive data to logs.'
+  );
+}
+
 import { PrismaClient } from "@prisma/client";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config as dotenvConfig } from "dotenv";

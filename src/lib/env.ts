@@ -32,7 +32,7 @@ export const optionalEnvVars = {
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
-  LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
+  LOG_LEVEL: process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "ERROR" : "INFO"),
 } as const;
 
 // Combined environment configuration
