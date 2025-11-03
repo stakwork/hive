@@ -15,7 +15,7 @@ Hive Platform is an AI-first PM toolkit that hardens your codebase and lifts tes
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20+
 - PostgreSQL database  
 - GitHub OAuth application ([Setup Guide](https://github.com/settings/developers))
 
