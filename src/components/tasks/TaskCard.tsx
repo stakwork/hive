@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -9,12 +9,7 @@ import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/compone
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelativeTime } from "@/lib/utils";
 
 interface TaskCardProps {
@@ -106,11 +101,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                     disabled={isUpdating}
                     className="h-8 w-8 p-0 hover:bg-background/80"
                   >
-                    {isArchived ? (
-                      <ArchiveRestore className="h-4 w-4" />
-                    ) : (
-                      <Archive className="h-4 w-4" />
-                    )}
+                    {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -142,9 +133,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                 <User className="w-3 h-3" />
               </AvatarFallback>
             </Avatar>
-            <span>
-              {task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}
-            </span>
+            <span>{task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}</span>
           </div>
         )}
 
@@ -183,6 +172,32 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             <Sparkles className="w-3 h-3" />
             Janitor
           </Badge>
+        )}
+
+        {/* PR Status Badge */}
+        {task.prArtifact && task.prArtifact.content && (
+          <a
+            href={task.prArtifact.content.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex"
+          >
+            <Badge
+              variant="secondary"
+              className={`gap-1 h-5 ${
+                task.prArtifact.content.status === "IN_PROGRESS"
+                  ? "bg-purple-300 text-purple-800 border-purple-200"
+                  : task.prArtifact.content.status === "CANCELLED"
+                    ? "bg-red-300 text-red-900 border-red-200"
+                    : "bg-gray-100 text-gray-800 border-gray-200"
+              }`}
+            >
+              <GitPullRequest className="w-3 h-3" />
+              PR {task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}
+              <ExternalLink className="w-3 h-3 ml-0.5" />
+            </Badge>
+          </a>
         )}
       </div>
     </motion.div>

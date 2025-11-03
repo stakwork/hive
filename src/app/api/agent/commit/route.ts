@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
             },
           },
         },
-        { status: 200 },
+        { status: 200 }
       );
     }
 
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     if (!controlPortUrl) {
       return NextResponse.json(
         { error: `Control port (${POD_PORTS.CONTROL}) not found in port mappings` },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
         ">>> Getting user app token for workspace source control org:",
         userGithubAuth?.githubUsername,
         ",",
-        workspace.sourceControlOrg.githubLogin,
+        workspace.sourceControlOrg.githubLogin
       );
       const tokens = await getUserAppTokens(userId, workspace.sourceControlOrg.githubLogin);
       githubToken = tokens?.accessToken;
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
         console.warn("No GitHub access token found for workspace source control org");
         return NextResponse.json(
           { error: "GitHub authentication required. Please reconnect your GitHub account." },
-          { status: 401 },
+          { status: 401 }
         );
       }
     } else {
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
       console.warn("No GitHub username found for user");
       return NextResponse.json(
         { error: "GitHub username not found. Please reconnect your GitHub account." },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -199,12 +199,67 @@ export async function POST(request: NextRequest) {
       console.error(`Failed to push: ${pushResponse.status} - ${errorText}`);
       return NextResponse.json(
         { error: `Failed to push: ${pushResponse.status}`, details: errorText },
-        { status: pushResponse.status },
+        { status: pushResponse.status }
       );
     }
 
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
+
+    // Parse repositories to extract owner/repo and create PR URLs
+    const repositoriesData = workspace.repositories
+      .map((repo) => {
+        try {
+          // Parse repositoryUrl to extract owner/repo
+          // Format: https://github.com/owner/repo or https://github.com/owner/repo.git
+          const match = repo.repositoryUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
+          if (match) {
+            const [, owner, repoName] = match;
+            return {
+              url: repo.repositoryUrl,
+              owner,
+              repo: repoName,
+              prUrl: `https://github.com/${owner}/${repoName}/pull/new/${branchName}`,
+            };
+          }
+          return null;
+        } catch (error) {
+          console.error("Error constructing PR URL from repository:", repo.repositoryUrl, error);
+          return null;
+        }
+      })
+      .filter((data): data is { url: string; owner: string; repo: string; prUrl: string } => data !== null);
+
+    const prUrls = repositoriesData.map((r) => r.prUrl);
+
+    // Create a chat message with PR artifact
+    const assistantMessage = await db.chatMessage.create({
+      data: {
+        taskId: taskId,
+        message: "Commit and push successful! Open a PR to continue.",
+        role: "ASSISTANT",
+        status: "SENT",
+      },
+    });
+
+    // Create PR artifact with structured data
+    await db.artifact.create({
+      data: {
+        messageId: assistantMessage.id,
+        type: "PULL_REQUEST",
+        content: {
+          branchName,
+          commitMessage,
+          repositories: {
+            url: repositoriesData[0].url,
+            owner: repositoriesData[0].owner,
+            repo: repositoriesData[0].repo,
+          },
+          prUrl: repositoriesData[0].prUrl,
+          status: "OPEN",
+        },
+      },
+    });
 
     return NextResponse.json(
       {
@@ -212,9 +267,11 @@ export async function POST(request: NextRequest) {
         message: "Commit and push successful",
         data: {
           prs: pushData.prs || {},
+          prUrls,
+          messageId: assistantMessage.id,
         },
       },
-      { status: 200 },
+      { status: 200 }
     );
   } catch (error) {
     console.error("Error committing:", error);
@@ -228,7 +285,7 @@ export async function POST(request: NextRequest) {
           service: apiError.service,
           details: apiError.details,
         },
-        { status: apiError.status },
+        { status: apiError.status }
       );
     }
 
