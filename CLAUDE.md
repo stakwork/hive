@@ -279,20 +279,36 @@ Priority: `data-testid` > semantic selectors > text selectors
 ❌ Hardcoded selectors | ❌ Direct `page.locator()` in tests | ❌ Duplicate setup code | ❌ Real GitHub auth | ❌ Missing `waitForLoad()` | ❌ No `data-testid`
 
 ### Environment Setup
-Required environment variables (see `env.example` for complete list):
+
+#### Critical Secrets (Fail-Fast Validation)
+The application validates these at startup and **will not start** if any are missing:
+
+**Authentication & Encryption:**
+- `NEXTAUTH_SECRET` - Session encryption secret (generate: `openssl rand -base64 32`)
+- `TOKEN_ENCRYPTION_KEY` - Encryption key for OAuth tokens (generate: `openssl rand -hex 32`)
+
+**External Services:**
+- `STAKWORK_API_KEY` / `STAKWORK_CUSTOMERS_EMAIL` / `STAKWORK_CUSTOMERS_PASSWORD`
+- `POOL_MANAGER_API_KEY` / `POOL_MANAGER_API_USERNAME` / `POOL_MANAGER_API_PASSWORD`
+- `SWARM_SUPERADMIN_API_KEY` / `SWARM_SUPER_ADMIN_URL`
+
+#### Other Required Variables
 - `DATABASE_URL` - PostgreSQL connection string
 - `NEXTAUTH_URL` - Application URL
-- `NEXTAUTH_SECRET` - Session encryption secret (generate with `npm run setup`)
-- `JWT_SECRET` - 64-character hex secret for JWT signing
-- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` - GitHub OAuth credentials
-- `GITHUB_APP_SLUG` - GitHub App slug for installation
-- `TOKEN_ENCRYPTION_KEY` - 32+ character key for encrypting sensitive tokens
+- `JWT_SECRET` - 64-character hex secret for JWT signing (generate: `npm run setup`)
 - `TOKEN_ENCRYPTION_KEY_ID` - Key version ID (e.g., "k2")
-- `STAKWORK_API_KEY` / `STAKWORK_BASE_URL` - Stakwork API integration
-- `POOL_MANAGER_API_KEY` / `POOL_MANAGER_BASE_URL` - Pool Manager API
+
+#### Optional Variables
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` - GitHub OAuth (optional with `POD_URL` mock)
+- `GITHUB_APP_SLUG` - GitHub App slug for installation
+- `STAKWORK_BASE_URL` / `POOL_MANAGER_BASE_URL` - Service endpoints (have defaults)
 - `PUSHER_*` - Pusher credentials for real-time features
 - `NEXT_PUBLIC_PUSHER_*` - Client-side Pusher keys
-- `POD_URL` - Optional mock auth provider for development
+- `POD_URL` - Optional mock auth provider for development/codespaces
+
+See `env.example` for complete list with documentation.
+
+**Security Note**: Fail-fast validation in `src/lib/env.ts` prevents deployment with missing authentication secrets, ensuring unauthorized access cannot occur due to misconfiguration.
 
 ### Code Style
 - Uses ESLint with Next.js configuration

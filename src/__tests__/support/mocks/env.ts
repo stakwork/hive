@@ -16,6 +16,9 @@ const mockEnv = {
   SWARM_SUPER_ADMIN_URL: "https://swarm.test",
   STAKWORK_CUSTOMERS_EMAIL: "test@example.com",
   STAKWORK_CUSTOMERS_PASSWORD: "test-password",
+  NEXTAUTH_SECRET: "test-nextauth-secret-for-session-encryption",
+  TOKEN_ENCRYPTION_KEY:
+    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
 };
 
 const mockConfig = {

@@ -1,4 +1,5 @@
 const requiredEnvVars = {
+  // External service credentials
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
   POOL_MANAGER_API_KEY: process.env.POOL_MANAGER_API_KEY,
   POOL_MANAGER_API_USERNAME: process.env.POOL_MANAGER_API_USERNAME,
@@ -7,7 +8,9 @@ const requiredEnvVars = {
   SWARM_SUPER_ADMIN_URL: process.env.SWARM_SUPER_ADMIN_URL,
   STAKWORK_CUSTOMERS_EMAIL: process.env.STAKWORK_CUSTOMERS_EMAIL,
   STAKWORK_CUSTOMERS_PASSWORD: process.env.STAKWORK_CUSTOMERS_PASSWORD,
-  //ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  // Authentication and encryption secrets (fail-fast validation)
+  NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
+  TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY,
 } as const;
 
 // Validate environment variables
