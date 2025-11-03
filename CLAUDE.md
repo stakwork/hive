@@ -183,6 +183,60 @@ npx shadcn@latest add [component-name]
 - Session management integrated with Prisma adapter
 - Token encryption/decryption handled by `FieldEncryptionService`
 
+### Authorization Architecture
+The application implements two-tier authorization:
+
+**Tier 1: Workspace-Level Authorization** (existing pattern)
+- `validateWorkspaceAccess(slug, userId)` validates workspace membership and role
+- Returns permission flags: `hasAccess`, `canRead`, `canWrite`, `canAdmin`
+- Role hierarchy: VIEWER → STAKEHOLDER → DEVELOPER → PM → ADMIN → OWNER
+- Used for workspace-scoped operations (tasks, features, settings)
+
+**Tier 2: User-Level Authorization** (resource ownership)
+- `validateUserResourceOwnership(resourceOwnerId, requestingUserId, options)` validates resource ownership
+- Prevents users from accessing resources created by other users within shared workspaces
+- Admin/Owner roles can override ownership checks via `allowAdminOverride` option
+- Critical for user-owned entities: Account, SourceControlToken, user-created Tasks/Features
+
+**Authorization Pattern for API Routes:**
+```typescript
+// 1. Authenticate user
+const session = await getServerSession(authOptions);
+const userId = (session?.user as { id?: string })?.id;
+if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+// 2. Validate workspace access
+const { hasAccess, canWrite, workspace } = await validateWorkspaceAccess(slug, userId);
+if (!hasAccess || !canWrite) {
+  return NextResponse.json({ error: "Access denied" }, { status: 403 });
+}
+
+// 3. Validate resource ownership (for user-owned resources)
+const access = await validateTaskOwnership(taskId, userId, {
+  workspaceRole: workspace.userRole,
+  allowAdminOverride: true // Allow workspace admins to access
+});
+if (!access.hasAccess) {
+  return NextResponse.json({ error: access.reason }, { status: 403 });
+}
+
+// 4. Perform operation with workspace and user filters
+const data = await db.task.findMany({
+  where: { 
+    workspaceId: workspace.id, 
+    createdById: userId, // User-level filter
+    deleted: false 
+  },
+});
+```
+
+**User Authorization Helpers** (in `src/lib/helpers/user-authorization.ts`):
+- `validateAccountOwnership(userId, accountId)` - Validates Account table access (OAuth tokens)
+- `validateSourceControlTokenOwnership(userId, tokenId)` - Validates GitHub token access
+- `validateTaskOwnership(taskId, userId, options)` - Validates Task creator ownership
+- `validateFeatureOwnership(featureId, userId, options)` - Validates Feature creator ownership
+- `extractUserId(session)` - Type-safe userId extraction from session
+
 ### Working with Workspaces
 - All workspace pages use `/w/[slug]/*` pattern
 - Use `useWorkspace()` for workspace data and operations
