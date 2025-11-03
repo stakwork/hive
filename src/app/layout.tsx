@@ -2,7 +2,7 @@ import { ToastProvider } from "@/components/ui/toast-provider";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Roboto } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -16,6 +16,12 @@ const roboto = Roboto({
   variable: '--font-roboto',
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
   title: "Hive",
   description: "A PMs dream",
@@ -28,11 +34,6 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/site.webmanifest",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
