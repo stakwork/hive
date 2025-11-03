@@ -257,14 +257,15 @@ export function ActionsList({
                 {isReplaying ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
             )}
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={onClearAll}
-              disabled={!isRecording || isReplaying || actions.length === 0}
-            >
-              Clear All
-            </Button>
+            {isRecording && !isReplaying && actions.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={onClearAll}
+              >
+                Clear All
+              </Button>
+            )}
           </div>
         </div>
       </div>
