@@ -45,11 +45,8 @@ function SignInContent() {
       } else if (user.defaultWorkspaceSlug) {
         // User has a default workspace, redirect to their workspace
         router.push(`/w/${user.defaultWorkspaceSlug}`);
-      } else {
-        console.log("No default workspace, redirecting to onboarding");
-        // User has no workspaces, redirect to onboarding
-        router.push("/onboarding/workspace");
       }
+      // Note: Users without workspaces are handled by root page's handleWorkspaceRedirect()
     }
   }, [session, router, redirectPath]);
 
