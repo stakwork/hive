@@ -4,6 +4,7 @@ import { CoverageInsights } from "@/components/insights/CoverageInsights";
 import { JanitorItem, JanitorSection } from "@/components/insights/JanitorSection";
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
 import { TestCoverageCard } from "@/components/insights/TestCoverageCard";
+import { GitLeaksSection } from "@/components/insights/GitLeaksSection";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -170,6 +171,8 @@ export default function InsightsPage() {
           icon={<Shield className="h-5 w-5 text-red-500" />}
           janitors={securityJanitors}
         />
+
+        <GitLeaksSection />
       </div>
       {/* End content container */}
     </div>
