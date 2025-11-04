@@ -3,8 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority, WorkflowStatus, TaskSourceType, Prisma } from "@prisma/client";
-import { sanitizeTask } from "@/lib/helpers/tasks";
-import { getUserAppTokens } from "@/lib/githubApp";
+import { sanitizeTask, extractPrArtifact } from "@/lib/helpers/tasks";
 
 export async function GET(request: NextRequest) {
   try {
@@ -201,7 +200,6 @@ export async function GET(request: NextRequest) {
     const processedTasks = await Promise.all(
       tasks.map(async (task) => {
         let hasActionArtifact = false;
-        let prArtifact = null;
 
         // Only check for action artifacts if the workflow is pending or in_progress
         if (
@@ -211,73 +209,20 @@ export async function GET(request: NextRequest) {
           (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)
         ) {
           const latestMessage = task.chatMessages[0];
-          hasActionArtifact = latestMessage.artifacts?.some((artifact: any) => artifact.type === "FORM") || false;
+          hasActionArtifact =
+            latestMessage.artifacts?.some((artifact: { type: string }) => artifact.type === "FORM") || false;
         }
 
-        // Extract PR artifact if it exists
-        if (task.chatMessages && task.chatMessages.length > 0) {
-          for (const message of task.chatMessages) {
-            if (message.artifacts && message.artifacts.length > 0) {
-              const prArt = message.artifacts.find((a: any) => a.type === "PULL_REQUEST");
-              if (prArt && prArt.content) {
-                const content = prArt.content as any;
-                const prUrl = content.url;
+        // Extract PR artifact if it exists using shared utility
+        const prArtifact = await extractPrArtifact(task, userId);
 
-                // Try to get fresh PR status from GitHub if PR URL exists
-                if (prUrl) {
-                  const prMatch = prUrl.match(/\/pull\/(\d+)/);
-                  if (prMatch) {
-                    const [, owner, repo] = new URL(prMatch.input).pathname.split("/");
-                    const prNumber = parseInt(prMatch[1], 10);
-                    try {
-                      const tokens = await getUserAppTokens(userId, owner);
-                      if (tokens?.accessToken) {
-                        const response = await fetch(
-                          `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
-                          {
-                            headers: {
-                              Accept: "application/vnd.github+json",
-                              Authorization: `Bearer ${tokens.accessToken}`,
-                              "X-GitHub-Api-Version": "2022-11-28",
-                            },
-                          },
-                        );
-
-                        if (response.ok) {
-                          const prData = await response.json();
-                          const newStatus = prData.merged_at
-                            ? "DONE"
-                            : prData.state === "open"
-                              ? "IN_PROGRESS"
-                              : "CANCELLED";
-                          content.status = newStatus;
-
-                          // If PR is merged, update task status
-                          if (newStatus === "DONE" && task.status !== TaskStatus.DONE) {
-                            await db.task.update({
-                              where: { id: task.id },
-                              data: { status: TaskStatus.DONE },
-                            });
-                            task.status = TaskStatus.DONE;
-                          }
-                        }
-                      }
-                    } catch (error) {
-                      console.error("Error checking PR status:", error);
-                    }
-                  }
-                } else {
-                  console.error("No PR URL found for task:", task.id);
-                }
-
-                prArtifact = { ...prArt, content };
-                break;
-              }
-            }
-          }
+        // Update task status in memory if it was updated by extractPrArtifact
+        if (prArtifact?.content?.status === "DONE") {
+          task.status = TaskStatus.DONE;
         }
 
         // Return task with hasActionArtifact flag and PR artifact, removing chatMessages array to keep response clean
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { chatMessages, ...taskWithoutMessages } = task;
         return {
           ...taskWithoutMessages,
