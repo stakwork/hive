@@ -560,9 +560,9 @@ export default function UserJourneys() {
                           </TableCell>
                           <TableCell>{getStatusBadge(task.status, task.workflowStatus)}</TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
-                              {task.testFileUrl && (
+                            {task.workflowStatus === "COMPLETED" && task.testFileUrl ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -571,8 +571,14 @@ export default function UserJourneys() {
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                 </Button>
-                              )}
-                            </div>
+                              </div>
+                            ) : task.testFileUrl ? (
+                              <span className="text-sm text-muted-foreground italic">
+                                Pending merge - link not available
+                              </span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {new Date(task.createdAt).toLocaleDateString()}
