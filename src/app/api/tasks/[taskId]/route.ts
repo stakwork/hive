@@ -17,7 +17,7 @@ export async function PATCH(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { startWorkflow, mode, status, workflowStatus, archived } = body;
+    const { startWorkflow, mode, status, workflowStatus, archived, runBuild, runTestSuite } = body;
 
     // Verify task exists and user has access
     const task = await db.task.findFirst({
@@ -134,6 +134,8 @@ export async function PATCH(
             archived,
             archivedAt: archived ? new Date() : null
           }),
+          ...(runBuild !== undefined && { runBuild }),
+          ...(runTestSuite !== undefined && { runTestSuite }),
           updatedById: userOrResponse.id,
         },
         select: {

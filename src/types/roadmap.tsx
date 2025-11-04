@@ -533,6 +533,8 @@ export interface CreateRoadmapTaskRequest {
   assigneeId?: string | null;
   status?: import("@prisma/client").TaskStatus;
   priority?: import("@prisma/client").Priority;
+  runBuild?: boolean;
+  runTestSuite?: boolean;
 }
 
 export interface UpdateRoadmapTaskRequest {
@@ -544,6 +546,8 @@ export interface UpdateRoadmapTaskRequest {
   phaseId?: string | null;
   assigneeId?: string | null;
   dependsOnTaskIds?: string[];
+  runBuild?: boolean;
+  runTestSuite?: boolean;
 }
 
 export interface ReorderRoadmapTasksRequest {
