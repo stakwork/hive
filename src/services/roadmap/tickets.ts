@@ -523,25 +523,6 @@ export async function reorderTickets(
     throw new Error("Access denied");
   }
 
-  // Validate all tasks belong to the same feature
-  if (tasks.length > 1) {
-    const allTasks = await db.task.findMany({
-      where: {
-        id: { in: tasks.map(t => t.id) },
-      },
-      select: { id: true, featureId: true },
-    });
-
-    const invalidTasks = allTasks.filter(t => t.featureId !== firstTask.featureId);
-    if (invalidTasks.length > 0) {
-      throw new Error("All tasks must belong to the same feature");
-    }
-
-    if (allTasks.length !== tasks.length) {
-      throw new Error("One or more tasks not found");
-    }
-  }
-
   await db.$transaction(
     tasks.map((task) => {
       const updateData: any = { order: task.order };

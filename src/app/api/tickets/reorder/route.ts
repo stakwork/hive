@@ -25,7 +25,6 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Failed to reorder tickets";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :
-                   message.includes("same feature") ? 400 :
                    message.includes("array") || message.includes("empty") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
