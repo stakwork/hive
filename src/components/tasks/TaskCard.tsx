@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, ExternalLink } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, GitMerge, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -200,7 +200,11 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                   : undefined
               }
             >
-              <GitPullRequest className="w-3 h-3" />
+              {task.prArtifact.content.status === "DONE" ? (
+                <GitMerge className="w-3 h-3" />
+              ) : (
+                <GitPullRequest className="w-3 h-3" />
+              )}
               {task.prArtifact.content.status === "DONE" ? "Merged" : `PR ${task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}`}
               <ExternalLink className="w-3 h-3 ml-0.5" />
             </Badge>
