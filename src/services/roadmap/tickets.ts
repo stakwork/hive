@@ -209,6 +209,8 @@ export async function createTicket(
       assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
       systemAssigneeType: systemAssigneeType,
       bountyCode: bountyCode,
+      runBuild: data.runBuild ?? true,
+      runTestSuite: data.runTestSuite ?? true,
       createdById: userId,
       updatedById: userId,
     },
@@ -289,6 +291,14 @@ export async function updateTicket(
   if (data.priority !== undefined) {
     validateEnum(data.priority, Priority, "priority");
     updateData.priority = data.priority;
+  }
+
+  if (data.runBuild !== undefined) {
+    updateData.runBuild = data.runBuild;
+  }
+
+  if (data.runTestSuite !== undefined) {
+    updateData.runTestSuite = data.runTestSuite;
   }
 
   if (data.phaseId !== undefined) {
