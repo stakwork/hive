@@ -489,6 +489,14 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
                   id: true,
                 },
               },
+              repositories: {
+                take: 1,
+                orderBy: { createdAt: "desc" },
+                select: {
+                  repositoryUrl: true,
+                  branch: true,
+                },
+              },
             },
           },
         },
