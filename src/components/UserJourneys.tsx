@@ -562,7 +562,7 @@ export default function UserJourneys() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
-                              {task.testFileUrl && (
+                              {task.workflowStatus === "COMPLETED" && task.testFileUrl ? (
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -571,7 +571,11 @@ export default function UserJourneys() {
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                 </Button>
-                              )}
+                              ) : task.testFileUrl ? (
+                                <span className="text-xs text-muted-foreground italic">
+                                  Pending merge - link not available
+                                </span>
+                              ) : null}
                             </div>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
