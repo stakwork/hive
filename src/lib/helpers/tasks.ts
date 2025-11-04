@@ -78,6 +78,12 @@ export async function extractPrArtifact(
         const content = prArt.content as PrArtifactContent;
         const prUrl = content.url;
 
+        // Skip GitHub API check if status is already in a terminal state (DONE or CANCELLED)
+        const isTerminalState = content.status === "DONE" || content.status === "CANCELLED";
+        if (isTerminalState) {
+          return { id: prArt.id, type: prArt.type, content };
+        }
+
         // Try to get fresh PR status from GitHub if PR URL exists
         if (prUrl && typeof prUrl === "string") {
           const prMatch = prUrl.match(/\/pull\/(\d+)/);
