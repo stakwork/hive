@@ -6,7 +6,9 @@ import {
   createTestUser,
   createTestWorkspace,
   createTestTask,
-  findTestTask
+  findTestTask,
+  createTestFeature,
+  createTestPhase,
 } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
@@ -31,13 +33,10 @@ describe("Tasks Reorder API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
-        data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-        },
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Test Feature",
       });
 
       // Create 3 tasks with initial order [0, 1, 2]
@@ -123,29 +122,22 @@ describe("Tasks Reorder API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
-        data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-        },
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Test Feature",
       });
 
-      const phase1 = await db.phase.create({
-        data: {
-          name: "Phase 1",
-          featureId: feature.id,
-          order: 0,
-        },
+      const phase1 = await createTestPhase({
+        featureId: feature.id,
+        name: "Phase 1",
+        order: 0,
       });
 
-      const phase2 = await db.phase.create({
-        data: {
-          name: "Phase 2",
-          featureId: feature.id,
-          order: 1,
-        },
+      const phase2 = await createTestPhase({
+        featureId: feature.id,
+        name: "Phase 2",
+        order: 1,
       });
 
       const task1 = await db.task.create({
@@ -305,12 +297,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       await expectError(response, "Task not found", 404);
     });
 
-    // TODO: Enable this test once production code validates all tasks belong to same feature
-    // Currently the reorderTasks service only validates the first task's feature access
-    // but doesn't check if all tasks belong to the same feature. This allows cross-feature
-    // reordering which could be a security/data integrity issue.
-    // Production code fix needed in: src/services/roadmap/tasks.ts (reorderTasks function)
-    test.skip("prevents cross-feature task reordering", async () => {
+    test("prevents cross-feature task reordering", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -319,22 +306,16 @@ describe("Tasks Reorder API - Integration Tests", () => {
       });
 
       // Create two features in same workspace
-      const feature1 = await db.feature.create({
-        data: {
-          title: "Feature 1",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-        },
+      const feature1 = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Feature 1",
       });
 
-      const feature2 = await db.feature.create({
-        data: {
-          title: "Feature 2",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-        },
+      const feature2 = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Feature 2",
       });
 
       // Create task in feature 1
@@ -379,8 +360,8 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       const response = await POST(request);
 
-      // Service should fail - tasks must belong to same feature
-      expect(response.status).toBeGreaterThanOrEqual(400);
+      // Service should fail with specific error message
+      await expectError(response, "All tasks must belong to the same feature", 400);
 
       // Verify original order is preserved (transaction rolled back)
       const task1Check = await db.task.findUnique({
@@ -548,13 +529,10 @@ describe("Tasks Reorder API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const feature = await db.feature.create({
-        data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-        },
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Test Feature",
       });
 
       const task = await db.task.create({
@@ -658,13 +636,10 @@ describe("Tasks Reorder API - Integration Tests", () => {
         },
       });
 
-      const feature = await db.feature.create({
-        data: {
-          title: "Test Feature",
-          workspaceId: workspace.id,
-          createdById: owner.id,
-          updatedById: owner.id,
-        },
+      const feature = await createTestFeature({
+        workspaceId: workspace.id,
+        createdById: owner.id,
+        title: "Test Feature",
       });
 
       const task = await db.task.create({

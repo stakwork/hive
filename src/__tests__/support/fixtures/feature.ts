@@ -2,6 +2,9 @@
  * Test fixtures for feature data used in AI utils tests
  */
 
+import { db } from "@/lib/db";
+import type { Feature, Phase } from "@prisma/client";
+
 type FeatureData = {
   id: string;
   title: string;
@@ -52,4 +55,40 @@ export function createCompleteFeatureData(overrides: Partial<FeatureData> = {}):
     },
     ...overrides,
   };
+}
+
+/**
+ * Creates a test feature in the database
+ */
+export async function createTestFeature(params: {
+  workspaceId: string;
+  createdById: string;
+  title?: string;
+  updatedById?: string;
+}): Promise<Feature> {
+  return db.feature.create({
+    data: {
+      title: params.title || "Test Feature",
+      workspaceId: params.workspaceId,
+      createdById: params.createdById,
+      updatedById: params.updatedById || params.createdById,
+    },
+  });
+}
+
+/**
+ * Creates a test phase in the database
+ */
+export async function createTestPhase(params: {
+  featureId: string;
+  name?: string;
+  order?: number;
+}): Promise<Phase> {
+  return db.phase.create({
+    data: {
+      featureId: params.featureId,
+      name: params.name || "Test Phase",
+      order: params.order ?? 0,
+    },
+  });
 }
