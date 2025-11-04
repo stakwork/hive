@@ -190,11 +190,18 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                   ? "bg-purple-300 text-purple-800 border-purple-200"
                   : task.prArtifact.content.status === "CANCELLED"
                     ? "bg-red-300 text-red-900 border-red-200"
-                    : "bg-gray-100 text-gray-800 border-gray-200"
+                    : task.prArtifact.content.status === "DONE"
+                      ? "border-[#8957e5]/30"
+                      : "bg-gray-100 text-gray-800 border-gray-200"
               }`}
+              style={
+                task.prArtifact.content.status === "DONE"
+                  ? { backgroundColor: "#8957e5", color: "white" }
+                  : undefined
+              }
             >
               <GitPullRequest className="w-3 h-3" />
-              PR {task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}
+              {task.prArtifact.content.status === "DONE" ? "Merged" : `PR ${task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}`}
               <ExternalLink className="w-3 h-3 ml-0.5" />
             </Badge>
           </a>
