@@ -68,6 +68,7 @@ export async function createTaskWithStakworkWorkflow(params: {
           id: true,
           name: true,
           repositoryUrl: true,
+          branch: true,
         },
       },
       createdBy: {
@@ -95,6 +96,14 @@ export async function createTaskWithStakworkWorkflow(params: {
               poolName: true,
               name: true,
               id: true,
+            },
+          },
+          repositories: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              repositoryUrl: true,
+              branch: true,
             },
           },
         },
@@ -167,6 +176,14 @@ export async function sendMessageToStakwork(params: {
               id: true,
             },
           },
+          repositories: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              repositoryUrl: true,
+              branch: true,
+            },
+          },
         },
       },
     },
@@ -213,8 +230,11 @@ export async function startTaskWorkflow(params: {
       featureId: true,
       phaseId: true,
       sourceType: true,
+      runBuild: true,
+      runTestSuite: true,
       workspace: {
         select: {
+          id: true,
           slug: true,
           swarm: {
             select: {
@@ -223,6 +243,14 @@ export async function startTaskWorkflow(params: {
               poolName: true,
               name: true,
               id: true,
+            },
+          },
+          repositories: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              repositoryUrl: true,
+              branch: true,
             },
           },
         },
@@ -323,6 +351,10 @@ async function createChatMessageAndTriggerStakwork(params: {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":3355") : "";
 
+    // Get repository URL and branch from workspace repositories
+    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
+    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
+
     try {
       stakworkData = await callStakworkAPI({
         taskId,
@@ -340,6 +372,10 @@ async function createChatMessageAndTriggerStakwork(params: {
         generateChatTitle,
         featureContext,
         workspaceId: task.workspace.id,
+        runBuild: task.runBuild,
+        runTestSuite: task.runTestSuite,
+        repoUrl,
+        baseBranch,
       });
 
       if (stakworkData.success) {
@@ -414,6 +450,10 @@ export async function callStakworkAPI(params: {
   generateChatTitle?: boolean;
   featureContext?: object;
   workspaceId: string;
+  runBuild?: boolean;
+  runTestSuite?: boolean;
+  repoUrl?: string | null;
+  baseBranch?: string | null;
 }) {
   const {
     taskId,
@@ -431,20 +471,14 @@ export async function callStakworkAPI(params: {
     generateChatTitle,
     featureContext,
     workspaceId,
+    runBuild = true,
+    runTestSuite = true,
+    repoUrl = null,
+    baseBranch = null,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
     throw new Error("Stakwork configuration missing");
-  }
-
-  // Fetch task to get runBuild and runTestSuite values
-  const task = await db.task.findUnique({
-    where: { id: taskId },
-    select: { runBuild: true, runTestSuite: true },
-  });
-
-  if (!task) {
-    throw new Error(`Task ${taskId} not found`);
   }
 
   // Build webhook URLs (replicating the webhook URL logic)
@@ -469,8 +503,10 @@ export async function callStakworkAPI(params: {
     taskMode: mode,
     taskSource: taskSource.toLowerCase(),
     workspaceId,
-    runBuild: task.runBuild,
-    runTestSuite: task.runTestSuite,
+    runBuild,
+    runTestSuite,
+    repo_url: repoUrl,
+    base_branch: baseBranch,
   };
 
   // Add optional parameters if provided
