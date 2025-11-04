@@ -892,6 +892,182 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       expect(data.data.description).toBeNull();
     });
 
+    test("creates ticket with runBuild set to true", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/features/${feature.id}/tickets`,
+        { title: "Test Ticket", runBuild: true },
+        user
+      );
+
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+
+      const data = await expectSuccess(response, 201);
+      
+      // Verify in database
+      const task = await db.task.findUnique({
+        where: { id: data.data.id },
+        select: { runBuild: true },
+      });
+      expect(task?.runBuild).toBe(true);
+    });
+
+    test("creates ticket with runBuild set to false", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/features/${feature.id}/tickets`,
+        { title: "Test Ticket", runBuild: false },
+        user
+      );
+
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+
+      const data = await expectSuccess(response, 201);
+      
+      // Verify in database
+      const task = await db.task.findUnique({
+        where: { id: data.data.id },
+        select: { runBuild: true },
+      });
+      expect(task?.runBuild).toBe(false);
+    });
+
+    test("creates ticket with runTestSuite set to true", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/features/${feature.id}/tickets`,
+        { title: "Test Ticket", runTestSuite: true },
+        user
+      );
+
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+
+      const data = await expectSuccess(response, 201);
+      
+      // Verify in database
+      const task = await db.task.findUnique({
+        where: { id: data.data.id },
+        select: { runTestSuite: true },
+      });
+      expect(task?.runTestSuite).toBe(true);
+    });
+
+    test("creates ticket with runTestSuite set to false", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/features/${feature.id}/tickets`,
+        { title: "Test Ticket", runTestSuite: false },
+        user
+      );
+
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+
+      const data = await expectSuccess(response, 201);
+      
+      // Verify in database
+      const task = await db.task.findUnique({
+        where: { id: data.data.id },
+        select: { runTestSuite: true },
+      });
+      expect(task?.runTestSuite).toBe(false);
+    });
+
+    test("defaults runBuild and runTestSuite to true when not provided", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/features/${feature.id}/tickets`,
+        { title: "Test Ticket" },
+        user
+      );
+
+      const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
+
+      const data = await expectSuccess(response, 201);
+      
+      // Verify in database that defaults are applied
+      const task = await db.task.findUnique({
+        where: { id: data.data.id },
+        select: { runBuild: true, runTestSuite: true },
+      });
+      expect(task?.runBuild).toBe(true);
+      expect(task?.runTestSuite).toBe(true);
+    });
+
     test("creates ticket without optional phaseId", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({

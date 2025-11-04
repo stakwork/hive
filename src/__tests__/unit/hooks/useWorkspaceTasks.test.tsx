@@ -12,7 +12,11 @@ const saveCurrentPage = (workspaceId: string, page: number) => {
 const getStoredPage = (workspaceId: string): number => {
   if (typeof window !== "undefined") {
     const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-    return stored ? parseInt(stored, 10) : 1;
+    if (stored) {
+      const parsed = parseInt(stored, 10);
+      return isNaN(parsed) ? 1 : parsed;
+    }
+    return 1;
   }
   return 1;
 };
@@ -76,6 +80,60 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       expect(TASKS_PAGE_STORAGE_KEY(workspaceWithHyphens)).toBe("tasks_page_workspace-123-456");
       expect(TASKS_PAGE_STORAGE_KEY(workspaceWithUnderscores)).toBe("tasks_page_workspace_123_456");
       expect(TASKS_PAGE_STORAGE_KEY(workspaceUUID)).toBe("tasks_page_550e8400-e29b-41d4-a716-446655440000");
+    });
+
+    test("handles workspace IDs with leading and trailing whitespace", () => {
+      const workspaceWithLeadingSpace = " workspace-123";
+      const workspaceWithTrailingSpace = "workspace-123 ";
+      const workspaceWithBothSpaces = " workspace-123 ";
+      
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithLeadingSpace)).toBe("tasks_page_ workspace-123");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithTrailingSpace)).toBe("tasks_page_workspace-123 ");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithBothSpaces)).toBe("tasks_page_ workspace-123 ");
+    });
+
+    test("handles workspace IDs with internal whitespace", () => {
+      const workspaceWithSpaces = "workspace 123 456";
+      const workspaceWithTabs = "workspace\t123";
+      const workspaceWithNewlines = "workspace\n123";
+      
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithSpaces)).toBe("tasks_page_workspace 123 456");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithTabs)).toBe("tasks_page_workspace\t123");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithNewlines)).toBe("tasks_page_workspace\n123");
+    });
+
+    test("handles workspace IDs with URL-like characters", () => {
+      const workspaceWithSlashes = "org/workspace-123";
+      const workspaceWithDots = "workspace.123.456";
+      const workspaceWithQuery = "workspace-123?param=value";
+      const workspaceWithFragment = "workspace-123#section";
+      
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithSlashes)).toBe("tasks_page_org/workspace-123");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithDots)).toBe("tasks_page_workspace.123.456");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithQuery)).toBe("tasks_page_workspace-123?param=value");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithFragment)).toBe("tasks_page_workspace-123#section");
+    });
+
+    test("handles numeric string workspace IDs", () => {
+      const numericString = "12345";
+      const numericWithLeadingZeros = "00123";
+      const scientificNotation = "1e5";
+      
+      expect(TASKS_PAGE_STORAGE_KEY(numericString)).toBe("tasks_page_12345");
+      expect(TASKS_PAGE_STORAGE_KEY(numericWithLeadingZeros)).toBe("tasks_page_00123");
+      expect(TASKS_PAGE_STORAGE_KEY(scientificNotation)).toBe("tasks_page_1e5");
+    });
+
+    test("handles workspace IDs with unicode characters", () => {
+      const workspaceWithEmoji = "workspace-🚀-123";
+      const workspaceWithAccents = "wörkspåcé-123";
+      const workspaceWithCJK = "工作空间-123";
+      const workspaceWithRTL = "مساحة-123";
+      
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithEmoji)).toBe("tasks_page_workspace-🚀-123");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithAccents)).toBe("tasks_page_wörkspåcé-123");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithCJK)).toBe("tasks_page_工作空间-123");
+      expect(TASKS_PAGE_STORAGE_KEY(workspaceWithRTL)).toBe("tasks_page_مساحة-123");
     });
   });
 
@@ -225,10 +283,9 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), "not-a-number");
       
       const page = getStoredPage(workspaceId);
-      // parseInt("not-a-number") returns NaN, but the function should handle it
-      // Based on the implementation, it will return NaN, which may need fixing
-      // For now, we test actual behavior
-      expect(isNaN(page)).toBe(true);
+      // Should return default page 1 when data is corrupted (not NaN)
+      expect(page).toBe(1);
+      expect(isNaN(page)).toBe(false);
     });
 
     test("handles empty string gracefully", () => {
@@ -315,28 +372,6 @@ describe("useWorkspaceTasks - Storage Functions", () => {
   });
 
   describe("Integration Scenarios", () => {
-    const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
-    
-    const saveCurrentPage = (workspaceId: string, page: number) => {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
-      }
-    };
-    
-    const getStoredPage = (workspaceId: string): number => {
-      if (typeof window !== "undefined") {
-        const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-        return stored ? parseInt(stored, 10) : 1;
-      }
-      return 1;
-    };
-    
-    const clearStoredPage = (workspaceId: string) => {
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-      }
-    };
-
     test("save and retrieve page workflow", () => {
       const workspaceId = "workspace-123";
       
@@ -439,22 +474,6 @@ describe("useWorkspaceTasks - Storage Functions", () => {
   });
 
   describe("Edge Cases and Error Handling", () => {
-    const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
-    
-    const saveCurrentPage = (workspaceId: string, page: number) => {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(TASKS_PAGE_STORAGE_KEY(workspaceId), page.toString());
-      }
-    };
-    
-    const getStoredPage = (workspaceId: string): number => {
-      if (typeof window !== "undefined") {
-        const stored = sessionStorage.getItem(TASKS_PAGE_STORAGE_KEY(workspaceId));
-        return stored ? parseInt(stored, 10) : 1;
-      }
-      return 1;
-    };
-
     test("handles very large page numbers", () => {
       const workspaceId = "workspace-123";
       const largePage = 999999;
@@ -493,6 +512,94 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       
       saveCurrentPage(workspaceId, 5);
       expect(getStoredPage(workspaceId)).toBe(5);
+    });
+
+    test("handles whitespace-only workspace ID", () => {
+      const workspaceSpaces = "   ";
+      const workspaceTabs = "\t\t\t";
+      
+      saveCurrentPage(workspaceSpaces, 3);
+      expect(getStoredPage(workspaceSpaces)).toBe(3);
+      
+      saveCurrentPage(workspaceTabs, 5);
+      expect(getStoredPage(workspaceTabs)).toBe(5);
+      
+      const keySpaces = TASKS_PAGE_STORAGE_KEY(workspaceSpaces);
+      const keyTabs = TASKS_PAGE_STORAGE_KEY(workspaceTabs);
+      
+      expect(keySpaces).toBe("tasks_page_   ");
+      expect(keyTabs).toBe("tasks_page_\t\t\t");
+    });
+
+    test("handles null-like string workspace IDs", () => {
+      const nullString = "null";
+      const undefinedString = "undefined";
+      const nanString = "NaN";
+      
+      saveCurrentPage(nullString, 2);
+      expect(getStoredPage(nullString)).toBe(2);
+      expect(TASKS_PAGE_STORAGE_KEY(nullString)).toBe("tasks_page_null");
+      
+      saveCurrentPage(undefinedString, 3);
+      expect(getStoredPage(undefinedString)).toBe(3);
+      expect(TASKS_PAGE_STORAGE_KEY(undefinedString)).toBe("tasks_page_undefined");
+      
+      saveCurrentPage(nanString, 4);
+      expect(getStoredPage(nanString)).toBe(4);
+      expect(TASKS_PAGE_STORAGE_KEY(nanString)).toBe("tasks_page_NaN");
+    });
+
+    test("handles workspace IDs with special characters that might conflict with storage keys", () => {
+      const workspaceWithEquals = "workspace=123";
+      const workspaceWithSemicolon = "workspace;123";
+      const workspaceWithComma = "workspace,123";
+      const workspaceWithPipe = "workspace|123";
+      
+      saveCurrentPage(workspaceWithEquals, 2);
+      expect(getStoredPage(workspaceWithEquals)).toBe(2);
+      
+      saveCurrentPage(workspaceWithSemicolon, 3);
+      expect(getStoredPage(workspaceWithSemicolon)).toBe(3);
+      
+      saveCurrentPage(workspaceWithComma, 4);
+      expect(getStoredPage(workspaceWithComma)).toBe(4);
+      
+      saveCurrentPage(workspaceWithPipe, 5);
+      expect(getStoredPage(workspaceWithPipe)).toBe(5);
+    });
+
+    test("handles workspace IDs with maximum length string boundary", () => {
+      // Test a very long workspace ID (10,000 characters)
+      const maxLengthWorkspace = "w".repeat(10000);
+      
+      saveCurrentPage(maxLengthWorkspace, 7);
+      expect(getStoredPage(maxLengthWorkspace)).toBe(7);
+      
+      const key = TASKS_PAGE_STORAGE_KEY(maxLengthWorkspace);
+      expect(key.length).toBe(10000 + "tasks_page_".length);
+      expect(key.startsWith("tasks_page_")).toBe(true);
+    });
+
+    test("maintains key uniqueness with similar IDs", () => {
+      const workspace1 = "workspace-123";
+      const workspace2 = "workspace-1234";
+      const workspace3 = "workspace-12";
+      
+      saveCurrentPage(workspace1, 2);
+      saveCurrentPage(workspace2, 3);
+      saveCurrentPage(workspace3, 4);
+      
+      expect(getStoredPage(workspace1)).toBe(2);
+      expect(getStoredPage(workspace2)).toBe(3);
+      expect(getStoredPage(workspace3)).toBe(4);
+      
+      const key1 = TASKS_PAGE_STORAGE_KEY(workspace1);
+      const key2 = TASKS_PAGE_STORAGE_KEY(workspace2);
+      const key3 = TASKS_PAGE_STORAGE_KEY(workspace3);
+      
+      expect(key1).not.toBe(key2);
+      expect(key2).not.toBe(key3);
+      expect(key1).not.toBe(key3);
     });
   });
 });

@@ -276,6 +276,8 @@ export async function POST(request: NextRequest) {
       estimatedHours,
       actualHours,
       mode,
+      runBuild,
+      runTestSuite,
     } = body;
 
     // Validate required fields
@@ -402,6 +404,8 @@ export async function POST(request: NextRequest) {
         estimatedHours: estimatedHours || null,
         actualHours: actualHours || null,
         mode: mode || "live", // Save the task mode, default to "live"
+        runBuild: runBuild ?? true,
+        runTestSuite: runTestSuite ?? true,
         createdById: userId,
         updatedById: userId,
       },

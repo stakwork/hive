@@ -385,6 +385,10 @@ model Task {
   // Task mode (live, test, agent, etc.)
   mode String @default("live")
 
+  // Build and test configuration
+  runBuild     Boolean @default(true) @map("run_build")
+  runTestSuite Boolean @default(true) @map("run_test_suite")
+
   // Agent URLs and credentials (encrypted)
   agentUrl      String? @map("agent_url")
   agentPassword String? @map("agent_password") // Encrypted pod password
