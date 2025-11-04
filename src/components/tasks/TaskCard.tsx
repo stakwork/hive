@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, GitMerge, ExternalLink } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -187,25 +187,37 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
               variant="secondary"
               className={`gap-1 h-5 ${
                 task.prArtifact.content.status === "IN_PROGRESS"
-                  ? "bg-purple-300 text-purple-800 border-purple-200"
+                  ? "border-[#238636]/30"
                   : task.prArtifact.content.status === "CANCELLED"
-                    ? "bg-red-300 text-red-900 border-red-200"
+                    ? "border-[#da3633]/30"
                     : task.prArtifact.content.status === "DONE"
                       ? "border-[#8957e5]/30"
                       : "bg-gray-100 text-gray-800 border-gray-200"
               }`}
               style={
-                task.prArtifact.content.status === "DONE"
-                  ? { backgroundColor: "#8957e5", color: "white" }
-                  : undefined
+                task.prArtifact.content.status === "IN_PROGRESS"
+                  ? { backgroundColor: "#238636", color: "white" }
+                  : task.prArtifact.content.status === "CANCELLED"
+                    ? { backgroundColor: "#da3633", color: "white" }
+                    : task.prArtifact.content.status === "DONE"
+                      ? { backgroundColor: "#8957e5", color: "white" }
+                      : undefined
               }
             >
               {task.prArtifact.content.status === "DONE" ? (
                 <GitMerge className="w-3 h-3" />
+              ) : task.prArtifact.content.status === "CANCELLED" ? (
+                <GitPullRequestClosed className="w-3 h-3" />
               ) : (
                 <GitPullRequest className="w-3 h-3" />
               )}
-              {task.prArtifact.content.status === "DONE" ? "Merged" : `PR ${task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}`}
+              {task.prArtifact.content.status === "IN_PROGRESS"
+                ? "Open"
+                : task.prArtifact.content.status === "CANCELLED"
+                  ? "Closed"
+                  : task.prArtifact.content.status === "DONE"
+                    ? "Merged"
+                    : `PR ${task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}`}
               <ExternalLink className="w-3 h-3 ml-0.5" />
             </Badge>
           </a>
