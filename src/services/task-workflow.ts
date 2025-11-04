@@ -21,6 +21,8 @@ export async function createTaskWithStakworkWorkflow(params: {
   userId: string;
   status?: TaskStatus;
   mode?: string;
+  runBuild?: boolean;
+  runTestSuite?: boolean;
 }) {
   const {
     title,
@@ -33,6 +35,8 @@ export async function createTaskWithStakworkWorkflow(params: {
     userId,
     status = TaskStatus.IN_PROGRESS,  // Default to IN_PROGRESS since workflow starts immediately
     mode = "default",
+    runBuild = true,
+    runTestSuite = true,
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -46,6 +50,8 @@ export async function createTaskWithStakworkWorkflow(params: {
       assigneeId: assigneeId || null,
       repositoryId: repositoryId || null,
       sourceType,
+      runBuild,
+      runTestSuite,
       createdById: userId,
       updatedById: userId,
     },
@@ -431,6 +437,16 @@ export async function callStakworkAPI(params: {
     throw new Error("Stakwork configuration missing");
   }
 
+  // Fetch task to get runBuild and runTestSuite values
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: { runBuild: true, runTestSuite: true },
+  });
+
+  if (!task) {
+    throw new Error(`Task ${taskId} not found`);
+  }
+
   // Build webhook URLs (replicating the webhook URL logic)
   const appBaseUrl = getBaseUrl();
   const webhookUrl = `${appBaseUrl}/api/chat/response`;
@@ -453,6 +469,8 @@ export async function callStakworkAPI(params: {
     taskMode: mode,
     taskSource: taskSource.toLowerCase(),
     workspaceId,
+    runBuild: task.runBuild,
+    runTestSuite: task.runTestSuite,
   };
 
   // Add optional parameters if provided
