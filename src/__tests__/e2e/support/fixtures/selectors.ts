@@ -55,6 +55,15 @@ export const selectors = {
     saveButton: '[data-testid="workspace-settings-save-button"]',
   },
 
+  workspaceDeletion: {
+    card: '[data-testid="delete-workspace-card"]',
+    deleteButton: '[data-testid="delete-workspace-button"]',
+    dialog: '[data-testid="delete-workspace-dialog"]',
+    confirmationInput: '[data-testid="delete-workspace-confirmation-input"]',
+    cancelButton: '[data-testid="delete-workspace-cancel-button"]',
+    confirmButton: '[data-testid="delete-workspace-confirm-button"]',
+  },
+
   workspaceMembers: {
     card: '[data-testid="workspace-members-card"]',
     addButton: '[data-testid="add-member-button"]',
