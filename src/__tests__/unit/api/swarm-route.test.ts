@@ -54,6 +54,13 @@ vi.mock("crypto", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     $transaction: vi.fn(),
+    workspace: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    sourceControlOrg: {
+      findUnique: vi.fn(),
+    },
     swarm: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -111,6 +118,21 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     // Default database mocks
+    mockDb.workspace.findUnique.mockResolvedValue({
+      id: "workspace-123",
+      slug: "test-workspace",
+      sourceControlOrg: null, // No existing linkage
+    });
+    mockDb.sourceControlOrg.findUnique.mockResolvedValue({
+      id: "source-control-org-123",
+      githubLogin: "test",
+      githubInstallationId: 12345,
+    });
+    mockDb.workspace.update.mockResolvedValue({
+      id: "workspace-123",
+      sourceControlOrgId: "source-control-org-123",
+    });
+
     mockDb.swarm.findFirst.mockResolvedValue(null); // No existing swarm
     mockDb.swarm.create.mockResolvedValue({
       id: "placeholder-swarm-123",
@@ -552,6 +574,143 @@ describe("POST /api/swarm - Unit Tests", () => {
           swarmSecretAlias: undefined, // undefined swarm_id results in undefined
         })
       );
+    });
+  });
+
+  describe("Workspace SourceControlOrg Linking", () => {
+    beforeEach(() => {
+      mockGetServerSession.mockResolvedValue({
+        user: { id: "user-123" },
+      });
+
+      mockValidateWorkspaceAccessById.mockResolvedValue({
+        hasAccess: true,
+        canAdmin: true,
+      });
+
+      // Ensure transaction returns new swarm (not existing)
+      mockDb.$transaction.mockResolvedValue({
+        exists: false,
+        swarm: {
+          id: "placeholder-swarm-123",
+          status: SwarmStatus.PENDING,
+        },
+      });
+
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: {
+          swarm_id: "swarm2bCar4",
+          address: "swarm2bCar4.sphinx.chat",
+          x_api_key: "api-key-123",
+        },
+      });
+
+      mockSaveOrUpdateSwarm.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        swarmId: "swarm2bCar4",
+      });
+    });
+
+    test("should link workspace to existing SourceControlOrg", async () => {
+      // Workspace without existing linkage
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        slug: "test-workspace",
+        sourceControlOrg: null,
+      });
+
+      // Existing SourceControlOrg found
+      mockDb.sourceControlOrg.findUnique.mockResolvedValue({
+        id: "source-control-org-123",
+        githubLogin: "test",
+        githubInstallationId: 12345,
+      });
+
+      const request = createMockRequest(validSwarmData);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify workspace was linked to SourceControlOrg
+      expect(mockDb.workspace.update).toHaveBeenCalledWith({
+        where: { id: "workspace-123" },
+        data: { sourceControlOrgId: "source-control-org-123" },
+      });
+
+      // Verify GitHub owner extraction from repository URL
+      expect(mockDb.sourceControlOrg.findUnique).toHaveBeenCalledWith({
+        where: { githubLogin: "test" },
+      });
+    });
+
+    test("should skip linking if workspace already has SourceControlOrg", async () => {
+      // Workspace with existing linkage
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        slug: "test-workspace",
+        sourceControlOrg: {
+          id: "existing-org-123",
+          githubLogin: "test",
+          githubInstallationId: 12345,
+        },
+      });
+
+      const request = createMockRequest(validSwarmData);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify no linking attempted since workspace already linked
+      expect(mockDb.sourceControlOrg.findUnique).not.toHaveBeenCalled();
+      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+    });
+
+    test("should handle case where no SourceControlOrg exists for GitHub owner", async () => {
+      // Workspace without existing linkage
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        slug: "test-workspace",
+        sourceControlOrg: null,
+      });
+
+      // No SourceControlOrg found for this GitHub owner
+      mockDb.sourceControlOrg.findUnique.mockResolvedValue(null);
+
+      const request = createMockRequest(validSwarmData);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify GitHub owner lookup was attempted
+      expect(mockDb.sourceControlOrg.findUnique).toHaveBeenCalledWith({
+        where: { githubLogin: "test" },
+      });
+
+      // Verify no linking happened since no SourceControlOrg exists
+      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+    });
+
+    test("should handle invalid GitHub repository URL", async () => {
+      // Workspace without existing linkage
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        slug: "test-workspace",
+        sourceControlOrg: null,
+      });
+
+      const invalidRepoData = {
+        ...validSwarmData,
+        repositoryUrl: "https://gitlab.com/test/repo", // Not GitHub
+      };
+
+      const request = createMockRequest(invalidRepoData);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify no GitHub owner lookup since URL is invalid
+      expect(mockDb.sourceControlOrg.findUnique).not.toHaveBeenCalled();
+      expect(mockDb.workspace.update).not.toHaveBeenCalled();
     });
   });
 
