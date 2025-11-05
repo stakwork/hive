@@ -7,8 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 
 interface GitHubAccessManagerProps {
   repositoryUrl: string;
-  onAccessResult: (hasAccess: boolean, error?: string) => void;
-  error?: string;
+  onAccessError: (error: boolean) => void;
 }
 
 // Check if user has access to repository
@@ -43,12 +42,13 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{
   }
 };
 
-export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: GitHubAccessManagerProps) {
+export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAccessManagerProps) {
   const { workspace } = useWorkspace();
   const [accessState, setAccessState] = useState<'checking' | 'no-access' | 'reconnecting'>('checking');
   const [installationId, setInstallationId] = useState<number | undefined>();
   const [errorType, setErrorType] = useState<'reauth' | 'installation-update' | 'other'>('other');
 
+  const [error, setError] = useState<string | null>(null);
   // Check repository access when component mounts
   useEffect(() => {
     const checkAccess = async () => {
@@ -58,8 +58,10 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
         const result = await checkRepositoryAccess(repositoryUrl);
 
         if (result.hasAccess) {
-          onAccessResult(true);
+          setError(null);
+          onAccessError(false);
         } else {
+          onAccessError(true);
           setAccessState('no-access');
           setInstallationId(result.installationId);
 
@@ -72,17 +74,18 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
             setErrorType('other');
           }
 
-          onAccessResult(false, result.error);
+          setError(result.error || null);
         }
       } catch (error) {
         console.error("Error checking repository access:", error);
         setAccessState('no-access');
-        onAccessResult(false, "Failed to check repository access");
+        onAccessError(true);
+        setError("Failed to check repository access");
       }
     };
 
     checkAccess();
-  }, [repositoryUrl, onAccessResult]);
+  }, [repositoryUrl, onAccessError]);
 
   const [installationLink, setInstallationLink] = useState<string | null>(null);
 
@@ -116,8 +119,9 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
       }
     } catch (error) {
       console.error("Failed to get GitHub App installation link:", error);
+      onAccessError(true);
     }
-  }, [repositoryUrl, workspace?.slug, installationId, errorType]);
+  }, [repositoryUrl, workspace?.slug, installationId, errorType, onAccessError]);
 
   // Get installation link when we determine access is needed
   useEffect(() => {
@@ -164,8 +168,8 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
                 {errorType === 'installation-update'
                   ? 'Click the button below to open your GitHub App installation settings and add this repository:'
                   : errorType === 'reauth' || (error?.includes('token is invalid or expired'))
-                  ? 'Click the button below to refresh your GitHub App authorization:'
-                  : 'Click the button below to install the GitHub App and grant the necessary permissions:'
+                    ? 'Click the button below to refresh your GitHub App authorization:'
+                    : 'Click the button below to install the GitHub App and grant the necessary permissions:'
                 }
               </p>
               <Button
@@ -180,8 +184,8 @@ export function GitHubAccessManager({ repositoryUrl, onAccessResult, error }: Gi
                   {errorType === 'installation-update'
                     ? 'Open GitHub App Installation Settings'
                     : errorType === 'reauth' || (error?.includes('token is invalid or expired'))
-                    ? 'Refresh GitHub App Authorization'
-                    : 'Install GitHub App'
+                      ? 'Refresh GitHub App Authorization'
+                      : 'Install GitHub App'
                   }
                 </a>
               </Button>
