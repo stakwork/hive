@@ -256,7 +256,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           }
         }),
       )
-      .force('radial', forceRadial(2000, 0, 0, 0).strength(0.1))
+      // .force('radial', forceRadial(2000, 0, 0, 0).strength(0.1))
       .force('center', forceCenter().strength(1))
       .force('x', forceX().strength(1))
       .force('y', forceY().strength(1))
