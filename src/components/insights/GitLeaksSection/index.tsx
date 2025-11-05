@@ -186,11 +186,6 @@ export function GitLeaksSection() {
             )}
           </Button>
         </div>
-        {scannedAt && (
-          <div className="text-xs text-muted-foreground pt-2">
-            Last scanned: {new Date(scannedAt).toLocaleString()}
-          </div>
-        )}
       </CardHeader>
       <CardContent>
         {error ? (
