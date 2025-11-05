@@ -189,7 +189,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                 task.prArtifact.content.status === "IN_PROGRESS"
                   ? "border-[#238636]/30"
                   : task.prArtifact.content.status === "CANCELLED"
-                    ? "border-[#da3633]/30"
+                    ? "border-[#6e7681]/30"
                     : task.prArtifact.content.status === "DONE"
                       ? "border-[#8957e5]/30"
                       : "bg-gray-100 text-gray-800 border-gray-200"
@@ -198,7 +198,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
                 task.prArtifact.content.status === "IN_PROGRESS"
                   ? { backgroundColor: "#238636", color: "white" }
                   : task.prArtifact.content.status === "CANCELLED"
-                    ? { backgroundColor: "#da3633", color: "white" }
+                    ? { backgroundColor: "#6e7681", color: "white" }
                     : task.prArtifact.content.status === "DONE"
                       ? { backgroundColor: "#8957e5", color: "white" }
                       : undefined
