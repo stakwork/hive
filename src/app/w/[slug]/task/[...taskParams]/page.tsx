@@ -71,7 +71,6 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  const [hasPod, setHasPod] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
@@ -84,58 +83,6 @@ export default function TaskChatPage() {
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, true);
-
-  // Shared function to drop the pod
-  const dropPod = useCallback(
-    async (useBeacon = false) => {
-      if (!workspaceId || !claimedPodId) return;
-
-      const dropUrl = `/api/pool-manager/drop-pod/${workspaceId}?latest=true&podId=${claimedPodId}`;
-
-      try {
-        if (useBeacon) {
-          // Use sendBeacon for reliable delivery when page is closing
-          const blob = new Blob([JSON.stringify({})], { type: "application/json" });
-          navigator.sendBeacon(dropUrl, blob);
-        } else {
-          // Use regular fetch for normal scenarios
-          await fetch(dropUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-        }
-      } catch (error) {
-        console.error("Error dropping pod:", error);
-      }
-    },
-    [workspaceId, claimedPodId]
-  );
-
-  // Drop pod when component unmounts or when navigating away
-  useEffect(() => {
-    return () => {
-      if (hasPod) {
-        dropPod();
-      }
-    };
-  }, [hasPod, dropPod]);
-
-  // Drop pod when browser/tab closes or page refreshes
-  useEffect(() => {
-    if (!hasPod) return;
-
-    const handleBeforeUnload = () => {
-      dropPod(true);
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [hasPod, dropPod]);
 
   // Streaming processor for agent mode
   const { processStream } = useStreamProcessor<AgentStreamingMessage>({
@@ -170,7 +117,7 @@ export default function TaskChatPage() {
         setTaskTitle(update.newTitle);
       }
     },
-    [currentTaskId]
+    [currentTaskId],
   );
 
   // Use the Pusher connection hook
@@ -243,8 +190,8 @@ export default function TaskChatPage() {
             // Update the last message with the workflow artifact
             setMessages((msgs) =>
               msgs.map((msg, idx) =>
-                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg
-              )
+                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+              ),
             );
           }
         }
@@ -316,7 +263,7 @@ export default function TaskChatPage() {
                 headers: {
                   "Content-Type": "application/json",
                 },
-              }
+              },
             );
 
             if (podResponse.ok) {
@@ -326,7 +273,6 @@ export default function TaskChatPage() {
                 frontend: podResult.frontend,
                 ide: podResult.ide,
               };
-              setHasPod(true);
               setClaimedPodId(podResult.podId);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
@@ -397,7 +343,7 @@ export default function TaskChatPage() {
       webhook?: string;
       artifact?: Artifact;
       podUrls?: { frontend: string; ide: string } | null;
-    }
+    },
   ) => {
     // Create artifacts array starting with any existing artifact
     const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
@@ -420,7 +366,7 @@ export default function TaskChatPage() {
           content: {
             url: options.podUrls.ide,
           },
-        })
+        }),
       );
     }
 
@@ -442,7 +388,7 @@ export default function TaskChatPage() {
       if (taskMode === "agent") {
         // Mark user message as sent
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg))
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
         // Prepare artifacts for backend (convert to serializable format)
@@ -497,12 +443,10 @@ export default function TaskChatPage() {
           {
             role: "assistant" as const,
             timestamp: new Date(),
-          }
+          },
         );
 
-        // Note: Assistant message is now saved automatically by the backend
-        // via stream teeing and background persistence (see /api/agent/route.ts)
-
+        // Note: Assistant message is saved by the backend via stream teeing (see /api/agent/route.ts)
         return;
       }
 
@@ -553,8 +497,8 @@ export default function TaskChatPage() {
         // Add the workflow artifact to the last message
         setMessages((msgs) =>
           msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg
-          )
+            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+          ),
         );
       }
 
@@ -712,7 +656,7 @@ export default function TaskChatPage() {
               url: prUrl as string,
               status: "open",
             } as PullRequestContent,
-          })
+          }),
         );
 
         // Save the PR artifacts as an assistant message
