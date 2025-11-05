@@ -151,8 +151,8 @@ export function ProjectNameSetupStep() {
 
         if (statusData.hasPushAccess) {
           // GitHub App is already installed and has tokens, redirect to dashboard
-          window.location.href = `/w/${data.workspace.slug}?github_setup_action=existing_installation`;
-          return;
+          router.push(`/w/${data.workspace.slug}?github_setup_action=existing_installation`);
+          return; // Don't reset loading state since we're redirecting
         } else {
           // GitHub App not installed or no tokens, proceed with installation
           const installResponse = await fetch("/api/github/app/install", {
@@ -169,6 +169,7 @@ export function ProjectNameSetupStep() {
           const installData = await installResponse.json();
 
           if (installData.success && installData.data?.link) {
+            console.log('need installation link')
             // Navigate to GitHub App installation
             window.location.href = installData.data.link;
             return; // Don't reset loading state since we're redirecting
@@ -219,6 +220,12 @@ export function ProjectNameSetupStep() {
       validateSlug();
     }
   }, [repoName, projectName, setProjectName, router, newNamesIsSettled]);
+
+  useEffect(() => {
+    return () => {
+      localStorage.removeItem("repoUrl");
+    }
+  }, []);
 
 
   const resetProgress = () => {
@@ -352,10 +359,10 @@ export function ProjectNameSetupStep() {
 
       <CardContent className="space-y-6">
         {swarmIsLoading ? (
-          <div className="flex justify-center items-center py-8">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-              <p className="text-muted-foreground">Setting up GitHub App installation...</p>
+          <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
+            <div className="w-full h-full flex flex-col items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+              <div className="text-lg text-muted-foreground">Setting up workspace...</div>
             </div>
           </div>
         ) : (
