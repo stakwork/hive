@@ -145,28 +145,6 @@ export default function TaskChatPage() {
   });
   const hasReceivedContentRef = useRef(false);
 
-  // Save agent message to backend after streaming completes
-  const saveAgentMessageToBackend = useCallback(
-    async (message: AgentStreamingMessage, taskId: string, role: "user" | "assistant") => {
-      try {
-        // Create a proper chat message record in the database
-        await fetch(`/api/tasks/${taskId}/messages/save`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: message.content,
-            role: role === "user" ? "USER" : "ASSISTANT",
-          }),
-        });
-      } catch (error) {
-        console.error("Error saving agent message:", error);
-      }
-    },
-    []
-  );
-
   // Handle incoming SSE messages
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
@@ -493,7 +471,6 @@ export default function TaskChatPage() {
 
         // Process the streaming response
         const assistantMessageId = generateUniqueId();
-        let finalAssistantMessage: AgentStreamingMessage | undefined = undefined;
 
         await processStream(
           response,
@@ -504,9 +481,6 @@ export default function TaskChatPage() {
               hasReceivedContentRef.current = true;
               setIsLoading(false);
             }
-
-            // Store the final message
-            finalAssistantMessage = updatedMessage;
 
             // Update messages array with AgentStreamingMessage
             setMessages((prev) => {
@@ -526,12 +500,8 @@ export default function TaskChatPage() {
           }
         );
 
-        // After streaming completes, save assistant message to backend
-        // (user message already saved in /api/agent POST route)
-        if (finalAssistantMessage) {
-          console.log("🤖 Final Assistant Message:", finalAssistantMessage);
-          await saveAgentMessageToBackend(finalAssistantMessage, options?.taskId || currentTaskId || "", "assistant");
-        }
+        // Note: Assistant message is now saved automatically by the backend
+        // via stream teeing and background persistence (see /api/agent/route.ts)
 
         return;
       }
