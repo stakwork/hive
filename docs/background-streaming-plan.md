@@ -25,6 +25,8 @@ Next.js API route streams AI responses to the frontend in real-time. When users 
 
 **Type Assertions**: The `.tee()` method on ReadableStream returns streams that lose their async iterable typing in TypeScript. We use `as any` type assertions to work around this TypeScript limitation - the streams work correctly at runtime.
 
+**Graceful Client Disconnect**: The frontend stream checks `controller.desiredSize` before enqueuing data to detect when the client has disconnected. All controller operations (`close()`, `error()`) are wrapped in try-catch blocks to handle race conditions where the client disconnects between checking the state and performing the operation. This completely eliminates "Controller is already closed" errors and allows the stream to exit gracefully while the background process continues.
+
 ### Key Workflow
 
 1. Create placeholder assistant message in DB (status: `SENDING`)

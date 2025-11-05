@@ -324,19 +324,39 @@ export async function POST(request: NextRequest) {
   const frontendStream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      let clientDisconnected = false;
 
       const sendEvent = (data: unknown) => {
-        const line = `data: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(line));
+        // Check if controller is still open (desiredSize is null when closed)
+        if (controller.desiredSize === null || clientDisconnected) {
+          clientDisconnected = true;
+          return false; // Signal that we should stop
+        }
+
+        try {
+          const line = `data: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(line));
+          return true;
+        } catch {
+          // Client disconnected mid-enqueue
+          console.log("🔌 Client disconnected during streaming");
+          clientDisconnected = true;
+          return false;
+        }
       };
 
       try {
         // Send start event
-        sendEvent({ type: "start" });
-        sendEvent({ type: "start-step" });
+        if (!sendEvent({ type: "start" })) return;
+        if (!sendEvent({ type: "start-step" })) return;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for await (const chunk of frontendFullStream as any) {
+          // Exit early if client disconnected
+          if (clientDisconnected) {
+            console.log("⏹️ Stopping frontend stream processing (client disconnected)");
+            break;
+          }
           switch (chunk.type) {
             case "text-start":
             case "text-end":
@@ -407,12 +427,35 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Send done marker
-        sendEvent("[DONE]");
-        controller.close();
+        // Send done marker (only if client still connected)
+        if (!clientDisconnected) {
+          sendEvent("[DONE]");
+        }
+
+        // Close controller if still open (wrap in try-catch for race conditions)
+        try {
+          if (controller.desiredSize !== null) {
+            controller.close();
+          } else {
+            console.log("✅ Client disconnected gracefully - background processing continues");
+          }
+        } catch {
+          // Client disconnected between check and close (race condition)
+          console.log("✅ Client disconnected during cleanup - background processing continues");
+        }
       } catch (error) {
-        console.error("Frontend stream error:", error);
-        controller.error(error);
+        // Only log and error the controller if it's still open
+        try {
+          if (controller.desiredSize !== null) {
+            console.error("Frontend stream error:", error);
+            controller.error(error);
+          } else {
+            console.log("⚠️ Stream error after client disconnect (expected):", error);
+          }
+        } catch {
+          // Controller already closed during error handling
+          console.log("⚠️ Stream error after client disconnect:", error);
+        }
       }
     },
   });
