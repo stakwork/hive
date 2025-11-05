@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { stakworkService } from "@/lib/service-factory";
-import { type ApiError } from "@/types";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { stakworkService } from "@/lib/service-factory";
+import { type ApiError } from "@/types";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
     // Defensive: check for expected shape, fallback to empty object if not
     const data =
       customerResponse &&
-      typeof customerResponse === "object" &&
-      "data" in customerResponse
+        typeof customerResponse === "object" &&
+        "data" in customerResponse
         ? (customerResponse as { data?: { token?: string } }).data
         : undefined;
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
             maybeEncryptedAgain as any,
           );
         }
-      } catch {}
+      } catch { }
 
       if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
         await stakworkService().createSecret(
@@ -90,9 +90,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({ token }, { status: 201 });
+      return NextResponse.json({ success: true }, { status: 201 });
     }
-    
+
     // If we don't have a valid token in the response
     return NextResponse.json(
       { error: "Invalid response from Stakwork API" },
