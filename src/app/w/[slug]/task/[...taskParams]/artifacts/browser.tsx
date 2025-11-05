@@ -26,6 +26,7 @@ import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 import { ActionsList } from "@/components/ActionsList";
 import { useToast } from "@/components/ui/use-toast";
+import { SIDEBAR_WIDTH } from "@/lib/constants";
 
 export function BrowserArtifactPanel({
   artifacts,
@@ -501,7 +502,7 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               {showActions && (
-                <div className="fixed top-0 left-0 bottom-0 z-40 w-80 transition-all duration-300 ease-in-out">
+                <div className={`fixed top-0 left-0 bottom-0 z-40 ${SIDEBAR_WIDTH} transition-all duration-300 ease-in-out`}>
                   <ActionsList
                     actions={replayActions.length > 0 ? replayActions : capturedActions}
                     onRemoveAction={removeAction}

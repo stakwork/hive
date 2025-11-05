@@ -21,6 +21,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -214,7 +215,7 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-64 md:flex-col md:fixed md:inset-y-0 md:z-0`}
+        className={`${isTaskPage ? "hidden" : "hidden md:flex"} ${SIDEBAR_WIDTH} md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
           <SidebarContent
