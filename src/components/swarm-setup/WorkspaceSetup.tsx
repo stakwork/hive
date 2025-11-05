@@ -189,20 +189,26 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
             throw new Error(swarmData.message || "Failed to create swarm");
           }
 
-          updateWorkspace({
-            repositories: [
-              {
-                id: `repo-${Date.now()}`,
-                name: repoInfo.name,
-                repositoryUrl: repositoryUrl,
-                branch: defaultBranch,
-                status: "PENDING",
-                updatedAt: new Date().toISOString(),
-              },
-            ],
-            swarmId: swarmData.data.id,
-            swarmStatus: "ACTIVE",
-          });
+          // update data only if swarmId(external) is present
+          if (swarmData.data.swarmId && swarmData.data.id) {
+            updateWorkspace({
+              repositories: [
+                {
+                  id: `repo-${Date.now()}`,
+                  name: repoInfo.name,
+                  repositoryUrl: repositoryUrl,
+                  branch: defaultBranch,
+                  status: "PENDING",
+                  updatedAt: new Date().toISOString(),
+                },
+              ],
+              swarmId: swarmData.data.id,
+              swarmStatus: "ACTIVE",
+            });
+
+            setIsLoading(false);
+          }
+
         } catch (error) {
           console.error(`Failed to create swarm:`, error);
           toast({
@@ -210,7 +216,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
             description: error instanceof Error ? error.message : "Failed to create swarm",
             variant: "destructive",
           });
-        } finally {
           setIsLoading(false);
         }
       };
