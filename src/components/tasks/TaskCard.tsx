@@ -143,8 +143,8 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
 
-        {/* Workflow Status */}
-        {!hideWorkflowStatus && (
+        {/* Workflow Status - hidden when PR artifact exists */}
+        {!hideWorkflowStatus && !task.prArtifact && (
           <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
             <WorkflowStatusBadge status={task.workflowStatus} />
           </div>

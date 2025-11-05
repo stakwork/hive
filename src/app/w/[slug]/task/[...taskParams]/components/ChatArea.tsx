@@ -57,6 +57,11 @@ export function ChatArea({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const router = useRouter();
 
+  // Check if any message has a PULL_REQUEST artifact
+  const hasPrArtifact = messages.some((msg) => 
+    msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST")
+  );
+
   // Handle scroll events to detect user scrolling
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -228,6 +233,7 @@ export function ChatArea({
         pendingDebugAttachment={pendingDebugAttachment}
         onRemoveDebugAttachment={onRemoveDebugAttachment}
         workflowStatus={workflowStatus}
+        hasPrArtifact={hasPrArtifact}
       />
     </motion.div>
   );
