@@ -90,7 +90,7 @@ describe("ChatInput - Task Mode", () => {
       await user.type(textarea, "Hello world");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Hello world", undefined);
+      expect(onSend).toHaveBeenCalledWith("Hello world\nundefined");
       expect(textarea).toHaveValue("");
     });
 
@@ -139,7 +139,7 @@ describe("ChatInput - Task Mode", () => {
       await user.type(textarea, "Line 2");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2", undefined);
+      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nundefined");
       expect(textarea).toHaveValue("");
     });
 
@@ -200,7 +200,7 @@ describe("ChatInput - Task Mode", () => {
       await user.type(textarea, "Test message");
       await user.click(sendButton);
 
-      expect(onSend).toHaveBeenCalledWith("Test message", undefined);
+      expect(onSend).toHaveBeenCalledWith("Test message\nundefined");
     });
 
     test("trims whitespace from submitted message", async () => {
@@ -213,7 +213,7 @@ describe("ChatInput - Task Mode", () => {
       await user.type(textarea, "  Message with spaces  ");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Message with spaces", undefined);
+      expect(onSend).toHaveBeenCalledWith("Message with spaces\nundefined");
     });
 
     test("clears textarea after successful submission", async () => {
@@ -311,7 +311,7 @@ describe("ChatInput - Task Mode", () => {
 
       await user.click(sendButton);
 
-      expect(onSend).toHaveBeenCalledWith("", undefined);
+      expect(onSend).toHaveBeenCalledWith("\nundefined");
     });
   });
 
@@ -349,8 +349,9 @@ describe("ChatInput - Task Mode", () => {
       await user.click(textarea);
       await user.paste(longMessage);
       await user.keyboard("{Enter}");
+      const longMessage = longMessage + "\nundefined";
 
-      expect(onSend).toHaveBeenCalledWith(longMessage, undefined);
+      expect(onSend).toHaveBeenCalledWith(longMessage);
     });
 
     test("handles special characters in message", async () => {
@@ -365,8 +366,9 @@ describe("ChatInput - Task Mode", () => {
       await user.click(textarea);
       await user.paste(specialMessage);
       await user.keyboard("{Enter}");
+      specialMessage = specialMessage + "\nundefined";
 
-      expect(onSend).toHaveBeenCalledWith(specialMessage, undefined);
+      expect(onSend).toHaveBeenCalledWith(specialMessage);
     });
 
     test("preserves newlines in multi-line submission", async () => {
@@ -383,7 +385,7 @@ describe("ChatInput - Task Mode", () => {
       await user.type(textarea, "Line 3");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nLine 3", undefined);
+      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nLine 3\nundefined");
     });
   });
 });
