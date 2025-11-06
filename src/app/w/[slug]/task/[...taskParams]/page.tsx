@@ -117,7 +117,7 @@ export default function TaskChatPage() {
         setTaskTitle(update.newTitle);
       }
     },
-    [currentTaskId]
+    [currentTaskId],
   );
 
   // Use the Pusher connection hook
@@ -190,8 +190,8 @@ export default function TaskChatPage() {
             // Update the last message with the workflow artifact
             setMessages((msgs) =>
               msgs.map((msg, idx) =>
-                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg
-              )
+                idx === msgs.length - 1 ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+              ),
             );
           }
         }
@@ -264,7 +264,7 @@ export default function TaskChatPage() {
                 headers: {
                   "Content-Type": "application/json",
                 },
-              }
+              },
             );
 
             if (podResponse.ok) {
@@ -324,9 +324,9 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleSend = async (message: string, images?: import("./components/ChatInput").ImageAttachment[]) => {
-    // Allow sending if we have text, images, or a pending debug attachment
-    if (!message.trim() && !images?.length && !pendingDebugAttachment) return;
+  const handleSend = async (message: string) => {
+    // Allow sending if we have either text or a pending debug attachment
+    if (!message.trim() && !pendingDebugAttachment) return;
     if (isLoading) return; // Prevent duplicate sends
 
     // For artifact-only messages, provide a default message
@@ -334,7 +334,6 @@ export default function TaskChatPage() {
 
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
-      ...(images && images.length > 0 && { images }),
       ...(chatWebhook && { webhook: chatWebhook }),
     });
     setPendingDebugAttachment(null); // Clear attachment after sending
@@ -349,32 +348,10 @@ export default function TaskChatPage() {
       artifact?: Artifact;
       podUrls?: { frontend: string; ide: string } | null;
       podId?: string | null;
-      images?: import("./components/ChatInput").ImageAttachment[];
-    }
+    },
   ) => {
     // Create artifacts array starting with any existing artifact
     const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
-
-    // Add MEDIA artifacts for images
-    if (options?.images && options.images.length > 0) {
-      options.images.forEach((img) => {
-        if (img.s3Url) {
-          artifacts.push(
-            createArtifact({
-              id: generateUniqueId(),
-              messageId: "",
-              type: ArtifactType.MEDIA,
-              content: {
-                url: img.s3Url,
-                filename: img.file.name,
-                mimeType: img.file.type,
-                size: img.file.size,
-              },
-            })
-          );
-        }
-      });
-    }
 
     // Add BROWSER and IDE artifacts if podUrls are provided
     if (options?.podUrls) {
@@ -394,7 +371,7 @@ export default function TaskChatPage() {
           content: {
             url: options.podUrls.ide,
           },
-        })
+        }),
       );
     }
 
@@ -416,7 +393,7 @@ export default function TaskChatPage() {
       if (taskMode === "agent") {
         // Mark user message as sent
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg))
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
         // Prepare artifacts for backend (convert to serializable format)
@@ -471,7 +448,7 @@ export default function TaskChatPage() {
           {
             role: "assistant" as const,
             timestamp: new Date(),
-          }
+          },
         );
 
         // Check for diffs after agent completes (agent mode only)
@@ -558,8 +535,8 @@ export default function TaskChatPage() {
         // Add the workflow artifact to the last message
         setMessages((msgs) =>
           msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg
-          )
+            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+          ),
         );
       }
 
@@ -717,7 +694,7 @@ export default function TaskChatPage() {
               url: prUrl as string,
               status: "open",
             } as PullRequestContent,
-          })
+          }),
         );
 
         // Save the PR artifacts as an assistant message
@@ -833,7 +810,6 @@ export default function TaskChatPage() {
                     onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
-                    taskId={currentTaskId || undefined}
                     workspaceSlug={slug}
                     onCommit={handleCommit}
                     isCommitting={isGeneratingCommitInfo || isCommitting}
@@ -857,7 +833,6 @@ export default function TaskChatPage() {
                       onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                       workflowStatus={workflowStatus}
                       taskTitle={taskTitle}
-                      taskId={currentTaskId || undefined}
                       workspaceSlug={slug}
                       onCommit={handleCommit}
                       isCommitting={isGeneratingCommitInfo || isCommitting}
@@ -889,7 +864,6 @@ export default function TaskChatPage() {
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
                 workflowStatus={workflowStatus}
                 taskTitle={taskTitle}
-                taskId={currentTaskId || undefined}
                 workspaceSlug={slug}
                 onCommit={handleCommit}
                 isCommitting={isGeneratingCommitInfo || isCommitting}
