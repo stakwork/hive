@@ -6,17 +6,17 @@ import { extractPrArtifact } from "@/lib/helpers/tasks";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
-    // Check for API key authentication
-    const apiKey = request.headers.get("x-api-key") || request.headers.get("authorization");
+    // Check for API token authentication
+    const apiToken = request.headers.get("x-api-token");
     let userId: string | undefined;
     let isApiKeyAuth = false;
 
-    if (apiKey && process.env.API_KEY && apiKey === process.env.API_KEY) {
-      // Valid API key authentication
+    if (apiToken && process.env.API_TOKEN && apiToken === process.env.API_TOKEN) {
+      // Valid API token authentication
       isApiKeyAuth = true;
-    } else if (apiKey && process.env.API_KEY) {
-      // Invalid API key provided
-      return NextResponse.json({ error: "Unauthorized - Invalid API key" }, { status: 401 });
+    } else if (apiToken) {
+      // Invalid API token provided
+      return NextResponse.json({ error: "Unauthorized - Invalid API token" }, { status: 401 });
     } else {
       // Fall back to session authentication
       const session = await getServerSession(authOptions);
