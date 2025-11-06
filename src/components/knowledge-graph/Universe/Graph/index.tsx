@@ -39,7 +39,7 @@ export const Graph = () => {
   const linksPositionRef = useRef(new Map<string, LinkPosition>())
   const nodesPositionRef = useRef(new Map<string, NodePosition>())
 
-  const { graphStyle, setGraphRadius, neighbourhoods } = useGraphStore((s) => s)
+  const { graphStyle, setGraphRadius } = useGraphStore((s) => s)
 
   const {
     simulation,
