@@ -245,7 +245,32 @@ export async function POST(request: NextRequest) {
   }
 
   // Always add the current user message
-  messages.push({ role: "user", content: message });
+  // Check if we have MEDIA (image) artifacts to create multi-part message
+  const mediaArtifacts = artifacts.filter((a: ArtifactRequest) => a.type === ArtifactType.MEDIA);
+  
+  if (mediaArtifacts.length > 0) {
+    // Multi-part message with text and images
+    const content: Array<{ type: "text"; text: string } | { type: "image"; image: string }> = [];
+
+    if (message && message.trim()) {
+      content.push({ type: "text", text: message });
+    }
+
+    // Add image parts from MEDIA artifacts
+    mediaArtifacts.forEach((artifact: ArtifactRequest) => {
+      if (artifact.content && typeof artifact.content.url === "string") {
+        content.push({
+          type: "image",
+          image: artifact.content.url,
+        });
+      }
+    });
+
+    messages.push({ role: "user", content });
+  } else {
+    // Text-only message (backward compatible)
+    messages.push({ role: "user", content: message });
+  }
 
   // Create placeholder assistant message in DB (optimistic creation)
   const assistantMessage = await db.chatMessage.create({

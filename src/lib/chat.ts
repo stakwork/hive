@@ -102,6 +102,13 @@ export interface DiffContent {
   diffs: ActionResult[];
 }
 
+export interface MediaContent {
+  url: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?:
@@ -114,7 +121,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | GraphContent
     | WorkflowContent
     | PullRequestContent
-    | DiffContent;
+    | DiffContent
+    | MediaContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -172,7 +180,8 @@ export function createArtifact(data: {
     | GraphContent
     | WorkflowContent
     | PullRequestContent
-    | DiffContent;
+    | DiffContent
+    | MediaContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {
