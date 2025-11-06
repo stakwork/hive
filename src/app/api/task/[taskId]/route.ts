@@ -101,9 +101,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             slug: true,
             ownerId: true,
             members: {
-              where: isApiKeyAuth ? undefined : {
-                userId: userId,
-              },
+              // For API key auth: fetch all members
+              // For session auth: fetch only the current user's membership
+              ...(isApiKeyAuth 
+                ? {} 
+                : { where: { userId: userId } }
+              ),
               select: {
                 role: true,
                 userId: true,
