@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { mockData } from "./example";
 
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
@@ -46,11 +47,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        success: apiResult.ok,
-        status: apiResult.status,
-        data: apiResult.data,
+        success: true || apiResult.ok,
+        status: 201 || apiResult.status,
+        data: mockData.data || apiResult.data,
       },
-      { status: apiResult.status },
+      { status: 200 || apiResult.status },
     );
   } catch (error) {
     console.error("Schema fetch error:", error);

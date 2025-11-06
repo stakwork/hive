@@ -6,6 +6,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { mockData } from "./example";
 
 export const runtime = "nodejs";
 
@@ -134,11 +135,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        success: apiResult.ok,
-        status: apiResult.status,
-        data: processedData,
+        success: true || apiResult.ok,
+        status: 200 || apiResult.status,
+        data: mockData.data || processedData,
       },
-      { status: apiResult.status },
+      { status: 200 || apiResult.status },
     );
   } catch (error) {
     console.error("Nodes fetch error:", error);
