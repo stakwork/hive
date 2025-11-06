@@ -59,12 +59,12 @@ export default function TaskChatPage() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
 
   // Debug logging
-  console.log("[TaskPage] Workspace context:", {
-    workspaceId,
-    workspaceObject: workspace,
-    effectiveWorkspaceId,
-    currentTaskId,
-  });
+  // console.log("[TaskPage] Workspace context:", {
+  //   workspaceId,
+  //   workspaceObject: workspace,
+  //   effectiveWorkspaceId,
+  //   currentTaskId,
+  // });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -254,6 +254,7 @@ export default function TaskChatPage() {
 
         // Claim pod if agent mode is selected (AFTER task creation)
         let claimedPodUrls: { frontend: string; ide: string } | null = null;
+        let freshPodId: string | null = null;
         if (taskMode === "agent" && workspaceId) {
           try {
             const podResponse = await fetch(
@@ -268,12 +269,15 @@ export default function TaskChatPage() {
 
             if (podResponse.ok) {
               const podResult = await podResponse.json();
+              // console.log(">>> Pod claim result:", podResult);
               // Only frontend and IDE URLs are returned (no goose URL or password)
               claimedPodUrls = {
                 frontend: podResult.frontend,
                 ide: podResult.ide,
               };
-              setClaimedPodId(podResult.podId);
+              freshPodId = podResult.podId;
+              console.log(">>> Setting claimedPodId:", freshPodId);
+              setClaimedPodId(freshPodId);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
               toast({
@@ -304,7 +308,7 @@ export default function TaskChatPage() {
         window.history.replaceState({}, "", newUrl);
 
         setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls, podId: freshPodId });
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -343,6 +347,7 @@ export default function TaskChatPage() {
       webhook?: string;
       artifact?: Artifact;
       podUrls?: { frontend: string; ide: string } | null;
+      podId?: string | null;
     },
   ) => {
     // Create artifacts array starting with any existing artifact
@@ -448,13 +453,15 @@ export default function TaskChatPage() {
 
         // Check for diffs after agent completes (agent mode only)
         // Only check if we have a real pod claimed
-        if (effectiveWorkspaceId && (options?.taskId || currentTaskId) && claimedPodId) {
+        const podIdToUse = options?.podId || claimedPodId;
+
+        if (effectiveWorkspaceId && (options?.taskId || currentTaskId) && podIdToUse) {
           try {
             const diffResponse = await fetch("/api/agent/diff", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                podId: claimedPodId,
+                podId: podIdToUse,
                 workspaceId: effectiveWorkspaceId,
                 taskId: options?.taskId || currentTaskId,
               }),
