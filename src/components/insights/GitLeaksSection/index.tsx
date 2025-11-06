@@ -163,11 +163,11 @@ export function GitLeaksSection() {
   const hasLeaks = leaks.length > 0;
 
   return (
-    <Card className="w-full">
+    <Card className="w-full" data-testid="secret-scanner-card">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className="text-base flex items-center gap-2" data-testid="secret-scanner-title">
               <ShieldAlert className="h-4 w-4" />
               Secret Scanner
             </CardTitle>
@@ -175,7 +175,7 @@ export function GitLeaksSection() {
               Scan your repository for accidental secret leaks, API keys, and sensitive data.
             </CardDescription>
           </div>
-          <Button onClick={handleRunScan} disabled={loading} size="sm">
+          <Button onClick={handleRunScan} disabled={loading} size="sm" data-testid="secret-scanner-run-button">
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

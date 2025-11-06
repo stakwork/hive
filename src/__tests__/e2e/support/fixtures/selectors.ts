@@ -133,6 +133,9 @@ export const selectors = {
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
     acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
+    secretScannerCard: '[data-testid="secret-scanner-card"]',
+    secretScannerTitle: '[data-testid="secret-scanner-title"]',
+    secretScannerRunButton: '[data-testid="secret-scanner-run-button"]',
   },
 
   // Onboarding
