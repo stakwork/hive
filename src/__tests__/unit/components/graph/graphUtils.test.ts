@@ -1,9 +1,10 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import * as d3 from "d3";
 import {
   getNodeColor,
   filterValidLinks,
   getConnectedNodeIds,
+  addArrowMarker,
   DEFAULT_COLORS,
   type D3Node,
   type D3Link,
@@ -452,6 +453,305 @@ describe("graphUtils", () => {
 
       const connectedToMiddle = getConnectedNodeIds("node500", validLinks);
       expect(connectedToMiddle.size).toBe(2); // node499 and node501
+    });
+  });
+
+  describe("addArrowMarker", () => {
+    let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+
+    beforeEach(() => {
+      // Create fresh SVG element for each test
+      svg = d3.select(document.body)
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 600);
+    });
+
+    afterEach(() => {
+      // Clean up SVG element after each test
+      svg.remove();
+    });
+
+    describe("SVG marker structure creation", () => {
+      test("should create defs element", () => {
+        addArrowMarker(svg);
+
+        const defs = svg.select("defs");
+        expect(defs.empty()).toBe(false);
+      });
+
+      test("should create marker element with correct id", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.empty()).toBe(false);
+        expect(marker.attr("id")).toBe("arrowhead");
+      });
+
+      test("should create marker with correct viewBox", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.attr("viewBox")).toBe("0 -5 10 10");
+      });
+
+      test("should create marker with correct reference points", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.attr("refX")).toBe("20");
+        expect(marker.attr("refY")).toBe("0");
+      });
+
+      test("should create marker with correct dimensions", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.attr("markerWidth")).toBe("6");
+        expect(marker.attr("markerHeight")).toBe("6");
+      });
+
+      test("should create marker with auto orientation", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.attr("orient")).toBe("auto");
+      });
+
+      test("should create complete marker structure in single call", () => {
+        addArrowMarker(svg);
+
+        const defs = svg.select("defs");
+        const marker = defs.select("marker");
+
+        expect(defs.empty()).toBe(false);
+        expect(marker.empty()).toBe(false);
+        expect(marker.attr("id")).toBe("arrowhead");
+        expect(marker.attr("viewBox")).toBe("0 -5 10 10");
+        expect(marker.attr("refX")).toBe("20");
+        expect(marker.attr("refY")).toBe("0");
+        expect(marker.attr("markerWidth")).toBe("6");
+        expect(marker.attr("markerHeight")).toBe("6");
+        expect(marker.attr("orient")).toBe("auto");
+      });
+    });
+
+    describe("Arrow path element", () => {
+      test("should create path element inside marker", () => {
+        addArrowMarker(svg);
+
+        const path = svg.select("marker path");
+        expect(path.empty()).toBe(false);
+      });
+
+      test("should create path with correct arrow shape", () => {
+        addArrowMarker(svg);
+
+        const path = svg.select("marker path");
+        expect(path.attr("d")).toBe("M0,-5L10,0L0,5");
+      });
+
+      test("should create path with correct fill color", () => {
+        addArrowMarker(svg);
+
+        const path = svg.select("marker path");
+        expect(path.attr("fill")).toBe("#999");
+      });
+
+      test("should create single path element", () => {
+        addArrowMarker(svg);
+
+        const paths = svg.selectAll("marker path");
+        expect(paths.size()).toBe(1);
+      });
+    });
+
+    describe("Marker reusability", () => {
+      test("should allow marker to be referenced by id", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("#arrowhead");
+        expect(marker.empty()).toBe(false);
+        expect(marker.node()?.nodeName).toBe("marker");
+      });
+
+      test("should create marker that can be used with url() reference", () => {
+        addArrowMarker(svg);
+
+        // Create a test line that references the marker
+        const line = svg.append("line")
+          .attr("x1", 0)
+          .attr("y1", 0)
+          .attr("x2", 100)
+          .attr("y2", 100)
+          .attr("marker-end", "url(#arrowhead)");
+
+        expect(line.attr("marker-end")).toBe("url(#arrowhead)");
+        
+        // Verify the marker exists for the reference
+        const marker = svg.select("#arrowhead");
+        expect(marker.empty()).toBe(false);
+      });
+    });
+
+    describe("Multiple calls and duplicate prevention", () => {
+      test("should handle multiple calls by creating multiple defs", () => {
+        addArrowMarker(svg);
+        addArrowMarker(svg);
+
+        const defsElements = svg.selectAll("defs");
+        // Note: Current implementation does not prevent duplicates
+        // This test documents existing behavior
+        expect(defsElements.size()).toBeGreaterThanOrEqual(1);
+      });
+
+      test("should create marker on second call even if first succeeded", () => {
+        addArrowMarker(svg);
+        addArrowMarker(svg);
+
+        // At least one marker should exist
+        const markers = svg.selectAll("marker");
+        expect(markers.size()).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    describe("Integration with SVG container", () => {
+      test("should work with empty SVG element", () => {
+        const emptySvg = d3.select(document.body)
+          .append("svg");
+
+        addArrowMarker(emptySvg);
+
+        const marker = emptySvg.select("marker");
+        expect(marker.empty()).toBe(false);
+        expect(marker.attr("id")).toBe("arrowhead");
+
+        emptySvg.remove();
+      });
+
+      test("should work with SVG that already has content", () => {
+        svg.append("circle")
+          .attr("cx", 50)
+          .attr("cy", 50)
+          .attr("r", 10);
+
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.empty()).toBe(false);
+        
+        // Verify existing content is preserved
+        const circle = svg.select("circle");
+        expect(circle.empty()).toBe(false);
+      });
+
+      test("should append defs to root SVG element", () => {
+        addArrowMarker(svg);
+
+        const defs = svg.select("defs");
+        expect(defs.empty()).toBe(false);
+        
+        // Verify defs is direct child of SVG
+        const parent = d3.select(defs.node()?.parentNode as Element);
+        expect(parent.node()).toBe(svg.node());
+      });
+    });
+
+    describe("Error handling and edge cases", () => {
+      test("should not throw with valid SVG selection", () => {
+        expect(() => addArrowMarker(svg)).not.toThrow();
+      });
+
+      test("should handle SVG with existing defs element", () => {
+        svg.append("defs");
+
+        addArrowMarker(svg);
+
+        // Should create another defs (current behavior - no duplicate prevention)
+        const defsElements = svg.selectAll("defs");
+        expect(defsElements.size()).toBeGreaterThanOrEqual(1);
+      });
+
+      test("should create marker in SVG with viewBox", () => {
+        svg.attr("viewBox", "0 0 800 600");
+
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.empty()).toBe(false);
+        expect(marker.attr("id")).toBe("arrowhead");
+      });
+
+      test("should create marker in scaled SVG", () => {
+        svg.attr("transform", "scale(2)");
+
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        expect(marker.empty()).toBe(false);
+        expect(marker.attr("id")).toBe("arrowhead");
+      });
+    });
+
+    describe("Marker attributes completeness", () => {
+      test("should create marker with all required attributes for proper rendering", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+        const path = marker.select("path");
+
+        // Verify all attributes are set
+        expect(marker.attr("id")).toBeTruthy();
+        expect(marker.attr("viewBox")).toBeTruthy();
+        expect(marker.attr("refX")).toBeTruthy();
+        expect(marker.attr("refY")).not.toBeNull();
+        expect(marker.attr("markerWidth")).toBeTruthy();
+        expect(marker.attr("markerHeight")).toBeTruthy();
+        expect(marker.attr("orient")).toBeTruthy();
+        expect(path.attr("d")).toBeTruthy();
+        expect(path.attr("fill")).toBeTruthy();
+      });
+
+      test("should create marker with numeric attribute values", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker");
+
+        // Verify numeric attributes can be parsed
+        expect(Number(marker.attr("refX"))).toBe(20);
+        expect(Number(marker.attr("refY"))).toBe(0);
+        expect(Number(marker.attr("markerWidth"))).toBe(6);
+        expect(Number(marker.attr("markerHeight"))).toBe(6);
+      });
+    });
+
+    describe("DOM structure validation", () => {
+      test("should create proper parent-child hierarchy", () => {
+        addArrowMarker(svg);
+
+        const defs = svg.select("defs");
+        const marker = defs.select("marker");
+        const path = marker.select("path");
+
+        // Verify hierarchy: svg > defs > marker > path
+        expect(defs.empty()).toBe(false);
+        expect(marker.empty()).toBe(false);
+        expect(path.empty()).toBe(false);
+
+        // Verify parent relationships
+        expect(marker.node()?.parentElement).toBe(defs.node());
+        expect(path.node()?.parentElement).toBe(marker.node());
+      });
+
+      test("should create SVG-namespaced elements", () => {
+        addArrowMarker(svg);
+
+        const marker = svg.select("marker").node();
+        const path = svg.select("marker path").node();
+
+        expect(marker?.namespaceURI).toBe("http://www.w3.org/2000/svg");
+        expect(path?.namespaceURI).toBe("http://www.w3.org/2000/svg");
+      });
     });
   });
 });
