@@ -1,6 +1,4 @@
-"use client";
-
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -30,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { PresignedImage } from "@/components/ui/presigned-image";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
@@ -72,6 +71,24 @@ export function WorkspaceSettings() {
 
     fetchLogoUrl();
   }, [workspace?.logoKey, workspace?.slug]);
+
+  // Function to refetch the logo URL when the presigned URL expires
+  const refetchLogoUrl = useCallback(async (): Promise<string | null> => {
+    if (!workspace?.slug) return null;
+
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
+      if (response.ok) {
+        const data = await response.json();
+        setLogoUrl(data.presignedUrl);
+        return data.presignedUrl;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error refetching logo URL:", error);
+      return null;
+    }
+  }, [workspace?.slug]);
 
   const form = useForm<UpdateWorkspaceInput>({
     resolver: zodResolver(updateWorkspaceSchema),
@@ -307,10 +324,10 @@ export function WorkspaceSettings() {
                                     <div className="w-full h-full flex items-center justify-center bg-muted">
                                       <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
                                     </div>
-                                  ) : (
+                                  ) : logoPreview ? (
                                     <>
                                       <img
-                                        src={logoPreview || logoUrl || ""}
+                                        src={logoPreview}
                                         alt="Logo"
                                         className="w-full h-full object-cover"
                                       />
@@ -318,7 +335,19 @@ export function WorkspaceSettings() {
                                         <Edit className="w-4 h-4 text-white" />
                                       </div>
                                     </>
-                                  )}
+                                  ) : logoUrl ? (
+                                    <>
+                                      <PresignedImage
+                                        src={logoUrl}
+                                        alt="Logo"
+                                        className="w-full h-full object-cover"
+                                        onRefetchUrl={refetchLogoUrl}
+                                      />
+                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <Edit className="w-4 h-4 text-white" />
+                                      </div>
+                                    </>
+                                  ) : null}
                                 </div>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="start">
