@@ -111,23 +111,20 @@ export const LayerLabels = () => {
         return (
           <Billboard key={nodeTypeId} position={[0, geometricCenter.y + 40, 0]}>
             {/* Simple rectangular border */}
-            <line position={[0, 0, -0.1]}>
+            <lineLoop position={[0, 0, -0.1]}>
               <bufferGeometry>
                 <bufferAttribute
                   attach="attributes-position"
-                  count={5}
-                  array={new Float32Array([
+                  args={[new Float32Array([
                     -(name.length * 12.5 + 10), -35, 0,  // bottom-left
                     (name.length * 12.5 + 10), -35, 0,   // bottom-right
                     (name.length * 12.5 + 10), 35, 0,    // top-right
                     -(name.length * 12.5 + 10), 35, 0,   // top-left
-                    -(name.length * 12.5 + 10), -35, 0   // back to start
-                  ])}
-                  itemSize={3}
+                  ]), 3]}
                 />
               </bufferGeometry>
               <lineBasicMaterial color="grey" opacity={0.5} transparent />
-            </line>
+            </lineLoop>
             <Text
               fontSize={35}
               color="grey"
