@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    if (process.env.MOCK_BROWSER_URL) {
+    if (process.env.MOCK_BROWSER_URL || process.env.CUSTOM_GOOSE_URL) {
       // Mock diff data for testing - create a proper message structure
       const mockDiff: ActionResult[] = [
         {

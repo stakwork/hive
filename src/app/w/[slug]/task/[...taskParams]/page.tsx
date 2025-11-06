@@ -447,13 +447,13 @@ export default function TaskChatPage() {
         );
 
         // Check for diffs after agent completes (agent mode only)
-        if (claimedPodId && effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
+        if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
           try {
             const diffResponse = await fetch("/api/agent/diff", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                podId: claimedPodId,
+                podId: claimedPodId || "dev-pod", // Use placeholder in dev mode
                 workspaceId: effectiveWorkspaceId,
                 taskId: options?.taskId || currentTaskId,
               }),
