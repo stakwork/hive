@@ -66,7 +66,43 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SWARM_CREATE] Access validated - user ${session.user.id} has admin access to workspace ${workspaceId}`);
 
+    // Ensure workspace is linked to SourceControlOrg before proceeding
+    console.log(`[SWARM_CREATE] Checking workspace SourceControlOrg linkage`);
+    const workspaceData = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      include: { sourceControlOrg: true },
+    });
 
+    if (workspaceData && !workspaceData.sourceControlOrg) {
+      console.log(`[SWARM_CREATE] Workspace not linked to SourceControlOrg, attempting to link`);
+
+      // Extract GitHub owner from repository URL
+      const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)/);
+      if (githubMatch) {
+        const githubOwner = githubMatch[1];
+        console.log(`[SWARM_CREATE] Extracted GitHub owner: ${githubOwner}`);
+
+        // Look for existing SourceControlOrg for this GitHub owner
+        const sourceControlOrg = await db.sourceControlOrg.findUnique({
+          where: { githubLogin: githubOwner },
+        });
+
+        if (sourceControlOrg) {
+          // Link workspace to existing SourceControlOrg
+          await db.workspace.update({
+            where: { id: workspaceId },
+            data: { sourceControlOrgId: sourceControlOrg.id },
+          });
+          console.log(`[SWARM_CREATE] Successfully linked workspace ${workspaceId} to SourceControlOrg: ${sourceControlOrg.githubLogin} (ID: ${sourceControlOrg.id})`);
+        } else {
+          console.log(`[SWARM_CREATE] No SourceControlOrg found for GitHub owner: ${githubOwner}`);
+        }
+      } else {
+        console.warn(`[SWARM_CREATE] Could not extract GitHub owner from repository URL: ${repositoryUrl}`);
+      }
+    } else if (workspaceData?.sourceControlOrg) {
+      console.log(`[SWARM_CREATE] Workspace already linked to SourceControlOrg: ${workspaceData.sourceControlOrg.githubLogin} (ID: ${workspaceData.sourceControlOrg.id})`);
+    }
 
     // Check for existing swarm and create placeholder in single transaction
     console.log(`[SWARM_CREATE] Starting transaction to check/create swarm for workspace ${workspaceId}`);

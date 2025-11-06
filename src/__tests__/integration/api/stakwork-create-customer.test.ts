@@ -183,7 +183,7 @@ describe("POST /api/stakwork/create-customer", () => {
       // Should still succeed with 201 but not update any workspace
       expect(res?.status).toBe(201);
       const json = await res.json();
-      expect(json).toEqual({ token: "stak-token-new" });
+      expect(json).toEqual({ success: true });
       
       // Verify no workspace was updated
       const workspace = await db.workspace.findFirst({

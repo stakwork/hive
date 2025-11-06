@@ -20,6 +20,7 @@ interface ChatInputProps {
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
+  hasPrArtifact?: boolean;
 }
 
 export function ChatInput({
@@ -30,6 +31,7 @@ export function ChatInput({
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
   workflowStatus,
+  hasPrArtifact = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -98,8 +100,12 @@ export function ChatInput({
     <div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{mode}</span>
-        <span>|</span>
-        <WorkflowStatusBadge status={workflowStatus} />
+        {!hasPrArtifact && (
+          <>
+            <span>|</span>
+            <WorkflowStatusBadge status={workflowStatus} />
+          </>
+        )}
       </div>
 
       {/* Debug attachment display */}

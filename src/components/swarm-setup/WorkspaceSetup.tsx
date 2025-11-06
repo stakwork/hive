@@ -15,7 +15,6 @@ interface WorkspaceSetupProps {
 export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSetupProps) {
   const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ingestRefId = workspace?.ingestRefId;
   const hasStakworkCustomer = workspace?.hasKey;
@@ -59,7 +58,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     ingestionStarted.current = true;
 
     try {
-      setIsLoading(true);
       console.log("Starting code ingestion for workspace:", workspaceId);
 
       const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
@@ -82,8 +80,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         description: error instanceof Error ? error.message : "Failed to start code ingestion",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   }, [workspaceId, swarmId, ingestRefId, toast, updateWorkspace]);
 
@@ -104,7 +100,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     customerCreationStarted.current = true;
 
     try {
-      setIsLoading(true);
       console.log("Creating Stakwork customer for workspace:", workspaceId);
 
       const customerRes = await fetch("/api/stakwork/create-customer", {
@@ -116,6 +111,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       if (!customerRes.ok) {
         throw new Error("Failed to create Stakwork customer");
       }
+
+      updateWorkspace({ hasKey: true });
     } catch (error) {
       console.error("Failed to create customer:", error);
       setError(error instanceof Error ? error.message : "Failed to create customer");
@@ -124,8 +121,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         description: error instanceof Error ? error.message : "Failed to create customer",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   }, [workspaceId, hasStakworkCustomer, toast]);
 
@@ -159,7 +154,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         swarmCreationStarted.current = true;
 
         try {
-          setIsLoading(true);
           console.log(`Creating swarm for:`, repositoryUrl);
 
           const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
@@ -189,20 +183,34 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
             throw new Error(swarmData.message || "Failed to create swarm");
           }
 
-          updateWorkspace({
-            repositories: [
-              {
-                id: `repo-${Date.now()}`,
-                name: repoInfo.name,
+          // update data only if swarmId(external) is present
+          if (swarmData.data.swarmId && swarmData.data.id) {
+            updateWorkspace({
+              repositories: [
+                {
+                  id: `repo-${Date.now()}`,
+                  name: repoInfo.name,
+                  repositoryUrl: repositoryUrl,
+                  branch: defaultBranch,
+                  status: "PENDING",
+                  updatedAt: new Date().toISOString(),
+                },
+              ],
+              swarmId: swarmData.data.id,
+              swarmStatus: "ACTIVE",
+            });
+
+            fetch("/api/gitsee/trigger", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
                 repositoryUrl: repositoryUrl,
-                branch: defaultBranch,
-                status: "PENDING",
-                updatedAt: new Date().toISOString(),
-              },
-            ],
-            swarmId: swarmData.data.id,
-            swarmStatus: "ACTIVE",
-          });
+                workspaceId: workspaceId,
+              }),
+            });
+
+          }
+
         } catch (error) {
           console.error(`Failed to create swarm:`, error);
           toast({
@@ -210,8 +218,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
             description: error instanceof Error ? error.message : "Failed to create swarm",
             variant: "destructive",
           });
-        } finally {
-          setIsLoading(false);
         }
       };
 
@@ -376,13 +382,20 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     );
   }
 
+
+  console.log('setup-status')
+  console.log('swarmId', swarmId);
+  console.log('hasStakworkCustomer', hasStakworkCustomer);
+  console.log('ingestRefId', ingestRefId);
+  console.log('setup-status')
+
   // Show loading state during workspace setup
-  if (isLoading) {
+  if (!swarmId || !hasStakworkCustomer || !ingestRefId) {
     return (
-      <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
+      <div className="absolute inset-0 z-50 bg-background flex items-center justify-center">
         <div className="w-full h-full flex flex-col items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
-          <div className="text-lg text-muted-foreground">Setting up workspace...</div>
+          <div className="text-lg text-muted-foreground">Setting up swarm...</div>
         </div>
       </div>
     );
