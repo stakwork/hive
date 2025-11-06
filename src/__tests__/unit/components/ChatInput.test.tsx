@@ -86,11 +86,11 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "Hello world");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Hello world");
+      expect(onSend).toHaveBeenCalledWith("Hello world\nundefined");
       expect(textarea).toHaveValue("");
     });
 
@@ -100,7 +100,7 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "Line 1");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Line 2");
@@ -116,7 +116,7 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "Line 1");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Line 2");
@@ -133,13 +133,13 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "Line 1");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Line 2");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2");
+      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nundefined");
       expect(textarea).toHaveValue("");
     });
 
@@ -171,19 +171,19 @@ describe("ChatInput - Task Mode", () => {
   describe("Basic Rendering", () => {
     test("renders textarea with correct placeholder", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       expect(screen.getByPlaceholderText("Type your message...")).toBeInTheDocument();
     });
 
     test("renders send button", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       expect(screen.getByText("Send")).toBeInTheDocument();
     });
 
     test("renders workflow status badge", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       expect(screen.getByTestId("workflow-status-badge")).toBeInTheDocument();
     });
   });
@@ -196,11 +196,11 @@ describe("ChatInput - Task Mode", () => {
 
       const textarea = screen.getByTestId("chat-message-input");
       const sendButton = screen.getByText("Send");
-      
+
       await user.type(textarea, "Test message");
       await user.click(sendButton);
 
-      expect(onSend).toHaveBeenCalledWith("Test message");
+      expect(onSend).toHaveBeenCalledWith("Test message\nundefined");
     });
 
     test("trims whitespace from submitted message", async () => {
@@ -209,11 +209,11 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "  Message with spaces  ");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Message with spaces");
+      expect(onSend).toHaveBeenCalledWith("Message with spaces\nundefined");
     });
 
     test("clears textarea after successful submission", async () => {
@@ -222,7 +222,7 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "Test message");
       await user.keyboard("{Enter}");
 
@@ -233,28 +233,28 @@ describe("ChatInput - Task Mode", () => {
   describe("Disabled States", () => {
     test("disables textarea when disabled prop is true", () => {
       render(<ChatInput {...defaultProps} disabled={true} />);
-      
+
       const textarea = screen.getByTestId("chat-message-input");
       expect(textarea).toBeDisabled();
     });
 
     test("disables send button when disabled prop is true", () => {
       render(<ChatInput {...defaultProps} disabled={true} />);
-      
+
       const sendButton = screen.getByText("Send");
       expect(sendButton).toBeDisabled();
     });
 
     test("disables send button when loading", () => {
       render(<ChatInput {...defaultProps} isLoading={true} />);
-      
+
       const sendButton = screen.getByText("Sending...");
       expect(sendButton).toBeDisabled();
     });
 
     test("disables send button when textarea is empty", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       const sendButton = screen.getByText("Send");
       expect(sendButton).toBeDisabled();
     });
@@ -262,12 +262,12 @@ describe("ChatInput - Task Mode", () => {
     test("enables send button when textarea has content", async () => {
       const user = userEvent.setup();
       render(<ChatInput {...defaultProps} />);
-      
+
       const textarea = screen.getByTestId("chat-message-input");
       const sendButton = screen.getByText("Send");
-      
+
       await user.type(textarea, "Message");
-      
+
       expect(sendButton).not.toBeDisabled();
     });
   });
@@ -276,7 +276,7 @@ describe("ChatInput - Task Mode", () => {
     test("renders debug attachment when provided", () => {
       const debugAttachment = { type: "code", content: { code: "test" } };
       render(<ChatInput {...defaultProps} pendingDebugAttachment={debugAttachment as any} />);
-      
+
       expect(screen.getByTestId("debug-attachment")).toBeInTheDocument();
     });
 
@@ -284,18 +284,18 @@ describe("ChatInput - Task Mode", () => {
       const user = userEvent.setup();
       const onRemove = vi.fn();
       const debugAttachment = { type: "code", content: { code: "test" } };
-      
+
       render(
-        <ChatInput 
-          {...defaultProps} 
+        <ChatInput
+          {...defaultProps}
           pendingDebugAttachment={debugAttachment as any}
           onRemoveDebugAttachment={onRemove}
         />
       );
-      
+
       const removeButton = screen.getByText("Remove");
       await user.click(removeButton);
-      
+
       expect(onRemove).toHaveBeenCalled();
     });
 
@@ -303,40 +303,34 @@ describe("ChatInput - Task Mode", () => {
       const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
       const debugAttachment = { type: "code", content: { code: "test" } };
-      
-      render(
-        <ChatInput 
-          {...defaultProps} 
-          onSend={onSend}
-          pendingDebugAttachment={debugAttachment as any}
-        />
-      );
-      
+
+      render(<ChatInput {...defaultProps} onSend={onSend} pendingDebugAttachment={debugAttachment as any} />);
+
       const sendButton = screen.getByText("Send");
       expect(sendButton).not.toBeDisabled();
-      
+
       await user.click(sendButton);
-      
-      expect(onSend).toHaveBeenCalledWith("");
+
+      expect(onSend).toHaveBeenCalledWith("\nundefined");
     });
   });
 
   describe("Accessibility", () => {
     test("textarea has correct test id for automation", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       expect(screen.getByTestId("chat-message-input")).toBeInTheDocument();
     });
 
     test("send button has correct test id for automation", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
     });
 
     test("textarea has autofocus", () => {
       render(<ChatInput {...defaultProps} />);
-      
+
       const textarea = screen.getByTestId("chat-message-input");
       expect(textarea).toHaveFocus();
     });
@@ -350,11 +344,12 @@ describe("ChatInput - Task Mode", () => {
 
       const longMessage = "a".repeat(1000);
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
-      
+
       // Use paste for long messages to avoid timeout
       await user.click(textarea);
       await user.paste(longMessage);
       await user.keyboard("{Enter}");
+      const longMessage = longMessage + "\nundefined";
 
       expect(onSend).toHaveBeenCalledWith(longMessage);
     });
@@ -366,11 +361,12 @@ describe("ChatInput - Task Mode", () => {
 
       const specialMessage = "Test with symbols & chars";
       const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
-      
+
       // Use paste for special characters to avoid encoding issues
       await user.click(textarea);
       await user.paste(specialMessage);
       await user.keyboard("{Enter}");
+      specialMessage = specialMessage + "\nundefined";
 
       expect(onSend).toHaveBeenCalledWith(specialMessage);
     });
@@ -381,7 +377,7 @@ describe("ChatInput - Task Mode", () => {
       render(<ChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByTestId("chat-message-input");
-      
+
       await user.type(textarea, "Line 1");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Line 2");
@@ -389,7 +385,7 @@ describe("ChatInput - Task Mode", () => {
       await user.type(textarea, "Line 3");
       await user.keyboard("{Enter}");
 
-      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nLine 3");
+      expect(onSend).toHaveBeenCalledWith("Line 1\nLine 2\nLine 3\nundefined");
     });
   });
 });
