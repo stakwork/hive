@@ -10,11 +10,10 @@ import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import type { WorkflowStatus, Artifact, ChatMessage } from "@/lib/chat";
-import type { ImageAttachment } from "./ChatInput";
 
 interface AgentChatAreaProps {
   messages: ChatMessage[];
-  onSend: (message: string, images?: ImageAttachment[]) => Promise<void>;
+  onSend: (message: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
   logs?: LogEntry[];
@@ -22,7 +21,6 @@ interface AgentChatAreaProps {
   onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   taskTitle?: string | null;
-  taskId?: string;
   workspaceSlug?: string;
   onCommit?: () => Promise<void>;
   isCommitting?: boolean;
@@ -41,7 +39,6 @@ export function AgentChatArea({
   onRemoveDebugAttachment,
   workflowStatus,
   taskTitle,
-  taskId,
   workspaceSlug,
   onCommit,
   isCommitting = false,
@@ -205,7 +202,6 @@ export function AgentChatArea({
         onRemoveDebugAttachment={onRemoveDebugAttachment}
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
-        taskId={taskId}
       />
     </motion.div>
   );
