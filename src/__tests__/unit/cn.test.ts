@@ -215,4 +215,66 @@ describe('cn utility function', () => {
       expect(cn([], 'px-2', [])).toBe('px-2');
     });
   });
+
+  describe('Tailwind modifier and responsive conflicts', () => {
+    it('should preserve responsive breakpoint modifiers without conflict', () => {
+      expect(cn('px-2 sm:px-4 md:px-6 lg:px-8')).toBe('px-2 sm:px-4 md:px-6 lg:px-8');
+      expect(cn('text-sm md:text-base lg:text-lg')).toBe('text-sm md:text-base lg:text-lg');
+    });
+
+    it('should resolve state modifier conflicts', () => {
+      expect(cn('hover:bg-red-500', 'hover:bg-blue-500')).toBe('hover:bg-blue-500');
+      expect(cn('focus:text-red-500', 'focus:text-blue-500')).toBe('focus:text-blue-500');
+      expect(cn('active:opacity-50', 'active:opacity-75')).toBe('active:opacity-75');
+    });
+
+    it('should resolve dark mode conflicts', () => {
+      expect(cn('text-gray-900 dark:text-gray-100', 'dark:text-white')).toBe('text-gray-900 dark:text-white');
+      expect(cn('dark:bg-gray-800', 'dark:bg-gray-900')).toBe('dark:bg-gray-900');
+      expect(cn('bg-white dark:bg-black', 'dark:bg-gray-950')).toBe('bg-white dark:bg-gray-950');
+    });
+
+    it('should resolve group and peer modifier conflicts', () => {
+      expect(cn('group-hover:bg-red-500', 'group-hover:bg-blue-500')).toBe('group-hover:bg-blue-500');
+      expect(cn('peer-focus:text-red-500', 'peer-focus:text-blue-500')).toBe('peer-focus:text-blue-500');
+      expect(cn('group-hover:opacity-50', 'group-hover:opacity-100')).toBe('group-hover:opacity-100');
+    });
+
+    it('should resolve arbitrary value conflicts', () => {
+      expect(cn('bg-[#ff0000]', 'bg-[#0000ff]')).toBe('bg-[#0000ff]');
+      expect(cn('text-[12px]', 'text-[14px]')).toBe('text-[14px]');
+      expect(cn('w-[100px]', 'w-[200px]')).toBe('w-[200px]');
+    });
+
+    it('should handle complex modifier combinations', () => {
+      expect(cn(
+        'hover:bg-red-500 focus:bg-blue-500',
+        'hover:bg-green-500'
+      )).toBe('focus:bg-blue-500 hover:bg-green-500');
+      
+      expect(cn(
+        'dark:hover:bg-gray-800',
+        'dark:hover:bg-gray-900'
+      )).toBe('dark:hover:bg-gray-900');
+    });
+
+    it('should resolve animation class conflicts', () => {
+      expect(cn('animate-spin', 'animate-bounce')).toBe('animate-bounce');
+      expect(cn('animate-pulse', 'animate-ping')).toBe('animate-ping');
+    });
+
+    it('should resolve transition and duration conflicts', () => {
+      expect(cn('transition-all duration-300', 'duration-500')).toBe('transition-all duration-500');
+      expect(cn('transition-colors', 'transition-opacity')).toBe('transition-opacity');
+      expect(cn('ease-in', 'ease-out')).toBe('ease-out');
+    });
+
+    it('should handle data-state animation conflicts from Radix UI', () => {
+      expect(cn(
+        'data-[state=open]:animate-in',
+        'data-[state=closed]:animate-out',
+        'data-[state=open]:zoom-in-90'
+      )).toBe('data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:zoom-in-90');
+    });
+  });
 });
