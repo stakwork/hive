@@ -518,6 +518,7 @@ enum ArtifactType {
   GRAPH
   WORKFLOW
   PULL_REQUEST
+  DIFF
 }
 
 // =============================================
