@@ -101,7 +101,7 @@ export function RecommendationsSection() {
   };
 
   return (
-    <Card>
+    <Card data-testid="recommendations-section">
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
           <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -131,7 +131,7 @@ export function RecommendationsSection() {
           displayedRecommendations.map((recommendation) => {
             const Icon = getRecommendationIcon(recommendation.janitorRun?.type as JanitorType);
             return (
-              <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
+              <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors" data-testid="recommendation-card">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Icon className="h-4 w-4 text-muted-foreground" />
@@ -156,6 +156,7 @@ export function RecommendationsSection() {
                       variant="outline" 
                       className="h-7 text-xs"
                       onClick={() => handleDismiss(recommendation.id)}
+                      data-testid="recommendation-dismiss-button"
                     >
                       Dismiss
                     </Button>
@@ -163,6 +164,7 @@ export function RecommendationsSection() {
                       size="sm" 
                       className="h-7 text-xs"
                       onClick={() => handleAccept(recommendation.id)}
+                      data-testid="recommendation-accept-button"
                     >
                       Accept
                     </Button>

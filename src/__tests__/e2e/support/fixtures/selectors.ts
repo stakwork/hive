@@ -126,13 +126,16 @@ export const selectors = {
     testingSection: 'text=/Testing/i',
     securitySection: 'text=/Security/i',
     maintainabilitySection: 'text=/Maintainability/i',
-    recommendationsSection: 'text=/Recommendations|Recent/i',
+    recommendationsSection: '[data-testid="recommendations-section"]',
     unitTestJanitor: 'text=/Unit Tests|Unit Testing/i',
     integrationTestJanitor: 'text=/Integration Tests|Integration Testing/i',
     comingSoonBadge: 'text=/Coming Soon|Disabled/i',
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
     acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
+    recommendationCard: '[data-testid="recommendation-card"]',
+    recommendationAcceptButton: '[data-testid="recommendation-accept-button"]',
+    recommendationDismissButton: '[data-testid="recommendation-dismiss-button"]',
   },
 
   // Onboarding
