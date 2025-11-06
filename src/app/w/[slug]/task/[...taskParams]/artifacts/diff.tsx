@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { parseDiff, Diff, Hunk, DiffType } from "react-diff-view";
+import { parseDiff, Diff, Hunk, DiffType, HunkData } from "react-diff-view";
 import { Artifact, DiffContent, Action, ActionResult } from "@/lib/chat";
+import { useTheme } from "@/hooks/use-theme";
 import "./DiffArtifact.css";
 
 interface DiffArtifactPanelProps {
   artifacts: Artifact[];
-  darkMode?: boolean;
   viewType?: "split" | "unified";
   className?: string;
 }
@@ -17,14 +17,17 @@ interface ParsedFile {
   action: Action;
   repoName: string;
   type: DiffType;
-  hunks: any[];
+  hunks: HunkData[];
   hasError: boolean;
   errorMessage?: string;
 }
 
-const EMPTY_HUNKS: any[] = [];
+const EMPTY_HUNKS: HunkData[] = [];
 
-export function DiffArtifactPanel({ artifacts, darkMode = false, viewType = "unified", className = "" }: DiffArtifactPanelProps) {
+export function DiffArtifactPanel({ artifacts, viewType = "unified", className = "" }: DiffArtifactPanelProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   // Get all diffs from all artifacts
   const allDiffs = useMemo(() => {
     return artifacts.flatMap((artifact) => {
@@ -35,7 +38,7 @@ export function DiffArtifactPanel({ artifacts, darkMode = false, viewType = "uni
 
   // Parse all diffs and handle errors
   const parsedFiles = useMemo<ParsedFile[]>(() => {
-    return allDiffs.flatMap((diff: ActionResult) => {
+    return allDiffs.flatMap((diff: ActionResult): ParsedFile[] => {
       try {
         if (!diff.content || diff.content.trim() === "") {
           return [
@@ -45,7 +48,7 @@ export function DiffArtifactPanel({ artifacts, darkMode = false, viewType = "uni
               repoName: diff.repoName,
               type: "modify" as DiffType,
               hunks: EMPTY_HUNKS,
-              hasError: true,
+              hasError: true as boolean,
               errorMessage: "No diff content available",
             },
           ];
@@ -55,13 +58,13 @@ export function DiffArtifactPanel({ artifacts, darkMode = false, viewType = "uni
           nearbySequences: "zip",
         });
 
-        return parsedFiles.map((file) => ({
+        return parsedFiles.map((file): ParsedFile => ({
           fileName: diff.file,
           action: diff.action,
           repoName: diff.repoName,
           type: file.type,
           hunks: file.hunks || EMPTY_HUNKS,
-          hasError: false,
+          hasError: false as boolean,
         }));
       } catch (error) {
         console.error("Failed to parse diff for file:", diff.file, error);
@@ -72,7 +75,7 @@ export function DiffArtifactPanel({ artifacts, darkMode = false, viewType = "uni
             repoName: diff.repoName,
             type: "modify" as DiffType,
             hunks: EMPTY_HUNKS,
-            hasError: true,
+            hasError: true as boolean,
             errorMessage: error instanceof Error ? error.message : "Failed to parse diff",
           },
         ];
@@ -94,14 +97,14 @@ export function DiffArtifactPanel({ artifacts, darkMode = false, viewType = "uni
   // Render empty state
   if (allDiffs.length === 0) {
     return (
-      <div className={`diff-artifact-container ${darkMode ? "dark-mode" : ""} ${className}`}>
+      <div className={`diff-artifact-container ${isDark ? "dark-mode" : ""} ${className}`}>
         <div className="diff-artifact-empty">No changes to display</div>
       </div>
     );
   }
 
   return (
-    <div className={`diff-artifact-container ${darkMode ? "dark-mode" : ""} ${className} h-full overflow-auto p-4`}>
+    <div className={`diff-artifact-container ${isDark ? "dark-mode" : ""} ${className} h-full overflow-auto p-4`}>
       {parsedFiles.map((file, index) => (
         <div key={`${file.fileName}-${index}`} className="diff-artifact-file">
           {/* File header */}
