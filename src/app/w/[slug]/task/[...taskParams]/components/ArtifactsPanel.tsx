@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
-import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel } from "../artifacts";
+import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -26,6 +26,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
   const ideArtifacts = artifacts.filter((a) => a.type === "IDE");
   const graphArtifacts = artifacts.filter((a) => a.type === "GRAPH");
   const workflowArtifacts = artifacts.filter((a) => a.type === "WORKFLOW");
+  const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
@@ -34,8 +35,9 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
     if (ideArtifacts.length > 0) tabs.push("IDE");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
+    if (diffArtifacts.length > 0) tabs.push("DIFF");
     return tabs;
-  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length]);
+  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -95,6 +97,11 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
               {workflowArtifacts.length > 0 && (
                 <TabsTrigger className="cursor-pointer" value="WORKFLOW">
                   Workflow
+                </TabsTrigger>
+              )}
+              {diffArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="DIFF">
+                  Diff
                 </TabsTrigger>
               )}
             </TabsList>
@@ -189,6 +196,16 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
               />
+            </TabsContent>
+          )}
+          {diffArtifacts.length > 0 && (
+            <TabsContent
+              value="DIFF"
+              className="h-full mt-0"
+              forceMount
+              hidden={activeTab !== "DIFF"}
+            >
+              <DiffArtifactPanel artifacts={diffArtifacts} />
             </TabsContent>
           )}
         </motion.div>

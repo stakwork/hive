@@ -446,6 +446,33 @@ export default function TaskChatPage() {
           },
         );
 
+        // Check for diffs after agent completes (agent mode only)
+        if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
+          try {
+            const diffResponse = await fetch("/api/agent/diff", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                podId: claimedPodId || "dev-pod", // Use placeholder in dev mode
+                workspaceId: effectiveWorkspaceId,
+                taskId: options?.taskId || currentTaskId,
+              }),
+            });
+
+            if (diffResponse.ok) {
+              const diffResult = await diffResponse.json();
+
+              // Only add message if diffs exist
+              if (diffResult.success && diffResult.message && !diffResult.noDiffs) {
+                setMessages((msgs) => [...msgs, diffResult.message]);
+              }
+            }
+          } catch (error) {
+            console.error("Error fetching diff:", error);
+            // Silent failure - don't interrupt user flow
+          }
+        }
+
         // Note: Assistant message is saved by the backend via stream teeing (see /api/agent/route.ts)
         return;
       }
