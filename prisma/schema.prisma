@@ -213,6 +213,7 @@ model Workspace {
 
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
+  stakworkWebhookSecret String? @map("stakwork_webhook_secret")
 
   // Janitor configuration
   janitorConfig JanitorConfig?
