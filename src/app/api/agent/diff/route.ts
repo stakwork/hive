@@ -12,30 +12,37 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
+    console.log(">>> [DIFF] Starting diff request");
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
+      console.log(">>> [DIFF] No user session found");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
+      console.log(">>> [DIFF] Invalid user session - no userId");
       return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const body = await request.json();
     const { podId, workspaceId, taskId } = body;
+    console.log(">>> [DIFF] Request params:", { podId, workspaceId, taskId, userId });
 
     // Validate required fields
     if (!podId) {
+      console.log(">>> [DIFF] Missing podId");
       return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
     }
 
     if (!workspaceId) {
+      console.log(">>> [DIFF] Missing workspaceId");
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
     if (!taskId) {
+      console.log(">>> [DIFF] Missing taskId");
       return NextResponse.json({ error: "Missing required field: taskId" }, { status: 400 });
     }
 
@@ -53,10 +60,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
+      console.log(">>> [DIFF] Workspace not found:", workspaceId);
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    console.log(">>> [DIFF] Workspace found:", { id: workspace.id, hasSwarm: !!workspace.swarm });
+
     if (process.env.MOCK_BROWSER_URL || process.env.CUSTOM_GOOSE_URL) {
+      console.log(">>> [DIFF] Using mock mode");
       // Mock diff data for testing - create a proper message structure
       const mockDiff: ActionResult[] = [
         {
@@ -106,13 +117,16 @@ index 1234567..abcdefg 100644
 
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
+    console.log(">>> [DIFF] Access check:", { isOwner, isMember });
 
     if (!isOwner && !isMember) {
+      console.log(">>> [DIFF] Access denied");
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
+      console.log(">>> [DIFF] No swarm found for workspace");
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
@@ -120,25 +134,39 @@ index 1234567..abcdefg 100644
 
     // Check if swarm has pool configuration
     if (!poolApiKey) {
+      console.log(">>> [DIFF] Swarm not configured with pool API key");
       return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
     }
 
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    console.log(">>> Getting pod from pool for diff operation");
+    console.log(">>> [DIFF] Getting pod from pool, podId:", podId);
 
     // Fetch pod details to get port mappings and password
-    const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
+    let podWorkspace;
+    try {
+      podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
+      console.log(">>> [DIFF] Pod workspace retrieved:", {
+        id: podWorkspace.id,
+        state: podWorkspace.state,
+        hasControlPort: !!podWorkspace.portMappings[POD_PORTS.CONTROL],
+      });
+    } catch (error) {
+      console.error(">>> [DIFF] Failed to get pod from pool:", error);
+      throw error;
+    }
+
     const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
     if (!controlPortUrl) {
+      console.log(">>> [DIFF] Control port not found in port mappings");
       return NextResponse.json(
         { error: `Control port (${POD_PORTS.CONTROL}) not found in port mappings` },
         { status: 500 },
       );
     }
 
-    console.log(">>> Fetching diff from control port:", controlPortUrl);
+    console.log(">>> [DIFF] Fetching diff from control port:", controlPortUrl);
 
     // GET /diff from the control port
     const diffUrl = `${controlPortUrl}/diff`;
@@ -151,7 +179,7 @@ index 1234567..abcdefg 100644
 
     if (!diffResponse.ok) {
       const errorText = await diffResponse.text();
-      console.error(`Failed to fetch diff: ${diffResponse.status} - ${errorText}`);
+      console.error(`>>> [DIFF] Failed to fetch diff: ${diffResponse.status} - ${errorText}`);
       return NextResponse.json(
         { error: `Failed to fetch diff: ${diffResponse.status}`, details: errorText },
         { status: diffResponse.status },
@@ -159,11 +187,11 @@ index 1234567..abcdefg 100644
     }
 
     const diffs: ActionResult[] = await diffResponse.json();
-    console.log(">>> Diff fetched successfully, count:", diffs.length);
+    console.log(">>> [DIFF] Diff fetched successfully, count:", diffs.length);
 
     // If there are no diffs, don't create an artifact
     if (!diffs || diffs.length === 0) {
-      console.log(">>> No diffs to display, skipping artifact creation");
+      console.log(">>> [DIFF] No diffs to display, skipping artifact creation");
       return NextResponse.json(
         {
           success: true,
@@ -172,6 +200,8 @@ index 1234567..abcdefg 100644
         { status: 200 },
       );
     }
+
+    console.log(">>> [DIFF] Creating chat message with DIFF artifact");
 
     // Create a chat message with the DIFF artifact
     const chatMessage = await db.chatMessage.create({
@@ -196,7 +226,7 @@ index 1234567..abcdefg 100644
       },
     });
 
-    console.log(">>> Chat message with DIFF artifact created:", chatMessage.id);
+    console.log(">>> [DIFF] Chat message with DIFF artifact created:", chatMessage.id);
 
     return NextResponse.json(
       {
@@ -206,7 +236,7 @@ index 1234567..abcdefg 100644
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching diff:", error);
+    console.error(">>> [DIFF] Error fetching diff:", error);
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

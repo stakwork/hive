@@ -447,13 +447,14 @@ export default function TaskChatPage() {
         );
 
         // Check for diffs after agent completes (agent mode only)
-        if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
+        // Only check if we have a real pod claimed
+        if (effectiveWorkspaceId && (options?.taskId || currentTaskId) && claimedPodId) {
           try {
             const diffResponse = await fetch("/api/agent/diff", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                podId: claimedPodId || "dev-pod", // Use placeholder in dev mode
+                podId: claimedPodId,
                 workspaceId: effectiveWorkspaceId,
                 taskId: options?.taskId || currentTaskId,
               }),
@@ -466,6 +467,9 @@ export default function TaskChatPage() {
               if (diffResult.success && diffResult.message && !diffResult.noDiffs) {
                 setMessages((msgs) => [...msgs, diffResult.message]);
               }
+            } else {
+              // Pod might have been released or doesn't exist anymore - just skip silently
+              console.log("Failed to fetch diff (pod may no longer exist):", diffResponse.status);
             }
           } catch (error) {
             console.error("Error fetching diff:", error);
