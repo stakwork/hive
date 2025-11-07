@@ -233,7 +233,13 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       expect(response.status).toBe(404);
       expect(data.success).toBe(false);
       expect(db.repository.findFirst).toHaveBeenCalledWith({
-        where: { githubWebhookId: mockWebhookId },
+        where: {
+          githubWebhookId: mockWebhookId,
+          workspace: {
+            deleted: false,
+            deletedAt: null,
+          },
+        },
         select: expect.any(Object),
       });
     });
