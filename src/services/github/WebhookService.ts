@@ -156,43 +156,14 @@ export class WebhookService extends BaseServiceClass {
     });
     if (!repoRec) throw new Error("Repository not found for workspace");
 
-    const hooks = await this.listHooks(token, owner, repo);
-    const existing = hooks.find((h) => h.config?.url === callbackUrl);
-
-    if (existing) {
-      // await this.updateHook({
-      //   token,
-      //   owner,
-      //   repo,
-      //   hookId: existing.id,
-      //   events,
-      //   active,
-      // });
-      const storedSecret = repoRec.githubWebhookSecret
-        ? encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret)
-        : null;
-      if (!storedSecret) {
-        console.log("=> no stored gh ecret!!!", repoRec.id);
-      }
-      return { id: existing.id, secret: storedSecret || "" };
-      // const secret = storedSecret || crypto.randomBytes(32).toString("hex");
-      // if (!repoRec.githubWebhookSecret) {
-      //   await db.repository.update({
-      //     where: { id: repoRec.id },
-      //     data: {
-      //       githubWebhookId: String(existing.id),
-      //       githubWebhookSecret: JSON.stringify(encryptionService.encryptField("githubWebhookSecret", secret)),
-      //     },
-      //   });
-      // } else if (!repoRec.githubWebhookId) {
-      //   await db.repository.update({
-      //     where: { id: repoRec.id },
-      //     data: { githubWebhookId: String(existing.id) },
-      //   });
-      // }
-      // return { id: existing.id, secret };
+    // Check if this workspace already has a webhook configured
+    if (repoRec.githubWebhookId && repoRec.githubWebhookSecret) {
+      const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
+      console.log("=> Using existing webhook for workspace", repoRec.id);
+      return { id: Number(repoRec.githubWebhookId), secret: storedSecret };
     }
 
+    // Create a new webhook for this workspace
     const secret = crypto.randomBytes(32).toString("hex");
     const created = await this.createHook({
       token,
@@ -204,7 +175,7 @@ export class WebhookService extends BaseServiceClass {
       active,
     });
 
-    console.log("=> create/update webhook secret!!!", repoRec.id);
+    console.log("=> Creating new webhook for workspace", repoRec.id);
     await db.repository.update({
       where: { id: repoRec.id },
       data: {
@@ -325,34 +296,6 @@ export class WebhookService extends BaseServiceClass {
       throw new Error("WEBHOOK_CREATION_FAILED");
     }
     return { id: data.id as number };
-  }
-
-  private async updateHook(params: {
-    token: string;
-    owner: string;
-    repo: string;
-    hookId: number;
-    events: string[];
-    active: boolean;
-  }): Promise<void> {
-    const res = await fetch(`https://api.github.com/repos/${params.owner}/${params.repo}/hooks/${params.hookId}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `token ${params.token}`,
-        Accept: "application/vnd.github.v3+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        events: params.events,
-        active: params.active,
-      }),
-    });
-    if (!res.ok) {
-      if (res.status === 403) {
-        throw new Error("INSUFFICIENT_PERMISSIONS");
-      }
-      throw new Error("WEBHOOK_CREATION_FAILED");
-    }
   }
 
   private async deleteHook(token: string, owner: string, repo: string, hookId: number): Promise<void> {
