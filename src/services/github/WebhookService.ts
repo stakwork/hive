@@ -158,9 +158,17 @@ export class WebhookService extends BaseServiceClass {
 
     // Check if this workspace already has a webhook configured
     if (repoRec.githubWebhookId && repoRec.githubWebhookSecret) {
-      const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
-      console.log("=> Using existing webhook for workspace", repoRec.id);
-      return { id: Number(repoRec.githubWebhookId), secret: storedSecret };
+      const webhookId = Number(repoRec.githubWebhookId);
+      const webhookExists = await this.verifyHookExists(token, owner, repo, webhookId);
+
+      if (webhookExists) {
+        const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
+        console.log("=> Using existing webhook for workspace", repoRec.id);
+        return { id: webhookId, secret: storedSecret };
+      }
+
+      // Webhook was deleted in GitHub UI - need to create a new one
+      console.log("=> Webhook was deleted in GitHub, creating new webhook", repoRec.id);
     }
 
     // Create a new webhook for this workspace
@@ -229,33 +237,24 @@ export class WebhookService extends BaseServiceClass {
     return githubProfile.token;
   }
 
-  private async listHooks(
+  private async verifyHookExists(
     token: string,
     owner: string,
     repo: string,
-  ): Promise<Array<{ id: number; config?: { url?: string } }>> {
-    const url = `https://api.github.com/repos/${owner}/${repo}/hooks?per_page=100`;
+    hookId: number,
+  ): Promise<boolean> {
     try {
-      const res = await fetch(url, {
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`, {
         method: "GET",
         headers: {
           Authorization: `token ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
       });
-      if (!res.ok) {
-        if (res.status === 403) {
-          throw new Error("INSUFFICIENT_PERMISSIONS");
-        }
-        throw new Error("WEBHOOK_CREATION_FAILED");
-      }
-      return (await res.json()) as Array<{
-        id: number;
-        config?: { url?: string };
-      }>;
+      return res.ok;
     } catch (error) {
-      console.error("Failed to list hooks at:", url, error);
-      throw new Error("WEBHOOK_CREATION_FAILED");
+      console.error("Failed to verify webhook exists:", error);
+      return false;
     }
   }
 
