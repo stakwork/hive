@@ -477,7 +477,7 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={content.url}
+                  src={isUrlReady ? content.url : "about:blank"}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
                 />
