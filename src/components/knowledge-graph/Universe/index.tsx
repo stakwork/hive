@@ -49,8 +49,8 @@ const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolea
   const cameraProps = {
     far: 30000,
     near: 1,
-    position: cameraPosition && false ?
-      [cameraPosition.x, cameraPosition.y, cameraPosition.z] as [number, number, number] :
+    position: cameraPosition ?
+      [cameraPosition?.x, cameraPosition?.y, cameraPosition?.z] as [number, number, number] :
       [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z] as [number, number, number],
   } as const
 
