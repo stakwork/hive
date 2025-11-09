@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { useGraphStore, GraphStyle, graphStyles } from '@/stores/useGraphStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useGraphStore, GraphStyle, graphStyles, useSimulationStore } from '@/stores/useStores'
 import { useMemo } from 'react'
 
 const graphStyleLabels: Record<GraphStyle, string> = {

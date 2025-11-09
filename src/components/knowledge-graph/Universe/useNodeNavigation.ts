@@ -1,9 +1,7 @@
-import { useDataStore } from "@/stores/useDataStore"
-import { useGraphStore } from "@/stores/useGraphStore"
+import { useDataStore, useGraphStore } from "@/stores/useStores"
 
 
 export const useNodeNavigation = () => {
-  console.log('useNodeNavigation')
   const setSelectedNode = useGraphStore((s) => s.setSelectedNode)
 
   const nodesNormalized = useDataStore((state) => state.nodesNormalized)

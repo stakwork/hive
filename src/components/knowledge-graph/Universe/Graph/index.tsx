@@ -1,8 +1,8 @@
 import { deepEqual } from '@/lib/utils/deepEqual'
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore } from '@/stores/useGraphStore'
+import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useStoreId } from '@/stores/StoreProvider'
 import { useSchemaStore } from '@/stores/useSchemaStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
@@ -33,11 +33,13 @@ export const Graph = () => {
   const groupRef = useRef<Group>(null)
   const { normalizedSchemasByType } = useSchemaStore((s) => s)
   const prevRadius = useRef(0)
+  const storeId = useStoreId()
 
 
 
   const linksPositionRef = useRef(new Map<string, LinkPosition>())
   const nodesPositionRef = useRef(new Map<string, NodePosition>())
+  const justWokeUpRef = useRef(false)
 
   const { graphStyle, setGraphRadius } = useGraphStore((s) => s)
 
@@ -51,9 +53,41 @@ export const Graph = () => {
     removeSimulation,
     setForces,
     setSimulationInProgress,
+    isSleeping,
+    setIsSleeping,
   } = useSimulationStore((s) => s)
 
   const highlightNodes = useGraphStore((s) => s.highlightNodes)
+
+  // Wake up the simulation when component mounts
+  useEffect(() => {
+    // Check if we're returning from a sleeping state
+    const wasSleeping = isSleeping
+
+    if (wasSleeping) {
+      // Mark that we just woke up to prevent immediate setForces()
+      justWokeUpRef.current = true
+
+      // If we have existing simulation and data, set alpha to almost min to quickly trigger end event
+      if (simulation && dataInitial?.nodes?.length) {
+        console.log('Waking up simulation with existing data, setting alpha to trigger end event')
+        simulation.alpha(0.001).restart() // Almost minimum alpha to quickly trigger 'end' event
+      }
+
+      // Reset the flag after a brief delay to allow normal operation
+      setTimeout(() => {
+        justWokeUpRef.current = false
+      }, 100)
+    }
+
+    // Always wake up the simulation
+    setIsSleeping(false)
+
+    // Clean up: put simulation to sleep when component unmounts
+    return () => {
+      setIsSleeping(true)
+    }
+  }, [setIsSleeping, isSleeping, simulation, dataInitial])
 
   useEffect(() => {
     if (highlightNodes.length) {
@@ -84,17 +118,23 @@ export const Graph = () => {
     }
   }, [dataNew, simulation, simulationCreate, dataInitial, addNodesAndLinks])
 
-  useEffect(() => {
-    ; () => removeSimulation()
-  }, [removeSimulation])
+  // useEffect(() => {
+  //   ; () => removeSimulation()
+  // }, [removeSimulation])
 
   useEffect(() => {
-    if (!simulation) {
+    console.log('here is simulation', {
+      simulation: !!simulation,
+      isSleeping,
+      justWokeUp: justWokeUpRef.current
+    })
+
+    if (!simulation || isSleeping || justWokeUpRef.current) {
       return
     }
 
     setForces()
-  }, [graphStyle, setForces, simulation])
+  }, [graphStyle, setForces, simulation, isSleeping])
 
   useEffect(() => {
     if (!simulation) {
@@ -105,7 +145,7 @@ export const Graph = () => {
       return
     }
 
-    const { selectedNode } = useGraphStore.getState()
+    const { selectedNode } = getStoreBundle(storeId).graph.getState()
 
     const gr = groupRef.current.getObjectByName('simulation-3d-group__nodes') as Group
     const grPoints = groupRef.current.getObjectByName('simulation-3d-group__node-points') as Group

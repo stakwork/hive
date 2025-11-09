@@ -37,6 +37,7 @@ export const createSimulationStore = (
     simulation: null,
     simulationVersion: 0,
     simulationInProgress: false,
+    isSleeping: false,
     simulationCreate: (nodes) => {
       const structuredNodes = structuredClone(nodes)
 
@@ -87,7 +88,6 @@ export const createSimulationStore = (
       )
 
       const nodesPositioned = graphStyle === 'split' ? nodes.map((n: Node) => {
-        console.log('node-position', n);
         const index = nodeTypes.indexOf(n.node_type) + 1
         const yOffset = Math.floor(index / 2) * 500
 
@@ -278,5 +278,9 @@ export const createSimulationStore = (
 
     setSimulationInProgress: (simulationInProgress: boolean) => {
       set({ simulationInProgress })
+    },
+
+    setIsSleeping: (isSleeping: boolean) => {
+      set({ isSleeping })
     },
   }));

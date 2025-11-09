@@ -2,7 +2,7 @@
 
 import { Flex } from '@/components/common/Flex'
 import { useControlStore } from '@/stores/useControlStore'
-import { useDataStore } from '@/stores/useDataStore'
+import { useDataStore, useGraphStore } from '@/stores/useStores'
 import { AdaptiveDpr, AdaptiveEvents, Html, Loader, Preload } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, memo, useCallback } from 'react'
@@ -36,18 +36,23 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
 let wheelEventTimeout: ReturnType<typeof setTimeout> | null = null
 
-const cameraProps = {
-  far: 30000,
-  near: 1,
-  position: [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z],
-} as const
-
-const _Universe = ({ enableRotation = false }: { enableRotation?: boolean }) => {
+const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolean }) => {
   const [setIsUserScrollingOnHtmlPanel, setIsUserScrolling, setUserMovedCamera] = [
     useControlStore((s) => s.setIsUserScrollingOnHtmlPanel),
     useControlStore((s) => s.setIsUserScrolling),
     useControlStore((s) => s.setUserMovedCamera),
   ]
+
+  // Get saved camera position for initial canvas setup
+  const { cameraPosition } = useGraphStore((s) => s)
+
+  const cameraProps = {
+    far: 30000,
+    near: 1,
+    position: cameraPosition && false ?
+      [cameraPosition.x, cameraPosition.y, cameraPosition.z] as [number, number, number] :
+      [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z] as [number, number, number],
+  } as const
 
 
   const onWheelHandler = useCallback(
@@ -108,4 +113,4 @@ const _Universe = ({ enableRotation = false }: { enableRotation?: boolean }) => 
 }
 
 
-export const Universe = memo(_Universe)
+export const Universe = memo(UniverseComponent)

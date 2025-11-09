@@ -1,6 +1,4 @@
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useGraphStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useGraphStore, useSelectedNodeRelativeIds, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { useNodeNavigation } from '@Universe/useNodeNavigation'
 import { useCallback } from 'react'

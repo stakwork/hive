@@ -1,6 +1,4 @@
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore } from '@/stores/useGraphStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { Segments } from '@react-three/drei'
 import { Link, NodeExtended } from '@Universe/types'
 import { memo } from 'react'

@@ -1,6 +1,5 @@
 import { useControlStore } from '@/stores/useControlStore'
-import { useDataStore } from '@/stores/useDataStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useSimulationStore } from '@/stores/useStores'
 import { Billboard, Text } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'

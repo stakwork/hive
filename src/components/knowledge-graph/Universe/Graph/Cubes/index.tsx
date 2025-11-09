@@ -1,6 +1,6 @@
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore, useHoveredNode, useSelectedNode } from '@/stores/useGraphStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
+import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useStoreId } from '@/stores/StoreProvider'
 import { NodeExtended } from '@Universe/types'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { memo, useCallback, useRef } from 'react'
@@ -23,6 +23,7 @@ export const Cubes = memo(() => {
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const frameIndex = useRef(0)
   const chunkSize = 50
+  const storeId = useStoreId()
 
   const downPosition = useRef<{ x: number; y: number } | null>(null)
   const upPosition = useRef<{ x: number; y: number } | null>(null)
@@ -51,7 +52,7 @@ export const Cubes = memo(() => {
     }
 
     const { searchQuery, selectedLinkTypes, selectedNodeTypes, hoveredNodeSiblings, followersFilter, dateRangeFilter } =
-      useGraphStore.getState()
+      getStoreBundle(storeId).graph.getState()
 
     const dynamicMode =
       searchQuery ||

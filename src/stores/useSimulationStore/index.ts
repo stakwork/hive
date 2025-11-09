@@ -33,6 +33,7 @@ interface SimulationStore {
   simulation: ForceSimulation | null
   simulationVersion: number
   simulationInProgress: boolean
+  isSleeping: boolean
   simulationCreate: (nodes: Node[]) => void
   removeSimulation: () => void
   addNodesAndLinks: (nodes: Node[], links: Link[], replace: boolean) => void
@@ -44,12 +45,14 @@ interface SimulationStore {
   getLinks: () => Link<NodeExtended>[]
   updateSimulationVersion: () => void
   setSimulationInProgress: (simulationInProgress: boolean) => void
+  setIsSleeping: (isSleeping: boolean) => void
 }
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
   simulation: null,
   simulationVersion: 0,
   simulationInProgress: false,
+  isSleeping: false,
   simulationCreate: (nodes) => {
     const structuredNodes = structuredClone(nodes)
 
@@ -100,7 +103,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     )
 
     const nodesPositioned = graphStyle === 'split' ? nodes.map((n: Node) => {
-      console.log('node-position', n);
       const index = nodeTypes.indexOf(n.node_type) + 1
       const yOffset = Math.floor(index / 2) * 500
 
@@ -294,5 +296,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   setSimulationInProgress: (simulationInProgress: boolean) => {
     set({ simulationInProgress })
+  },
+
+  setIsSleeping: (isSleeping: boolean) => {
+    set({ isSleeping })
   },
 }))

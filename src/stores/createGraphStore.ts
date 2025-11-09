@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { type GraphStore } from "./useGraphStore";
+import { type GraphStore, type CameraPosition, type CameraTarget } from "./useGraphStore";
 import { type DataStore } from "./useDataStore";
 import { type SimulationStore } from "./useSimulationStore";
 import { GraphData, Link, NodeExtended } from '@Universe/types'
@@ -53,6 +53,9 @@ const defaultData: Omit<
   | 'setDateRangeFilter'
   | 'setIsolatedView'
   | 'setNeighbourhoods'
+  | 'setCameraPosition'
+  | 'setCameraTarget'
+  | 'saveCameraState'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -80,6 +83,8 @@ const defaultData: Omit<
   isolatedView: '',
   neighbourhoods: [],
   selectedNodeType: '',
+  cameraPosition: null,
+  cameraTarget: null,
 }
 
 export const createGraphStore = (
@@ -190,4 +195,10 @@ export const createGraphStore = (
     setDateRangeFilter: (filter) => set({ dateRangeFilter: filter }),
     setIsolatedView: (isolatedView) => set({ isolatedView }),
     setNeighbourhoods: (neighbourhoods) => set({ neighbourhoods }),
+    setCameraPosition: (cameraPosition) => set({ cameraPosition }),
+    setCameraTarget: (cameraTarget) => set({ cameraTarget }),
+    saveCameraState: (position, target) => set({
+      cameraPosition: position,
+      cameraTarget: target
+    }),
   }));

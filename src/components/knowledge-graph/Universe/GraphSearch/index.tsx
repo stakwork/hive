@@ -1,6 +1,6 @@
 import ClearIcon from '@/components/Icons/ClearIcon'
 import SearchIcon from '@/components/Icons/SearchIcon'
-import { useGraphStore } from '@/stores/useGraphStore'
+import { useGraphStore } from '@/stores/useStores'
 import { GraphFilter } from './GraphFilter'
 
 export const GraphSearch = () => {
