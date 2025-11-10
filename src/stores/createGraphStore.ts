@@ -1,23 +1,10 @@
 import { create } from "zustand";
-import { type GraphStore, type CameraPosition, type CameraTarget } from "./useGraphStore";
-import { type DataStore } from "./useDataStore";
-import { type SimulationStore } from "./useSimulationStore";
-import { GraphData, Link, NodeExtended } from '@Universe/types'
+import { type GraphStore, type Position, type Neighbourhood, type GraphStyle } from "./graphStore.types";
+import { NodeExtended } from '@Universe/types'
 import { createDataStore } from "./createDataStore";
-import { createSimulationStore } from "./createSimulationStore";
 
-export type Position = {
-  x: number
-  y: number
-  z: number
-}
-
-export type Neighbourhood = {
-  name: string
-  ref_id: string
-}
-
-export type GraphStyle = 'sphere' | 'force' | 'split'
+// Re-export types for backward compatibility
+export type { Position, Neighbourhood, GraphStyle } from "./graphStore.types";
 
 export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split']
 
@@ -89,7 +76,7 @@ const defaultData: Omit<
 
 export const createGraphStore = (
   dataStore: ReturnType<typeof createDataStore>,
-  simulationStore: ReturnType<typeof createSimulationStore>
+  simulationStore: any
 ) =>
   create<GraphStore>()((set, get) => ({
     ...defaultData,

@@ -12,7 +12,7 @@ import {
 } from 'd3-force-3d';
 import { create } from "zustand";
 import { createDataStore } from "./createDataStore";
-import { createGraphStore } from "./createGraphStore";
+// Removed circular import - graphStore will be passed as parameter
 import { type SimulationStore } from "./useSimulationStore";
 import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNodesOnSphere';
 
@@ -31,7 +31,7 @@ const resetPosition = {
 
 export const createSimulationStore = (
   dataStore: ReturnType<typeof createDataStore>,
-  graphStore: ReturnType<typeof createGraphStore>
+  graphStore: any
 ) =>
   create<SimulationStore>((set, get) => ({
     simulation: null,
