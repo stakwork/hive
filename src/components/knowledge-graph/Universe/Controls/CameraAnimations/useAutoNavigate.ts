@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Sphere, Vector3 } from "three";
 
 export const useAutoNavigate = () => {
+  console.log("useAutoNavigate");
   const selectedNode = useSelectedNode();
   const cameraControlsRef = useControlStore((s) => s.cameraControlsRef);
 
