@@ -4,7 +4,7 @@ import { useControlStore } from '@/stores/useControlStore'
 import { useGraphStore, useSelectedNode } from '@/stores/useStores'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { Vector3 } from 'three'
+import { MathUtils, Vector3 } from 'three'
 import { initialCameraPosition } from './constants'
 import { useAutoNavigate } from './useAutoNavigate'
 
