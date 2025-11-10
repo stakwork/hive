@@ -124,6 +124,7 @@ export const janitorMocks = {
               id: "repo-1",
               repositoryUrl: "https://github.com/test/repo",
               branch: "main",
+              ignoreDirs: "node_modules,dist",
             },
           ],
         },
