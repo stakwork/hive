@@ -68,11 +68,10 @@ export async function createTestRepository(options?: CreateTestRepositoryOptions
       },
     });
 
-    // Encrypt webhook secret
-    const encryptedSecret = encryptionService.encryptField(
-      "githubWebhookSecret",
-      webhookSecret
-    );
+    // Encrypt webhook secret only if provided (non-null)
+    const encryptedSecret = webhookSecret
+      ? encryptionService.encryptField("githubWebhookSecret", webhookSecret)
+      : null;
 
     // Create repository with webhook config
     const repository = await tx.repository.create({
@@ -84,7 +83,7 @@ export async function createTestRepository(options?: CreateTestRepositoryOptions
         branch,
         status,
         githubWebhookId,
-        githubWebhookSecret: JSON.stringify(encryptedSecret),
+        githubWebhookSecret: encryptedSecret ? JSON.stringify(encryptedSecret) : null,
       },
     });
 
