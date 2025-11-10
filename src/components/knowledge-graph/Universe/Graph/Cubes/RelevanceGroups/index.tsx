@@ -1,5 +1,4 @@
-import { getLinksBetweenNodes, useDataStore } from '@/stores/useDataStore'
-import { Neighbourhood, useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useGraphStore'
+import { getLinksBetweenNodes, useDataStore, Neighbourhood, useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useStores'
 import { distributeNodesOnCircle } from '@/stores/useSimulationStore/utils/distributeNodesOnCircle/indes'
 import { Billboard, Line } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'

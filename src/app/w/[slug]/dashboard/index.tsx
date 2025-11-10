@@ -1,16 +1,30 @@
 "use client";
 
 import { GraphComponent } from "@/components/knowledge-graph";
-// import { useGraphPolling } from "@/hooks/useGraphPolling";
+import { useGraphPolling } from "@/hooks/useGraphPolling";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { logStoreInstances } from "@/stores/createStoreFactory";
+import { StoreProvider } from "@/stores/StoreProvider";
 
 export function Dashboard() {
-  // const { isPolling, isPollingActive } = useGraphPolling({
-  //   enabled: true,
-  //   interval: 5000
-  // });
+  const { id: workspaceId } = useWorkspace();
 
-  // console.log("isPolling", isPolling);
-  // console.log("isPollingActive", isPollingActive);
+  logStoreInstances()
+
+  return (
+    <StoreProvider storeId={`workspace-${workspaceId}`}>
+      <DashboardInner />
+    </StoreProvider>
+  );
+}
+
+function DashboardInner() {
+  useGraphPolling({
+    enabled: false,
+    interval: 5000
+  });
+
+
   return (
     <div className="flex flex-col flex-1 h-full">
       <div className="flex-1 min-h-0">

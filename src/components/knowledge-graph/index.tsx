@@ -4,8 +4,8 @@ import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget"
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
+import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
@@ -44,6 +44,26 @@ export const GraphComponent = ({
   width = "w-full",
   showWidgets = false
 }: GraphComponentProps = {}) => {
+  return (
+    <GraphComponentInner
+      endpoint={propEndpoint}
+      enableRotation={enableRotation}
+      className={className}
+      height={height}
+      width={width}
+      showWidgets={showWidgets}
+    />
+  );
+};
+
+const GraphComponentInner = ({
+  endpoint: propEndpoint,
+  enableRotation = false,
+  className,
+  height = "h-full",
+  width = "w-full",
+  showWidgets = false
+}: GraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
 
@@ -72,7 +92,7 @@ export const GraphComponent = ({
   // --- load nodes ---
   useEffect(() => {
     const fetchNodes = async () => {
-      resetData()
+      // resetData()
       setNodesLoading(true);
       try {
 
@@ -104,8 +124,12 @@ export const GraphComponent = ({
       }
     };
 
+    if (dataInitial?.nodes && dataInitial.nodes.length > 0) {
+      return;
+    }
+
     fetchNodes();
-  }, [workspaceId, addNewNode, resetData, propEndpoint]);
+  }, [workspaceId, addNewNode, resetData, propEndpoint, dataInitial]);
 
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>

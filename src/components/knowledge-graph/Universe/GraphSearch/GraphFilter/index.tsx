@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useDataStore, useNodeTypes } from '@/stores/useDataStore'
-import { useGraphStore } from '@/stores/useGraphStore'
+import { useDataStore, useNodeTypes, useGraphStore } from '@/stores/useStores'
 import { Filter } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'

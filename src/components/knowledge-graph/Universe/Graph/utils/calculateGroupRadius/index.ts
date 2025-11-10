@@ -2,16 +2,11 @@ import { Box3, Group, Sphere, Vector3 } from 'three'
 
 export const calculateRadius = (gr: Group) => {
   const box = new Box3().setFromObject(gr)
-  // console.log('calculate-radius')
-  // console.log(box)
-  // console.log(gr)
 
   // Check if the bounding box is valid
   if (!box.isEmpty()) {
     const sphere = new Sphere()
     box.getBoundingSphere(sphere)
-    console.log(sphere)
-    // console.log('calculate-radius')
     return sphere.radius
   }
 
