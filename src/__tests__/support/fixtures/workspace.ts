@@ -22,6 +22,8 @@ export interface CreateTestWorkspaceOptions {
   slug?: string;
   ownerId: string;
   stakworkApiKey?: string | null;
+  sourceControlOrgId?: string | null;
+  repositoryDraft?: string | null;
 }
 
 export interface CreateTestMembershipOptions {
@@ -45,6 +47,10 @@ export async function createTestWorkspace(
       ownerId: options.ownerId,
       stakworkApiKey:
         options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
+      sourceControlOrgId:
+        options.sourceControlOrgId === undefined ? null : options.sourceControlOrgId,
+      repositoryDraft:
+        options.repositoryDraft === undefined ? null : options.repositoryDraft,
     },
   });
 }

@@ -149,6 +149,7 @@ export async function createJanitorRun(
                   id: true,
                   repositoryUrl: true,
                   branch: true,
+                  ignoreDirs: true,
                 }
               }
             }
@@ -191,14 +192,16 @@ export async function createJanitorRun(
       console.warn(`[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`);
     }
 
-    // Get repository URL from first repository
-    const repositoryUrl = janitorRun.janitorConfig.workspace.repositories[0]?.repositoryUrl || null;
+    // Get repository data from first repository
+    const repository = janitorRun.janitorConfig.workspace.repositories[0];
+    const repositoryUrl = repository?.repositoryUrl || null;
+    const ignoreDirs = repository?.ignoreDirs || null;
 
     if (!repositoryUrl) {
       console.warn(`[Janitor] No repository linked to workspace: ${workspaceSlug}`);
     }
 
-    // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, and GitHub context
+    // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, ignoreDirs, and GitHub context
     const vars = {
       janitorType: janitorType,
       webhookUrl: webhookUrl,
@@ -206,6 +209,7 @@ export async function createJanitorRun(
       swarmSecretAlias: swarmSecretAlias,
       workspaceId: workspaceId,
       repositoryUrl: repositoryUrl,
+      ignoreDirs: ignoreDirs,
       username: githubCreds?.username || null,
       pat: githubCreds?.token || null,
     };

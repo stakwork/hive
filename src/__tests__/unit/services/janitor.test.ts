@@ -288,10 +288,11 @@ describe("Janitor Service", () => {
       vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
 
       // Mock stakwork service
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
       vi.mocked(stakworkService).mockReturnValue({
-        stakworkRequest: vi.fn().mockResolvedValue({
-          data: { project_id: 12345 },
-        }),
+        stakworkRequest: mockStakworkRequest,
       } as any);
 
       const result = await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS");
@@ -310,6 +311,23 @@ describe("Janitor Service", () => {
         },
         include: expect.any(Object),
       });
+      
+      // Verify ignoreDirs is included in the Stakwork payload
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  ignoreDirs: "node_modules,dist",
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+      
       expect(result.status).toBe("RUNNING");
       expect(result.stakworkProjectId).toBe(12345);
     });
