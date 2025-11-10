@@ -19,6 +19,9 @@ for (const [key, value] of Object.entries(requiredEnvVars)) {
 
 export const env = requiredEnvVars;
 
+// Mock configuration
+const USE_JARVIS_MOCK = process.env.USE_JARVIS_MOCK === 'true';
+
 // Optional environment variables with defaults
 export const optionalEnvVars = {
   STAKWORK_BASE_URL: process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
@@ -33,6 +36,14 @@ export const optionalEnvVars = {
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
+  // Jarvis configuration - use mock endpoints when USE_JARVIS_MOCK=true
+  USE_JARVIS_MOCK,
+  CUSTOM_SWARM_URL: USE_JARVIS_MOCK
+    ? (process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/+$/, '') + "/api/mock/jarvis"
+    : process.env.CUSTOM_SWARM_URL,
+  CUSTOM_SWARM_API_KEY: USE_JARVIS_MOCK
+    ? "mock-api-key"
+    : process.env.CUSTOM_SWARM_API_KEY,
 } as const;
 
 // Combined environment configuration
