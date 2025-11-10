@@ -874,7 +874,7 @@ describe("POST /api/mock Integration Tests", () => {
 
     test("should use force-no-store cache setting", async () => {
       // This is a module-level export that should be set
-      const module = await import("@/app/api/mock/route");
+      const module = await import("@/app/api/mock/chat/route");
       expect(module.fetchCache).toBe("force-no-store");
     });
 
