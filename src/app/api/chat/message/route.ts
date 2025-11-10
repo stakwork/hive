@@ -54,13 +54,14 @@ async function fetchChatHistory(taskId: string, excludeMessageId: string): Promi
       content: artifact.content,
       icon: artifact.icon,
     })),
-    attachments: msg.attachments?.map((attachment) => ({
-      id: attachment.id,
-      filename: attachment.filename,
-      path: attachment.path,
-      mimeType: attachment.mimeType,
-      size: attachment.size,
-    })) || [],
+    attachments:
+      msg.attachments?.map((attachment) => ({
+        id: attachment.id,
+        filename: attachment.filename,
+        path: attachment.path,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+      })) || [],
   }));
 }
 
@@ -88,7 +89,7 @@ async function callMock(
   const baseUrl = getBaseUrl(request?.headers.get("host"));
 
   try {
-    const response = await fetch(`${baseUrl}/api/mock`, {
+    const response = await fetch(`${baseUrl}/api/mock/chat`, {
       method: "POST",
       body: JSON.stringify({
         taskId,
@@ -370,7 +371,7 @@ export async function POST(request: NextRequest) {
     // Get workspace slug for GitHub credentials
     const workspace = await db.workspace.findUnique({
       where: { id: task.workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {
