@@ -24,10 +24,10 @@ export function useIngestStatus() {
       }
       setIsIngesting(false);
 
-      console.log('codeIsSynced', codeIsSynced);
-      console.log('ingestRefId', ingestRefId);
-      console.log('workspaceId', workspaceId);
-      console.log('ingestError', ingestError);
+      // console.log('codeIsSynced', codeIsSynced);
+      // console.log('ingestRefId', ingestRefId);
+      // console.log('workspaceId', workspaceId);
+      // console.log('ingestError', ingestError);
       return;
     }
 

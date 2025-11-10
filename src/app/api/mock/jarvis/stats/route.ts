@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -21,43 +20,25 @@ interface TopicsResponse {
  * Mock endpoint for call summary topics
  * Returns a list of topics discussed in a specific call/episode
  */
-export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string; ref_id: string }> }) {
+export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const { searchParams } = request.nextUrl;
+    const workspaceSlug = searchParams.get("workspaceSlug");
 
-    const { slug, ref_id } = await params;
-
-    if (!slug) {
+    if (!workspaceSlug) {
       return NextResponse.json({ error: "Workspace slug is required" }, { status: 400 });
     }
 
-    if (!ref_id) {
-      return NextResponse.json({ error: "Call ref_id is required" }, { status: 400 });
-    }
-
+    // Verify workspace exists
     const workspace = await db.workspace.findFirst({
       where: {
-        slug,
+        slug: workspaceSlug,
         deleted: false,
-      },
-      include: {
-        members: {
-          where: {
-            userId: userOrResponse.id,
-            leftAt: null,
-          },
-        },
       },
     });
 
     if (!workspace) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
-
-    if (workspace.ownerId !== userOrResponse.id && workspace.members.length === 0) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Mock topics data for the call summary

@@ -100,7 +100,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     )
 
     const nodesPositioned = graphStyle === 'split' ? nodes.map((n: Node) => {
-      console.log('node-position', n);
+      // console.log('node-position', n);
       const index = nodeTypes.indexOf(n.node_type) + 1
       const yOffset = Math.floor(index / 2) * 500
 
