@@ -228,7 +228,7 @@ export function ActionsList({
   };
 
   return (
-    <div className="h-full flex flex-col rounded-lg border bg-card shadow-lg backdrop-blur-sm" data-testid="actions-list">
+    <div className="h-full flex flex-col border bg-card shadow-lg backdrop-blur-sm" data-testid="actions-list">
       <div className="flex flex-col gap-2 p-3 border-b flex-shrink-0">
         {title && (
           <div className="text-xs font-medium text-muted-foreground truncate" title={title}>
