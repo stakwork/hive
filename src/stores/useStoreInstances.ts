@@ -38,6 +38,20 @@ export const useNormalizedNodeInstance = (id: string, refId: string) => {
   return null
 }
 
+export const useLinksBetweenNodesInstance = (id: string, nodeA: string, nodeB: string) => {
+  const { linksNormalized, nodeLinksNormalized } = getStoreBundle(id).data.getState()
+
+  if (!nodeA || !nodeB) {
+    return []
+  }
+
+  const pairKey = [nodeA, nodeB].sort().join('--')
+  const refIds = nodeLinksNormalized[pairKey] || []
+
+  return refIds.map((refId) => linksNormalized.get(refId)).filter((link): link is Link => !!link)
+}
+
+// Non-hook version for use in other functions/memos
 export const getLinksBetweenNodesInstance = (id: string, nodeA: string, nodeB: string) => {
   const { linksNormalized, nodeLinksNormalized } = getStoreBundle(id).data.getState()
 

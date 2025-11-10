@@ -1,19 +1,19 @@
+import { GraphStyle, graphStyles, Neighbourhood } from './createGraphStore'
 import { useStoreId } from './StoreProvider'
-import {
-  useDataStoreInstance,
-  useGraphStoreInstance,
-  useSimulationStoreInstance,
-  useFilteredNodesInstance,
-  useNodeTypesInstance,
-  useNormalizedNodeInstance,
-  getLinksBetweenNodesInstance,
-  useSelectedNodeInstance,
-  useHoveredNodeInstance,
-  useSelectedNodeRelativeIdsInstance
-} from './useStoreInstances'
 import { DataStore } from './useDataStore'
 import { GraphStore } from './useGraphStore'
-import { GraphStyle, graphStyles, Neighbourhood } from './createGraphStore'
+import {
+  useLinksBetweenNodesInstance,
+  useDataStoreInstance,
+  useFilteredNodesInstance,
+  useGraphStoreInstance,
+  useHoveredNodeInstance,
+  useNodeTypesInstance,
+  useNormalizedNodeInstance,
+  useSelectedNodeInstance,
+  useSelectedNodeRelativeIdsInstance,
+  useSimulationStoreInstance
+} from './useStoreInstances'
 
 // Convenience hooks that automatically use the store ID from context
 export function useDataStore<T>(selector: (s: DataStore) => T) {
@@ -47,9 +47,9 @@ export function useNormalizedNode(refId: string) {
   return useNormalizedNodeInstance(storeId, refId)
 }
 
-export function getLinksBetweenNodes(nodeA: string, nodeB: string) {
+export function useLinksBetweenNodes(nodeA: string, nodeB: string) {
   const storeId = useStoreId()
-  return getLinksBetweenNodesInstance(storeId, nodeA, nodeB)
+  return useLinksBetweenNodesInstance(storeId, nodeA, nodeB)
 }
 
 export function useSelectedNode() {
@@ -68,8 +68,8 @@ export function useSelectedNodeRelativeIds() {
 }
 
 // Re-export types and constants
-export type { GraphStyle, Neighbourhood }
 export { graphStyles }
+export type { GraphStyle, Neighbourhood }
 
 // Debug utilities
 export { getStoreRegistryInfo, logStoreInstances } from './createStoreFactory'

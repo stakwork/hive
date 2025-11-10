@@ -12,6 +12,7 @@ export const NodeList = () => {
   const selectedNodeRelativeIds = useSelectedNodeRelativeIds()
   const { navigateToNode } = useNodeNavigation()
 
+
   const nodesData = simulation?.nodes() || []
   const nodes = nodesData
 
