@@ -2,7 +2,6 @@
 
 import { Universe } from "@/components/knowledge-graph/Universe";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { StoreProvider } from "@/stores/StoreProvider";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
@@ -81,20 +80,17 @@ export const SynchronizedGraphComponent = ({
   currentTime = 0,
   onTimeMarkerClick
 }: SynchronizedGraphComponentProps) => {
-  const { id: workspaceId } = useWorkspace();
 
   return (
-    <StoreProvider storeId={`workspace-${workspaceId}-calls`}>
-      <SynchronizedGraphComponentInner
-        endpoint={propEndpoint}
-        title={title}
-        className={className}
-        height={height}
-        width={width}
-        currentTime={currentTime}
-        onTimeMarkerClick={onTimeMarkerClick}
-      />
-    </StoreProvider>
+    <SynchronizedGraphComponentInner
+      endpoint={propEndpoint}
+      title={title}
+      className={className}
+      height={height}
+      width={width}
+      currentTime={currentTime}
+      onTimeMarkerClick={onTimeMarkerClick}
+    />
   );
 };
 
