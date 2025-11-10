@@ -1,6 +1,6 @@
-import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
-import { getStoreBundle } from '@/stores/createStoreFactory'
 import { useStoreId } from '@/stores/StoreProvider'
+import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { memo, useCallback, useRef } from 'react'

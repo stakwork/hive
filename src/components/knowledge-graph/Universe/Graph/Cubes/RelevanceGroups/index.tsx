@@ -1,5 +1,7 @@
-import { getLinksBetweenNodes, useDataStore, Neighbourhood, useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useStores'
 import { distributeNodesOnCircle } from '@/stores/useSimulationStore/utils/distributeNodesOnCircle/indes'
+import { Neighbourhood, useDataStore, useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useStores'
+import { getLinksBetweenNodesInstance } from '@/stores/useStoreInstances'
+import { useStoreId } from '@/stores/StoreProvider'
 import { Billboard, Line } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { memo, useCallback, useMemo } from 'react'
@@ -12,6 +14,7 @@ type TGroupsMap = Record<string, number>
 
 export const RelevanceGroups = memo(() => {
   const { selectedNode, setSelectedNodeType, selectedNodeType } = useGraphStore(useShallow((s) => s))
+  const storeId = useStoreId()
 
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
@@ -39,7 +42,7 @@ export const RelevanceGroups = memo(() => {
       .map((id: string) => nodesNormalized.get(id))
       .filter((i): i is NodeExtended => !!i)
 
-    const edges = selectedNodeRelativeIds.map((id: string) => getLinksBetweenNodes(id, selectedNode?.ref_id))
+    const edges = selectedNodeRelativeIds.map((id: string) => getLinksBetweenNodesInstance(storeId, id, selectedNode?.ref_id || ''))
 
     console.log(edges)
 
@@ -86,7 +89,7 @@ export const RelevanceGroups = memo(() => {
     })
 
     return [badges, lines]
-  }, [selectedNode, selectedNodeRelativeIds, nodesNormalized, selectedNodeType, handleSelect])
+  }, [selectedNode, selectedNodeRelativeIds, nodesNormalized, selectedNodeType, handleSelect, storeId])
 
   const centerPos = useMemo(
     () => [selectedNode?.x || 0, selectedNode?.y || 0, selectedNode?.z || 0] as [number, number, number],
