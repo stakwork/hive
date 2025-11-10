@@ -89,7 +89,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     vi.mocked(config).STAKWORK_API_KEY = "test-stakwork-key";
     vi.mocked(config).STAKWORK_BASE_URL = "https://stakwork.test.com/api";
     vi.mocked(config).STAKWORK_WORKFLOW_ID = "101,102,103"; // live,test,unit/integration
-    
+
     // Mock empty chat history for all tests by default
     vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
   });
@@ -567,10 +567,10 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(data.success).toBe(true);
       // Without Stakwork config, should use mock service (calls /api/mock endpoint)
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock",
+        "http://localhost:3000/api/mock/chat",
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
 
@@ -626,7 +626,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
             Authorization: "Token token=test-stakwork-key",
             "Content-Type": "application/json",
           }),
-        })
+        }),
       );
     });
   });
@@ -1451,7 +1451,8 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
     it("should handle multiple attachments with presigned URLs", async () => {
       const s3Service = {
-        generatePresignedDownloadUrl: vi.fn()
+        generatePresignedDownloadUrl: vi
+          .fn()
           .mockResolvedValueOnce("https://s3.test.com/file1.pdf")
           .mockResolvedValueOnce("https://s3.test.com/file2.jpg"),
       };
@@ -1503,10 +1504,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       const requestBody = JSON.parse(fetchCall[1].body as string);
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
-      expect(vars.attachments).toEqual([
-        "https://s3.test.com/file1.pdf",
-        "https://s3.test.com/file2.jpg",
-      ]);
+      expect(vars.attachments).toEqual(["https://s3.test.com/file1.pdf", "https://s3.test.com/file2.jpg"]);
     });
   });
 });
