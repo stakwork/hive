@@ -29,7 +29,7 @@ const resetPosition = {
   vz: null,
 }
 
-interface SimulationStore {
+export interface SimulationStore {
   simulation: ForceSimulation | null
   simulationVersion: number
   simulationInProgress: boolean
