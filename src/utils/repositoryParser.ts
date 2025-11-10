@@ -37,24 +37,48 @@ export function sanitizeWorkspaceName(workspaceName: string): string {
     .replace(/^-+|-+$/g, ""); // trim leading/trailing dashes
 }
 
+/**
+ * Parses a GitHub repository URL to extract owner and repo name
+ * Supports multiple formats:
+ * - SSH: git@github.com:owner/repo.git
+ * - HTTPS: https://github.com/owner/repo
+ * - HTTP: http://github.com/owner/repo
+ * - Partial: github.com/owner/repo
+ * 
+ * @param repositoryUrl - The GitHub repository URL to parse
+ * @returns Object with owner and repo properties
+ * @throws Error if URL is not a valid GitHub repository URL
+ */
 export function parseGithubOwnerRepo(repositoryUrl: string): {
   owner: string;
   repo: string;
 } {
+  // Try SSH format first: git@github.com:owner/repo.git
   const ssh = repositoryUrl.match(/^git@github\.com:(.+?)\/(.+?)(?:\.git)?$/i);
-  if (ssh) return { owner: ssh[1], repo: ssh[2].replace(/\.git$/i, "") };
+  if (ssh) {
+    return { owner: ssh[1], repo: ssh[2].replace(/\.git$/i, "") };
+  }
+
+  // Try URL format (HTTPS/HTTP with or without protocol)
   try {
     const u = new URL(repositoryUrl);
-    if (!/github\.com$/i.test(u.hostname)) throw new Error("Not GitHub host");
+    if (!/github\.com$/i.test(u.hostname)) {
+      throw new Error("Not GitHub host");
+    }
     const parts = u.pathname.replace(/^\/+/, "").split("/");
-    if (parts.length < 2) throw new Error("Invalid repo path");
+    if (parts.length < 2) {
+      throw new Error("Invalid repo path");
+    }
     return { owner: parts[0], repo: parts[1].replace(/\.git$/i, "") };
   } catch {
+    // Fallback: Try matching github.com/owner/repo pattern without URL parsing
+    // This handles cases like "github.com/owner/repo" without protocol
     const https = repositoryUrl.match(
-      /github\.com\/([^/]+)\/([^/?#]+)(?:\.git)?/i,
+      /github\.com[\/:]([^\/]+)\/([^/?#]+)(?:\.git)?/i,
     );
-    if (https)
+    if (https) {
       return { owner: https[1], repo: https[2].replace(/\.git$/i, "") };
+    }
     throw new Error("Unable to parse GitHub repository URL");
   }
 }
