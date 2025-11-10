@@ -185,7 +185,7 @@ const TestHelpers = {
           Authorization: "Token token=test-api-key",
           "Content-Type": "application/json",
         }),
-      })
+      }),
     );
 
     const fetchCall = mockFetch.mock.calls[0];
@@ -197,7 +197,7 @@ const TestHelpers = {
     const fetchCall = mockFetch.mock.calls[0];
     const payload = JSON.parse(fetchCall[1]?.body as string);
     const vars = payload.workflow_params.set_var.attributes.vars;
-    
+
     Object.entries(expectedVars).forEach(([key, value]) => {
       expect(vars[key]).toEqual(value);
     });
@@ -210,7 +210,7 @@ const TestHelpers = {
         data: expect.objectContaining({
           workflowStatus: status,
         }),
-      })
+      }),
     );
   },
 };
@@ -293,11 +293,11 @@ describe("callStakwork Function Unit Tests", () => {
       expect(data.success).toBe(true);
       // Should call mock API when Stakwork config is missing
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock",
+        "http://localhost:3000/api/mock/chat",
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
     });
 
@@ -318,11 +318,11 @@ describe("callStakwork Function Unit Tests", () => {
       expect(response.status).toBe(201);
       // Should call mock API when Stakwork config is missing
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock",
+        "http://localhost:3000/api/mock/chat",
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
     });
 
@@ -341,9 +341,7 @@ describe("callStakwork Function Unit Tests", () => {
     test("should use workflow ID at index 0 for 'live' mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ mode: "live" })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ mode: "live" }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithWorkflowId(123); // First ID in "123,456,789"
@@ -352,9 +350,7 @@ describe("callStakwork Function Unit Tests", () => {
     test("should use workflow ID at index 2 for 'unit' mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ mode: "unit" })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ mode: "unit" }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithWorkflowId(789); // Third ID in "123,456,789"
@@ -363,9 +359,7 @@ describe("callStakwork Function Unit Tests", () => {
     test("should use workflow ID at index 2 for 'integration' mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ mode: "integration" })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ mode: "integration" }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithWorkflowId(789); // Third ID in "123,456,789"
@@ -383,9 +377,7 @@ describe("callStakwork Function Unit Tests", () => {
     test("should use workflow ID at index 1 for unknown mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ mode: "unknown" })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ mode: "unknown" }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithWorkflowId(456); // Second ID (default)
@@ -418,9 +410,7 @@ describe("callStakwork Function Unit Tests", () => {
     test("should include taskMode in vars when mode is provided", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ mode: "live" })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ mode: "live" }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithVarsContaining({
@@ -465,9 +455,7 @@ describe("callStakwork Function Unit Tests", () => {
         { type: "folder", value: "src/" },
       ];
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ contextTags })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ contextTags }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithVarsContaining({
@@ -496,32 +484,29 @@ describe("callStakwork Function Unit Tests", () => {
 
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
-      expect(payload.webhook_url).toBe(
-        "http://localhost:3000/api/stakwork/webhook?task_id=test-task-id"
-      );
+      expect(payload.webhook_url).toBe("http://localhost:3000/api/stakwork/webhook?task_id=test-task-id");
     });
 
     test("should use custom webhook URL when provided", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
       const customWebhook = "https://custom-webhook.example.com/webhook";
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ webhook: customWebhook })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ webhook: customWebhook }));
       await POST(request);
 
       expect(mockFetch).toHaveBeenCalledWith(
         customWebhook,
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
   });
 
   describe("S3 Presigned URL Generation", () => {
     test("should generate presigned URLs for all attachments", async () => {
-      const mockGeneratePresignedUrl = vi.fn()
+      const mockGeneratePresignedUrl = vi
+        .fn()
         .mockResolvedValueOnce("https://s3.example.com/file1.pdf")
         .mockResolvedValueOnce("https://s3.example.com/file2.jpg");
 
@@ -542,11 +527,8 @@ describe("callStakwork Function Unit Tests", () => {
 
       mockDb.chatMessage.create.mockResolvedValue(
         TestDataFactory.createChatMessage({
-          attachments: [
-            { path: "uploads/file1.pdf" },
-            { path: "uploads/file2.jpg" },
-          ],
-        }) as any
+          attachments: [{ path: "uploads/file1.pdf" }, { path: "uploads/file2.jpg" }],
+        }) as any,
       );
 
       mockFetch.mockResolvedValue({
@@ -560,7 +542,7 @@ describe("callStakwork Function Unit Tests", () => {
             { path: "uploads/file1.pdf", filename: "file1.pdf", mimeType: "application/pdf", size: 1024 },
             { path: "uploads/file2.jpg", filename: "file2.jpg", mimeType: "image/jpeg", size: 2048 },
           ],
-        })
+        }),
       );
       await POST(request);
 
@@ -569,19 +551,14 @@ describe("callStakwork Function Unit Tests", () => {
       expect(mockGeneratePresignedUrl).toHaveBeenCalledWith("uploads/file2.jpg");
 
       TestHelpers.expectFetchCalledWithVarsContaining({
-        attachments: [
-          "https://s3.example.com/file1.pdf",
-          "https://s3.example.com/file2.jpg",
-        ],
+        attachments: ["https://s3.example.com/file1.pdf", "https://s3.example.com/file2.jpg"],
       });
     });
 
     test("should handle empty attachments array", async () => {
       MockSetup.setupSuccessfulCallStakwork();
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ attachments: [] })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ attachments: [] }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithVarsContaining({
@@ -609,9 +586,7 @@ describe("callStakwork Function Unit Tests", () => {
       const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody());
       await POST(request);
 
-      expect(mockTransformSwarmUrlToRepo2Graph).toHaveBeenCalledWith(
-        "https://test-swarm.example.com/api"
-      );
+      expect(mockTransformSwarmUrlToRepo2Graph).toHaveBeenCalledWith("https://test-swarm.example.com/api");
 
       TestHelpers.expectFetchCalledWithVarsContaining({
         repo2graph_url: "https://test-swarm.example.com:3355",
@@ -715,7 +690,7 @@ describe("callStakwork Function Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      
+
       expect(mockDb.task.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "test-task-id" },
@@ -724,7 +699,7 @@ describe("callStakwork Function Unit Tests", () => {
             workflowStartedAt: expect.any(Date),
             stakworkProjectId: 456,
           }),
-        })
+        }),
       );
     });
   });
@@ -796,7 +771,7 @@ describe("callStakwork Function Unit Tests", () => {
           headers: expect.objectContaining({
             Authorization: "Token token=test-api-key",
           }),
-        })
+        }),
       );
     });
 
@@ -812,7 +787,7 @@ describe("callStakwork Function Unit Tests", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
           }),
-        })
+        }),
       );
     });
   });
@@ -825,7 +800,7 @@ describe("callStakwork Function Unit Tests", () => {
         TestDataFactory.createRequestBody({
           message: "",
           artifacts: [{ type: ArtifactType.CODE, content: { code: "test" } }],
-        })
+        }),
       );
       const response = await POST(request);
 
@@ -836,9 +811,7 @@ describe("callStakwork Function Unit Tests", () => {
       MockSetup.setupSuccessfulCallStakwork();
 
       const longMessage = "a".repeat(10000);
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ message: longMessage })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ message: longMessage }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithVarsContaining({
@@ -850,9 +823,7 @@ describe("callStakwork Function Unit Tests", () => {
       MockSetup.setupSuccessfulCallStakwork();
 
       const specialMessage = "Test with 🚀 emojis and <html> tags & símböls";
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ message: specialMessage })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ message: specialMessage }));
       await POST(request);
 
       TestHelpers.expectFetchCalledWithVarsContaining({
@@ -879,9 +850,7 @@ describe("callStakwork Function Unit Tests", () => {
         json: async () => TestDataFactory.createStakworkSuccessResponse(),
       } as Response);
 
-      const request = TestHelpers.createMockRequest(
-        TestDataFactory.createRequestBody({ mode: "live" })
-      );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ mode: "live" }));
       await POST(request);
 
       // Should still parse correctly after trim
