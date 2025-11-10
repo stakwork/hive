@@ -9,12 +9,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+
 // Helper function to extract S3 key from media_url (matching frontend logic)
 function extractS3KeyFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
     const pathname = urlObj.pathname;
-    const rawKey = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+    const rawKey = pathname.startsWith("/") ? pathname.substring(1) : pathname;
 
     return decodeURIComponent(rawKey);
   } catch {
@@ -22,20 +23,22 @@ function extractS3KeyFromUrl(url: string): string {
   }
 }
 
-
 // Helper function to process nodes and presign media_url fields
-async function processNodesMediaUrls(nodes: JarvisNode[], s3Service: ReturnType<typeof getS3Service>): Promise<JarvisNode[]> {
+async function processNodesMediaUrls(
+  nodes: JarvisNode[],
+  s3Service: ReturnType<typeof getS3Service>,
+): Promise<JarvisNode[]> {
   const processedNodes = [];
 
   for (const node of nodes) {
     const processedNode = { ...node };
 
     // Check if node has properties.media_url and if it's an S3 URL
-    if (node.properties?.media_url && typeof node.properties.media_url === 'string') {
+    if (node.properties?.media_url && typeof node.properties.media_url === "string") {
       console.log(`[Jarvis Nodes] Processing node ${node.ref_id} with media_url: ${node.properties.media_url}`);
 
       // Only presign if it's a sphinx-livekit-recordings URL
-      if (node.properties.media_url.includes('sphinx-livekit-recordings')) {
+      if (node.properties.media_url.includes("sphinx-livekit-recordings")) {
         console.log(`[Jarvis Nodes] Found sphinx-livekit-recordings URL for node ${node.ref_id}`);
         try {
           const s3Key = extractS3KeyFromUrl(node.properties.media_url);
@@ -43,15 +46,15 @@ async function processNodesMediaUrls(nodes: JarvisNode[], s3Service: ReturnType<
 
           // Generate presigned URL with 1 hour expiration
           const presignedUrl = await s3Service.generatePresignedDownloadUrlForBucket(
-            'sphinx-livekit-recordings',
+            "sphinx-livekit-recordings",
             s3Key,
-            3600
+            3600,
           );
           console.log(`[Jarvis Nodes] Generated presigned URL for node ${node.ref_id}: ${presignedUrl}`);
 
           processedNode.properties = {
             ...node.properties,
-            media_url: presignedUrl
+            media_url: presignedUrl,
           };
           console.log(`[Jarvis Nodes] Successfully presigned media_url for node ${node.ref_id}`);
         } catch (error) {
@@ -60,7 +63,9 @@ async function processNodesMediaUrls(nodes: JarvisNode[], s3Service: ReturnType<
           // Keep original URL if presigning fails
         }
       } else {
-        console.log(`[Jarvis Nodes] Skipping non-sphinx-livekit URL for node ${node.ref_id}: ${node.properties.media_url}`);
+        console.log(
+          `[Jarvis Nodes] Skipping non-sphinx-livekit URL for node ${node.ref_id}: ${node.properties.media_url}`,
+        );
       }
     }
 
@@ -80,19 +85,56 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("id");
     const endpoint = searchParams.get("endpoint") || "graph/search/latest?limit=1000&top_node_count=500";
 
-    console.log('endpoint');
+    console.log("endpoint");
     console.log(endpoint);
-    console.log('endpoint-end');
+    console.log("endpoint-end");
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
 
     const swarm = await db.swarm.findFirst({ where });
-    if (!swarm) {
-      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
-    }
-    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
+
+    // Return mock data if swarm is not configured (for development/testing)
+    if (!swarm || !swarm.swarmUrl || !swarm.swarmApiKey) {
+      console.log("[Jarvis Nodes] Swarm not configured, calling mock endpoint");
+
+      // Get workspace slug from workspace ID
+      let workspaceSlug = "";
+      if (workspaceId) {
+        const workspace = await db.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { slug: true },
+        });
+        if (workspace) {
+          workspaceSlug = workspace.slug;
+        }
+      }
+
+      if (!workspaceSlug) {
+        return NextResponse.json(
+          { success: false, message: "Workspace not found" },
+          { status: 404 },
+        );
+      }
+
+      // Call the mock endpoint
+      const baseUrl = request.nextUrl.origin;
+      const mockUrl = new URL(`/api/mock/jarvis/graph`, baseUrl);
+      mockUrl.searchParams.set("workspaceSlug", workspaceSlug);
+
+      const mockResponse = await fetch(mockUrl.toString(), {
+        headers: {
+          Cookie: request.headers.get("cookie") || "",
+        },
+      });
+
+      if (!mockResponse.ok) {
+        const errorData = await mockResponse.json();
+        return NextResponse.json(errorData, { status: mockResponse.status });
+      }
+
+      const mockData = await mockResponse.json();
+      return NextResponse.json(mockData, { status: 200 });
     }
 
     const vanityAddress = getSwarmVanityAddress(swarm.name);
@@ -123,26 +165,27 @@ export async function GET(request: NextRequest) {
         const processedNodes = await processNodesMediaUrls(data.nodes, s3Service);
         processedData = {
           ...data,
-          nodes: processedNodes
+          nodes: processedNodes,
         };
-        console.log('[Jarvis Nodes] Successfully processed media URLs in nodes');
+        console.log("[Jarvis Nodes] Successfully processed media URLs in nodes");
       }
     } catch (error) {
-      console.error('[Jarvis Nodes] Error processing media URLs:', error);
+      console.error("[Jarvis Nodes] Error processing media URLs:", error);
       // Continue with original data if processing fails
     }
 
-    const nodesDateMapped = (processedData as JarvisResponse).nodes?.map((node: JarvisNode) => {
-      // Check if timestamp is in milliseconds (13+ digits) and convert to seconds
-      const timestamp = node.date_added_to_graph;
-      const isNumber = typeof timestamp === 'number';
-      const isMilliseconds = isNumber && timestamp.toString().length >= 13;
+    const nodesDateMapped =
+      (processedData as JarvisResponse).nodes?.map((node: JarvisNode) => {
+        // Check if timestamp is in milliseconds (13+ digits) and convert to seconds
+        const timestamp = node.date_added_to_graph;
+        const isNumber = typeof timestamp === "number";
+        const isMilliseconds = isNumber && timestamp.toString().length >= 13;
 
-      return {
-        ...node,
-        date_added_to_graph: isMilliseconds ? timestamp / 1000 : timestamp,
-      };
-    }) || [];
+        return {
+          ...node,
+          date_added_to_graph: isMilliseconds ? timestamp / 1000 : timestamp,
+        };
+      }) || [];
 
     return NextResponse.json(
       {

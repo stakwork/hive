@@ -158,11 +158,11 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
       const { isUserDragging } = useControlStore.getState()
 
       // Do camera rotation if enabled and no user interaction
-      // if (enableRotation && !disableCameraRotation && !isUserDragging && !selectedNode) {
-      //   cameraControlsRef.azimuthAngle += autoRotateSpeed * delta * MathUtils.DEG2RAD
-      // }
+      if (enableRotation && !disableCameraRotation && !isUserDragging && !selectedNode) {
+        cameraControlsRef.azimuthAngle += autoRotateSpeed * delta * MathUtils.DEG2RAD
+      }
 
-      // cameraControlsRef.update(delta)
+      cameraControlsRef.update(delta)
     }
   })
 

@@ -1,17 +1,9 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { POST } from "@/app/api/mock/route";
+import { POST } from "@/app/api/mock/chat/route";
 import { db } from "@/lib/db";
 import { ArtifactType } from "@/lib/chat";
-import {
-  createTestUser,
-  createTestWorkspace,
-  createTestTask,
-} from "@/__tests__/support/fixtures";
-import {
-  expectSuccess,
-  expectError,
-  createPostRequest,
-} from "@/__tests__/support/helpers";
+import { createTestUser, createTestWorkspace, createTestTask } from "@/__tests__/support/fixtures";
+import { expectSuccess, expectError, createPostRequest } from "@/__tests__/support/helpers";
 
 // Mock axios for callback interception
 vi.mock("axios");
@@ -29,7 +21,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should generate CODE response for 'code' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "write python code",
         artifacts: [],
@@ -55,14 +47,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate FORM response for 'form' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "show me a form",
         artifacts: [],
@@ -89,14 +81,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate BROWSER response for 'browser' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "show browser preview",
         artifacts: [],
@@ -121,14 +113,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate LONGFORM response for 'longform' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "generate longform content",
         artifacts: [],
@@ -154,14 +146,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate BUG_REPORT response when artifacts contain BUG_REPORT with formatted message", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "analyze this bug",
         artifacts: [
@@ -192,14 +184,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should handle BUG_REPORT without formatted message", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "analyze bug",
         artifacts: [
@@ -229,14 +221,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate chat FORM response for 'chat' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "chat with me",
         artifacts: [],
@@ -265,14 +257,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should handle confirmation keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "confirmed",
         artifacts: [],
@@ -290,14 +282,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should handle modify keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "modify the plan",
         artifacts: [],
@@ -315,14 +307,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate markdown response for 'markdown' keyword", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "show markdown example",
         artifacts: [],
@@ -340,14 +332,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should generate default response for unmatched keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "random message without keywords",
         artifacts: [],
@@ -365,14 +357,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should prioritize BUG_REPORT artifact over message keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code browser form", // Has multiple keywords
         artifacts: [
@@ -402,7 +394,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
   });
@@ -411,7 +403,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should post response to /api/chat/response with correct payload structure", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -432,7 +424,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
@@ -462,7 +454,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
@@ -471,7 +463,7 @@ describe("POST /api/mock Integration Tests", () => {
 
       mockAxios.post.mockRejectedValueOnce(new Error("Network error"));
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -488,7 +480,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should include contextTags in callback payload", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -504,7 +496,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should include sourceWebsocketID in callback payload", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -521,7 +513,7 @@ describe("POST /api/mock Integration Tests", () => {
 
   describe("Error Handling", () => {
     test("should return 500 for invalid JSON in request body", async () => {
-      const request = new Request("http://localhost:3000/api/mock", {
+      const request = new Request("http://localhost:3000/api/mock/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "invalid json",
@@ -535,7 +527,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle missing message field", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         artifacts: [],
         // message missing
@@ -549,7 +541,7 @@ describe("POST /api/mock Integration Tests", () => {
     });
 
     test("should handle missing taskId field", async () => {
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         message: "test message",
         artifacts: [],
         // taskId missing
@@ -564,7 +556,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle undefined artifacts array", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         // artifacts missing
@@ -583,14 +575,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should handle empty artifacts array", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -608,7 +600,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
@@ -617,7 +609,7 @@ describe("POST /api/mock Integration Tests", () => {
 
       mockAxios.post.mockRejectedValueOnce(new Error("Callback failed"));
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -634,7 +626,7 @@ describe("POST /api/mock Integration Tests", () => {
   describe("Environment-Based Activation", () => {
     test("should be callable without authentication (mock mode)", async () => {
       // Mock endpoint doesn't require authentication
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: "test-task-id",
         message: "code",
         artifacts: [],
@@ -652,7 +644,7 @@ describe("POST /api/mock Integration Tests", () => {
 
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "browser",
         artifacts: [],
@@ -675,7 +667,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
 
       // Restore original value
@@ -689,7 +681,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should use localhost baseUrl when host header not present", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = new Request("http://localhost:3000/api/mock", {
+      const request = new Request("http://localhost:3000/api/mock/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -710,7 +702,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
   });
@@ -719,7 +711,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should map artifacts correctly from response to callback payload", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -737,7 +729,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve CODE artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -746,9 +738,7 @@ describe("POST /api/mock Integration Tests", () => {
       await POST(request);
 
       const callArgs = mockAxios.post.mock.calls[0][1];
-      const codeArtifacts = callArgs.artifacts.filter(
-        (a: any) => a.type === ArtifactType.CODE
-      );
+      const codeArtifacts = callArgs.artifacts.filter((a: any) => a.type === ArtifactType.CODE);
 
       expect(codeArtifacts.length).toBeGreaterThan(0);
       expect(codeArtifacts[0].content).toHaveProperty("file");
@@ -760,7 +750,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve FORM artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "form",
         artifacts: [],
@@ -769,9 +759,7 @@ describe("POST /api/mock Integration Tests", () => {
       await POST(request);
 
       const callArgs = mockAxios.post.mock.calls[0][1];
-      const formArtifact = callArgs.artifacts.find(
-        (a: any) => a.type === ArtifactType.FORM
-      );
+      const formArtifact = callArgs.artifacts.find((a: any) => a.type === ArtifactType.FORM);
 
       expect(formArtifact).toBeDefined();
       expect(formArtifact.content).toHaveProperty("actionText");
@@ -783,7 +771,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve BROWSER artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "browser",
         artifacts: [],
@@ -792,9 +780,7 @@ describe("POST /api/mock Integration Tests", () => {
       await POST(request);
 
       const callArgs = mockAxios.post.mock.calls[0][1];
-      const browserArtifact = callArgs.artifacts.find(
-        (a: any) => a.type === ArtifactType.BROWSER
-      );
+      const browserArtifact = callArgs.artifacts.find((a: any) => a.type === ArtifactType.BROWSER);
 
       expect(browserArtifact).toBeDefined();
       expect(browserArtifact.content).toHaveProperty("url");
@@ -804,7 +790,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should preserve LONGFORM artifact structure through callback", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "longform",
         artifacts: [],
@@ -813,9 +799,7 @@ describe("POST /api/mock Integration Tests", () => {
       await POST(request);
 
       const callArgs = mockAxios.post.mock.calls[0][1];
-      const longformArtifact = callArgs.artifacts.find(
-        (a: any) => a.type === ArtifactType.LONGFORM
-      );
+      const longformArtifact = callArgs.artifacts.find((a: any) => a.type === ArtifactType.LONGFORM);
 
       expect(longformArtifact).toBeDefined();
       expect(longformArtifact.content).toHaveProperty("title");
@@ -825,7 +809,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should handle multiple artifacts in single response", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -848,7 +832,7 @@ describe("POST /api/mock Integration Tests", () => {
         where: { id: task.id },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -871,7 +855,7 @@ describe("POST /api/mock Integration Tests", () => {
         where: { taskId: task.id },
       });
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "code",
         artifacts: [],
@@ -890,12 +874,12 @@ describe("POST /api/mock Integration Tests", () => {
 
     test("should use force-no-store cache setting", async () => {
       // This is a module-level export that should be set
-      const module = await import("@/app/api/mock/route");
+      const module = await import("@/app/api/mock/chat/route");
       expect(module.fetchCache).toBe("force-no-store");
     });
 
     test("should work with non-existent task IDs", async () => {
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: "non-existent-task-id",
         message: "code",
         artifacts: [],
@@ -913,7 +897,7 @@ describe("POST /api/mock Integration Tests", () => {
     test("should check BUG_REPORT artifacts before keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "browser code form",
         artifacts: [
@@ -936,14 +920,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should match browser before other keywords", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "browser code form",
         artifacts: [],
@@ -965,14 +949,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should match code before form when both present", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "form code",
         artifacts: [],
@@ -994,14 +978,14 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
     test("should be case-insensitive for keyword matching", async () => {
       const { workspace, task } = await createTestData();
 
-      const request = createPostRequest("http://localhost:3000/api/mock", {
+      const request = createPostRequest("http://localhost:3000/api/mock/chat", {
         taskId: task.id,
         message: "BROWSER Preview",
         artifacts: [],
@@ -1023,7 +1007,7 @@ describe("POST /api/mock Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
   });
