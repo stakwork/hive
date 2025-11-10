@@ -19,11 +19,17 @@ Next.js API route streams AI responses to the frontend in real-time. When users 
 
 **Incremental Saves**: Update the database every 200 characters during streaming to minimize data loss if something fails.
 
-**Optimistic DB Creation**: Create a placeholder message record with `STREAMING` status before streaming starts, then update it progressively.
+**Optimistic DB Creation**: Create a placeholder message record with `SENDING` status before streaming starts, then update it progressively.
+
+### Implementation Notes
+
+**Type Assertions**: The `.tee()` method on ReadableStream returns streams that lose their async iterable typing in TypeScript. We use `as any` type assertions to work around this TypeScript limitation - the streams work correctly at runtime.
+
+**Graceful Client Disconnect**: The frontend stream checks `controller.desiredSize` before enqueuing data to detect when the client has disconnected. All controller operations (`close()`, `error()`) are wrapped in try-catch blocks to handle race conditions where the client disconnects between checking the state and performing the operation. This completely eliminates "Controller is already closed" errors and allows the stream to exit gracefully while the background process continues.
 
 ### Key Workflow
 
-1. Create placeholder assistant message in DB (status: `STREAMING`)
+1. Create placeholder assistant message in DB (status: `SENDING`)
 2. Start AI streaming
 3. Use `.tee()` to split the stream into `frontendStream` and `dbStream`
 4. Return `frontendStream` to the client immediately

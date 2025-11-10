@@ -1,5 +1,5 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
+import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -25,6 +25,7 @@ export function useGraphPolling({
   const [isPollingActive, setIsPollingActive] = useState(false);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
+  const dataInitial = useDataStore((s) => s.dataInitial);
 
 
 
@@ -37,7 +38,7 @@ export function useGraphPolling({
 
     if (!workspaceId || !enabled || isPollingRequestInProgress.current) return;
 
-    const { dataInitial } = useDataStore.getState();
+    // dataInitial is now available from the hook above
 
     // Mark request as in progress
     isPollingRequestInProgress.current = true;
@@ -98,7 +99,7 @@ export function useGraphPolling({
       setIsPollingActive(false);
       abortControllerRef.current = null;
     }
-  }, [workspaceId, addNewNode, enabled]);
+  }, [workspaceId, addNewNode, enabled, dataInitial]);
 
   // Start polling
   const startPolling = useCallback(() => {

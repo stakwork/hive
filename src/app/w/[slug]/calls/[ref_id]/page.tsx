@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { StoreProvider } from "@/stores/StoreProvider";
 import { CallRecording } from "@/types/calls";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
@@ -21,6 +22,8 @@ export default function CallPage() {
   const router = useRouter();
   const { slug, id: workspaceId } = useWorkspace();
   const ref_id = params.ref_id as string;
+
+  const storeId = `workspace-${workspaceId}-calls-${ref_id}`;
 
   const [call, setCall] = useState<CallRecording | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,13 +244,15 @@ export default function CallPage() {
           {/* Right Side - Synchronized Knowledge Graph */}
           <div className="flex-1 p-4 min-h-0 overflow-hidden">
             <div className="h-full">
-              <SynchronizedGraphComponent
-                endpoint={`/graph/subgraph?node_type=${encodeURIComponent(nodeTypeParam)}&include_properties=true&start_node=${call.ref_id}&depth=2&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
-                height="h-full"
-                width="w-full"
-                currentTime={currentTime}
-                onTimeMarkerClick={handleTimeMarkerClick}
-              />
+              <StoreProvider storeId={storeId}>
+                <SynchronizedGraphComponent
+                  endpoint={`/graph/subgraph?node_type=${encodeURIComponent(nodeTypeParam)}&include_properties=true&start_node=${call.ref_id}&depth=2&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
+                  height="h-full"
+                  width="w-full"
+                  currentTime={currentTime}
+                  onTimeMarkerClick={handleTimeMarkerClick}
+                />
+              </StoreProvider>
             </div>
           </div>
         </div>

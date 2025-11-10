@@ -1,5 +1,4 @@
-import { useDataStore, useNodeTypes } from '@/stores/useDataStore'
-import { useSelectedNode } from '@/stores/useGraphStore'
+import { useDataStore, useNodeTypes, useSelectedNode } from '@/stores/useStores'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Instances } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'

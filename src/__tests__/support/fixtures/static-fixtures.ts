@@ -151,4 +151,65 @@ export const mockData = {
       ...overrides,
     };
   },
+
+  call(overrides: Record<string, unknown> = {}) {
+    return {
+      ref_id: "call-123",
+      episode_title: "Meeting recording 2025-01-15T10:30:00",
+      date_added_to_graph: 1750694095.264704,
+      description: "Team sync meeting discussion",
+      source_link: "https://example.com/recording-123.mp4",
+      media_url: "https://example.com/recording-123.mp4",
+      image_url: "https://example.com/thumbnail-123.jpg",
+      ...overrides,
+    };
+  },
+
+  jarvisNode(overrides: Record<string, unknown> = {}) {
+    return {
+      ref_id: "call-123",
+      node_type: "Episode",
+      date_added_to_graph: 1750694095.264704,
+      properties: {
+        episode_title: "Meeting recording 2025-01-15T10:30:00",
+        media_url: "https://example.com/recording-123.mp4",
+        source_link: "https://example.com/recording-123.mp4",
+        description: "Team sync meeting discussion",
+      },
+      ...overrides,
+    };
+  },
+
+  jarvisSearchResponse(nodes: Array<Record<string, unknown>> = []) {
+    return {
+      nodes: nodes.length > 0 ? nodes : [mockData.jarvisNode()],
+      edges: [],
+    };
+  },
+
+  callsResponse(overrides: Record<string, unknown> = {}) {
+    const calls = (overrides.calls as Array<Record<string, unknown>>) || [mockData.call()];
+    return {
+      calls,
+      total: (overrides.total as number) ?? calls.length,
+      hasMore: (overrides.hasMore as boolean) ?? false,
+      ...overrides,
+    };
+  },
+
+  callWithParticipants(overrides: Record<string, unknown> = {}) {
+    return {
+      ref_id: "call-123",
+      episode_title: "Meeting recording 2025-01-15T10:30:00",
+      date_added_to_graph: 1750694095.264704,
+      description: "Team sync meeting with participants",
+      source_link: "https://example.com/recording-123.mp4",
+      media_url: "https://example.com/recording-123.mp4",
+      image_url: "https://example.com/thumbnail-123.jpg",
+      participants: ["user-123", "user-456"],
+      participant_count: 2,
+      duration_minutes: 45,
+      ...overrides,
+    };
+  },
 };

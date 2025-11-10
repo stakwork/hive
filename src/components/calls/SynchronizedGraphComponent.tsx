@@ -2,8 +2,8 @@
 
 import { Universe } from "@/components/knowledge-graph/Universe";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
+import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -72,6 +72,29 @@ const findCurrentEdge = (sortedEdges: LinkWithTimestamp[], playerProgress: numbe
 };
 
 export const SynchronizedGraphComponent = ({
+  endpoint: propEndpoint,
+  title = "Synchronized Knowledge Graph",
+  className,
+  height = "h-full",
+  width = "w-full",
+  currentTime = 0,
+  onTimeMarkerClick
+}: SynchronizedGraphComponentProps) => {
+
+  return (
+    <SynchronizedGraphComponentInner
+      endpoint={propEndpoint}
+      title={title}
+      className={className}
+      height={height}
+      width={width}
+      currentTime={currentTime}
+      onTimeMarkerClick={onTimeMarkerClick}
+    />
+  );
+};
+
+const SynchronizedGraphComponentInner = ({
   endpoint: propEndpoint,
   title = "Synchronized Knowledge Graph",
   className,

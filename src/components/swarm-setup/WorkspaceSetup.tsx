@@ -200,6 +200,15 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
               swarmStatus: "ACTIVE",
             });
 
+            fetch("/api/gitsee/trigger", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                repositoryUrl: repositoryUrl,
+                workspaceId: workspaceId,
+              }),
+            });
+
           }
 
         } catch (error) {

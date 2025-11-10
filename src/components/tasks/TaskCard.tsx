@@ -143,13 +143,6 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
 
-        {/* Workflow Status - hidden when PR artifact exists */}
-        {!hideWorkflowStatus && !task.prArtifact && (
-          <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
-            <WorkflowStatusBadge status={task.workflowStatus} />
-          </div>
-        )}
-
         {/* Optional: Agent badge */}
         {!hideWorkflowStatus && task.mode === "agent" && (
           <Badge variant="secondary" className="gap-1 h-5">
@@ -172,6 +165,13 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             <Sparkles className="w-3 h-3" />
             Janitor
           </Badge>
+        )}
+
+        {/* Workflow Status - hidden when PR artifact exists */}
+        {!hideWorkflowStatus && !task.prArtifact && (
+          <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
+            <WorkflowStatusBadge status={task.workflowStatus} />
+          </div>
         )}
 
         {/* PR Status Badge */}

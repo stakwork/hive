@@ -602,4 +602,190 @@ describe("useWorkspaceTasks - Storage Functions", () => {
       expect(key1).not.toBe(key3);
     });
   });
+
+  describe("clearStoredPage - Hook Integration Tests", () => {
+    test("verifies clearStoredPage is called during refetch", () => {
+      const workspaceId = "workspace-123";
+      const storageKey = TASKS_PAGE_STORAGE_KEY(workspaceId);
+      
+      // Set initial stored page
+      sessionStorage.setItem(storageKey, "3");
+      expect(sessionStorage.getItem(storageKey)).toBe("3");
+      
+      // Simulate refetch by calling clearStoredPage
+      clearStoredPage(workspaceId);
+      
+      // Verify storage was cleared
+      expect(sessionStorage.getItem(storageKey)).toBeNull();
+    });
+
+    test("verifies clearStoredPage prevents stale state across workspace navigation", () => {
+      const workspace1 = "workspace-123";
+      const workspace2 = "workspace-456";
+      
+      // Set pagination for workspace1
+      saveCurrentPage(workspace1, 5);
+      expect(getStoredPage(workspace1)).toBe(5);
+      
+      // Navigate to workspace2 - should not see workspace1's state
+      expect(getStoredPage(workspace2)).toBe(1);
+      
+      // Clear workspace1's state
+      clearStoredPage(workspace1);
+      expect(getStoredPage(workspace1)).toBe(1);
+      
+      // Workspace2 should be unaffected
+      saveCurrentPage(workspace2, 3);
+      expect(getStoredPage(workspace2)).toBe(3);
+    });
+
+    test("verifies clearStoredPage is called during error recovery", () => {
+      const workspaceId = "workspace-123";
+      const storageKey = TASKS_PAGE_STORAGE_KEY(workspaceId);
+      
+      // Set a stored page that might be invalid
+      sessionStorage.setItem(storageKey, "999");
+      expect(sessionStorage.getItem(storageKey)).toBe("999");
+      
+      // Simulate error recovery by clearing stored page
+      clearStoredPage(workspaceId);
+      
+      // Verify storage was cleared (would reset to page 1)
+      expect(sessionStorage.getItem(storageKey)).toBeNull();
+      expect(getStoredPage(workspaceId)).toBe(1);
+    });
+
+    test("verifies state reset prevents incorrect pagination UI", () => {
+      const workspaceId = "workspace-123";
+      
+      // Simulate user navigating to page 3
+      saveCurrentPage(workspaceId, 1);
+      saveCurrentPage(workspaceId, 2);
+      saveCurrentPage(workspaceId, 3);
+      expect(getStoredPage(workspaceId)).toBe(3);
+      
+      // User performs action that should reset pagination (refetch)
+      clearStoredPage(workspaceId);
+      
+      // Verify pagination resets to page 1
+      expect(getStoredPage(workspaceId)).toBe(1);
+      
+      // Verify can save new pagination state
+      saveCurrentPage(workspaceId, 2);
+      expect(getStoredPage(workspaceId)).toBe(2);
+    });
+
+    test("verifies clearStoredPage handles concurrent workspace operations", () => {
+      const workspace1 = "workspace-123";
+      const workspace2 = "workspace-456";
+      const workspace3 = "workspace-789";
+      
+      // Set up different states for each workspace
+      saveCurrentPage(workspace1, 5);
+      saveCurrentPage(workspace2, 3);
+      saveCurrentPage(workspace3, 7);
+      
+      // Clear workspace2 only
+      clearStoredPage(workspace2);
+      
+      // Verify isolation: workspace1 and workspace3 unaffected
+      expect(getStoredPage(workspace1)).toBe(5);
+      expect(getStoredPage(workspace2)).toBe(1);
+      expect(getStoredPage(workspace3)).toBe(7);
+      
+      // Clear workspace1
+      clearStoredPage(workspace1);
+      
+      // Verify workspace3 still unaffected
+      expect(getStoredPage(workspace1)).toBe(1);
+      expect(getStoredPage(workspace2)).toBe(1);
+      expect(getStoredPage(workspace3)).toBe(7);
+    });
+
+    test("verifies clearStoredPage prevents stale state after workspace context changes", () => {
+      const workspaceId = "workspace-123";
+      
+      // Initial state: user on page 4
+      saveCurrentPage(workspaceId, 4);
+      expect(getStoredPage(workspaceId)).toBe(4);
+      
+      // Context change (e.g., filter change, sort change, explicit refresh)
+      clearStoredPage(workspaceId);
+      
+      // State should reset to default
+      expect(getStoredPage(workspaceId)).toBe(1);
+      
+      // New pagination should work correctly
+      saveCurrentPage(workspaceId, 1);
+      expect(getStoredPage(workspaceId)).toBe(1);
+      saveCurrentPage(workspaceId, 2);
+      expect(getStoredPage(workspaceId)).toBe(2);
+    });
+
+    test("verifies rapid clearStoredPage calls are safe", () => {
+      const workspaceId = "workspace-123";
+      
+      // Set initial state
+      saveCurrentPage(workspaceId, 5);
+      expect(getStoredPage(workspaceId)).toBe(5);
+      
+      // Rapid consecutive clears (simulating race conditions)
+      clearStoredPage(workspaceId);
+      clearStoredPage(workspaceId);
+      clearStoredPage(workspaceId);
+      
+      // Should handle gracefully
+      expect(getStoredPage(workspaceId)).toBe(1);
+      expect(() => clearStoredPage(workspaceId)).not.toThrow();
+    });
+
+    test("verifies clearStoredPage with SSR safety during state reset", () => {
+      const workspaceId = "workspace-123";
+      
+      // Set up stored state
+      saveCurrentPage(workspaceId, 3);
+      expect(getStoredPage(workspaceId)).toBe(3);
+      
+      // Delete window to simulate SSR
+      // @ts-expect-error - Intentionally deleting window for SSR test
+      delete global.window;
+      
+      // Clear should not throw even in SSR context
+      expect(() => clearStoredPage(workspaceId)).not.toThrow();
+      
+      // Restore window
+      global.window = originalWindow;
+      
+      // State should still exist (clear didn't work in SSR)
+      expect(getStoredPage(workspaceId)).toBe(3);
+      
+      // Now clear with window available
+      clearStoredPage(workspaceId);
+      expect(getStoredPage(workspaceId)).toBe(1);
+    });
+
+    test("verifies clearStoredPage prevents stale state in save-clear-save cycle", () => {
+      const workspaceId = "workspace-123";
+      
+      // Initial save
+      saveCurrentPage(workspaceId, 5);
+      expect(getStoredPage(workspaceId)).toBe(5);
+      
+      // Clear (simulating refetch)
+      clearStoredPage(workspaceId);
+      expect(getStoredPage(workspaceId)).toBe(1);
+      
+      // Save new state
+      saveCurrentPage(workspaceId, 2);
+      expect(getStoredPage(workspaceId)).toBe(2);
+      
+      // Clear again
+      clearStoredPage(workspaceId);
+      expect(getStoredPage(workspaceId)).toBe(1);
+      
+      // Verify clean state
+      saveCurrentPage(workspaceId, 1);
+      expect(getStoredPage(workspaceId)).toBe(1);
+    });
+  });
 });

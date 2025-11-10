@@ -1,4 +1,4 @@
-import { useGraphStore } from '@/stores/useGraphStore'
+import { useGraphStore } from '@/stores/useStores'
 import { Billboard, Html } from '@react-three/drei'
 import { useMemo, useState } from 'react'
 import { nodeSize } from '../constants'

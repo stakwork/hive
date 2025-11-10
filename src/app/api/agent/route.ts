@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { streamText, ModelMessage } from "ai";
-import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { gooseWeb, validateGooseSession } from "ai-sdk-provider-goose-web";
 import { retryWithDelay } from "@/lib/utils/retry";
 
@@ -247,27 +247,116 @@ export async function POST(request: NextRequest) {
   // Always add the current user message
   messages.push({ role: "user", content: message });
 
+  // Create placeholder assistant message in DB (optimistic creation)
+  const assistantMessage = await db.chatMessage.create({
+    data: {
+      taskId,
+      message: "",
+      role: ChatRole.ASSISTANT,
+      status: ChatStatus.SENDING,
+      contextTags: JSON.stringify([]),
+      sourceWebsocketID: validatedSessionId,
+    },
+  });
+
+  console.log("📝 Created placeholder assistant message:", assistantMessage.id);
+
   const result = streamText({
     model,
     messages,
   });
 
-  // Create custom stream that properly maps Goose tool events to UI format
-  const stream = new ReadableStream({
+  // Tee the fullStream into two independent streams
+  const [frontendFullStream, dbFullStream] = result.fullStream.tee();
+
+  // Schedule background processing using after()
+  after(async () => {
+    console.log("🔄 Background processing started for message:", assistantMessage.id);
+    let accumulatedText = "";
+    let lastSaveLength = 0;
+    const SAVE_INTERVAL = 200; // Save every 200 characters
+
+    try {
+      // Type assertion needed because .tee() loses async iterable typing
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for await (const chunk of dbFullStream as any) {
+        // Only process text-delta chunks for message content
+        if (chunk.type === "text-delta") {
+          accumulatedText += chunk.text;
+
+          // Incremental save every 200 characters
+          if (accumulatedText.length - lastSaveLength >= SAVE_INTERVAL) {
+            await db.chatMessage.update({
+              where: { id: assistantMessage.id },
+              data: { message: accumulatedText },
+            });
+            lastSaveLength = accumulatedText.length;
+            console.log(`💾 Incremental save: ${accumulatedText.length} chars`);
+          }
+        }
+      }
+
+      // Final save with SENT status
+      await db.chatMessage.update({
+        where: { id: assistantMessage.id },
+        data: {
+          message: accumulatedText,
+          status: ChatStatus.SENT,
+        },
+      });
+
+      console.log("✅ Background processing completed, saved:", accumulatedText.length, "chars");
+    } catch (error) {
+      console.error("❌ Background processing error:", error);
+
+      // Save partial message with ERROR status
+      await db.chatMessage.update({
+        where: { id: assistantMessage.id },
+        data: {
+          message: accumulatedText || "[Error: Stream processing failed]",
+          status: ChatStatus.ERROR,
+        },
+      });
+    }
+  });
+
+  // Create frontend stream that properly maps Goose tool events to UI format
+  const frontendStream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      let clientDisconnected = false;
 
       const sendEvent = (data: unknown) => {
-        const line = `data: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(line));
+        // Check if controller is still open (desiredSize is null when closed)
+        if (controller.desiredSize === null || clientDisconnected) {
+          clientDisconnected = true;
+          return false; // Signal that we should stop
+        }
+
+        try {
+          const line = `data: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(line));
+          return true;
+        } catch {
+          // Client disconnected mid-enqueue
+          console.log("🔌 Client disconnected during streaming");
+          clientDisconnected = true;
+          return false;
+        }
       };
 
       try {
         // Send start event
-        sendEvent({ type: "start" });
-        sendEvent({ type: "start-step" });
+        if (!sendEvent({ type: "start" })) return;
+        if (!sendEvent({ type: "start-step" })) return;
 
-        for await (const chunk of result.fullStream) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for await (const chunk of frontendFullStream as any) {
+          // Exit early if client disconnected
+          if (clientDisconnected) {
+            console.log("⏹️ Stopping frontend stream processing (client disconnected)");
+            break;
+          }
           switch (chunk.type) {
             case "text-start":
             case "text-end":
@@ -338,17 +427,40 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Send done marker
-        sendEvent("[DONE]");
-        controller.close();
+        // Send done marker (only if client still connected)
+        if (!clientDisconnected) {
+          sendEvent("[DONE]");
+        }
+
+        // Close controller if still open (wrap in try-catch for race conditions)
+        try {
+          if (controller.desiredSize !== null) {
+            controller.close();
+          } else {
+            console.log("✅ Client disconnected gracefully - background processing continues");
+          }
+        } catch {
+          // Client disconnected between check and close (race condition)
+          console.log("✅ Client disconnected during cleanup - background processing continues");
+        }
       } catch (error) {
-        console.error("Stream error:", error);
-        controller.error(error);
+        // Only log and error the controller if it's still open
+        try {
+          if (controller.desiredSize !== null) {
+            console.error("Frontend stream error:", error);
+            controller.error(error);
+          } else {
+            console.log("⚠️ Stream error after client disconnect (expected):", error);
+          }
+        } catch {
+          // Controller already closed during error handling
+          console.log("⚠️ Stream error after client disconnect:", error);
+        }
       }
     },
   });
 
-  return new Response(stream, {
+  return new Response(frontendStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

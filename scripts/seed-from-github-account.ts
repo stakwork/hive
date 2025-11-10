@@ -168,6 +168,7 @@ async function seedForUser(userId: string) {
       environmentVariables,
       services,
       workspaceId: workspace.id,
+      containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
     },
   });
 

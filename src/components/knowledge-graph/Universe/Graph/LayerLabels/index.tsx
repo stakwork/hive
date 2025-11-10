@@ -1,13 +1,10 @@
 import { useControlStore } from '@/stores/useControlStore'
-import { useDataStore } from '@/stores/useDataStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
-import { Billboard, Edges, RoundedBox, Text } from '@react-three/drei'
+import { useDataStore, useSimulationStore } from '@/stores/useStores'
+import { Billboard, Text } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'
 import * as THREE from 'three'
 
-
-const padding = 8
 
 // Helper function to distribute neighborhoods based on node_type positioning
 const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; name?: string }[], nodeTypes: string[]) => {
@@ -112,21 +109,27 @@ export const LayerLabels = () => {
 
         return (
           <Billboard key={nodeTypeId} position={[0, geometricCenter.y + 40, 0]}>
-            {/* White border background */}
-            <RoundedBox args={[name.length * 25 + 10, 68, 10]} radius={8} smoothness={4} position={[0, 0, -0.1]}>
-              <meshBasicMaterial color="white" transparent opacity={0} />
-              <Edges color="grey" opacity={0.5} transparent />
-            </RoundedBox>
-            {/* Dark background */}
-            {/* <RoundedBox args={[name.length * 25, 60, 6]} radius={6} smoothness={4}>
-              <meshBasicMaterial color="rgba(0, 0, 0, 0.8)" transparent />
-            </RoundedBox> */}
+            {/* Simple rectangular border */}
+            <lineLoop position={[0, 0, -0.1]}>
+              <bufferGeometry>
+                <bufferAttribute
+                  attach="attributes-position"
+                  args={[new Float32Array([
+                    -(name.length * 12.5 + 10), -35, 0,  // bottom-left
+                    (name.length * 12.5 + 10), -35, 0,   // bottom-right
+                    (name.length * 12.5 + 10), 35, 0,    // top-right
+                    -(name.length * 12.5 + 10), 35, 0,   // top-left
+                  ]), 3]}
+                />
+              </bufferGeometry>
+              <lineBasicMaterial color="grey" opacity={0.5} transparent />
+            </lineLoop>
             <Text
               fontSize={35}
               color="grey"
               anchorX="center"
               anchorY="middle"
-              position={[0, 0, -0.1]}
+              position={[0, 0, 0]}
             >
               {name}
             </Text>

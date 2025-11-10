@@ -91,7 +91,7 @@ export function DeleteWorkspace({
 
   return (
     <>
-      <Card className="border-destructive/20">
+      <Card className="border-destructive/20" data-testid="delete-workspace-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <Trash2 className="w-5 h-5" />
@@ -107,6 +107,7 @@ export function DeleteWorkspace({
             variant="destructive"
             onClick={() => setIsOpen(true)}
             className="w-full"
+            data-testid="delete-workspace-button"
           >
             <Trash2 className="w-4 h-4 mr-2" />
             Delete Workspace
@@ -115,7 +116,7 @@ export function DeleteWorkspace({
       </Card>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
+        <DialogContent data-testid="delete-workspace-dialog">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="w-5 h-5" />
@@ -141,6 +142,7 @@ export function DeleteWorkspace({
               </Label>
               <Input
                 id="confirmation"
+                data-testid="delete-workspace-confirmation-input"
                 value={confirmationText}
                 onChange={(e) => setConfirmationText(e.target.value)}
                 placeholder={workspaceName}
@@ -157,6 +159,7 @@ export function DeleteWorkspace({
                 setConfirmationText("");
               }}
               disabled={isDeleting}
+              data-testid="delete-workspace-cancel-button"
             >
               Cancel
             </Button>
@@ -164,6 +167,7 @@ export function DeleteWorkspace({
               variant="destructive"
               onClick={handleDelete}
               disabled={!canDelete || isDeleting}
+              data-testid="delete-workspace-confirm-button"
             >
               {isDeleting ? "Deleting..." : "Delete Workspace"}
             </Button>

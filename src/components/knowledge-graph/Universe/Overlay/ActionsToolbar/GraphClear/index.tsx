@@ -1,5 +1,5 @@
 import ClearIcon from '@/components/Icons/ClearIcon'
-import { useDataStore } from '@/stores/useDataStore'
+import { useDataStore } from '@/stores/useStores'
 
 export const GraphClear = () => {
   const { resetGraph } = useDataStore((s) => s)

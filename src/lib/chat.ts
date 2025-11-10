@@ -89,6 +89,19 @@ export interface PullRequestContent {
   status: string;
 }
 
+export type Action = "create" | "rewrite" | "modify" | "delete";
+
+export interface ActionResult {
+  file: string;
+  action: Action;
+  content: string;
+  repoName: string;
+}
+
+export interface DiffContent {
+  diffs: ActionResult[];
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?:
@@ -100,7 +113,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | BugReportContent
     | GraphContent
     | WorkflowContent
-    | PullRequestContent;
+    | PullRequestContent
+    | DiffContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -157,7 +171,8 @@ export function createArtifact(data: {
     | BugReportContent
     | GraphContent
     | WorkflowContent
-    | PullRequestContent;
+    | PullRequestContent
+    | DiffContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

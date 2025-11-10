@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { useSelectedNode } from '@/stores/useGraphStore'
+import { useSelectedNode } from '@/stores/useStores'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
