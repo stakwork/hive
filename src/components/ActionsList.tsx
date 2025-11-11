@@ -272,7 +272,9 @@ export function ActionsList({
 
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
         {actions.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">No actions recorded yet</div>
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            {onReplayToggle && !isRecording ? "Ready to replay" : "No actions recorded yet"}
+          </div>
         ) : (
           <div className="flex flex-col gap-1 p-2">
             {actions.map((action, index) => {

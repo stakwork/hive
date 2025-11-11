@@ -26,10 +26,10 @@ describe('usePlaywrightReplay', () => {
       missingPage: () => `test('no page usage', async ({ }) => { });`,
       missingTest: () => `async function notATest({ page }) { await page.click('button'); }`,
       empty: () => '',
-      nonString: () => null as any,
+      nonString: () => null as unknown,
     },
 
-    createMessageEvent: (type: string, data: any = {}) =>
+    createMessageEvent: (type: string, data: Record<string, unknown> = {}) =>
       new MessageEvent('message', {
         data: { type, ...data },
       }),
@@ -37,12 +37,12 @@ describe('usePlaywrightReplay', () => {
 
   // Test utilities
   const TestUtils = {
-    simulateMessageEvent: (eventData: any) => {
+    simulateMessageEvent: (eventData: Record<string, unknown> & { type: string }) => {
       const event = TestDataFactories.createMessageEvent(eventData.type, eventData);
       window.dispatchEvent(event);
     },
 
-    expectInitialState: (result: any) => {
+    expectInitialState: (result: { current: Record<string, unknown> }) => {
       expect(result.current.isPlaywrightReplaying).toBe(false);
       expect(result.current.isPlaywrightPaused).toBe(false);
       expect(result.current.playwrightStatus).toBe('idle');
@@ -52,10 +52,10 @@ describe('usePlaywrightReplay', () => {
     },
   };
 
-  let mockIframeRef: any;
-  let consoleErrorSpy: any;
-  let consoleWarnSpy: any;
-  let querySelectors: Map<string, any>;
+  let mockIframeRef: { current: { contentWindow: { postMessage: ReturnType<typeof vi.fn> } } | null };
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let querySelectors: Map<string, { classList: { add: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; contains: ReturnType<typeof vi.fn> } }>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,7 +122,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should return false when iframe has no contentWindow', () => {
-        const invalidRef = { current: {} as any };
+        const invalidRef = { current: {} as { contentWindow?: { postMessage: () => void } } };
         const { result } = renderHook(() => usePlaywrightReplay(invalidRef));
 
         let success: boolean;
@@ -151,7 +151,7 @@ describe('usePlaywrightReplay', () => {
 
         let success: boolean;
         act(() => {
-          success = result.current.startPlaywrightReplay(null as any);
+          success = result.current.startPlaywrightReplay(null as unknown as string);
         });
 
         expect(success!).toBe(false);
@@ -292,6 +292,135 @@ describe('usePlaywrightReplay', () => {
 
         const container = querySelectors.get('.iframe-container');
         expect(container?.classList.remove).toHaveBeenCalledWith('playwright-replaying');
+      });
+    });
+  });
+
+  describe('previewPlaywrightReplay', () => {
+    describe('Validation', () => {
+      test('should return false when iframe ref is null', () => {
+        const nullRef = { current: null };
+        const { result } = renderHook(() => usePlaywrightReplay(nullRef));
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay('test code');
+        });
+
+        expect(success!).toBe(false);
+      });
+
+      test('should return false when iframe has no contentWindow', () => {
+        const invalidRef = { current: {} as { contentWindow?: { postMessage: () => void } } };
+        const { result } = renderHook(() => usePlaywrightReplay(invalidRef));
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay('test code');
+        });
+
+        expect(success!).toBe(false);
+      });
+
+      test('should return false when testCode is empty string', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay('');
+        });
+
+        expect(success!).toBe(false);
+      });
+
+      test('should return false when testCode is not a string', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay(null as unknown as string);
+        });
+
+        expect(success!).toBe(false);
+      });
+
+      test('should return false when testCode does not contain "page."', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const invalidCode = TestDataFactories.createInvalidPlaywrightTest.missingPage();
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay(invalidCode);
+        });
+
+        expect(success!).toBe(false);
+      });
+
+      test('should return false when testCode does not contain "test("', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const invalidCode = TestDataFactories.createInvalidPlaywrightTest.missingTest();
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay(invalidCode);
+        });
+
+        expect(success!).toBe(false);
+      });
+    });
+
+    describe('Successful Preview', () => {
+      test('should send postMessage with preview type', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        act(() => result.current.previewPlaywrightReplay(validCode));
+
+        expect(mockIframeRef.current.contentWindow.postMessage).toHaveBeenCalledWith(
+          {
+            type: 'staktrak-playwright-replay-preview',
+            testCode: validCode,
+          },
+          '*'
+        );
+      });
+
+      test('should not change replay state when previewing', () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        act(() => result.current.previewPlaywrightReplay(validCode));
+
+        expect(result.current.isPlaywrightReplaying).toBe(false);
+        expect(result.current.isPlaywrightPaused).toBe(false);
+        expect(result.current.playwrightStatus).toBe('idle');
+      });
+    });
+
+    describe('Error Handling', () => {
+      test('should handle postMessage errors gracefully', () => {
+        const errorRef = {
+          current: {
+            contentWindow: {
+              postMessage: vi.fn().mockImplementation(() => {
+                throw new Error('PostMessage failed');
+              }),
+            },
+          },
+        };
+        const { result } = renderHook(() => usePlaywrightReplay(errorRef));
+        const validCode = TestDataFactories.createValidPlaywrightTest();
+
+        let success: boolean;
+        act(() => {
+          success = result.current.previewPlaywrightReplay(validCode);
+        });
+
+        expect(success!).toBe(false);
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          'Error previewing Playwright test:',
+          expect.any(Error)
+        );
       });
     });
   });
@@ -531,6 +660,90 @@ describe('usePlaywrightReplay', () => {
   });
 
   describe('Message Handler - handleMessage', () => {
+    describe('staktrak-playwright-replay-preview-ready', () => {
+      test('should set previewActions when ready', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        const mockActions = [
+          { type: 'goto', url: 'https://example.com' },
+          { type: 'click', selector: '.button' },
+        ];
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-preview-ready',
+            actions: mockActions,
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.previewActions).toEqual(mockActions);
+        });
+      });
+
+      test('should default to empty array if actions not provided', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-preview-ready',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.previewActions).toEqual([]);
+        });
+      });
+    });
+
+    describe('staktrak-playwright-replay-preview-error', () => {
+      test('should clear previewActions on error', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        // Set some preview actions first
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-preview-ready',
+            actions: [{ type: 'click' }],
+          });
+        });
+
+        expect(result.current.previewActions).toHaveLength(1);
+
+        // Trigger error
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-preview-error',
+            error: 'Parse failed',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.previewActions).toEqual([]);
+          expect(consoleErrorSpy).toHaveBeenCalledWith(
+            'Playwright preview error:',
+            'Parse failed'
+          );
+        });
+      });
+
+      test('should not affect replay state', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-preview-error',
+            error: 'Parse failed',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.isPlaywrightReplaying).toBe(false);
+          expect(result.current.playwrightStatus).toBe('idle');
+        });
+      });
+    });
+
     describe('staktrak-playwright-replay-started', () => {
       test('should update progress with total actions', async () => {
         const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
@@ -649,7 +862,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should log error to console', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -787,7 +1000,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should remove "playwright-replaying" class', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -937,7 +1150,7 @@ describe('usePlaywrightReplay', () => {
     });
 
     test('should handle messages after unmount gracefully', () => {
-      const { result, unmount } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+      const { unmount } = renderHook(() => usePlaywrightReplay(mockIframeRef));
 
       unmount();
 
@@ -1214,7 +1427,7 @@ describe('usePlaywrightReplay', () => {
     describe('staktrak-playwright-screenshot-error', () => {
       test('should call onScreenshotError callback when provided', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
+        renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1231,7 +1444,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should log warning to console when screenshot fails', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1250,7 +1463,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should not call onScreenshotError if callback not provided', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1291,7 +1504,7 @@ describe('usePlaywrightReplay', () => {
 
       test('should handle multiple screenshot errors', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
+        renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1511,6 +1724,95 @@ describe('usePlaywrightReplay', () => {
           expect(callback2).toHaveBeenCalledWith('Screenshot capture failed for action 2');
         });
       });
+    });
+  });
+
+  describe('Preview and Replay Independence', () => {
+    test('should allow replay to succeed even if preview failed', async () => {
+      const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+      const validCode = TestDataFactories.createValidPlaywrightTest();
+
+      // Preview fails
+      act(() => result.current.previewPlaywrightReplay(validCode));
+      act(() => {
+        TestUtils.simulateMessageEvent({
+          type: 'staktrak-playwright-replay-preview-error',
+          error: 'Parse error',
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.previewActions).toEqual([]);
+      });
+
+      // Replay should still work
+      act(() => result.current.startPlaywrightReplay(validCode));
+
+      expect(result.current.isPlaywrightReplaying).toBe(true);
+      expect(mockIframeRef.current.contentWindow.postMessage).toHaveBeenLastCalledWith(
+        {
+          type: 'staktrak-playwright-replay-start',
+          testCode: validCode,
+        },
+        '*'
+      );
+    });
+
+    test('should use separate state for preview and replay actions', async () => {
+      const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+      const previewActions = [
+        { type: 'goto', url: 'https://preview.com' },
+        { type: 'click', selector: '.preview-button' },
+      ];
+
+      const replayActions = [
+        { type: 'goto', url: 'https://replay.com' },
+        { type: 'click', selector: '.replay-button' },
+      ];
+
+      // Set preview actions
+      act(() => {
+        TestUtils.simulateMessageEvent({
+          type: 'staktrak-playwright-replay-preview-ready',
+          actions: previewActions,
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.previewActions).toEqual(previewActions);
+      });
+
+      // Start replay with different actions
+      act(() => {
+        TestUtils.simulateMessageEvent({
+          type: 'staktrak-playwright-replay-started',
+          actions: replayActions,
+          totalActions: 2,
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.replayActions).toEqual(replayActions);
+        expect(result.current.previewActions).toEqual(previewActions); // Preview still intact
+      });
+    });
+
+    test('should not affect replay state when preview is triggered', () => {
+      const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+      const validCode = TestDataFactories.createValidPlaywrightTest();
+
+      // Start replay first
+      act(() => result.current.startPlaywrightReplay(validCode));
+
+      expect(result.current.isPlaywrightReplaying).toBe(true);
+      expect(result.current.playwrightStatus).toBe('playing');
+
+      // Preview should not change replay state
+      act(() => result.current.previewPlaywrightReplay(validCode));
+
+      expect(result.current.isPlaywrightReplaying).toBe(true);
+      expect(result.current.playwrightStatus).toBe('playing');
     });
   });
 });
