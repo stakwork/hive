@@ -3,14 +3,7 @@ import {
   RepositoryStatus,
   SwarmStatus,
 } from "@prisma/client";
-
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-}
+import { slugify } from "./slugify";
 
 /**
  * Ensures a mock workspace and a completed swarm exist for a given user.
