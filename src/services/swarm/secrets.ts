@@ -2,7 +2,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
-import { generateRandomPassword } from "@/utils/randomPassword";
+import { generateSecurePassword } from "@/lib/utils/password";
 import { PoolManagerService } from "../pool-manager";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -59,7 +59,7 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
     return;
   }
 
-  const password = generateRandomPassword(12);
+  const password = generateSecurePassword(12);
 
   try {
     const { user: poolUser } = await poolManager.createUser({
