@@ -17,8 +17,8 @@ export function usePlaywrightReplay(
     { message: string; actionIndex: number; action: string; timestamp: string }[]
   >([]);
   const [replayScreenshots, setReplayScreenshots] = useState<Screenshot[]>([]);
-  const [replayActions, setReplayActions] = useState<any[]>([]);
-  const [previewActions, setPreviewActions] = useState<any[]>([]);
+  const [replayActions, setReplayActions] = useState<unknown[]>([]);
+  const [previewActions, setPreviewActions] = useState<unknown[]>([]);
 
   const previewPlaywrightReplay = (testCode: string) => {
     if (!iframeRef?.current?.contentWindow) {

@@ -26,10 +26,10 @@ describe('usePlaywrightReplay', () => {
       missingPage: () => `test('no page usage', async ({ }) => { });`,
       missingTest: () => `async function notATest({ page }) { await page.click('button'); }`,
       empty: () => '',
-      nonString: () => null as any,
+      nonString: () => null as unknown,
     },
 
-    createMessageEvent: (type: string, data: any = {}) =>
+    createMessageEvent: (type: string, data: Record<string, unknown> = {}) =>
       new MessageEvent('message', {
         data: { type, ...data },
       }),
@@ -37,12 +37,12 @@ describe('usePlaywrightReplay', () => {
 
   // Test utilities
   const TestUtils = {
-    simulateMessageEvent: (eventData: any) => {
+    simulateMessageEvent: (eventData: Record<string, unknown> & { type: string }) => {
       const event = TestDataFactories.createMessageEvent(eventData.type, eventData);
       window.dispatchEvent(event);
     },
 
-    expectInitialState: (result: any) => {
+    expectInitialState: (result: { current: Record<string, unknown> }) => {
       expect(result.current.isPlaywrightReplaying).toBe(false);
       expect(result.current.isPlaywrightPaused).toBe(false);
       expect(result.current.playwrightStatus).toBe('idle');
@@ -52,10 +52,10 @@ describe('usePlaywrightReplay', () => {
     },
   };
 
-  let mockIframeRef: any;
-  let consoleErrorSpy: any;
-  let consoleWarnSpy: any;
-  let querySelectors: Map<string, any>;
+  let mockIframeRef: { current: { contentWindow: { postMessage: ReturnType<typeof vi.fn> } } | null };
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let querySelectors: Map<string, { classList: { add: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; contains: ReturnType<typeof vi.fn> } }>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,7 +122,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should return false when iframe has no contentWindow', () => {
-        const invalidRef = { current: {} as any };
+        const invalidRef = { current: {} as { contentWindow?: { postMessage: () => void } } };
         const { result } = renderHook(() => usePlaywrightReplay(invalidRef));
 
         let success: boolean;
@@ -151,7 +151,7 @@ describe('usePlaywrightReplay', () => {
 
         let success: boolean;
         act(() => {
-          success = result.current.startPlaywrightReplay(null as any);
+          success = result.current.startPlaywrightReplay(null as unknown as string);
         });
 
         expect(success!).toBe(false);
@@ -311,7 +311,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should return false when iframe has no contentWindow', () => {
-        const invalidRef = { current: {} as any };
+        const invalidRef = { current: {} as { contentWindow?: { postMessage: () => void } } };
         const { result } = renderHook(() => usePlaywrightReplay(invalidRef));
 
         let success: boolean;
@@ -338,7 +338,7 @@ describe('usePlaywrightReplay', () => {
 
         let success: boolean;
         act(() => {
-          success = result.current.previewPlaywrightReplay(null as any);
+          success = result.current.previewPlaywrightReplay(null as unknown as string);
         });
 
         expect(success!).toBe(false);
@@ -862,7 +862,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should log error to console', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1000,7 +1000,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should remove "playwright-replaying" class', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1150,7 +1150,7 @@ describe('usePlaywrightReplay', () => {
     });
 
     test('should handle messages after unmount gracefully', () => {
-      const { result, unmount } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+      const { unmount } = renderHook(() => usePlaywrightReplay(mockIframeRef));
 
       unmount();
 
@@ -1427,7 +1427,7 @@ describe('usePlaywrightReplay', () => {
     describe('staktrak-playwright-screenshot-error', () => {
       test('should call onScreenshotError callback when provided', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
+        renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1444,7 +1444,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should log warning to console when screenshot fails', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1463,7 +1463,7 @@ describe('usePlaywrightReplay', () => {
       });
 
       test('should not call onScreenshotError if callback not provided', async () => {
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+        renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
           TestUtils.simulateMessageEvent({
@@ -1504,7 +1504,7 @@ describe('usePlaywrightReplay', () => {
 
       test('should handle multiple screenshot errors', async () => {
         const onScreenshotError = vi.fn();
-        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
+        renderHook(() => usePlaywrightReplay(mockIframeRef, null, null, onScreenshotError));
 
         act(() => {
           TestUtils.simulateMessageEvent({
