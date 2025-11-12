@@ -151,6 +151,16 @@ export const selectors = {
     addFeatureButton: '[data-testid="add-feature-button"]',
   },
 
+  // Stakgraph
+  stakgraph: {
+    pageTitle: '[data-testid="page-title"]:has-text("Pool Status")',
+    environmentVariablesHeading: 'h4:has-text("Environment Variables")',
+    environmentVariableName: 'input[placeholder="KEY"]',
+    environmentVariableValue: 'input[placeholder="VALUE"]',
+    poolNameInput: 'input[name="poolName"]',
+    saveButton: 'button:has-text("Save")',
+  },
+
   feature: {
     briefInput: '[data-testid="feature-brief-input"]',
     requirementsInput: '[data-testid="feature-requirements-input"]',

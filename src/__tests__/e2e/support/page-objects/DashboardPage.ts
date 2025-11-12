@@ -49,6 +49,14 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to stakgraph page
+   */
+  async goToStakgraph(): Promise<void> {
+    await this.page.goto(this.page.url().replace(/\/w\/([^\/]+).*/, '/w/$1/stakgraph'));
+    await this.page.waitForURL(/\/w\/.*\/stakgraph/, { timeout: 10000 });
+  }
+
+  /**
    * Reload the page
    */
   async reload(): Promise<void> {
