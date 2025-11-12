@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { getErrorMessage } from "@/lib/utils/error";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to check slug availability";
+    const message = getErrorMessage(error, "Failed to check slug availability");
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }
