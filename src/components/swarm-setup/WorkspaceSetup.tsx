@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { extractRepoInfoFromUrl } from "@/utils/extractRepoInfoFromUrl";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -156,10 +156,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         try {
           console.log(`Creating swarm for:`, repositoryUrl);
 
-          const repoInfo = extractRepoInfoFromUrl(repositoryUrl);
-          if (!repoInfo) {
-            throw new Error("Invalid repository URL format");
-          }
+          const { owner, repo: name } = parseGithubOwnerRepo(repositoryUrl);
+          const repoInfo = { owner, name };
 
           const defaultBranch = await getRepositoryDefaultBranch(repositoryUrl, slug);
           if (!defaultBranch) {

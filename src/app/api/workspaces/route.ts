@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
+import { getErrorMessage } from "@/lib/utils/error";
 
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
@@ -41,12 +42,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {
-    const message =
-      typeof error === "string"
-        ? error
-        : error instanceof Error
-          ? error.message
-          : "Failed to create workspace.";
+    const message = getErrorMessage(error, "Failed to create workspace.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
