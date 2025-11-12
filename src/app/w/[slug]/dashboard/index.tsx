@@ -20,7 +20,7 @@ export function Dashboard() {
 
 function DashboardInner() {
   useGraphPolling({
-    enabled: false,
+    enabled: true,
     interval: 5000
   });
 

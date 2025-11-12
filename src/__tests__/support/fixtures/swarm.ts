@@ -7,6 +7,7 @@ const encryptionService = EncryptionService.getInstance();
 export interface CreateTestSwarmOptions {
   name?: string;
   swarmId?: string;
+  swarmUrl?: string;
   workspaceId: string;
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
@@ -20,9 +21,11 @@ export async function createTestSwarm(
   options: CreateTestSwarmOptions,
 ): Promise<Swarm> {
   const timestamp = Date.now();
+  const name = options.name || `test-swarm-${timestamp}`;
 
   const baseData = {
-    name: options.name || `test-swarm-${timestamp}`,
+    name,
+    swarmUrl: options.swarmUrl || `https://${name}.test.sphinxlabs.ai/api`,
     workspaceId: options.workspaceId,
     status: options.status || "ACTIVE",
     instanceType: options.instanceType || "XL",

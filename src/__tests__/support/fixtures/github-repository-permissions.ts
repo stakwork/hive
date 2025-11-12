@@ -104,6 +104,85 @@ export async function createAdditionalOrgForUser(
 }
 
 /**
+ * Mock access and refresh tokens
+ */
+export const mockAccessToken = "gho_test_access_token_12345";
+export const mockRefreshToken = "gho_test_refresh_token_67890";
+
+/**
+ * Mock GitHub repository data builders
+ */
+export const mockGitHubRepository = {
+  withPushPermissions(overrides = {}) {
+    return {
+      name: "test-repo",
+      full_name: "test-owner/test-repo",
+      private: false,
+      default_branch: "main",
+      permissions: {
+        admin: false,
+        maintain: false,
+        push: true,
+        triage: false,
+        pull: true,
+      },
+      ...overrides,
+    };
+  },
+
+  withFullPermissions(overrides = {}) {
+    return {
+      name: "test-repo",
+      full_name: "test-owner/test-repo",
+      private: false,
+      default_branch: "main",
+      permissions: {
+        admin: true,
+        maintain: true,
+        push: true,
+        triage: true,
+        pull: true,
+      },
+      ...overrides,
+    };
+  },
+
+  withMaintainPermissions(overrides = {}) {
+    return {
+      name: "test-repo",
+      full_name: "test-owner/test-repo",
+      private: false,
+      default_branch: "main",
+      permissions: {
+        admin: false,
+        maintain: true,
+        push: false,
+        triage: false,
+        pull: true,
+      },
+      ...overrides,
+    };
+  },
+
+  withReadOnlyPermissions(overrides = {}) {
+    return {
+      name: "test-repo",
+      full_name: "test-owner/test-repo",
+      private: false,
+      default_branch: "main",
+      permissions: {
+        admin: false,
+        maintain: false,
+        push: false,
+        triage: false,
+        pull: true,
+      },
+      ...overrides,
+    };
+  },
+};
+
+/**
  * Mock GitHub API responses for different permission scenarios
  */
 export const mockGitHubApiResponses = {
@@ -179,11 +258,70 @@ export const mockGitHubApiResponses = {
     }),
   },
 
-  repositoryNotFound: {
-    ok: false,
-    status: 404,
-    statusText: "Not Found",
-    text: async () => "Not Found",
+  repositoryNotFound() {
+    return {
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      text: async () => "Not Found",
+    } as Response;
+  },
+
+  repositorySuccess(repoData: any) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => repoData,
+    } as Response;
+  },
+
+  repositoryForbidden() {
+    return {
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      text: async () => "Forbidden",
+    } as Response;
+  },
+
+  repositoryServerError() {
+    return {
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      text: async () => "Internal Server Error",
+    } as Response;
+  },
+
+  installationRepositoriesSuccess(repositories: Array<{ full_name: string }>) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        total_count: repositories.length,
+        repositories,
+      }),
+    } as Response;
+  },
+
+  installationRepositoriesEmpty() {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        total_count: 0,
+        repositories: [],
+      }),
+    } as Response;
+  },
+
+  installationRepositoriesError(status: number, statusText = "Error") {
+    return {
+      ok: false,
+      status,
+      statusText,
+      text: async () => statusText,
+    } as Response;
   },
 
   accessForbidden: {
@@ -200,6 +338,16 @@ export const mockGitHubApiResponses = {
     text: async () => "Internal Server Error",
   },
 };
+
+/**
+ * Reset mocks before each test
+ */
+export function resetGitHubApiMocks() {
+  // Clear any global fetch mocks
+  if (global.fetch && typeof (global.fetch as any).mockClear === 'function') {
+    (global.fetch as any).mockClear();
+  }
+}
 
 /**
  * Common test repository URLs for different scenarios

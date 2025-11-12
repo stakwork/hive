@@ -472,7 +472,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           accessToken,
         });
 
-        mockFetch.mockResolvedValue(mockGitHubApiResponses.repositoryNotFound);
+        mockFetch.mockResolvedValue(mockGitHubApiResponses.repositoryNotFound());
 
         const request = createPostRequest(
           "http://localhost:3000/api/github/repository/permissions",
