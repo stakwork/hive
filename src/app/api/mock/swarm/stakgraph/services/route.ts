@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mockServicesManager } from "../MockServicesStatusManager";
 
 export const runtime = "nodejs";
 
@@ -23,13 +24,18 @@ export async function GET(request: NextRequest) {
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, Math.random() * 600 + 300));
 
-    const requestId = `[MOCK]services-${Math.floor(Math.random() * 10000) + 1000}`;
+    const requestId = `mock-services-${Math.floor(Math.random() * 10000) + 1000}`;
+
+    // Create services request using the manager
+    const servicesStatus = mockServicesManager.createServicesRequest(requestId, workspaceId, swarmId || "");
 
     // Randomly choose between synchronous and asynchronous processing
     const useAsyncProcessing = Math.random() > 0.3; // 70% chance of async
 
     if (useAsyncProcessing) {
-      // Asynchronous processing (triggers SSE agent-stream)
+      // Start asynchronous processing (triggers SSE agent-stream)
+      mockServicesManager.startProcessing(requestId);
+
       const mockResponse = {
         success: true,
         status: "PROCESSING",
@@ -37,7 +43,7 @@ export async function GET(request: NextRequest) {
           request_id: requestId,
           workspace_id: workspaceId,
           swarm_id: swarmId,
-          processing_started_at: new Date().toISOString(),
+          processing_started_at: servicesStatus.started_at,
           estimated_completion: "2-5 minutes",
         },
         message: "Services setup started - processing in background"
@@ -46,27 +52,11 @@ export async function GET(request: NextRequest) {
       console.log("[Mock Stakgraph] Async processing started:", requestId);
       return NextResponse.json(mockResponse);
     } else {
-      // Synchronous processing (immediate completion)
-      const mockServices = [
-        {
-          name: "[MOCK]stakgraph-service",
-          status: "active",
-          port: 3355,
-          health_check: "/health"
-        },
-        {
-          name: "[MOCK]jarvis-service",
-          status: "active",
-          port: 8444,
-          health_check: "/api/health"
-        },
-        {
-          name: "[MOCK]code-analysis-service",
-          status: "active",
-          port: 9000,
-          health_check: "/status"
-        }
-      ];
+      // Complete synchronously (immediate completion)
+      const completedStatus = mockServicesManager.completeServices(requestId);
+      if (!completedStatus) {
+        throw new Error("Failed to complete services setup");
+      }
 
       const mockResponse = {
         success: true,
@@ -75,14 +65,14 @@ export async function GET(request: NextRequest) {
           request_id: requestId,
           workspace_id: workspaceId,
           swarm_id: swarmId,
-          services: mockServices,
+          services: completedStatus.services,
           environment_variables: {
             REPO_URL: repoUrl,
             WORKSPACE_ID: workspaceId,
             SWARM_ID: swarmId,
-            MOCK_MODE: "true"
+            ...completedStatus.environment_variables
           },
-          completed_at: new Date().toISOString(),
+          completed_at: completedStatus.completed_at,
         },
         message: "Services setup completed successfully"
       };

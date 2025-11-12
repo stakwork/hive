@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { mockServicesManager } from "../MockServicesStatusManager";
 
 export const runtime = "nodejs";
 
@@ -33,60 +34,74 @@ export async function GET(request: NextRequest) {
       });
       controller.enqueue(encoder.encode(`data: ${initialData}\n\n`));
 
-      let stepCount = 0;
-      const totalSteps = 5;
-      const steps = [
-        "Initializing agent environment",
-        "Analyzing repository structure",
-        "Processing code dependencies",
-        "Setting up services configuration",
-        "Finalizing environment setup"
-      ];
+      // Use the status manager to track progress
+      const checkProgress = () => {
+        const status = requestId ? mockServicesManager.getStatus(requestId) : null;
 
-      intervalId = setInterval(() => {
-        stepCount++;
+        if (!status) {
+          // If no status found, close the stream
+          clearInterval(intervalId);
+          controller.close();
+          console.log("[Mock Agent Stream] No status found, closing stream:", requestId);
+          return;
+        }
 
-        if (stepCount <= totalSteps) {
+        if (status.status === "PROCESSING") {
           // Send progress message
           const progressData = JSON.stringify({
             type: "progress",
             request_id: requestId,
             swarm_id: swarmId,
-            step: stepCount,
-            total_steps: totalSteps,
-            current_task: steps[stepCount - 1],
-            progress_percentage: Math.round((stepCount / totalSteps) * 100),
+            step: status.processing_step,
+            total_steps: status.total_steps,
+            current_task: status.current_task,
+            progress_percentage: status.progress_percentage,
             timestamp: new Date().toISOString(),
           });
           controller.enqueue(encoder.encode(`data: ${progressData}\n\n`));
+        } else if (status.status === "COMPLETED") {
+          // Send completion event
+          const completedData = JSON.stringify({
+            type: "completed",
+            request_id: requestId,
+            swarm_id: swarmId,
+            timestamp: new Date().toISOString(),
+            message: "Agent processing completed successfully",
+            result: {
+              services_configured: status.services?.length || 3,
+              environment_variables_set: Object.keys(status.environment_variables || {}).length,
+              status: "ready"
+            }
+          });
+          controller.enqueue(encoder.encode(`event: completed\ndata: ${completedData}\n\n`));
 
-          if (stepCount === totalSteps) {
-            // Send completion event after final step
-            setTimeout(() => {
-              const completedData = JSON.stringify({
-                type: "completed",
-                request_id: requestId,
-                swarm_id: swarmId,
-                timestamp: new Date().toISOString(),
-                message: "Agent processing completed successfully",
-                result: {
-                  services_configured: 3,
-                  environment_variables_set: 8,
-                  status: "ready"
-                }
-              });
-              controller.enqueue(encoder.encode(`event: completed\ndata: ${completedData}\n\n`));
+          // Close stream
+          setTimeout(() => {
+            clearInterval(intervalId);
+            controller.close();
+            console.log("[Mock Agent Stream] Stream completed:", requestId);
+          }, 100);
+        } else if (status.status === "FAILED") {
+          // Send error event
+          const errorData = JSON.stringify({
+            type: "error",
+            request_id: requestId,
+            swarm_id: swarmId,
+            timestamp: new Date().toISOString(),
+            message: status.current_task || "Agent processing failed"
+          });
+          controller.enqueue(encoder.encode(`event: error\ndata: ${errorData}\n\n`));
 
-              // Close stream
-              setTimeout(() => {
-                clearInterval(intervalId);
-                controller.close();
-                console.log("[Mock Agent Stream] Stream completed:", requestId);
-              }, 100);
-            }, 1000);
-          }
+          // Close stream
+          setTimeout(() => {
+            clearInterval(intervalId);
+            controller.close();
+            console.log("[Mock Agent Stream] Stream failed:", requestId);
+          }, 100);
         }
-      }, 2000); // Send update every 2 seconds
+      };
+
+      intervalId = setInterval(checkProgress, 1000); // Check status every 1 second
     },
 
     cancel() {
