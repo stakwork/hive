@@ -8,6 +8,7 @@ import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getBaseUrl } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -34,6 +35,10 @@ async function callStakwork(
       throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
+    // Generate webhook URL for workflow status updates
+    const baseUrl = getBaseUrl();
+    const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
+
     // stakwork workflow vars
     const vars = {
       message,
@@ -50,6 +55,7 @@ async function callStakwork(
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
       workflow_id: parseInt(config.STAKWORK_USER_JOURNEY_WORKFLOW_ID),
+      webhook_url: workflowWebhookUrl,
       workflow_params: {
         set_var: {
           attributes: {

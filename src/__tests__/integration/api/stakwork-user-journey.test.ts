@@ -377,6 +377,34 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       });
     });
 
+    test("should include webhook_url in payload for status callbacks", async () => {
+      const { user, workspace } = await createUserJourneyTestSetup();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test webhook URL inclusion",
+          workspaceId: workspace.id,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      // Verify webhook_url is included in Stakwork payload
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+
+      expect(payload).toHaveProperty("webhook_url");
+      expect(payload.webhook_url).toMatch(/\/api\/stakwork\/webhook\?task_id=/);
+
+      // Verify task_id parameter matches the created task
+      const taskIdMatch = payload.webhook_url.match(/task_id=([^&]+)/);
+      expect(taskIdMatch).toBeTruthy();
+      expect(taskIdMatch[1]).toBeTruthy(); // Verify task ID exists
+    });
+
     test("should handle null GitHub credentials gracefully", async () => {
       const { workspace } = await createUserJourneyTestSetup();
 
