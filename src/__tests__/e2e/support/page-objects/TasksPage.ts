@@ -156,4 +156,12 @@ export class TasksPage {
     await taskCard.click();
     await this.page.waitForURL(/\/w\/.*\/task\/[^\/]+$/, { timeout: 10000 });
   }
+
+  /**
+   * Navigate to roadmap via sidebar navigation
+   */
+  async navigateToRoadmap(): Promise<void> {
+    await this.page.locator(selectors.navigation.roadmapLink).click();
+    await this.page.waitForURL(/\/w\/.*\/roadmap/, { timeout: 10000 });
+  }
 }

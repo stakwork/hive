@@ -149,6 +149,7 @@ export const selectors = {
     featureInput: '[data-testid="feature-title-input"]',
     featureCard: '[data-testid="feature-card"]',
     addFeatureButton: '[data-testid="add-feature-button"]',
+    featuresSection: '[data-testid="roadmap-features-section"]',
   },
 
   feature: {

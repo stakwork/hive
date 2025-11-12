@@ -525,7 +525,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   ];
 
   return (
-    <Card>
+    <Card data-testid="roadmap-features-section">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">

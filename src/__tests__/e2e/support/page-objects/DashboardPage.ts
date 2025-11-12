@@ -41,6 +41,14 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to roadmap page via sidebar navigation
+   */
+  async navigateToRoadmap(): Promise<void> {
+    await this.page.locator(selectors.navigation.roadmapLink).click();
+    await this.page.waitForURL(/\/w\/.*\/roadmap/, { timeout: 10000 });
+  }
+
+  /**
    * Navigate to settings page
    */
   async goToSettings(): Promise<void> {
