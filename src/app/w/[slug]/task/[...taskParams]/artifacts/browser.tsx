@@ -490,6 +490,7 @@ export function BrowserArtifactPanel({
                   src={isUrlReady ? content.url : "about:blank"}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
+                  allow="camera *; microphone *; clipboard-read *; clipboard-write *"
                 />
                 {/* Debug overlay - only active for the current tab */}
                 {isActive && (
