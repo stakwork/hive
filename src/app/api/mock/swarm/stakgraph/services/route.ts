@@ -27,7 +27,11 @@ export async function GET(request: NextRequest) {
     const requestId = `mock-services-${Math.floor(Math.random() * 10000) + 1000}`;
 
     // Create services request using the manager
-    const servicesStatus = mockServicesManager.createServicesRequest(requestId, workspaceId, swarmId || "");
+    const servicesStatus = mockServicesManager.createServicesRequest(
+      requestId,
+      workspaceId || "",
+      swarmId || ""
+    );
 
     // Randomly choose between synchronous and asynchronous processing
     const useAsyncProcessing = Math.random() > 0.3; // 70% chance of async
