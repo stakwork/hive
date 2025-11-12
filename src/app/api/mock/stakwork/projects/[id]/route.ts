@@ -8,7 +8,7 @@ export const runtime = "nodejs";
  * Mock endpoint for Stakwork project details API
  * GET /projects/{id}.json - Get project workflow data
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.id;
+    const { id: projectId } = await params;
     console.log("[Mock Stakwork] Getting workflow data for project:", projectId);
 
     // Simulate API delay
