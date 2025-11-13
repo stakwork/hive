@@ -105,7 +105,7 @@ export default function ServicesModal({
           }
         }
       } catch (error) {
-        logger.error("Failed to load settings:", "modals/ServicesModal", { error });
+        logger.error("Failed to load settings:", { error });
         toast({
           title: "Error",
           description: "Failed to load settings",
@@ -147,7 +147,7 @@ export default function ServicesModal({
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
       });
     } catch (err) {
-      logger.error("Failed to paste environment variables:", "modals/ServicesModal", { err });
+      logger.error("Failed to paste environment variables:", { err });
       toast({
         title: "Paste failed",
         description: "Unable to read from clipboard. Please try again.",
@@ -177,7 +177,7 @@ export default function ServicesModal({
       });
       setShowImportSection(false);
     } catch (err) {
-      logger.error("Failed to parse file:", "modals/ServicesModal", { err });
+      logger.error("Failed to parse file:", { err });
       toast({
         title: "Import failed",
         description: "Failed to parse the file. Please check the format.",
@@ -258,7 +258,7 @@ export default function ServicesModal({
       });
       onResolve(true);
     } catch (error) {
-      logger.error("Failed to save settings:", "modals/ServicesModal", { error });
+      logger.error("Failed to save settings:", { error });
       toast({
         title: "Error",
         description: "Failed to save settings. Please try again.",

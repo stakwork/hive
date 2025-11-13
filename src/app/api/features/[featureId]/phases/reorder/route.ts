@@ -26,7 +26,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error reordering phases:", "reorder/route", { error });
+    logger.error("Error reordering phases:", { error });
     const message = error instanceof Error ? error.message : "Failed to reorder phases";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

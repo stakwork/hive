@@ -137,7 +137,7 @@ export function UserStoriesSection({
         setSavedStoryId(null);
       }, 2000);
     } catch (error) {
-      logger.error("Failed to update user story:", "features/UserStoriesSection", { error });
+      logger.error("Failed to update user story:", { error });
       setSavedStoryId(null);
     } finally {
       setSaving(false);

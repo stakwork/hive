@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      logger.debug(">>> [DIFF] Workspace not found:", "diff/route", { workspaceId });
+      logger.debug(">>> [DIFF] Workspace not found:", { workspaceId });
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
@@ -153,7 +153,7 @@ index 1234567..abcdefg 100644
         hasControlPort: !!podWorkspace.portMappings[POD_PORTS.CONTROL],
       } });
     } catch (error) {
-      logger.error(">>> [DIFF] Failed to get pod from pool:", "diff/route", { error });
+      logger.error(">>> [DIFF] Failed to get pod from pool:", { error });
       throw error;
     }
 
@@ -167,7 +167,7 @@ index 1234567..abcdefg 100644
       );
     }
 
-    logger.debug(">>> [DIFF] Fetching diff from control port:", "diff/route", { controlPortUrl });
+    logger.debug(">>> [DIFF] Fetching diff from control port:", { controlPortUrl });
 
     // GET /diff from the control port
     const diffUrl = `${controlPortUrl}/diff`;
@@ -180,7 +180,7 @@ index 1234567..abcdefg 100644
 
     if (!diffResponse.ok) {
       const errorText = await diffResponse.text();
-      logger.error(`>>> [DIFF] Failed to fetch diff: ${diffResponse.status} - ${errorText}`, "diff/route");
+      logger.error(`>>> [DIFF] Failed to fetch diff: ${diffResponse.status} - ${errorText}`);
       return NextResponse.json(
         { error: `Failed to fetch diff: ${diffResponse.status}`, details: errorText },
         { status: diffResponse.status },
@@ -227,7 +227,7 @@ index 1234567..abcdefg 100644
       },
     });
 
-    logger.debug(">>> [DIFF] Chat message with DIFF artifact created:", "diff/route", { chatMessage.id });
+    logger.debug(">>> [DIFF] Chat message with DIFF artifact created:", { chatMessage.id });
 
     return NextResponse.json(
       {
@@ -237,7 +237,7 @@ index 1234567..abcdefg 100644
       { status: 200 },
     );
   } catch (error) {
-    logger.error(">>> [DIFF] Error fetching diff:", "diff/route", { error });
+    logger.error(">>> [DIFF] Error fetching diff:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

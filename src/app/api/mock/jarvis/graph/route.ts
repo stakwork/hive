@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
       data: response,
     });
   } catch (error) {
-    logger.error("Error generating mock graph data:", "graph/route", { error });
+    logger.error("Error generating mock graph data:", { error });
     return NextResponse.json({ success: false, message: "Failed to generate mock data" }, { status: 500 });
   }
 }

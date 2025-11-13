@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolId = workspace.swarm.id || workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    logger.debug(">>> Dropping pod with ID:", "[workspaceId]/route", { podId });
+    logger.debug(">>> Dropping pod with ID:", { podId });
 
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             console.log(">>> No repositories to reset");
           }
         } catch (error) {
-          logger.error("Error resetting pod repositories:", "[workspaceId]/route", { error });
+          logger.error("Error resetting pod repositories:", { error });
         }
       }
     }
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error dropping pod:", "[workspaceId]/route", { error });
+    logger.error("Error dropping pod:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

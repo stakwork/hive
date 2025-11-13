@@ -115,7 +115,7 @@ export async function GET(request: Request) {
       data,
     });
   } catch (error: unknown) {
-    logger.error("Error fetching repositories:", "numofcommits/route", { error });
+    logger.error("Error fetching repositories:", { error });
 
     if (
       error &&

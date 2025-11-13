@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error fetching AI generation runs:", "runs/route", { error });
+    logger.error("Error fetching AI generation runs:", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to fetch AI generation runs";

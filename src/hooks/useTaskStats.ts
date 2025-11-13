@@ -54,7 +54,7 @@ export function useTaskStats(workspaceId: string | null): UseTaskStatsResult {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch task statistics";
       setError(errorMessage);
-      logger.error("Error fetching task statistics:", "useTaskStats", { err });
+      logger.error("Error fetching task statistics:", { err });
     } finally {
       setLoading(false);
     }

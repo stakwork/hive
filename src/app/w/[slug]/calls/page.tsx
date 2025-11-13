@@ -53,7 +53,7 @@ export default function CallsPage() {
       const data = await response.json();
       window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      logger.error("Error generating call link:", "calls/page", { err });
+      logger.error("Error generating call link:", { err });
       alert(err instanceof Error ? err.message : 'Failed to start call');
     } finally {
       setGeneratingLink(false);
@@ -85,7 +85,7 @@ export default function CallsPage() {
         setCalls(data.calls);
         setHasMore(data.hasMore);
       } catch (err) {
-        logger.error("Error fetching calls:", "calls/page", { err });
+        logger.error("Error fetching calls:", { err });
         setError(
           err instanceof Error ? err.message : "Failed to load call recordings",
         );

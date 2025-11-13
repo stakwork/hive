@@ -222,7 +222,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    logger.error("Error retrieving stakgraph settings:", "stakgraph/route", { error });
+    logger.error("Error retrieving stakgraph settings:", { error });
     return NextResponse.json(
       {
         success: false,
@@ -378,7 +378,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     try {
       decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey) : "";
     } catch (error) {
-      logger.error("Failed to decrypt poolApiKey:", "stakgraph/route", { error });
+      logger.error("Failed to decrypt poolApiKey:", { error });
       decryptedPoolApiKey = swarmPoolApiKey;
     }
 
@@ -397,9 +397,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           repositoryName: primaryRepo.name,
         });
 
-        logger.debug("=====> GitHub defaultBranch:", "stakgraph/route", { defaultBranch, "Current branch:", primaryRepo.branch });
+        logger.debug("=====> GitHub defaultBranch:", { defaultBranch, "Current branch:", primaryRepo.branch });
         if (defaultBranch && defaultBranch !== primaryRepo.branch) {
-          logger.debug("=====> Updating primary repository branch to:", "stakgraph/route", { defaultBranch });
+          logger.debug("=====> Updating primary repository branch to:", { defaultBranch });
           await db.repository.update({
             where: { id: primaryRepo.id },
             data: { branch: defaultBranch },
@@ -407,7 +407,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
     } catch (err) {
-      logger.error("Failed to setup repository with webhook:", "stakgraph/route", { err });
+      logger.error("Failed to setup repository with webhook:", { err });
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
@@ -442,7 +442,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           );
         }
       } catch (err) {
-        logger.error("Failed to update env vars in Pool Manager:", "stakgraph/route", { err });
+        logger.error("Failed to update env vars in Pool Manager:", { err });
       }
     }
 
@@ -477,7 +477,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    logger.error("Error saving stakgraph settings:", "stakgraph/route", { error });
+    logger.error("Error saving stakgraph settings:", { error });
     return NextResponse.json(
       {
         success: false,

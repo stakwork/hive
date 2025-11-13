@@ -64,14 +64,14 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
           throw new Error("Unexpected response format");
         }
       } catch (parseError) {
-        logger.error("Failed to parse AI response:", "useAIGenerate", { text });
-        logger.error("Parse error details:", "useAIGenerate", { parseError });
+        logger.error("Failed to parse AI response:", { text });
+        logger.error("Parse error details:", { parseError });
         throw new Error("Failed to parse AI response");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      logger.error("AI generation error:", "useAIGenerate", { err });
+      logger.error("AI generation error:", { err });
     } finally {
       setGenerating(false);
     }

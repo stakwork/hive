@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    logger.error("Error fetching screenshots:", "screenshots/route", { error })
+    logger.error("Error fetching screenshots:", { error })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

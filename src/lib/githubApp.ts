@@ -97,12 +97,12 @@ export async function getUserAppTokens(
 
     // Development-only logging (localhost only)
     if (process.env.NODE_ENV === 'development' && process.env.NEXTAUTH_URL?.includes('localhost')) {
-      logger.debug("[DEV] GitHub App OAuth Token:", "githubApp", { accessToken });
+      logger.debug("[DEV] GitHub App OAuth Token:", { accessToken });
     }
 
     return { accessToken, refreshToken };
   } catch (error) {
-    logger.error("Failed to decrypt GitHub App tokens:", "githubApp", { error });
+    logger.error("Failed to decrypt GitHub App tokens:", { error });
     return null;
   }
 }
@@ -170,7 +170,7 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
     // Get current tokens
     const currentTokens = await getUserAppTokens(userId);
     if (!currentTokens?.refreshToken) {
-      logger.error("No refresh token found for user:", "githubApp", { userId });
+      logger.error("No refresh token found for user:", { userId });
       return false;
     }
 
@@ -182,7 +182,7 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
 
     return true;
   } catch (error) {
-    logger.error("Failed to refresh and update user app tokens:", "githubApp", { error });
+    logger.error("Failed to refresh and update user app tokens:", { error });
     return false;
   }
 }
@@ -209,7 +209,7 @@ export async function checkRepositoryAccess(
     // Extract owner and repo name from repository URL
     const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
     if (!githubMatch) {
-      logger.error("[REPO ACCESS] Invalid GitHub repository URL:", "githubApp", { repositoryUrl });
+      logger.error("[REPO ACCESS] Invalid GitHub repository URL:", { repositoryUrl });
       return false;
     }
 
@@ -218,10 +218,10 @@ export async function checkRepositoryAccess(
     logger.debug("[REPO ACCESS] Parsed repository:", "githubApp", { { owner, repo, targetRepoFullName } });
 
     // Get access token for the specific GitHub owner
-    logger.debug("[REPO ACCESS] Getting tokens for user:", "githubApp", { userId, "and owner:", owner });
+    logger.debug("[REPO ACCESS] Getting tokens for user:", { userId, "and owner:", owner });
     const tokens = await getUserAppTokens(userId, owner);
     if (!tokens?.accessToken) {
-      logger.error("[REPO ACCESS] No access token available for user:", "githubApp", { userId, "and owner:", owner });
+      logger.error("[REPO ACCESS] No access token available for user:", { userId, "and owner:", owner });
       return false;
     }
     console.log("[REPO ACCESS] Successfully retrieved access token");
@@ -237,12 +237,12 @@ export async function checkRepositoryAccess(
       },
     });
 
-    logger.debug("[REPO ACCESS] GitHub API response status:", "githubApp", { response.status });
+    logger.debug("[REPO ACCESS] GitHub API response status:", { response.status });
 
     if (!response.ok) {
-      logger.error("[REPO ACCESS] Failed to fetch installation repositories:", "githubApp", { response.status, response.statusText });
+      logger.error("[REPO ACCESS] Failed to fetch installation repositories:", { response.status, response.statusText });
       const errorText = await response.text();
-      logger.error("[REPO ACCESS] Error response body:", "githubApp", { errorText });
+      logger.error("[REPO ACCESS] Error response body:", { errorText });
       return false;
     }
 
@@ -261,19 +261,19 @@ export async function checkRepositoryAccess(
         })) || [],
     });
 
-    logger.debug(`Looking for repository: ${targetRepoFullName}`, "githubApp");
+    logger.debug(`Looking for repository: ${targetRepoFullName}`);
 
     // Check if the target repository is in the list
     const hasAccess = data.repositories?.some(
       (repository: { full_name: string }) => repository.full_name.toLowerCase() === targetRepoFullName,
     );
 
-    logger.debug(`Repository access check result: ${hasAccess ? "GRANTED" : "DENIED"}`, "githubApp");
+    logger.debug(`Repository access check result: ${hasAccess ? "GRANTED" : "DENIED"}`);
 
-    logger.debug("[REPO ACCESS] Final result:", "githubApp", { hasAccess ? "ACCESS GRANTED" : "ACCESS DENIED" });
+    logger.debug("[REPO ACCESS] Final result:", { hasAccess ? "ACCESS GRANTED" : "ACCESS DENIED" });
     return !!hasAccess;
   } catch (error) {
-    logger.error("[REPO ACCESS] Error during repository access check:", "githubApp", { error });
+    logger.error("[REPO ACCESS] Error during repository access check:", { error });
     return false;
   }
 }

@@ -34,12 +34,12 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
         setIsLoading(true);
         setError(null);
 
-        logger.debug("workspaceSlug-is-here-in-useGithubApp", "useGithubApp", { workspaceSlug });
+        logger.debug("workspaceSlug-is-here-in-useGithubApp", { workspaceSlug });
 
 
         const url = workspaceSlug ? `/api/github/app/status?workspaceSlug=${workspaceSlug}` : "/api/github/app/status";
 
-        logger.debug("url-is-here-in-useGithubApp", "useGithubApp", { url });
+        logger.debug("url-is-here-in-useGithubApp", { url });
 
         const response = await fetch(url, {
           method: "GET",
@@ -56,7 +56,7 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
         setHasTokens(data.hasTokens || false);
         setHasRepoAccess(data.hasRepoAccess);
       } catch (err) {
-        logger.error("Error checking GitHub App status:", "useGithubApp", { err });
+        logger.error("Error checking GitHub App status:", { err });
         setError(err instanceof Error ? err.message : "Unknown error");
         setHasTokens(false);
       } finally {

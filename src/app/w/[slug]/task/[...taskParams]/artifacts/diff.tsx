@@ -68,7 +68,7 @@ export function DiffArtifactPanel({ artifacts, viewType = "unified", className =
           hasError: false as boolean,
         }));
       } catch (error) {
-        logger.error("Failed to parse diff for file:", "artifacts/diff", { diff.file, error });
+        logger.error("Failed to parse diff for file:", { diff.file, error });
         return [
           {
             fileName: diff.file,

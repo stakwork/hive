@@ -299,7 +299,7 @@ export async function processStakworkRunWebhook(
     : WorkflowStatus.COMPLETED;
 
   if (status === null) {
-    logger.warn(`Unknown status: ${project_status}`, "stakwork-run");
+    logger.warn(`Unknown status: ${project_status}`);
     return { runId: run.id, status: run.status };
   }
 
@@ -328,7 +328,7 @@ export async function processStakworkRunWebhook(
   });
 
   if (updateResult.count === 0) {
-    logger.warn(`Run ${run.id} was already updated by another request`, "stakwork-run");
+    logger.warn(`Run ${run.id} was already updated by another request`);
     return { runId: run.id, status: run.status };
   }
 
@@ -343,7 +343,7 @@ export async function processStakworkRunWebhook(
       timestamp: new Date(),
     });
   } catch (error) {
-    logger.error("Error broadcasting to Pusher:", "stakwork-run", { error });
+    logger.error("Error broadcasting to Pusher:", { error });
     // Don't throw - webhook processing succeeded
   }
 
@@ -513,7 +513,7 @@ export async function updateStakworkRunDecision(
         break;
       // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
       default:
-        logger.warn(`Unhandled StakworkRunType: ${updatedRun.type}`, "stakwork-run");
+        logger.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
     }
   }
 
@@ -532,7 +532,7 @@ export async function updateStakworkRunDecision(
       }
     );
   } catch (error) {
-    logger.error("Error broadcasting decision to Pusher:", "stakwork-run", { error });
+    logger.error("Error broadcasting decision to Pusher:", { error });
     // Don't throw - decision update succeeded
   }
 

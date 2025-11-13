@@ -64,7 +64,7 @@ export const smartLayout = async (nodes: Node[], edges: Edge[]): Promise<Node[]>
     // Step 3: Ensure edges don't cross through nodes
     return optimizeEdgePaths(noOverlapNodes, edges);
   } catch (error) {
-    logger.error("Smart layout error:", "workflow/layoutUtils", { error });
+    logger.error("Smart layout error:", { error });
     return nodesCopy;
   }
 };

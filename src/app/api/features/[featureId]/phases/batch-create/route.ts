@@ -44,7 +44,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    logger.error("Error batch creating phases and tickets:", "batch-create/route", { error });
+    logger.error("Error batch creating phases and tickets:", { error });
     const message = error instanceof Error ? error.message : "Failed to batch create phases and tickets";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

@@ -190,7 +190,7 @@ export async function createJanitorRun(
     const githubCreds = await getGithubUsernameAndPAT(credentialUserId, workspaceSlug);
 
     if (!githubCreds) {
-      logger.warn("No GitHub credentials found for janitor run", "Janitor", { 
+      logger.warn("No GitHub credentials found for janitor run", { 
         credentialUserId, 
         workspaceSlug 
       });
@@ -202,7 +202,7 @@ export async function createJanitorRun(
     const ignoreDirs = repository?.ignoreDirs || null;
 
     if (!repositoryUrl) {
-      logger.warn("No repository linked to workspace for janitor run", "Janitor", { 
+      logger.warn("No repository linked to workspace for janitor run", { 
         workspaceSlug 
       });
     }
@@ -242,7 +242,7 @@ export async function createJanitorRun(
     const projectId = (stakworkProject as any)?.data?.project_id;
 
     if (!projectId) {
-      logger.error("No project_id found in Stakwork response", "Janitor", { stakworkProject });
+      logger.error("No project_id found in Stakwork response", { stakworkProject });
       throw new Error("No project ID returned from Stakwork");
     }
 
@@ -279,7 +279,7 @@ export async function createJanitorRun(
     return janitorRun;
 
   } catch (stakworkError) {
-    logger.error("Failed to create Stakwork project for janitor run", "Janitor", { error: stakworkError });
+    logger.error("Failed to create Stakwork project for janitor run", { error: stakworkError });
     
     // Update the run status to failed
     await db.janitorRun.update({
@@ -779,7 +779,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           eventPayload,
         );
       } catch (error) {
-        logger.error("Error broadcasting recommendations update to Pusher", "Janitor", { error });
+        logger.error("Error broadcasting recommendations update to Pusher", { error });
       }
     }
 
@@ -863,7 +863,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
             eventPayload,
           );
         } catch (error) {
-          logger.error("Error broadcasting recommendations update to Pusher", "Janitor", { error });
+          logger.error("Error broadcasting recommendations update to Pusher", { error });
         }
       }
 

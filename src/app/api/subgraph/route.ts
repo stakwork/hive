@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       nodesUrl += `?ref_id=${encodeURIComponent(refId)}`;
     }
 
-    // logger.debug("Fetching nodes from:", "subgraph/route", { nodesUrl });
+    // logger.debug("Fetching nodes from:", { nodesUrl });
 
     // Fetch nodes from swarm
     const response = await fetch(nodesUrl, {
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    logger.error("Nodes API proxy error:", "subgraph/route", { error });
+    logger.error("Nodes API proxy error:", { error });
     return NextResponse.json({ error: "Failed to fetch nodes" }, { status: 500 });
   }
 }

@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const data = await mockResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    logger.error("Error fetching topics:", "topics/route", { error });
+    logger.error("Error fetching topics:", { error });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

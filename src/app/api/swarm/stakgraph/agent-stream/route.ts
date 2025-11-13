@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
-    logger.debug("[agent-stream] Unauthorized access attempt", "agent-stream/route", { {
+    logger.debug("[agent-stream] Unauthorized access attempt", { {
       timestamp: new Date( }).toISOString(),
       ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
       userAgent: request.headers.get('user-agent'),
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     sessionId: Math.random().toString(36).substring(7), // Unique session identifier
   };
 
-  logger.debug("[agent-stream] SSE connection initiated", "agent-stream/route", { logContext });
+  logger.debug("[agent-stream] SSE connection initiated", { logContext });
 
   if (!requestId || !swarmId) {
     logger.warn("[agent-stream] Missing required parameters", "agent-stream/route", { {
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
       try {
         // Get the swarm
-        logger.debug("[agent-stream] Fetching swarm from database", "agent-stream/route", { logContext });
+        logger.debug("[agent-stream] Fetching swarm from database", { logContext });
         const swarm = await db.swarm.findFirst({
           where: { id: swarmId },
           include: { workspace: { select: { slug: true } } }
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
           const maxAttempts = 120; // 10 minutes with 5-second intervals
           const pollStartTime = Date.now();
 
-          logger.debug("[agent-stream] Starting polling loop", "agent-stream/route", { {
+          logger.debug("[agent-stream] Starting polling loop", { {
             ...logContext,
             maxAttempts,
             timeoutMinutes: (maxAttempts * 5 }) / 60,
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
                 maxAttempts
               });
 
-              logger.debug("[agent-stream] Polling agent progress", "agent-stream/route", { {
+              logger.debug("[agent-stream] Polling agent progress", { {
                 ...logContext,
                 attempt: attempts + 1,
                 maxAttempts,
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
 
               const agentResult = await pollAgentProgress(swarmUrl, requestId, decryptedApiKey);
 
-              logger.debug("[agent-stream] Agent poll result", "agent-stream/route", { {
+              logger.debug("[agent-stream] Agent poll result", { {
                 ...logContext,
                 attempt: attempts + 1,
                 success: agentResult.ok,
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
 
               if (agentResult.ok) {
                 // Agent completed successfully
-                logger.debug("[agent-stream] Agent completed successfully", "agent-stream/route", { {
+                logger.debug("[agent-stream] Agent completed successfully", { {
                   ...logContext,
                   totalAttempts: attempts + 1,
                   totalDuration: Date.now( }) - pollStartTime,
@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
 
                 // Process the results
                 const agentFiles = agentResult.data as Record<string, string>;
-                logger.debug("[agent-stream] Processing agent files", "agent-stream/route", { {
+                logger.debug("[agent-stream] Processing agent files", { {
                   ...logContext,
                   fileKeys: Object.keys(agentFiles }),
                   fileCount: Object.keys(agentFiles).length,
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
                 // Parse results
                 const pm2Content = agentFiles["pm2.config.js"];
                 const services = parsePM2Content(pm2Content);
-                logger.debug("[agent-stream] Parsed PM2 services", "agent-stream/route", { {
+                logger.debug("[agent-stream] Parsed PM2 services", { {
                   ...logContext,
                   serviceCount: services?.length || 0,
                   serviceNames: services?.map(s => s.name }) || [],
@@ -196,20 +196,20 @@ export async function GET(request: NextRequest) {
                       // Use as plain text
                     }
                     agentEnvVars = parseEnv(envText);
-                    logger.debug("[agent-stream] Parsed environment variables", "agent-stream/route", { {
+                    logger.debug("[agent-stream] Parsed environment variables", { {
                       ...logContext,
                       envVarCount: Object.keys(agentEnvVars }).length,
                       envVarKeys: Object.keys(agentEnvVars), // Log keys but not values for security
                     });
                   } catch (e) {
-                    logger.error("[agent-stream] Failed to parse .env file from agent", "agent-stream/route", { {
+                    logger.error("[agent-stream] Failed to parse .env file from agent", { {
                       ...logContext,
                       error: e instanceof Error ? e.message : String(e }),
                       envContentLength: envContent?.length || 0,
                     });
                   }
                 } else {
-                  logger.warn("[agent-stream] No .env file found in agent results", "agent-stream/route", { logContext });
+                  logger.warn("[agent-stream] No .env file found in agent results", { logContext });
                 }
 
                 // Prepare container files
@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
                 }));
 
                 // Save to database
-                logger.debug("[agent-stream] Saving swarm data to database", "agent-stream/route", { {
+                logger.debug("[agent-stream] Saving swarm data to database", { {
                   ...logContext,
                   serviceCount: services?.length || 0,
                   envVarCount: environmentVariables.length,
@@ -251,7 +251,7 @@ export async function GET(request: NextRequest) {
                   },
                 });
 
-                logger.debug("[agent-stream] Agent processing completed successfully", "agent-stream/route", { {
+                logger.debug("[agent-stream] Agent processing completed successfully", { {
                   ...logContext,
                   totalDuration: Date.now( }) - startTime,
                   pollDuration: Date.now() - pollStartTime,
@@ -276,7 +276,7 @@ export async function GET(request: NextRequest) {
               }
 
             } catch (error) {
-              logger.error("[agent-stream] Error polling agent", "agent-stream/route", { {
+              logger.error("[agent-stream] Error polling agent", { {
                 ...logContext,
                 attempt: attempts + 1,
                 error: error instanceof Error ? error.message : String(error }),
@@ -298,7 +298,7 @@ export async function GET(request: NextRequest) {
           }
 
           // Timeout reached - clear agent status
-          logger.error("[agent-stream] Agent polling timed out", "agent-stream/route", { {
+          logger.error("[agent-stream] Agent polling timed out", { {
             ...logContext,
             totalAttempts: attempts,
             maxAttempts,
@@ -323,7 +323,7 @@ export async function GET(request: NextRequest) {
 
         // Start polling in background
         pollAgent().catch((error) => {
-          logger.error("[agent-stream] Critical polling error", "agent-stream/route", { {
+          logger.error("[agent-stream] Critical polling error", { {
             ...logContext,
             error: error instanceof Error ? error.message : String(error }),
             errorStack: error instanceof Error ? error.stack : undefined,
@@ -334,7 +334,7 @@ export async function GET(request: NextRequest) {
         });
 
       } catch (error) {
-        logger.error("[agent-stream] SSE setup error", "agent-stream/route", { {
+        logger.error("[agent-stream] SSE setup error", { {
           ...logContext,
           error: error instanceof Error ? error.message : String(error }),
           errorStack: error instanceof Error ? error.stack : undefined,
@@ -346,14 +346,14 @@ export async function GET(request: NextRequest) {
     },
 
     cancel() {
-      logger.debug("[agent-stream] SSE connection cancelled", "agent-stream/route", { {
+      logger.debug("[agent-stream] SSE connection cancelled", { {
         ...logContext,
         totalDuration: Date.now( }) - startTime,
       });
     }
   });
 
-  logger.debug("[agent-stream] SSE stream created successfully", "agent-stream/route", { {
+  logger.debug("[agent-stream] SSE stream created successfully", { {
     ...logContext,
     setupDuration: Date.now( }) - startTime,
   });

@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching test coverage:", "coverage/route", { error });
+    logger.error("Error fetching test coverage:", { error });
     return NextResponse.json(
       { success: false, message: "Failed to fetch test coverage" },
       { status: 500 },

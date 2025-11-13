@@ -140,7 +140,7 @@ export function useDebugSelection(
 
       setDebugMode(false);
     } catch (error) {
-      logger.error("Failed to process debug selection:", "useDebugSelection", { error });
+      logger.error("Failed to process debug selection:", { error });
 
       const bugReportContent: BugReportContent = {
         bugDescription: `Debug analysis failed at (${x}, ${y})`,
@@ -174,7 +174,7 @@ export function useDebugSelection(
           );
           setDebugMode(false);
         } catch (chatError) {
-          logger.error("Failed to send fallback debug message:", "useDebugSelection", { chatError });
+          logger.error("Failed to send fallback debug message:", { chatError });
         }
       }
     } finally {

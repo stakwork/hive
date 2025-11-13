@@ -26,7 +26,7 @@ export class HttpClient {
     service: string = "unknown",
   ): Promise<T> {
     const url = `${this.config.baseURL}${endpoint}`;
-    logger.debug("HTTP request initiated", "HttpClient", { url, service });
+    logger.debug("HTTP request initiated", { url, service });
     const config: RequestInit = {
       ...options,
       headers: {
@@ -63,7 +63,7 @@ export class HttpClient {
 
       const jsonResponse = await response.json();
 
-      logger.debug("HTTP request completed", "HttpClient", { 
+      logger.debug("HTTP request completed", { 
         url, 
         service,
         status: response.status 
@@ -125,7 +125,7 @@ export class HttpClient {
     headers?: Record<string, string>,
     service?: string,
   ): Promise<T> {
-    logger.debug("HTTP POST request", "HttpClient", { endpoint, hasBody: !!body });
+    logger.debug("HTTP POST request", { endpoint, hasBody: !!body });
 
     return this.request<T>(
       endpoint,

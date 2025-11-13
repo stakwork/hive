@@ -35,7 +35,7 @@ export function StatusPopover<T extends FeatureStatus | PhaseStatus | TaskStatus
       await onUpdate(status);
       setOpen(false);
     } catch (error) {
-      logger.error("Failed to update status:", "ui/status-popover", { error });
+      logger.error("Failed to update status:", { error });
     } finally {
       setUpdating(false);
     }

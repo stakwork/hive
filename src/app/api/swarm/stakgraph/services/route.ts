@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
     const swarmId = searchParams.get("swarmId");
     const repo_url_param = searchParams.get("repo_url");
 
-    logger.debug("workspaceId", "route", { workspaceId });
-    logger.debug("swarmId", "route", { swarmId });
-    logger.debug("repo_url_param", "route", { repo_url_param });
+    logger.debug("workspaceId", { workspaceId });
+    logger.debug("swarmId", { swarmId });
+    logger.debug("repo_url_param", { repo_url_param });
 
     if (!workspaceId && !swarmId) {
       return NextResponse.json(
@@ -46,11 +46,11 @@ export async function GET(request: NextRequest) {
     if (swarmId) where.id = swarmId;
     else if (workspaceId) where.workspaceId = workspaceId;
 
-    logger.debug("where", "route", { where });
+    logger.debug("where", { where });
 
     const swarm = await db.swarm.findFirst({ where });
 
-    logger.debug("swarm", "route", { swarm });
+    logger.debug("swarm", { swarm });
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     // Check if there's already an ongoing agent process
     if (swarm.agentRequestId && swarm.agentStatus === 'PROCESSING') {
-      logger.debug("[stakgraph/services] Reusing existing agent request:", "route", { swarm.agentRequestId });
+      logger.debug("[stakgraph/services] Reusing existing agent request:", { swarm.agentRequestId });
       return NextResponse.json(
         {
           success: true,
@@ -120,12 +120,12 @@ export async function GET(request: NextRequest) {
     if (repo_url) {
       // Agent mode - call services_agent endpoint
       try {
-        logger.debug("[stakgraph/services] Starting agent mode for repo:", "route", { repo_url });
+        logger.debug("[stakgraph/services] Starting agent mode for repo:", { repo_url });
         const { owner, repo } = parseGithubOwnerRepo(repo_url);
         logger.debug("[stakgraph/services] Parsed GitHub:", "route", { { owner, repo } });
 
         // Start the agent request with proper GitHub authentication
-        logger.debug("[stakgraph/services] Initiating agent request to:", "route", { swarmUrl });
+        logger.debug("[stakgraph/services] Initiating agent request to:", { swarmUrl });
         logger.debug("[stakgraph/services] Agent request params:", "route", { {
           owner,
           repo,
@@ -146,14 +146,14 @@ export async function GET(request: NextRequest) {
         });
 
         if (!agentInitResult.ok) {
-          logger.error("[stakgraph/services] Agent init failed:", "route", { agentInitResult });
+          logger.error("[stakgraph/services] Agent init failed:", { agentInitResult });
           throw new Error("Failed to initiate agent");
         }
 
         const initData = agentInitResult.data as { request_id: string };
-        logger.debug("[stakgraph/services] Agent init response:", "route", { initData });
+        logger.debug("[stakgraph/services] Agent init response:", { initData });
         if (!initData.request_id) {
-          logger.error("[stakgraph/services] No request_id in response:", "route", { initData });
+          logger.error("[stakgraph/services] No request_id in response:", { initData });
           throw new Error("No request_id received from agent");
         }
 
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
         );
       } catch (error) {
         logger.error("[stakgraph/services] Agent mode failed, detailed error:", "route", { error });
-        logger.error("[stakgraph/services] Error stack:", "route", { error instanceof Error ? error.stack : "No stack trace" });
+        logger.error("[stakgraph/services] Error stack:", { error instanceof Error ? error.stack : "No stack trace" });
         logger.error("Agent mode failed, falling back to stakgraph services endpoint:", "route", { error });
         // Fall back to stakgraph services endpoint
         logger.debug("[stakgraph/services] Calling fallback stakgraph services with params:", "route", { {
@@ -245,9 +245,9 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   } catch (error) {
-    logger.error("[stakgraph/services] Unhandled error:", "route", { error });
-    logger.error("[stakgraph/services] Error stack:", "route", { error instanceof Error ? error.stack : "No stack trace" });
-    logger.error("Unhandled error:", "route", { error });
+    logger.error("[stakgraph/services] Unhandled error:", { error });
+    logger.error("[stakgraph/services] Error stack:", { error instanceof Error ? error.stack : "No stack trace" });
+    logger.error("Unhandled error:", { error });
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }

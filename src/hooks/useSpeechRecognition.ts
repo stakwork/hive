@@ -45,7 +45,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         };
 
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-          logger.error("Speech recognition error:", "useSpeechRecognition", { event.error });
+          logger.error("Speech recognition error:", { event.error });
           setIsListening(false);
         };
 
@@ -79,7 +79,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
           try {
             recognitionRef.current?.start();
           } catch (error) {
-            logger.error("Error starting speech recognition:", "useSpeechRecognition", { error });
+            logger.error("Error starting speech recognition:", { error });
             isStartingRef.current = false;
             return false;
           }
@@ -98,7 +98,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
           try {
             recognitionRef.current?.stop();
           } catch (error) {
-            logger.error("Error stopping speech recognition:", "useSpeechRecognition", { error });
+            logger.error("Error stopping speech recognition:", { error });
           }
           return false;
         }

@@ -21,7 +21,7 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{ hasAccess: bool
 
     return { hasAccess: statusData.hasPushAccess === true };
   } catch (error) {
-    logger.error("Failed to check repository access:", "swarm-setup/RepositoryAccessChecker", { error });
+    logger.error("Failed to check repository access:", { error });
     return { hasAccess: false, error: "Failed to check repository access" };
   }
 };
@@ -37,7 +37,7 @@ export function RepositoryAccessChecker({ repositoryUrl, onAccessResult }: Repos
         const result = await checkRepositoryAccess(repositoryUrl);
         onAccessResult(result.hasAccess, result.error);
       } catch (error) {
-        logger.error("Error checking repository access:", "swarm-setup/RepositoryAccessChecker", { error });
+        logger.error("Error checking repository access:", { error });
         onAccessResult(false, "Failed to check repository access");
       }
     };

@@ -34,7 +34,7 @@ export async function POST(
 
     return NextResponse.json(result)
   } catch (error) {
-    logger.error("Error generating presigned upload URL:", "upload-url/route", { error })
+    logger.error("Error generating presigned upload URL:", { error })
 
     if (error && typeof error === 'object' && 'issues' in error) {
       return NextResponse.json(

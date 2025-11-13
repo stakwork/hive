@@ -31,7 +31,7 @@ export function PriorityPopover({
       await onUpdate(priority);
       setOpen(false);
     } catch (error) {
-      logger.error("Failed to update priority:", "ui/priority-popover", { error });
+      logger.error("Failed to update priority:", { error });
     } finally {
       setUpdating(false);
     }

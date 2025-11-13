@@ -57,7 +57,7 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
         setError(result.error || result.message || 'Failed to check repository permissions');
       }
     } catch (err) {
-      logger.error("Error checking repository permissions:", "useRepositoryPermissions", { err });
+      logger.error("Error checking repository permissions:", { err });
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
     } finally {
       setLoading(false);

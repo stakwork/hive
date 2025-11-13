@@ -130,7 +130,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
         setMessages((prev) => [...prev, assistantMessage]);
       }
     } catch (error) {
-      logger.error("Error calling ask API:", "LearnChat", { error });
+      logger.error("Error calling ask API:", { error });
       const errorMessage: LearnMessage = {
         id: (Date.now() + 1).toString(),
         content: "I'm sorry, but I encountered an error while processing your question. Please try again later.",

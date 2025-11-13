@@ -490,7 +490,7 @@ export async function getGithubUsernameAndPAT(
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
-    logger.debug(`[getGithubUsernameAndPAT] User not found: ${userId}`, "auth/nextauth");
+    logger.debug(`[getGithubUsernameAndPAT] User not found: ${userId}`);
     return null;
   }
 
@@ -500,22 +500,22 @@ export async function getGithubUsernameAndPAT(
     return null;
   }
 
-  logger.debug(`[getGithubUsernameAndPAT] User found: ${user.email}`, "auth/nextauth");
+  logger.debug(`[getGithubUsernameAndPAT] User found: ${user.email}`);
 
   // Get GitHub username from GitHubAuth
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
   if (!githubAuth) {
-    logger.debug(`[getGithubUsernameAndPAT] No GitHubAuth record found for userId: ${userId}`, "auth/nextauth");
+    logger.debug(`[getGithubUsernameAndPAT] No GitHubAuth record found for userId: ${userId}`);
     return null;
   }
 
   // Check for valid username
   if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === "") {
-    logger.debug(`[getGithubUsernameAndPAT] Invalid or empty GitHub username for userId: ${userId}`, "auth/nextauth");
+    logger.debug(`[getGithubUsernameAndPAT] Invalid or empty GitHub username for userId: ${userId}`);
     return null;
   }
 
-  logger.debug(`[getGithubUsernameAndPAT] GitHub username found: ${githubAuth.githubUsername}`, "auth/nextauth");
+  logger.debug(`[getGithubUsernameAndPAT] GitHub username found: ${githubAuth.githubUsername}`);
 
   // If no workspace provided, use user's OAuth token from Account table
   if (!workspaceSlug) {
@@ -529,7 +529,7 @@ export async function getGithubUsernameAndPAT(
     });
 
     if (!account?.access_token) {
-      logger.debug(`[getGithubUsernameAndPAT] No GitHub account or access token found for userId: ${userId}`, "auth/nextauth");
+      logger.debug(`[getGithubUsernameAndPAT] No GitHub account or access token found for userId: ${userId}`);
       return null;
     }
 
@@ -539,7 +539,7 @@ export async function getGithubUsernameAndPAT(
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
 
-      logger.debug(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`, "auth/nextauth");
+      logger.debug(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`);
       return {
         username: githubAuth.githubUsername,
         token: token,
@@ -561,7 +561,7 @@ export async function getGithubUsernameAndPAT(
   });
 
   if (!workspace) {
-    logger.debug(`[getGithubUsernameAndPAT] Workspace not found: ${workspaceSlug}`, "auth/nextauth");
+    logger.debug(`[getGithubUsernameAndPAT] Workspace not found: ${workspaceSlug}`);
     return null;
   }
 
@@ -583,7 +583,7 @@ export async function getGithubUsernameAndPAT(
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
-      logger.debug(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`, "auth/nextauth");
+      logger.debug(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`);
       return {
         username: githubAuth.githubUsername,
         token: token,
@@ -594,7 +594,7 @@ export async function getGithubUsernameAndPAT(
     }
   }
 
-  logger.debug(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`, "auth/nextauth");
+  logger.debug(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`);
 
   // Get user's token for this source control org
   const sourceControlToken = await db.sourceControlToken.findUnique({

@@ -138,7 +138,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error("Error fetching calls:", "calls/route", { error });
+    logger.error("Error fetching calls:", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

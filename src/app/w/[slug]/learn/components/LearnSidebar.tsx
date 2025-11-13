@@ -42,7 +42,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
         const data = await response.json();
         setLearnings(data);
       } catch (error) {
-        logger.error("Error fetching learnings:", "LearnSidebar", { error });
+        logger.error("Error fetching learnings:", { error });
         setError("Failed to load learnings data");
       } finally {
         setIsLoading(false);
@@ -71,7 +71,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
       const data = await response.json();
       setLearnings(data);
     } catch (error) {
-      logger.error("Error fetching learnings:", "LearnSidebar", { error });
+      logger.error("Error fetching learnings:", { error });
       setError("Failed to load learnings data");
     } finally {
       setIsLoading(false);
@@ -95,11 +95,11 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
     })
       .then((response) => {
         if (!response.ok) {
-          logger.error(`Failed to seed knowledge: ${response.status}`, "LearnSidebar");
+          logger.error(`Failed to seed knowledge: ${response.status}`);
         }
       })
       .catch((error) => {
-        logger.error("Error seeding knowledge:", "LearnSidebar", { error });
+        logger.error("Error seeding knowledge:", { error });
       });
 
     setTimeout(() => {

@@ -106,7 +106,7 @@ export async function GET(
           try {
             contextTags = JSON.parse(msg.contextTags) as ContextTag[];
           } catch (error) {
-            logger.error("Error parsing contextTags for message", "messages/route", { msg.id, ':', error, 'value:', msg.contextTags });
+            logger.error("Error parsing contextTags for message", { msg.id, ':', error, 'value:', msg.contextTags });
           }
         } else if (Array.isArray(msg.contextTags)) {
           contextTags = msg.contextTags as unknown as ContextTag[];
@@ -142,7 +142,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching chat messages for task:", "messages/route", { error });
+    logger.error("Error fetching chat messages for task:", { error });
     return NextResponse.json(
       { error: "Failed to fetch chat messages" },
       { status: 500 },

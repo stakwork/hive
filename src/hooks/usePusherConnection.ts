@@ -89,7 +89,7 @@ export function usePusherConnection({
         : getWorkspaceChannelName(currentChannelIdRef.current);
 
       if (LOGS) {
-        logger.debug("Unsubscribing from Pusher channel:", "usePusherConnection", { channelName });
+        logger.debug("Unsubscribing from Pusher channel:", { channelName });
       }
 
       // Unbind all events
@@ -126,7 +126,7 @@ export function usePusherConnection({
         // Set up event handlers
         channel.bind("pusher:subscription_succeeded", () => {
           if (LOGS) {
-            logger.debug("Successfully subscribed to Pusher channel:", "usePusherConnection", { channelName });
+            logger.debug("Successfully subscribed to Pusher channel:", { channelName });
           }
 
           // Add a small delay to ensure Pusher is fully ready to receive messages
@@ -138,7 +138,7 @@ export function usePusherConnection({
         });
 
         channel.bind("pusher:subscription_error", (error: unknown) => {
-          logger.error("Pusher subscription error:", "usePusherConnection", { error });
+          logger.error("Pusher subscription error:", { error });
           setError(`Failed to connect to ${type} real-time updates`);
           setIsConnected(false);
         });
@@ -156,12 +156,12 @@ export function usePusherConnection({
                   if (onMessageRef.current) onMessageRef.current(full);
                   return;
                 } else {
-                  logger.error("Failed to fetch message by id", "usePusherConnection", { payload });
+                  logger.error("Failed to fetch message by id", { payload });
                   return;
                 }
               }
             } catch (err) {
-              logger.error("Error handling NEW_MESSAGE event:", "usePusherConnection", { err });
+              logger.error("Error handling NEW_MESSAGE event:", { err });
               return;
             }
           });
@@ -244,7 +244,7 @@ export function usePusherConnection({
         currentChannelIdRef.current = targetId;
         currentChannelTypeRef.current = type;
       } catch (error) {
-        logger.error("Error setting up Pusher connection:", "usePusherConnection", { error });
+        logger.error("Error setting up Pusher connection:", { error });
         setError(`Failed to setup ${type} real-time connection`);
         setIsConnected(false);
       }
@@ -262,12 +262,12 @@ export function usePusherConnection({
     // Determine which connection to make
     if (taskId && taskId !== currentChannelIdRef.current) {
       if (LOGS) {
-        logger.debug("Connecting to Pusher channel for task:", "usePusherConnection", { taskId });
+        logger.debug("Connecting to Pusher channel for task:", { taskId });
       }
       connect(taskId, 'task');
     } else if (workspaceSlug && workspaceSlug !== currentChannelIdRef.current) {
       if (LOGS) {
-        logger.debug("Connecting to Pusher channel for workspace:", "usePusherConnection", { workspaceSlug });
+        logger.debug("Connecting to Pusher channel for workspace:", { workspaceSlug });
       }
       connect(workspaceSlug, 'workspace');
     } else if (!taskId && !workspaceSlug) {

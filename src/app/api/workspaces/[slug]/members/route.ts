@@ -39,7 +39,7 @@ export async function GET(
     const result = await getWorkspaceMembers(workspace.id, includeSystemAssignees);
     return NextResponse.json(result);
   } catch (error) {
-    logger.error("Error fetching workspace members:", "members/route", { error });
+    logger.error("Error fetching workspace members:", { error });
     return NextResponse.json(
       { error: "Failed to fetch members" },
       { status: 500 }
@@ -89,7 +89,7 @@ export async function POST(
     const member = await addWorkspaceMember(access.workspace.id, githubUsername, role);
     return NextResponse.json({ member }, { status: 201 });
   } catch (error: unknown) {
-    logger.error("Error adding workspace member:", "members/route", { error });
+    logger.error("Error adding workspace member:", { error });
     
     if (error instanceof Error) {
       if (error.message.includes("not found")) {

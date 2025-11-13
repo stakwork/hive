@@ -108,7 +108,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching graph nodes:", "nodes/route", { error });
+    logger.error("Error fetching graph nodes:", { error });
     return NextResponse.json(
       { success: false, message: "Failed to fetch graph nodes" },
       { status: 500 },

@@ -42,7 +42,7 @@ export const useWorkflowPolling = (
         intervalRef.current = null;
       }
     } catch (err) {
-      logger.error("Error fetching workflow data:", "useWorkflowPolling", { err });
+      logger.error("Error fetching workflow data:", { err });
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsLoading(false);

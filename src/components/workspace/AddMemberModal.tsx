@@ -100,7 +100,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
           setSearchResults([]);
         }
       } catch (error) {
-        logger.error("Search error:", "workspace/AddMemberModal", { error });
+        logger.error("Search error:", { error });
         setSearchResults([]);
       } finally {
         setIsSearching(false);

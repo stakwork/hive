@@ -15,11 +15,11 @@ export function RepositoryCard() {
 
   const { workspace, slug } = useWorkspace();
 
-  logger.debug("slug-is-here", "repository-card/index", { slug });
-  logger.debug("workspace-slug-is-here", "repository-card/index", { workspace?.slug });
+  logger.debug("slug-is-here", { slug });
+  logger.debug("workspace-slug-is-here", { workspace?.slug });
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
-  logger.debug("hasGithubAppTokens-is-here", "repository-card/index", { hasGithubAppTokens });
-  logger.debug("isGithubAppLoading-is-here", "repository-card/index", { isGithubAppLoading });
+  logger.debug("hasGithubAppTokens-is-here", { hasGithubAppTokens });
+  logger.debug("isGithubAppLoading-is-here", { isGithubAppLoading });
   const { toast } = useToast();
   const [isInstalling, setIsInstalling] = useState(false);
   // Handle GitHub App installation
@@ -52,7 +52,7 @@ export function RepositoryCard() {
         });
       }
     } catch (error) {
-      logger.error("Failed to install GitHub App:", "repository-card/index", { error });
+      logger.error("Failed to install GitHub App:", { error });
       setIsInstalling(false);
       toast({
         title: "Installation Failed",

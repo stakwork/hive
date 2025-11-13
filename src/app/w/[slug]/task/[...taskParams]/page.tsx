@@ -114,7 +114,7 @@ export default function TaskChatPage() {
     (update: TaskTitleUpdateEvent) => {
       // Only update if it's for the current task
       if (update.taskId === currentTaskId) {
-        logger.debug(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`, "[...taskParams]/page");
+        logger.debug(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
         setTaskTitle(update.newTitle);
       }
     },
@@ -155,7 +155,7 @@ export default function TaskChatPage() {
 
       if (result.success && result.data.messages) {
         setMessages(result.data.messages);
-        logger.debug(`Loaded ${result.data.count} existing messages for task`, "[...taskParams]/page");
+        logger.debug(`Loaded ${result.data.count} existing messages for task`);
 
         // Set task mode from loaded task data
         if (result.data.task?.mode) {
@@ -169,7 +169,7 @@ export default function TaskChatPage() {
 
         // Set project ID for log subscription if available
         if (result.data.task?.stakworkProjectId) {
-          logger.debug("Setting project ID from task data:", "[...taskParams]/page", { result.data.task.stakworkProjectId });
+          logger.debug("Setting project ID from task data:", { result.data.task.stakworkProjectId });
           setProjectId(result.data.task.stakworkProjectId.toString());
           setStakworkProjectId(result.data.task.stakworkProjectId);
 
@@ -203,7 +203,7 @@ export default function TaskChatPage() {
         }
       }
     } catch (error) {
-      logger.error("Error loading task messages:", "[...taskParams]/page", { error });
+      logger.error("Error loading task messages:", { error });
       toast({
         title: "Error",
         description: "Failed to load existing messages.",
@@ -270,17 +270,17 @@ export default function TaskChatPage() {
 
             if (podResponse.ok) {
               const podResult = await podResponse.json();
-              // logger.debug(">>> Pod claim result:", "[...taskParams]/page", { podResult });
+              // logger.debug(">>> Pod claim result:", { podResult });
               // Only frontend and IDE URLs are returned (no goose URL or password)
               claimedPodUrls = {
                 frontend: podResult.frontend,
                 ide: podResult.ide,
               };
               freshPodId = podResult.podId;
-              logger.debug(">>> Setting claimedPodId:", "[...taskParams]/page", { freshPodId });
+              logger.debug(">>> Setting claimedPodId:", { freshPodId });
               setClaimedPodId(freshPodId);
             } else {
-              logger.error("Failed to claim pod:", "[...taskParams]/page", { await podResponse.text( }));
+              logger.error("Failed to claim pod:", { await podResponse.text( }));
               toast({
                 title: "Warning",
                 description: "Failed to claim pod. Continuing without pod integration.",
@@ -288,7 +288,7 @@ export default function TaskChatPage() {
               });
             }
           } catch (error) {
-            logger.error("Error claiming pod:", "[...taskParams]/page", { error });
+            logger.error("Error claiming pod:", { error });
             toast({
               title: "Warning",
               description: "Failed to claim pod. Continuing without pod integration.",
@@ -315,7 +315,7 @@ export default function TaskChatPage() {
         await sendMessage(msg);
       }
     } catch (error) {
-      logger.error("Error in handleStart:", "[...taskParams]/page", { error });
+      logger.error("Error in handleStart:", { error });
       setIsLoading(false);
       toast({
         title: "Error",
@@ -477,10 +477,10 @@ export default function TaskChatPage() {
               }
             } else {
               // Pod might have been released or doesn't exist anymore - just skip silently
-              logger.debug("Failed to fetch diff (pod may no longer exist):", "[...taskParams]/page", { diffResponse.status });
+              logger.debug("Failed to fetch diff (pod may no longer exist):", { diffResponse.status });
             }
           } catch (error) {
-            logger.error("Error fetching diff:", "[...taskParams]/page", { error });
+            logger.error("Error fetching diff:", { error });
             // Silent failure - don't interrupt user flow
           }
         }
@@ -517,7 +517,7 @@ export default function TaskChatPage() {
       }
 
       if (result.workflow?.project_id) {
-        logger.debug("Project ID:", "[...taskParams]/page", { result.workflow.project_id });
+        logger.debug("Project ID:", { result.workflow.project_id });
         setProjectId(result.workflow.project_id);
         setStakworkProjectId(result.workflow.project_id);
         setIsChainVisible(true);
@@ -545,7 +545,7 @@ export default function TaskChatPage() {
       // This prevents re-animation since React sees it as the same message
       setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)));
     } catch (error) {
-      logger.error("Error sending message:", "[...taskParams]/page", { error });
+      logger.error("Error sending message:", { error });
 
       // Update message status to ERROR
       setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)));
@@ -561,7 +561,7 @@ export default function TaskChatPage() {
   };
 
   const handleArtifactAction = async (messageId: string, action: Option, webhook: string) => {
-    // logger.debug("Action triggered:", "[...taskParams]/page", { action });
+    // logger.debug("Action triggered:", { action });
 
     // Find the original message that contains artifacts
     const originalMessage = messages.find((msg) => msg.id === messageId);
@@ -622,7 +622,7 @@ export default function TaskChatPage() {
       setBranchName(branchResult.data.branch_name);
       setShowCommitModal(true);
     } catch (error) {
-      logger.error("Error generating commit information:", "[...taskParams]/page", { error });
+      logger.error("Error generating commit information:", { error });
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to generate commit information.",
@@ -637,7 +637,7 @@ export default function TaskChatPage() {
     if (!workspaceId || !currentTaskId) {
       return;
     }
-    logger.debug("🔍 Claimed pod ID:", "[...taskParams]/page", { claimedPodId });
+    logger.debug("🔍 Claimed pod ID:", { claimedPodId });
     // Block actual commit in local dev without a pod
     if (!claimedPodId) {
       toast({
@@ -742,7 +742,7 @@ export default function TaskChatPage() {
         description: "Changes committed and pushed successfully! Check the chat for PR links.",
       });
     } catch (error) {
-      logger.error("Error committing:", "[...taskParams]/page", { error });
+      logger.error("Error committing:", { error });
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to commit changes.",

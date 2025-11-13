@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const finalTaskId = task_id || taskIdFromQuery;
 
     if (!finalTaskId) {
-      logger.error("No task_id provided in webhook", "webhook/route");
+      logger.error("No task_id provided in webhook");
       return NextResponse.json(
         { error: "task_id is required" },
         { status: 400 },
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!project_status) {
-      logger.error("No project_status provided in webhook", "webhook/route");
+      logger.error("No project_status provided in webhook");
       return NextResponse.json(
         { error: "project_status is required" },
         { status: 400 },
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!task) {
-      logger.error(`Task not found: ${finalTaskId}`, "webhook/route");
+      logger.error(`Task not found: ${finalTaskId}`);
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         eventPayload,
       );
     } catch (error) {
-      logger.error("Error broadcasting to Pusher:", "webhook/route", { error });
+      logger.error("Error broadcasting to Pusher:", { error });
     }
 
     return NextResponse.json(
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error processing Stakwork webhook:", "webhook/route", { error });
+    logger.error("Error processing Stakwork webhook:", { error });
     return NextResponse.json(
       { error: "Failed to process webhook" },
       { status: 500 },

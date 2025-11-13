@@ -29,7 +29,7 @@ export async function GET(
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    logger.error("Error fetching workflow data:", "[projectId]/route", { error });
+    logger.error("Error fetching workflow data:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

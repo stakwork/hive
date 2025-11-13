@@ -47,7 +47,7 @@ export function GitHubStatusWidget() {
         });
       }
     } catch (error) {
-      logger.error("Failed to install GitHub App:", "github-status-widget/index", { error });
+      logger.error("Failed to install GitHub App:", { error });
       setIsInstalling(false);
       toast({
         title: "Installation Failed",

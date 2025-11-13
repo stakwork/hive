@@ -47,14 +47,14 @@ async function sendChunkToStakwork(chunk: string) {
     });
 
     if (!response.ok) {
-      logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "chunk/route");
+      logger.error(`Failed to send message to Stakwork: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: result.success, data: result.data };
   } catch (error) {
-    logger.error("Error calling Stakwork:", "chunk/route", { error });
+    logger.error("Error calling Stakwork:", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -65,14 +65,14 @@ export async function POST(request: NextRequest) {
     const { chunk, wordCount, workspaceSlug } = body;
 
     console.log("=== Transcript Chunk Received ===");
-    logger.debug(`Workspace: ${workspaceSlug}`, "chunk/route");
-    logger.debug(`Word Count: ${wordCount}`, "chunk/route");
-    logger.debug(`Chunk: ${chunk}`, "chunk/route");
+    logger.debug(`Workspace: ${workspaceSlug}`);
+    logger.debug(`Word Count: ${wordCount}`);
+    logger.debug(`Chunk: ${chunk}`);
     console.log("================================\n");
 
     const result = await sendChunkToStakwork(chunk);
     if (!result.success) {
-      logger.error("Failed to send chunk to Stakwork:", "chunk/route", { result.error });
+      logger.error("Failed to send chunk to Stakwork:", { result.error });
       return NextResponse.json({ error: "Failed to send chunk to Stakwork" }, { status: 500 });
     }
 
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       received: wordCount,
     });
   } catch (error) {
-    logger.error("Error processing transcript chunk:", "chunk/route", { error });
+    logger.error("Error processing transcript chunk:", { error });
     return NextResponse.json({ error: "Failed to process chunk" }, { status: 500 });
   }
 }

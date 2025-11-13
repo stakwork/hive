@@ -108,7 +108,7 @@ export default function StakgraphPage() {
       });
       await loadSettings(slug!);
     } catch (error) {
-      logger.error("Failed to ensure webhooks", "stakgraph/page", { error });
+      logger.error("Failed to ensure webhooks", { error });
       toast({
         title: "Error",
         description: "Failed to add webhooks",
@@ -126,7 +126,7 @@ export default function StakgraphPage() {
   //     ? true
   //     : false;
 
-  // logger.debug("allFieldsFilled", "stakgraph/page", { allFieldsFilled });
+  // logger.debug("allFieldsFilled", { allFieldsFilled });
 
   if (initialLoading) {
     return (

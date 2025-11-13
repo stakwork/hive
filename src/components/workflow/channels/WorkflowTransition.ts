@@ -38,7 +38,7 @@ class WorkflowTransition {
 
   private processImmediately = (): void => {
     if (this.pendingUpdate) {
-      logger.debug(`Processing update immediately: ${this.pendingUpdate.status}`, "channels/WorkflowTransition");
+      logger.debug(`Processing update immediately: ${this.pendingUpdate.status}`);
       this.onUpdate(this.pendingUpdate);
       this.lastProcessedTime = new Date().getTime();
       this.pendingUpdate = null;
@@ -57,7 +57,7 @@ class WorkflowTransition {
 
     this.updateTimeout = setTimeout(() => {
       if (this.pendingUpdate) {
-        logger.debug(`Processing scheduled update: ${this.pendingUpdate.status}`, "channels/WorkflowTransition");
+        logger.debug(`Processing scheduled update: ${this.pendingUpdate.status}`);
         this.onUpdate(this.pendingUpdate);
         this.lastProcessedTime = new Date().getTime();
         this.pendingUpdate = null;
@@ -92,20 +92,20 @@ class WorkflowTransition {
     }
 
     // Case 3: Schedule a new timeout to process this update after the debounce period
-    logger.debug(`Scheduling update to process in ${this.DEBOUNCE_TIME}ms`, "channels/WorkflowTransition");
+    logger.debug(`Scheduling update to process in ${this.DEBOUNCE_TIME}ms`);
     this.scheduleProcessing(this.DEBOUNCE_TIME);
   };
 
   private connected = (): void => {
-    logger.debug(`Run ${this.projectId} connected`, "channels/WorkflowTransition");
+    logger.debug(`Run ${this.projectId} connected`);
   };
 
   private disconnected = (): void => {
-    logger.warn(`Run ${this.projectId} was disconnected.`, "channels/WorkflowTransition");
+    logger.warn(`Run ${this.projectId} was disconnected.`);
   };
 
   private rejected = (): void => {
-    logger.warn(`Connection to Run ${this.projectId} was rejected.`, "channels/WorkflowTransition");
+    logger.warn(`Connection to Run ${this.projectId} was rejected.`);
   };
 
   forceUpdate = (): WorkflowTransition => {

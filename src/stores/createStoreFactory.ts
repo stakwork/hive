@@ -34,8 +34,8 @@ export function getStoreRegistryInfo() {
 export function logStoreInstances() {
   const info = getStoreRegistryInfo();
   console.log('=== STORE REGISTRY INFO ===');
-  logger.debug(`Total instances: ${info.totalInstances}`, "createStoreFactory");
-  logger.debug("Store IDs:", "createStoreFactory", { info.storeIds });
+  logger.debug(`Total instances: ${info.totalInstances}`);
+  logger.debug("Store IDs:", { info.storeIds });
   console.table(info.entries.map(entry => ({
     id: entry.id,
     hasStores: `${entry.hasData ? 'D' : ''}${entry.hasGraph ? 'G' : ''}${entry.hasSimulation ? 'S' : ''}`,

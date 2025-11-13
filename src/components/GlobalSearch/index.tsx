@@ -103,11 +103,11 @@ export function GlobalSearch() {
           const data: SearchResponse = await response.json();
           setResults(data.data);
         } else {
-          logger.error("Search failed:", "GlobalSearch/index", { response.statusText });
+          logger.error("Search failed:", { response.statusText });
           setResults(null);
         }
       } catch (error) {
-        logger.error("Search error:", "GlobalSearch/index", { error });
+        logger.error("Search error:", { error });
         setResults(null);
       } finally {
         setLoading(false);

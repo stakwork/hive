@@ -223,7 +223,7 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  logger.warn(`Missing source or target node for link: ${link?.ref_id}`, "Graph/index")
+                  logger.warn(`Missing source or target node for link: ${link?.ref_id}`)
 
                   return
                 }
@@ -335,7 +335,7 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  logger.warn(`Missing source or target node for link: ${link?.ref_id}`, "Graph/index")
+                  logger.warn(`Missing source or target node for link: ${link?.ref_id}`)
 
                   return
                 }

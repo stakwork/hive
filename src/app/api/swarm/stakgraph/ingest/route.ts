@@ -19,11 +19,11 @@ export const runtime = "nodejs";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function POST(request: NextRequest) {
   try {
-    logger.debug(`[STAKGRAPH_INGEST] Starting ingest request`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Starting ingest request`);
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      logger.debug(`[STAKGRAPH_INGEST] Unauthorized - no session or user ID`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] Unauthorized - no session or user ID`);
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
@@ -50,19 +50,19 @@ export async function POST(request: NextRequest) {
     }
 
     const repoWorkspaceId = workspaceId || swarm.workspaceId;
-    logger.debug(`[STAKGRAPH_INGEST] Using workspace ID: ${repoWorkspaceId}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Using workspace ID: ${repoWorkspaceId}`);
 
-    logger.debug(`[STAKGRAPH_INGEST] Looking up primary repository for workspace: ${repoWorkspaceId}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Looking up primary repository for workspace: ${repoWorkspaceId}`);
     const primaryRepo = await getPrimaryRepository(repoWorkspaceId);
     const finalRepo = primaryRepo?.repositoryUrl;
 
     if (!finalRepo) {
-      logger.debug(`[STAKGRAPH_INGEST] No repository URL found for workspace: ${repoWorkspaceId}`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] No repository URL found for workspace: ${repoWorkspaceId}`);
       return NextResponse.json({ success: false, message: "No repository URL found" }, { status: 400 });
     }
 
     if (!repoWorkspaceId) {
-      logger.debug(`[STAKGRAPH_INGEST] No repository workspace ID found`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] No repository workspace ID found`);
       return NextResponse.json({ success: false, message: "No repository workspace ID found" }, { status: 400 });
     }
 
@@ -79,24 +79,24 @@ export async function POST(request: NextRequest) {
       },
       data: { status: RepositoryStatus.PENDING },
     });
-    logger.debug(`[STAKGRAPH_INGEST] Repository status updated to PENDING`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Repository status updated to PENDING`);
 
     // Get workspace info to get the slug
-    logger.debug(`[STAKGRAPH_INGEST] Looking up workspace details for ID: ${repoWorkspaceId}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Looking up workspace details for ID: ${repoWorkspaceId}`);
     const workspace = await db.workspace.findUnique({
       where: { id: repoWorkspaceId },
       select: { slug: true },
     });
 
     if (!workspace) {
-      logger.debug(`[STAKGRAPH_INGEST] Workspace not found with ID: ${repoWorkspaceId}`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] Workspace not found with ID: ${repoWorkspaceId}`);
       return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
-    logger.debug(`[STAKGRAPH_INGEST] Found workspace slug: ${workspace.slug}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Found workspace slug: ${workspace.slug}`);
 
     // Get GitHub credentials using the standard function
-    logger.debug(`[STAKGRAPH_INGEST] Getting GitHub credentials for user ${session.user.id} in workspace ${workspace.slug}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_INGEST] Getting GitHub credentials for user ${session.user.id} in workspace ${workspace.slug}`);
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     if (!githubProfile?.username || !githubProfile?.token) {
       logger.debug(`[STAKGRAPH_INGEST] No GitHub credentials found - username: ${!!githubProfile?.username}, token: ${!!githubProfile?.token}`, "ingest/route");
@@ -130,10 +130,10 @@ export async function POST(request: NextRequest) {
     logger.debug(`[STAKGRAPH_INGEST] Ingest trigger completed in ${ingestDuration}ms - success: ${apiResult.ok}, status: ${apiResult.status}`, "ingest/route");
 
     try {
-      logger.debug(`[STAKGRAPH_INGEST] Setting up GitHub webhook for repository: ${finalRepo}`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] Setting up GitHub webhook for repository: ${finalRepo}`);
       const callbackUrl = getGithubWebhookCallbackUrl(request);
       const webhookService = new WebhookService(getServiceConfig("github"));
-      logger.debug(`[STAKGRAPH_INGEST] GitHub webhook callback URL: ${callbackUrl}`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] GitHub webhook callback URL: ${callbackUrl}`);
 
       await webhookService.ensureRepoWebhook({
         userId: session.user.id,
@@ -141,19 +141,19 @@ export async function POST(request: NextRequest) {
         repositoryUrl: finalRepo,
         callbackUrl,
       });
-      logger.debug(`[STAKGRAPH_INGEST] GitHub webhook setup completed successfully`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] GitHub webhook setup completed successfully`);
     } catch (error) {
-      logger.error(`[STAKGRAPH_INGEST] Error ensuring repo webhook: ${error}`, "ingest/route");
+      logger.error(`[STAKGRAPH_INGEST] Error ensuring repo webhook: ${error}`);
     }
 
     if (apiResult?.data && typeof apiResult.data === "object" && "request_id" in apiResult.data) {
       const requestId = (apiResult.data as { request_id: string }).request_id;
-      logger.debug(`[STAKGRAPH_INGEST] Updating swarm with ingest request ID: ${requestId}`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] Updating swarm with ingest request ID: ${requestId}`);
       await saveOrUpdateSwarm({
         workspaceId: swarm.workspaceId,
         ingestRefId: requestId,
       });
-      logger.debug(`[STAKGRAPH_INGEST] Swarm updated with ingest reference ID`, "ingest/route");
+      logger.debug(`[STAKGRAPH_INGEST] Swarm updated with ingest reference ID`);
     } else {
       console.log(`[STAKGRAPH_INGEST] No request_id found in API result data:`, apiResult?.data);
     }
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      logger.debug(`[STAKGRAPH_STATUS] Unauthorized - no session or user ID`, "ingest/route");
+      logger.debug(`[STAKGRAPH_STATUS] Unauthorized - no session or user ID`);
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
@@ -196,13 +196,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the swarm for the workspace
-    logger.debug(`[STAKGRAPH_STATUS] Looking up swarm for workspace: ${workspaceId}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_STATUS] Looking up swarm for workspace: ${workspaceId}`);
     const swarm = await db.swarm.findUnique({
       where: { workspaceId },
     });
 
     if (!swarm) {
-      logger.debug(`[STAKGRAPH_STATUS] Swarm not found for workspace: ${workspaceId}`, "ingest/route");
+      logger.debug(`[STAKGRAPH_STATUS] Swarm not found for workspace: ${workspaceId}`);
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
     }
 
     const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
-    logger.debug(`[STAKGRAPH_STATUS] Calling stakgraph status API - URL: ${stakgraphUrl}/status/${id}`, "ingest/route");
+    logger.debug(`[STAKGRAPH_STATUS] Calling stakgraph status API - URL: ${stakgraphUrl}/status/${id}`);
 
     const startTime = Date.now();
     const apiResult = await swarmApiRequest({

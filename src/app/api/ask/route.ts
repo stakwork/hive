@@ -58,9 +58,9 @@ export async function GET(request: NextRequest) {
       baseSwarmUrl = `http://localhost:3355`;
     }
 
-    logger.debug("baseSwarmUrl", "ask/route", { baseSwarmUrl });
-    logger.debug("decryptedSwarmApiKey", "ask/route", { decryptedSwarmApiKey });
-    logger.debug("question", "ask/route", { question });
+    logger.debug("baseSwarmUrl", { baseSwarmUrl });
+    logger.debug("decryptedSwarmApiKey", { decryptedSwarmApiKey });
+    logger.debug("question", { question });
 
     // Proxy request to swarm /ask endpoint
     const response = await fetch(`${baseSwarmUrl}/ask?question=${encodeURIComponent(question)}`, {
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    logger.error("Ask API proxy error:", "ask/route", { error });
+    logger.error("Ask API proxy error:", { error });
     return NextResponse.json({ error: "Failed to process question" }, { status: 500 });
   }
 }

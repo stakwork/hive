@@ -32,7 +32,7 @@ export async function GET(
 
     return NextResponse.json({ config });
   } catch (error) {
-    logger.error("Error fetching janitor config:", "config/route", { error });
+    logger.error("Error fetching janitor config:", { error });
     
     if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json(
@@ -71,7 +71,7 @@ export async function PUT(
       config 
     });
   } catch (error) {
-    logger.error("Error updating janitor config:", "config/route", { error });
+    logger.error("Error updating janitor config:", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

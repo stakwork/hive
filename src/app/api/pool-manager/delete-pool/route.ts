@@ -35,7 +35,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
-    logger.error("Error deleting Pool Manager pool:", "delete-pool/route", { error });
+    logger.error("Error deleting Pool Manager pool:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

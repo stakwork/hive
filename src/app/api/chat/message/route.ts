@@ -105,14 +105,14 @@ async function callMock(
     });
 
     if (!response.ok) {
-      logger.error(`Failed to send message to mock server: ${response.statusText}`, "message/route");
+      logger.error(`Failed to send message to mock server: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: true, data: result };
   } catch (error) {
-    logger.error("Error calling mock server:", "message/route", { error });
+    logger.error("Error calling mock server:", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -213,14 +213,14 @@ async function callStakwork(
     });
 
     if (!response.ok) {
-      logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "message/route");
+      logger.error(`Failed to send message to Stakwork: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: result.success, data: result.data };
   } catch (error) {
-    logger.error("Error calling Stakwork:", "message/route", { error });
+    logger.error("Error calling Stakwork:", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -365,7 +365,7 @@ export async function POST(request: NextRequest) {
       attachments: chatMessage.attachments || [],
     };
 
-    logger.debug("clientMessage", "message/route", { clientMessage });
+    logger.debug("clientMessage", { clientMessage });
 
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
 
@@ -459,7 +459,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    logger.error("Error creating chat message:", "message/route", { error });
+    logger.error("Error creating chat message:", { error });
     return NextResponse.json({ error: "Failed to create chat message" }, { status: 500 });
   }
 }

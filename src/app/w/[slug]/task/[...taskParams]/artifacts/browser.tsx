@@ -100,7 +100,7 @@ export function BrowserArtifactPanel({
     (test: string, error?: string) => {
       // Show error toast if test generation failed
       if (error) {
-        logger.error("[Browser] Test generation failed:", "artifacts/browser", { error });
+        logger.error("[Browser] Test generation failed:", { error });
         toast({
           title: "Test Generation Failed",
           description: error,

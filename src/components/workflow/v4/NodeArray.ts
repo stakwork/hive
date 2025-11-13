@@ -59,7 +59,7 @@ class NodeArray {
     this.connecting_edges = connecting_edges;
     this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, 'system.succeed');
 
-    logger.debug("connected_to_end", "v4/NodeArray", { this.connected_to_end });
+    logger.debug("connected_to_end", { this.connected_to_end });
 
     this.show_only = show_only;
     this.mode = mode;

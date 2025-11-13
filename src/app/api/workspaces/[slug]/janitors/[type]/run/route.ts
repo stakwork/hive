@@ -37,7 +37,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    logger.error("Error triggering janitor run:", "run/route", { error });
+    logger.error("Error triggering janitor run:", { error });
     
     if (error instanceof Error) {
       if (error.message.includes("not enabled")) {

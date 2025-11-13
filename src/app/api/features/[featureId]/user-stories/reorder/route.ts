@@ -25,7 +25,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error reordering user stories:", "reorder/route", { error });
+    logger.error("Error reordering user stories:", { error });
     const message = error instanceof Error ? error.message : "Failed to reorder user stories";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

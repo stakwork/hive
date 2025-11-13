@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error("Error fetching topics:", "stats/route", { error });
+    logger.error("Error fetching topics:", { error });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -46,7 +46,7 @@ export function GitHubAppConnector({
           throw new Error(installData.message || "Failed to generate GitHub App installation link");
         }
       } catch (error) {
-        logger.error("Failed to initiate GitHub App connection:", "swarm-setup/GitHubAppConnector", { error });
+        logger.error("Failed to initiate GitHub App connection:", { error });
         // Could add error handling/toast here
       }
     }

@@ -99,7 +99,7 @@ const SearchButton = ({ workflowId }: { workflowId: string }) => {
       setSearchResults(results);
       setShowResults(true);
     } catch (error) {
-      logger.error("Search failed:", "workflow/index", { error });
+      logger.error("Search failed:", { error });
       setSearchResults([]);
     } finally {
       setIsLoading(false);
@@ -384,7 +384,7 @@ export default function App(workflowApp: WorkflowAppProps) {
           updateWorkflowVersionId(response)
         })
         .catch(error => {
-          logger.error("Failed to publish workflow:", "workflow/index", { error });
+          logger.error("Failed to publish workflow:", { error });
           showErrorDialog(
             'There was an error while publishing this workflow',
             error.message || error
@@ -438,7 +438,7 @@ export default function App(workflowApp: WorkflowAppProps) {
               debouncedUpdateWorkflowVersion(response);
             })
             .catch(error => {
-              logger.error("Failed to copy step:", "workflow/index", { error });
+              logger.error("Failed to copy step:", { error });
               showErrorDialog(
                 'There was an error while copying this step',
                 error.message || error
@@ -490,7 +490,7 @@ export default function App(workflowApp: WorkflowAppProps) {
           debouncedUpdateWorkflowVersion(response);
         })
         .catch(error => {
-          logger.error("Failed to save workflow:", "workflow/index", { error });
+          logger.error("Failed to save workflow:", { error });
           showErrorDialog(
             'There was an error while saving this Workflow',
             error.message || error
@@ -605,7 +605,7 @@ export default function App(workflowApp: WorkflowAppProps) {
         updateJSONSpecConnections(connections);
       })
       .catch(error => {
-        logger.error("Failed to update connections:", "workflow/index", { error });
+        logger.error("Failed to update connections:", { error });
       });
   };
 
@@ -625,7 +625,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   }, [workflowVersionId, updateConnections, edges]);
 
   const updateDiagram = (data: any) => {
-    // logger.debug("data", "workflow/index", { data })
+    // logger.debug("data", { data })
     let updatedNodes = new NodeArray(
       data.transitions,
       data.connections,
@@ -664,7 +664,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     let dedupNodes: any = {};
 
     if (data.connections && Array.isArray(data.connections) && data.connections.length > 0) {
-      // logger.debug("saved connections detected", "workflow/index", { data.connections })
+      // logger.debug("saved connections detected", { data.connections })
       myEdges = data.connections.map((e: any, x: number) => {
         const node = myNodes.find((node: any) => node.id === e.source);
 
@@ -763,7 +763,7 @@ export default function App(workflowApp: WorkflowAppProps) {
         const connections = myEdges.map(({ source, target, custom_label, disable_edge }) =>
           ({ id: `${source}-${target}`, source, target, custom_label, disable_edge }))
 
-        // logger.debug("saving connections first time", "workflow/index", { connections })
+        // logger.debug("saving connections first time", { connections })
 
         setCustomConnections(connections)
         setUpdateCustomConnections(true)
@@ -805,7 +805,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   }
 
   const updateJSONSpecConnections = (connections: any) => {
-    // logger.debug("saving connections into JSON spec", "workflow/index", { connections })
+    // logger.debug("saving connections into JSON spec", { connections })
     const workflowSpecField = document.querySelector('#workflow_spec') as HTMLInputElement | null;
     if (!workflowSpecField) {
       return
@@ -858,7 +858,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   useEffect(() => {
     if (!updateCustomConnections || !customConnections.length) return; // Early return if not triggered
 
-    // logger.debug("customConnections", "workflow/index", { customConnections })
+    // logger.debug("customConnections", { customConnections })
 
     if (!customConnections || customConnections.length === 0) {
       // console.log("skipping connections saving")
@@ -914,7 +914,7 @@ export default function App(workflowApp: WorkflowAppProps) {
         const parsedPosition = JSON.parse(savedPosition);
         setTargetPosition(parsedPosition)
       } catch (error) {
-        logger.error("Failed to parse position from cookie:", "workflow/index", { error });
+        logger.error("Failed to parse position from cookie:", { error });
       }
     }
   }, [workflowId]);
@@ -982,7 +982,7 @@ export default function App(workflowApp: WorkflowAppProps) {
         debouncedUpdateWorkflowVersion(response);
       })
       .catch(error => {
-        logger.error("Failed to update workflow nodes:", "workflow/index", { error });
+        logger.error("Failed to update workflow nodes:", { error });
         showErrorDialog(
           'Failed to update nodes',
           error.message || 'An unexpected error occurred'
@@ -1010,7 +1010,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   };
 
   const exportSteps = (nodes_to_export: any[], node_type: string) => {
-    logger.debug("exporting nodes", "workflow/index", { nodes_to_export })
+    logger.debug("exporting nodes", { nodes_to_export })
 
     const nodeIds = nodes_to_export.map((node: any) => node.id);
 
@@ -1053,7 +1053,7 @@ export default function App(workflowApp: WorkflowAppProps) {
             // debouncedUpdateWorkflowVersion(response);
           })
           .catch(error => {
-            logger.error("Failed to delete workflow nodes:", "workflow/index", { error });
+            logger.error("Failed to delete workflow nodes:", { error });
             showErrorDialog(
               'Failed to export steps',
               error.message || 'An unexpected error occurred'
@@ -1106,7 +1106,7 @@ export default function App(workflowApp: WorkflowAppProps) {
             debouncedUpdateWorkflowVersion(response);
           })
           .catch(error => {
-            logger.error("Failed to delete workflow nodes:", "workflow/index", { error });
+            logger.error("Failed to delete workflow nodes:", { error });
             showErrorDialog(
               'Failed to delete steps',
               error.message || 'An unexpected error occurred'

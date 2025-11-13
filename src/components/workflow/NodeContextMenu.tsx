@@ -25,22 +25,22 @@ export default function NodeContextMenu({
   ...props
 }: NodeContextMenuProps) {
   const deleteNode = useCallback(() => {
-    logger.debug("delete nodes", "workflow/NodeContextMenu", { nodes });
+    logger.debug("delete nodes", { nodes });
     deleteCallback(nodes);
   }, [nodes, deleteCallback]);
 
   const exportNodeWR = useCallback(() => {
-    logger.debug("export node", "workflow/NodeContextMenu", { nodes });
+    logger.debug("export node", { nodes });
     exportCallback(nodes, 'WorkflowRunner');
   }, [nodes, exportCallback]);
 
   const exportNodeFE = useCallback(() => {
-    logger.debug("export node", "workflow/NodeContextMenu", { nodes });
+    logger.debug("export node", { nodes });
     exportCallback(nodes, 'ForEachCondition');
   }, [nodes, exportCallback]);
 
   const exportNodeWL = useCallback(() => {
-    logger.debug("export node", "workflow/NodeContextMenu", { nodes });
+    logger.debug("export node", { nodes });
     exportCallback(nodes, 'WhileLoop');
   }, [nodes, exportCallback]);
 

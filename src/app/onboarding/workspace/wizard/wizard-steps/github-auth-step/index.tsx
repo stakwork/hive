@@ -69,13 +69,13 @@ export function GithubAuthStep() {
       });
 
       if (result?.error) {
-        logger.error("Sign in error:", "github-auth-step/index", { result.error });
+        logger.error("Sign in error:", { result.error });
         // Reset signing in state on error
         setIsSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
-      logger.error("Unexpected sign in error:", "github-auth-step/index", { error });
+      logger.error("Unexpected sign in error:", { error });
       setIsSigningIn(false);
     }
   };

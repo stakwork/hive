@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    logger.error("Error creating AI generation run:", "generate/route", { error });
+    logger.error("Error creating AI generation run:", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to create AI generation run";

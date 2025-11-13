@@ -111,7 +111,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching task notification count:", "notifications-count/route", { error });
+    logger.error("Error fetching task notification count:", { error });
     return NextResponse.json(
       { error: "Failed to fetch task notification count" },
       { status: 500 },

@@ -57,7 +57,7 @@ export async function checkRepositoryAccess(
         repositoryData.permissions?.maintain === true;
 
       console.log(`Repository permissions for ${owner}/${repo}:`, repositoryData.permissions);
-      logger.debug(`Can push: ${canPush}`, "github-oauth-repository-access");
+      logger.debug(`Can push: ${canPush}`);
 
       return {
         hasAccess: true,
@@ -78,7 +78,7 @@ export async function checkRepositoryAccess(
       return { hasAccess: false, canPush: false, error: `http_error_${response.status}` };
     }
   } catch (error) {
-    logger.error("Error checking repository access:", "github-oauth-repository-access", { error });
+    logger.error("Error checking repository access:", { error });
     return { hasAccess: false, canPush: false, error: "network_error" };
   }
 }

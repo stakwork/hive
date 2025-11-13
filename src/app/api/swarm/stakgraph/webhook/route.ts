@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     } });
 
     if (!signature) {
-      logger.error("[StakgraphWebhook] Missing signature", "webhook/route");
+      logger.error("[StakgraphWebhook] Missing signature");
       return NextResponse.json({ success: false, message: "Missing signature" }, { status: 401 });
     }
 

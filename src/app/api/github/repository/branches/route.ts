@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       total_count: branches.length,
     });
   } catch (error: unknown) {
-    logger.error("Error fetching branches:", "branches/route", { error });
+    logger.error("Error fetching branches:", { error });
 
     if (
       error &&

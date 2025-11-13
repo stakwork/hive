@@ -68,7 +68,7 @@ export function WorkspaceSettings() {
           setLogoUrl(data.presignedUrl);
         }
       } catch (error) {
-        logger.error("Error fetching logo URL:", "WorkspaceSettings", { error });
+        logger.error("Error fetching logo URL:", { error });
       }
     };
 
@@ -88,7 +88,7 @@ export function WorkspaceSettings() {
       }
       return null;
     } catch (error) {
-      logger.error("Error refetching logo URL:", "WorkspaceSettings", { error });
+      logger.error("Error refetching logo URL:", { error });
       return null;
     }
   }, [workspace?.slug]);
@@ -194,7 +194,7 @@ export function WorkspaceSettings() {
       // Refresh workspace data in background (no await to prevent page flash)
       refreshCurrentWorkspace();
     } catch (error) {
-      logger.error("Error uploading logo:", "WorkspaceSettings", { error });
+      logger.error("Error uploading logo:", { error });
       toast({
         variant: "destructive",
         title: "Error",
@@ -238,7 +238,7 @@ export function WorkspaceSettings() {
       // Refresh workspace data in background (no await to prevent page flash)
       refreshCurrentWorkspace();
     } catch (error) {
-      logger.error("Error deleting logo:", "WorkspaceSettings", { error });
+      logger.error("Error deleting logo:", { error });
       toast({
         variant: "destructive",
         title: "Error",
@@ -281,7 +281,7 @@ export function WorkspaceSettings() {
         await refreshCurrentWorkspace();
       }
     } catch (error) {
-      logger.error("Error updating workspace:", "WorkspaceSettings", { error });
+      logger.error("Error updating workspace:", { error });
       toast({
         variant: "destructive",
         title: "Error",

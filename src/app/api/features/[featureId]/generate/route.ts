@@ -102,7 +102,7 @@ export async function POST(
       type
     );
   } catch (error) {
-    logger.error("Error generating content:", "generate/route", { error });
+    logger.error("Error generating content:", { error });
     return NextResponse.json(
       { error: "Failed to generate content" },
       { status: 500 }

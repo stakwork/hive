@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     const encryptionService: EncryptionService = EncryptionService.getInstance();
     const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm?.swarmApiKey || "");
 
-    logger.debug(`🚀 Triggering gitsee visualization for ${owner}/${repo}...`, "trigger/route");
+    logger.debug(`🚀 Triggering gitsee visualization for ${owner}/${repo}...`);
 
     // Make request to gitsee server
     const response = await fetch(`${gitseeUrl}/gitsee`, {
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error(`GitSee server error: ${response.status} - ${errorText}`, "trigger/route");
+      logger.error(`GitSee server error: ${response.status} - ${errorText}`);
       throw new Error(`GitSee server error: ${response.status}`);
     }
 
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
-    logger.error("Error triggering gitsee visualization:", "trigger/route", { error });
+    logger.error("Error triggering gitsee visualization:", { error });
     return NextResponse.json(
       {
         error: "Failed to trigger visualization",

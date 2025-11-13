@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
           chatMessage.id,
         );
       } catch (error) {
-        logger.error("❌ Error broadcasting to Pusher:", "response/route", { error });
+        logger.error("❌ Error broadcasting to Pusher:", { error });
       }
     }
 
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    logger.error("Error creating chat response:", "response/route", { error });
+    logger.error("Error creating chat response:", { error });
     return NextResponse.json(
       { error: "Failed to create chat response" },
       { status: 500 },

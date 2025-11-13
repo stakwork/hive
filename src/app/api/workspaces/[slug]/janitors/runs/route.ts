@@ -71,7 +71,7 @@ export async function GET(
       pagination
     });
   } catch (error) {
-    logger.error("Error fetching janitor runs:", "runs/route", { error });
+    logger.error("Error fetching janitor runs:", { error });
     
     return NextResponse.json(
       { error: "Internal server error" },

@@ -103,7 +103,7 @@ export default function PhaseDetailPage() {
         updatePhase(result.data);
       }
     } catch (error) {
-      logger.error("Failed to update phase:", "[phaseId]/page", { error });
+      logger.error("Failed to update phase:", { error });
     }
   };
 
@@ -190,7 +190,7 @@ export default function PhaseDetailPage() {
 
       handleBackClick();
     } catch (error) {
-      logger.error("Failed to delete phase:", "[phaseId]/page", { error });
+      logger.error("Failed to delete phase:", { error });
     }
   };
 

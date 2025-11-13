@@ -112,7 +112,7 @@ export class WebhookService extends BaseServiceClass {
         throw new Error("WEBHOOK_CREATION_FAILED");
       }
     } catch (error) {
-      logger.error("Failed to detect repository default branch:", "github/WebhookService", { error });
+      logger.error("Failed to detect repository default branch:", { error });
     }
     return null;
   }
@@ -164,7 +164,7 @@ export class WebhookService extends BaseServiceClass {
 
       if (webhookExists) {
         const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
-        logger.debug("=> Using existing webhook for workspace", "github/WebhookService", { repoRec.id });
+        logger.debug("=> Using existing webhook for workspace", { repoRec.id });
         return { id: webhookId, secret: storedSecret };
       }
 
@@ -184,7 +184,7 @@ export class WebhookService extends BaseServiceClass {
       active,
     });
 
-    logger.debug("=> Creating new webhook for workspace", "github/WebhookService", { repoRec.id });
+    logger.debug("=> Creating new webhook for workspace", { repoRec.id });
     await db.repository.update({
       where: { id: repoRec.id },
       data: {
@@ -254,7 +254,7 @@ export class WebhookService extends BaseServiceClass {
       });
       return res.ok;
     } catch (error) {
-      logger.error("Failed to verify webhook exists:", "github/WebhookService", { error });
+      logger.error("Failed to verify webhook exists:", { error });
       return false;
     }
   }

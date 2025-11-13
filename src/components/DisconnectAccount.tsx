@@ -69,7 +69,7 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
         redirect: true,
       });
     } catch (error) {
-      logger.error("Error disconnecting account:", "DisconnectAccount", { error });
+      logger.error("Error disconnecting account:", { error });
       setIsDisconnecting(false);
       alert("Failed to disconnect GitHub account. Please try again.");
     }

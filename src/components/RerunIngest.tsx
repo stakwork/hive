@@ -58,7 +58,7 @@ export function RerunIngest({
       try {
         data = await response.json();
       } catch (parseError) {
-        logger.error("Failed to parse response as JSON:", "RerunIngest", { parseError });
+        logger.error("Failed to parse response as JSON:", { parseError });
         throw new Error(`Server returned invalid response (${response.status})`);
       }
 
@@ -77,7 +77,7 @@ export function RerunIngest({
         });
       }
     } catch (error) {
-      logger.error("Failed to start ingest:", "RerunIngest", { error });
+      logger.error("Failed to start ingest:", { error });
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       toast({
         title: "Ingest Failed",

@@ -117,7 +117,7 @@ export default function FeatureDetailPage() {
         setNewStoryTitle("");
       }
     } catch (error) {
-      logger.error("Failed to create user story:", "[featureId]/page", { error });
+      logger.error("Failed to create user story:", { error });
     } finally {
       setCreatingStory(false);
     }
@@ -145,7 +145,7 @@ export default function FeatureDetailPage() {
         });
       }
     } catch (error) {
-      logger.error("Failed to update user story:", "[featureId]/page", { error });
+      logger.error("Failed to update user story:", { error });
       throw error;
     }
   };
@@ -167,7 +167,7 @@ export default function FeatureDetailPage() {
         });
       }
     } catch (error) {
-      logger.error("Failed to delete user story:", "[featureId]/page", { error });
+      logger.error("Failed to delete user story:", { error });
     }
   };
 
@@ -199,7 +199,7 @@ export default function FeatureDetailPage() {
         throw new Error("Failed to reorder user stories");
       }
     } catch (error) {
-      logger.error("Failed to reorder user stories:", "[featureId]/page", { error });
+      logger.error("Failed to reorder user stories:", { error });
       // On error, refetch to restore correct order
       const response = await fetch(`/api/features/${featureId}`);
       const result = await response.json();
@@ -229,7 +229,7 @@ export default function FeatureDetailPage() {
 
       router.push(`/w/${workspaceSlug}/roadmap`);
     } catch (error) {
-      logger.error("Failed to delete feature:", "[featureId]/page", { error });
+      logger.error("Failed to delete feature:", { error });
     }
   };
 
@@ -253,7 +253,7 @@ export default function FeatureDetailPage() {
         });
       }
     } catch (error) {
-      logger.error("Failed to accept generated story:", "[featureId]/page", { error });
+      logger.error("Failed to accept generated story:", { error });
       throw error;
     }
   };

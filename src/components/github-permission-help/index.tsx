@@ -55,10 +55,10 @@ export function GitHubPermissionHelp({
         // Redirect to GitHub App installation
         window.location.href = data.data.link;
       } else {
-        logger.error("Failed to generate installation link:", "github-permission-help/index", { data });
+        logger.error("Failed to generate installation link:", { data });
       }
     } catch (error) {
-      logger.error("Error generating installation link:", "github-permission-help/index", { error });
+      logger.error("Error generating installation link:", { error });
     }
   };
 

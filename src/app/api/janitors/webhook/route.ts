@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    logger.error("Error processing janitor webhook:", "webhook/route", { error });
+    logger.error("Error processing janitor webhook:", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

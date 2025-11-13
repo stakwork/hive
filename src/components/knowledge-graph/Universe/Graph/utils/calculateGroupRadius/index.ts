@@ -30,7 +30,7 @@ export const calculateRadius = (gr: Group) => {
 
   // Add some padding and ensure minimum radius
   const radius = Math.max(maxDistance * 1.2, 1)
-  // logger.debug(`Calculated radius from children positions: ${radius}`, "calculateGroupRadius/index")
+  // logger.debug(`Calculated radius from children positions: ${radius}`)
 
   return radius
 }

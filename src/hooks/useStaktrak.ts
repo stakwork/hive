@@ -237,7 +237,7 @@ export const useStaktrak = (
                   onActionCapturedRef.current(toastType, toastText);
                 }
               } catch (error) {
-                logger.error("Error handling staktrak event:", "useStaktrak", { error });
+                logger.error("Error handling staktrak event:", { error });
               }
             }
             break;
@@ -266,7 +266,7 @@ export const useStaktrak = (
 
             if (!urlToUse) {
               const errorMsg = "Failed to generate test. Please try again.";
-              logger.error("[useStaktrak] Test generation failed - no URL", "useStaktrak", { {
+              logger.error("[useStaktrak] Test generation failed - no URL", { {
                 recorderReady: !!recorderRef.current,
                 initialUrl,
                 recordingStartUrl: recordingStartUrl.current,
@@ -297,7 +297,7 @@ export const useStaktrak = (
 
             // All prerequisites met, attempt to generate test
             try {
-              logger.debug("[useStaktrak] Generating Playwright test", "useStaktrak", { {
+              logger.debug("[useStaktrak] Generating Playwright test", { {
                 url: urlToUse,
                 initialUrl,
                 recordingStartUrl: recordingStartUrl.current,
@@ -309,7 +309,7 @@ export const useStaktrak = (
 
               if (!test || test.trim().length === 0) {
                 const errorMsg = "Failed to generate test. Please try again.";
-                logger.error("[useStaktrak] Test generation returned empty code", "useStaktrak");
+                logger.error("[useStaktrak] Test generation returned empty code");
                 setGenerationError(errorMsg);
                 if (onTestGeneratedRef.current) {
                   onTestGeneratedRef.current("", errorMsg);
@@ -327,7 +327,7 @@ export const useStaktrak = (
               }
             } catch (error) {
               const errorMsg = "Failed to generate test. Please try again.";
-              logger.error("[useStaktrak] Test generation error", "useStaktrak", { {
+              logger.error("[useStaktrak] Test generation error", { {
                 error,
                 errorMessage: error instanceof Error ? error.message : String(error }),
                 stack: error instanceof Error ? error.stack : undefined,

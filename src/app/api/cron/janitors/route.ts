@@ -34,7 +34,7 @@ export async function GET() {
 
       // Log individual errors
       result.errors.forEach((error, index) => {
-        logger.error(`[CronAPI] Error ${index + 1}: ${error.workspaceSlug}/${error.janitorType} - ${error.error}`, "janitors/route");
+        logger.error(`[CronAPI] Error ${index + 1}: ${error.workspaceSlug}/${error.janitorType} - ${error.error}`);
       });
     }
 
@@ -49,7 +49,7 @@ export async function GET() {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error("[CronAPI] Unhandled error:", "janitors/route", { errorMessage });
+    logger.error("[CronAPI] Unhandled error:", { errorMessage });
 
     return NextResponse.json(
       {

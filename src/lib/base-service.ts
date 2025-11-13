@@ -10,9 +10,9 @@ export abstract class BaseServiceClass implements BaseService {
   constructor(config: ServiceConfig) {
     this.config = config;
 
-    logger.debug("--------------------------------config--------------------------------", "base-service", {  });
-    logger.debug("Debug output", "base-service", { config });
-    logger.debug("--------------------------------config--------------------------------", "base-service", {  });
+    logger.debug("--------------------------------config--------------------------------", {  });
+    logger.debug("Debug output", { config });
+    logger.debug("--------------------------------config--------------------------------", {  });
 
     this.client = new HttpClient({
       baseURL: config.baseURL,

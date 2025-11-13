@@ -58,13 +58,13 @@ export function useGraphPolling({
       if (latestNode?.date_added_to_graph) {
         const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
         pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
-        logger.debug(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`, "useGraphPolling");
+        logger.debug(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`);
       } else {
         logger.debug(`Polling: No existing nodes, using base endpoint`, "useGraphPolling");
       }
 
       const requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(pollingEndpoint)}`;
-      logger.debug(`Polling endpoint: ${pollingEndpoint}`, "useGraphPolling");
+      logger.debug(`Polling endpoint: ${pollingEndpoint}`);
 
       const response = await fetch(requestUrl, {
         signal: abortControllerRef.current.signal
@@ -92,7 +92,7 @@ export function useGraphPolling({
     } catch (err) {
       // Don't log error if request was aborted (user navigated away)
       if (err instanceof Error && err.name !== 'AbortError') {
-        logger.error("Failed to fetch latest nodes:", "useGraphPolling", { err });
+        logger.error("Failed to fetch latest nodes:", { err });
       }
     } finally {
       // Always mark request as finished, even if there was an error

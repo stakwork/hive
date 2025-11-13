@@ -34,7 +34,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
 
   useEffect(() => {
     if (error) {
-      logger.error("Error fetching workflow data:", "artifacts/WorkflowArtifactPanel", { error });
+      logger.error("Error fetching workflow data:", { error });
     }
   }, [error]);
 

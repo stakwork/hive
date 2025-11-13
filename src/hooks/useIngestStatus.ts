@@ -25,10 +25,10 @@ export function useIngestStatus() {
       }
       setIsIngesting(false);
 
-      // logger.debug("codeIsSynced", "useIngestStatus", { codeIsSynced });
-      // logger.debug("ingestRefId", "useIngestStatus", { ingestRefId });
-      // logger.debug("workspaceId", "useIngestStatus", { workspaceId });
-      // logger.debug("ingestError", "useIngestStatus", { ingestError });
+      // logger.debug("codeIsSynced", { codeIsSynced });
+      // logger.debug("ingestRefId", { ingestRefId });
+      // logger.debug("workspaceId", { workspaceId });
+      // logger.debug("ingestError", { ingestError });
       return;
     }
 
@@ -99,7 +99,7 @@ export function useIngestStatus() {
           setStatusMessage(data.update.message);
         }
       } catch (error) {
-        logger.error("Failed to get ingest status:", "useIngestStatus", { error });
+        logger.error("Failed to get ingest status:", { error });
         setIngestError(true);
         setIsIngesting(false);
         // Don't retry on error, let the interval handle it

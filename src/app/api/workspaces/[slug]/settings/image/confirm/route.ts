@@ -30,7 +30,7 @@ export async function POST(
 
     return NextResponse.json(result)
   } catch (error) {
-    logger.error("Error confirming logo upload:", "confirm/route", { error })
+    logger.error("Error confirming logo upload:", { error })
 
     if (error && typeof error === 'object' && 'issues' in error) {
       return NextResponse.json(

@@ -119,7 +119,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
       simulationRestart()
     } catch (error) {
-      logger.error("Debug output", "useSimulationStore/index", { error })
+      logger.error("Debug output", { error })
     }
   },
 

@@ -21,12 +21,12 @@ export async function GET(request: Request) {
     userAgent: request.headers.get('user-agent'),
   };
 
-  logger.debug("[github-app-status] Request initiated", "status/route", { logContext });
+  logger.debug("[github-app-status] Request initiated", { logContext });
 
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      logger.debug("[github-app-status] No authenticated user", "status/route", { {
+      logger.debug("[github-app-status] No authenticated user", { {
         ...logContext,
         hasSession: !!session,
         responseTime: Date.now( }) - startTime,
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       repositoryUrl,
     };
 
-    logger.debug("[github-app-status] Processing authenticated request", "status/route", { requestLogContext });
+    logger.debug("[github-app-status] Processing authenticated request", { requestLogContext });
 
     // Validate workspace access if workspaceSlug is provided
     if (workspaceSlug) {
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
       const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
       if (!workspaceAccess.hasAccess) {
-        logger.warn("[github-app-status] Workspace access denied", "status/route", { {
+        logger.warn("[github-app-status] Workspace access denied", { {
           ...requestLogContext,
           workspaceExists: workspaceAccess.workspace !== null,
           responseTime: Date.now( }) - startTime,
@@ -180,7 +180,7 @@ export async function GET(request: Request) {
         }
 
         if (!repoUrl) {
-          logger.warn("[github-app-status] No repository URL found", "status/route", { {
+          logger.warn("[github-app-status] No repository URL found", { {
             ...requestLogContext,
             action: 'no_repo_url',
             workspaceSlug,
@@ -270,7 +270,7 @@ export async function GET(request: Request) {
     // if (hasTokens) {
     //   const encryptionService = EncryptionService.getInstance();
     //   const accessToken = encryptionService.decryptField("app_access_token", apptokens.accessToken as string);
-    //   logger.debug("=> accessToken", "status/route", { accessToken });
+    //   logger.debug("=> accessToken", { accessToken });
     // }
 
     const responseTime = Date.now() - startTime;
@@ -287,7 +287,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const responseTime = Date.now() - startTime;
 
-    logger.error("[github-app-status] Request failed", "status/route", { {
+    logger.error("[github-app-status] Request failed", { {
       ...logContext,
       error: error instanceof Error ? error.message : String(error }),
       errorStack: error instanceof Error ? error.stack : undefined,

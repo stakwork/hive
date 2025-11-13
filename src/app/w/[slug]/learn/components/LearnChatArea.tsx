@@ -74,7 +74,7 @@ export function LearnChatArea({
         timestamp: new Date(),
       });
     } catch (error) {
-      logger.error("Error generating PDF:", "LearnChatArea", { error });
+      logger.error("Error generating PDF:", { error });
     } finally {
       setIsGeneratingPDF(false);
     }

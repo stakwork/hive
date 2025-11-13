@@ -111,7 +111,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 201 },
     );
   } catch (error) {
-    logger.error("Error saving chat message:", "save/route", { error });
+    logger.error("Error saving chat message:", { error });
     return NextResponse.json({ error: "Failed to save chat message" }, { status: 500 });
   }
 }

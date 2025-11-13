@@ -25,7 +25,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error updating user story:", "[storyId]/route", { error });
+    logger.error("Error updating user story:", { error });
     const message = error instanceof Error ? error.message : "Failed to update user story";
     const status = message.includes("User story not found") ? 404 :
                    message.includes("denied") ? 403 :
@@ -56,7 +56,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error deleting user story:", "[storyId]/route", { error });
+    logger.error("Error deleting user story:", { error });
     const message = error instanceof Error ? error.message : "Failed to delete user story";
     const status = message.includes("User story not found") ? 404 :
                    message.includes("denied") ? 403 : 500;

@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
     try {
       payload = JSON.parse(rawBody);
     } catch (error) {
-      logger.error(`Error parsing payload: ${error}`, "webhook/route");
-      logger.error("Debug output", "webhook/route", { rawBody });
+      logger.error(`Error parsing payload: ${error}`);
+      logger.error("Debug output", { rawBody });
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
       const parsed = typeof swarm.swarmApiKey === "string" ? JSON.parse(swarm.swarmApiKey) : swarm.swarmApiKey;
       decryptedSwarmApiKey = enc.decryptField("swarmApiKey", parsed);
     } catch (error) {
-      logger.error("Failed to decrypt swarmApiKey:", "webhook/route", { error });
+      logger.error("Failed to decrypt swarmApiKey:", { error });
       decryptedSwarmApiKey = swarm.swarmApiKey as string;
     }
 
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
 
-    logger.debug("[GithubWebhook] Triggering async sync", "webhook/route", { {
+    logger.debug("[GithubWebhook] Triggering async sync", { {
       delivery,
       workspaceId: repository.workspaceId,
       swarmId: swarm.id,

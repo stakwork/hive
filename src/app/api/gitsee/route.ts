@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const encryptionService: EncryptionService = EncryptionService.getInstance();
     const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm?.swarmApiKey || "");
     // Proxy to your EC2 GitSee server
-    logger.debug("=> gitseeUrl", "gitsee/route", { gitseeUrl });
+    logger.debug("=> gitseeUrl", { gitseeUrl });
 
     const response = await fetch(`${gitseeUrl}/gitsee`, {
       method: "POST",
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     return Response.json(data);
   } catch (error) {
-    logger.error("Proxy error:", "gitsee/route", { error });
+    logger.error("Proxy error:", { error });
     return Response.json({ error: "Failed to fetch repository data" }, { status: 500 });
   }
 }

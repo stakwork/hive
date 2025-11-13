@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     const githubOwner = githubMatch[1];
-    logger.debug(`🔍 Checking GitHub app installation for owner: ${githubOwner}`, "install/route");
+    logger.debug(`🔍 Checking GitHub app installation for owner: ${githubOwner}`);
 
     // Use the new installation check logic
     let installed = false;
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('existingSourceControlOrg--existingSourceControlOrg')
-    logger.debug("Debug output", "install/route", { existingSourceControlOrg })
+    logger.debug("Debug output", { existingSourceControlOrg })
     console.log('existingSourceControlOrg--existingSourceControlOrg')
 
     if (existingSourceControlOrg?.githubInstallationId) {
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       installed = true;
       installationId = existingSourceControlOrg.githubInstallationId;
       ownerType = existingSourceControlOrg.type === "USER" ? "user" : "org";
-      logger.debug(`✅ App already installed on ${githubOwner}! Installation ID: ${installationId} (from database)`, "install/route");
+      logger.debug(`✅ App already installed on ${githubOwner}! Installation ID: ${installationId} (from database)`);
     } else {
       // No installation record found, try to check via API if this user has tokens
       const appTokens = await getUserAppTokens(session.user.id, githubOwner);
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
           if (userResponse.ok) {
             const userData = await userResponse.json();
             ownerType = userData.type === "User" ? "user" : "org";
-            logger.debug(`📋 ${githubOwner} is a ${userData.type}`, "install/route");
+            logger.debug(`📋 ${githubOwner} is a ${userData.type}`);
 
             // Check installation based on type
             let installationResponse;
@@ -149,9 +149,9 @@ export async function POST(request: NextRequest) {
               const installationData = await installationResponse.json();
               installed = true;
               installationId = installationData.id;
-              logger.debug(`✅ App installed on ${githubOwner}! Installation ID: ${installationId} (from API)`, "install/route");
+              logger.debug(`✅ App installed on ${githubOwner}! Installation ID: ${installationId} (from API)`);
             } else {
-              logger.debug(`❌ App not installed on ${githubOwner} (status: ${installationResponse?.status})`, "install/route");
+              logger.debug(`❌ App not installed on ${githubOwner} (status: ${installationResponse?.status})`);
             }
           }
         } catch (error) {
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       authUrl = `https://github.com/login/oauth/authorize?client_id=${config.GITHUB_APP_CLIENT_ID}&state=${state}`;
       flowType = "user_authorization";
     } else {
-      logger.debug(`👤 App not installed for ${githubOwner}`, "install/route");
+      logger.debug(`👤 App not installed for ${githubOwner}`);
       // App not installed - need full installation flow
       if (ownerType === "user") {
         // For user repos, force installation on user account
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       flowType = "installation";
     }
 
-    logger.debug("=> authUrl:", "install/route", { authUrl, "flowType:", flowType });
+    logger.debug("=> authUrl:", { authUrl, "flowType:", flowType });
 
     return NextResponse.json(
       {
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Failed to generate GitHub App link", "install/route", { error });
+    logger.error("Failed to generate GitHub App link", { error });
     return NextResponse.json({ success: false, message: "Failed to generate GitHub link" }, { status: 500 });
   }
 }

@@ -154,7 +154,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error fetching feature:", "[featureId]/route", { error });
+    logger.error("Error fetching feature:", { error });
     return NextResponse.json(
       { error: "Failed to fetch feature" },
       { status: 500 }
@@ -184,7 +184,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error updating feature:", "[featureId]/route", { error });
+    logger.error("Error updating feature:", { error });
     const message = error instanceof Error ? error.message : "Failed to update feature";
     const status = message.includes("Feature not found") ? 404 :
                    message.includes("denied") ? 403 :
@@ -215,7 +215,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error deleting feature:", "[featureId]/route", { error });
+    logger.error("Error deleting feature:", { error });
     const message = error instanceof Error ? error.message : "Failed to delete feature";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;

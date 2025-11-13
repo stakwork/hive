@@ -299,7 +299,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
               debouncedUpdate();
             }
           } catch (parseError) {
-            logger.error("Failed to parse stream chunk:", "streaming/useStreamProcessor", { parseError });
+            logger.error("Failed to parse stream chunk:", { parseError });
           }
         }
       }

@@ -104,7 +104,7 @@ export const createSimulationStore = (
 
         simulationRestart()
       } catch (error) {
-        logger.error("Debug output", "createSimulationStore", { error })
+        logger.error("Debug output", { error })
       }
     },
 

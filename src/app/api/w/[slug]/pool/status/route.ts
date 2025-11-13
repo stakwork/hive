@@ -65,7 +65,7 @@ export async function GET(
         data: poolStatus,
       });
     } catch (error) {
-      logger.warn("Pool status fetch failed (pool may still be active):", "status/route", { error });
+      logger.warn("Pool status fetch failed (pool may still be active):", { error });
       const message = error instanceof Error ? error.message : "Unable to fetch pool data right now";
       return NextResponse.json(
         {
@@ -76,7 +76,7 @@ export async function GET(
       );
     }
   } catch (error) {
-    logger.error("Error in pool status endpoint:", "status/route", { error });
+    logger.error("Error in pool status endpoint:", { error });
     return NextResponse.json(
       {
         success: false,

@@ -251,7 +251,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error("Error performing search:", "search/route", { error });
+    logger.error("Error performing search:", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

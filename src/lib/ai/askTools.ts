@@ -41,7 +41,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
         try {
           return await fetchLearnings(swarmUrl, swarmApiKey, question, limit || 3);
         } catch (e) {
-          logger.error("Error retrieving learnings:", "ai/askTools", { e });
+          logger.error("Error retrieving learnings:", { e });
           return "Could not retrieve learnings";
         }
       },
@@ -69,7 +69,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
           });
           return coms;
         } catch (e) {
-          logger.error("Error retrieving recent commits:", "ai/askTools", { e });
+          logger.error("Error retrieving recent commits:", { e });
           return "Could not retrieve recent commits";
         }
       },
@@ -86,7 +86,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
           const output = await analyzer.getContributorPRs(repoOwner, repoName, user, limit || 5);
           return output;
         } catch (e) {
-          logger.error("Error retrieving recent contributions:", "ai/askTools", { e });
+          logger.error("Error retrieving recent contributions:", { e });
           return "Could not retrieve repository map";
         }
       },

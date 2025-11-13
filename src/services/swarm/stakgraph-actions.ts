@@ -68,7 +68,7 @@ export async function triggerIngestAsync(
   callbackUrl?: string,
   useLsp: boolean = false,
 ) {
-  logger.debug("===Trigger IngestAsync was hit. useLsp:", "swarm/stakgraph-actions", { useLsp });
+  logger.debug("===Trigger IngestAsync was hit. useLsp:", { useLsp });
   const stakgraphUrl = `https://${swarmName}:7799`;
   const data: Record<string, string | boolean> = {
     repo_url: repoUrl,

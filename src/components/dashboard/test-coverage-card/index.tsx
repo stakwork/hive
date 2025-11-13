@@ -28,7 +28,7 @@ export function TestCoverageCard() {
           }
         }
       } catch (error) {
-        logger.error("Failed to fetch test coverage:", "test-coverage-card/index", { error });
+        logger.error("Failed to fetch test coverage:", { error });
       } finally {
         setCoverageLoading(false);
       }

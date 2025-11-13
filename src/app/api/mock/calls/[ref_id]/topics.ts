@@ -94,7 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error("Error fetching topics:", "[ref_id]/topics", { error });
+    logger.error("Error fetching topics:", { error });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

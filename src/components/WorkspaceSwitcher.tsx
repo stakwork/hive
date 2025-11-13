@@ -53,7 +53,7 @@ export function WorkspaceSwitcher({
       // Call optional callback for backward compatibility
       onWorkspaceChange?.(targetWorkspace);
     } catch (error) {
-      logger.error("Failed to switch workspace:", "WorkspaceSwitcher", { error });
+      logger.error("Failed to switch workspace:", { error });
     }
   };
 

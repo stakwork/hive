@@ -70,7 +70,7 @@ export const useInsightsStore = create<InsightsStore>()(
           set({ recommendations: data.recommendations || [] });
         }
       } catch (error) {
-        logger.error("Error fetching recommendations:", "useInsightsStore", { error });
+        logger.error("Error fetching recommendations:", { error });
       } finally {
         set({ recommendationsLoading: false });
       }
@@ -92,7 +92,7 @@ export const useInsightsStore = create<InsightsStore>()(
           });
         }
       } catch (error) {
-        logger.error("Error fetching janitor config:", "useInsightsStore", { error });
+        logger.error("Error fetching janitor config:", { error });
       } finally {
         set({ loading: false });
       }
@@ -121,7 +121,7 @@ export const useInsightsStore = create<InsightsStore>()(
           });
         }
       } catch (error) {
-        logger.error("Error toggling janitor:", "useInsightsStore", { error });
+        logger.error("Error toggling janitor:", { error });
         throw error;
       }
     },
@@ -149,7 +149,7 @@ export const useInsightsStore = create<InsightsStore>()(
           });
         }
       } catch (error) {
-        logger.error("Error toggling Recommendation Sweep:", "useInsightsStore", { error });
+        logger.error("Error toggling Recommendation Sweep:", { error });
         throw error;
       }
     },
@@ -177,7 +177,7 @@ export const useInsightsStore = create<InsightsStore>()(
           });
         }
       } catch (error) {
-        logger.error("Error toggling Ticket Sweep:", "useInsightsStore", { error });
+        logger.error("Error toggling Ticket Sweep:", { error });
         throw error;
       }
     },
@@ -203,11 +203,11 @@ export const useInsightsStore = create<InsightsStore>()(
           await get().fetchRecommendations(slug);
         } else {
           const error = await response.json();
-          logger.error("Janitor run failed:", "useInsightsStore", { error });
+          logger.error("Janitor run failed:", { error });
           throw new Error(error.error || 'Unknown error');
         }
       } catch (error) {
-        logger.error("Error running janitor:", "useInsightsStore", { error });
+        logger.error("Error running janitor:", { error });
         throw error;
       } finally {
         // Remove from running janitors
@@ -237,11 +237,11 @@ export const useInsightsStore = create<InsightsStore>()(
           return result;
         } else {
           const error = await response.json();
-          logger.error("Accept failed:", "useInsightsStore", { error });
+          logger.error("Accept failed:", { error });
           throw new Error(error.error || "Unknown error");
         }
       } catch (error) {
-        logger.error("Error accepting recommendation:", "useInsightsStore", { error });
+        logger.error("Error accepting recommendation:", { error });
         throw error;
       }
     },
@@ -263,11 +263,11 @@ export const useInsightsStore = create<InsightsStore>()(
           }
         } else {
           const error = await response.json();
-          logger.error("Dismiss failed:", "useInsightsStore", { error });
+          logger.error("Dismiss failed:", { error });
           throw new Error(error.error || "Unknown error");
         }
       } catch (error) {
-        logger.error("Error dismissing recommendation:", "useInsightsStore", { error });
+        logger.error("Error dismissing recommendation:", { error });
         throw error;
       }
     },

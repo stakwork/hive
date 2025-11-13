@@ -72,7 +72,7 @@ export function DeleteWorkspace({
       router.push("/workspaces");
       router.refresh();
     } catch (error) {
-      logger.error("Error deleting workspace:", "DeleteWorkspace", { error });
+      logger.error("Error deleting workspace:", { error });
       toast({
         title: "Error",
         description:

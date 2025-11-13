@@ -214,7 +214,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
 
   // Helper function to parse pm2.config.js content to extract ServiceConfig[]
   const parsePM2ConfigToServices = (pm2Content: string): ServiceConfig[] => {
-    logger.debug(">>> pm2Content", "devContainerUtils", { pm2Content });
+    logger.debug(">>> pm2Content", { pm2Content });
     const parsedServices: ServiceConfig[] = [];
 
     try {
@@ -302,7 +302,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         }
       }
     } catch (error) {
-      logger.error("Failed to parse pm2.config.js:", "devContainerUtils", { error });
+      logger.error("Failed to parse pm2.config.js:", { error });
     }
 
     return parsedServices;
@@ -316,7 +316,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
       const decoded = Buffer.from(content, "base64").toString("utf-8");
       return parsePM2ConfigToServices(decoded);
     } catch {
-      logger.error("Failed to parse pm2.config.js", "devContainerUtils");
+      logger.error("Failed to parse pm2.config.js");
       return services;
     }
   }

@@ -78,14 +78,14 @@ async function callStakwork(
     });
 
     if (!response.ok) {
-      logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "user-journey/route");
+      logger.error(`Failed to send message to Stakwork: ${response.statusText}`);
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: result.success, data: result.data };
   } catch (error) {
-    logger.error("Error calling Stakwork:", "user-journey/route", { error });
+    logger.error("Error calling Stakwork:", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -218,11 +218,11 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch (error) {
-        logger.error("Error saving test code to ChatMessage:", "user-journey/route", { error });
+        logger.error("Error saving test code to ChatMessage:", { error });
         // Non-fatal - task was still created successfully
       }
     } catch (error) {
-      logger.error("Error creating task for user journey:", "user-journey/route", { error });
+      logger.error("Error creating task for user journey:", { error });
       return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
     }
 
@@ -255,10 +255,10 @@ export async function POST(request: NextRequest) {
         });
         task.stakworkProjectId = parseInt(String(stakworkProjectId));
       } else {
-        logger.warn("Task created without stakworkProjectId (Stakwork call failed)", "user-journey/route");
+        logger.warn("Task created without stakworkProjectId (Stakwork call failed)");
       }
     } catch (error) {
-      logger.error("Error updating task with stakworkProjectId:", "user-journey/route", { error });
+      logger.error("Error updating task with stakworkProjectId:", { error });
       // Non-fatal - task was still created successfully
     }
 
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    logger.error("Error creating chat message:", "user-journey/route", { error });
+    logger.error("Error creating chat message:", { error });
     return NextResponse.json({ error: "Failed to create chat message" }, { status: 500 });
   }
 }

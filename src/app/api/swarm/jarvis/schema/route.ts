@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       apiKey,
     });
 
-    // logger.debug("apiResult", "schema/route", { apiResult })
+    // logger.debug("apiResult", { apiResult })
 
     return NextResponse.json(
       {
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch (error) {
-    logger.error("Schema fetch error:", "schema/route", { error });
+    logger.error("Schema fetch error:", { error });
     return NextResponse.json({ success: false, message: "Failed to get schemas" }, { status: 500 });
   }
 }

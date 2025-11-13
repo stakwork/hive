@@ -76,7 +76,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
         setSystemAssignees(data.systemAssignees || []);
       }
     } catch (error) {
-      logger.error("Failed to fetch members:", "features/AssigneeCombobox", { error });
+      logger.error("Failed to fetch members:", { error });
     } finally {
       setLoading(false);
     }
@@ -104,7 +104,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
         window.open(bountyUrl, "_blank", "noopener,noreferrer");
       }
     } catch (error) {
-      logger.error("Failed to update assignee:", "features/AssigneeCombobox", { error });
+      logger.error("Failed to update assignee:", { error });
     } finally {
       setUpdating(false);
     }

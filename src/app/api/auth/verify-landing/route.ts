@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    logger.error("Error verifying landing page password:", "verify-landing/route", { error });
+    logger.error("Error verifying landing page password:", { error });
     return NextResponse.json(
       { success: false, message: "An error occurred" },
       { status: 500 }

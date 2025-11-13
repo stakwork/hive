@@ -11,7 +11,7 @@ import { logger } from "@/lib/logger";
 export const runtime = "nodejs";
 
 async function getAccessToken(code: string, state: string) {
-  // logger.debug("getAccessToken", "callback/route", { code, state });
+  // logger.debug("getAccessToken", { code, state });
   // 2. Exchange the temporary code for an OAuth token
   const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     // Log EVERYTHING GitHub sends you
     // console.log("=== ALL SEARCH PARAMS ===");
     // for (const [key, value] of searchParams.entries()) {
-    //   logger.debug(`${key}: ${value}`, "callback/route");
+    //   logger.debug(`${key}: ${value}`);
     // }
 
     const state = searchParams.get("state");
@@ -57,12 +57,12 @@ export async function GET(request: NextRequest) {
     const setupAction = searchParams.get("setup_action");
     const code = searchParams.get("code");
 
-    logger.debug("installationId", "callback/route", { installationId });
-    logger.debug("setupAction", "callback/route", { setupAction });
-    logger.debug("code", "callback/route", { code });
+    logger.debug("installationId", { installationId });
+    logger.debug("setupAction", { setupAction });
+    logger.debug("code", { code });
 
     console.log("state--state--state");
-    logger.debug("Debug output", "callback/route", { state });
+    logger.debug("Debug output", { state });
     console.log("state--state--state");
 
     // Validate required parameters
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     // });
 
     // if (!userSession) {
-    //   logger.error("Invalid or expired GitHub state for user:", "callback/route", { session.user.id });
+    //   logger.error("Invalid or expired GitHub state for user:", { session.user.id });
     //   return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     // }
 
@@ -100,8 +100,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/?error=invalid_code", request.url));
     }
 
-    // logger.debug("userAccessToken", "callback/route", { userAccessToken });
-    // logger.debug("userRefreshToken", "callback/route", { userRefreshToken });
+    // logger.debug("userAccessToken", { userAccessToken });
+    // logger.debug("userRefreshToken", { userRefreshToken });
 
     // Get GitHub user info to determine which org/user this token belongs to
     const userResponse = await fetch("https://api.github.com/user", {
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(new URL(`/?error=state_expired`, request.url));
       }
     } catch (error) {
-      logger.error("Failed to decode state:", "callback/route", { error });
+      logger.error("Failed to decode state:", { error });
       return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
     }
 
@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
       if (installationsResponse.ok) {
         const installationsData = await installationsResponse.json();
 
-        logger.debug("installationsData", "callback/route", { installationsData });
+        logger.debug("installationsData", { installationsData });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const installation = installationsData.installations?.find((inst: any) => inst.id === parseInt(installationId));
 
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
           installationAccount = installation.account;
           logger.debug(`✅ Found installation: ${githubOwner} (${ownerType}), installation ID: ${installationIdNumber}`, "callback/route");
         } else {
-          logger.error(`❌ Installation ${installationId} not found in user's installations`, "callback/route");
+          logger.error(`❌ Installation ${installationId} not found in user's installations`);
           // Fallback to the authenticated user
           githubOwner = githubUser.login;
           ownerType = "user";
@@ -192,7 +192,7 @@ export async function GET(request: NextRequest) {
         // Use the existing SourceControlOrg that the workspace is linked to
         githubOwner = workspace.sourceControlOrg.githubLogin;
         ownerType = workspace.sourceControlOrg.type === "USER" ? "user" : "org";
-        logger.debug(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`, "callback/route");
+        logger.debug(`🔗 Workspace ${workspaceSlug} is linked to SourceControlOrg: ${githubOwner} (${ownerType})`);
       } else {
         // Workspace not linked yet - extract GitHub org from repository URL
         const workspace = await db.workspace.findUnique({
@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
 
             if (githubMatch) {
               const repoGithubOwner = githubMatch[1];
-              logger.debug(`Extracted GitHub owner from repo URL: ${repoGithubOwner}`, "callback/route");
+              logger.debug(`Extracted GitHub owner from repo URL: ${repoGithubOwner}`);
 
               const existingSourceControlOrg = await db.sourceControlOrg.findUnique({
                 where: { githubLogin: repoGithubOwner },
@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
               }
             } else {
               // Invalid repository URL - fallback to authenticated user
-              logger.debug(`Could not extract GitHub owner from repo URL: ${repoUrl}`, "callback/route");
+              logger.debug(`Could not extract GitHub owner from repo URL: ${repoUrl}`);
               githubOwner = githubUser.login;
               ownerType = "user";
             }
@@ -254,7 +254,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    logger.debug(`📋 Creating tokens for ${githubOwner} (${ownerType})`, "callback/route");
+    logger.debug(`📋 Creating tokens for ${githubOwner} (${ownerType})`);
 
     // Encrypt the tokens before storing
     const encryptionService = EncryptionService.getInstance();
@@ -287,7 +287,7 @@ export async function GET(request: NextRequest) {
           description: installationAccount?.description || installationAccount?.bio || null,
         },
       });
-      logger.debug(`✅ Created SourceControlOrg for ${githubOwner}`, "callback/route");
+      logger.debug(`✅ Created SourceControlOrg for ${githubOwner}`);
     } else if (!sourceControlOrg && !installationIdNumber) {
       // OAuth-only flow - SourceControlOrg should already exist
       return NextResponse.redirect(new URL(`/w/${workspaceSlug}?error=no_installation_found`, request.url));
@@ -301,12 +301,12 @@ export async function GET(request: NextRequest) {
         where: { id: sourceControlOrg.id },
         data: { githubInstallationId: installationIdNumber },
       });
-      logger.debug(`🔄 Updated installation ID for ${githubOwner}`, "callback/route");
+      logger.debug(`🔄 Updated installation ID for ${githubOwner}`);
     }
 
     // Ensure we have a sourceControlOrg at this point
     if (!sourceControlOrg) {
-      logger.error(`No SourceControlOrg found or created for ${githubOwner}`, "callback/route");
+      logger.error(`No SourceControlOrg found or created for ${githubOwner}`);
       return NextResponse.redirect(new URL(`/w/${workspaceSlug}?error=source_control_org_missing`, request.url));
     }
 
@@ -330,7 +330,7 @@ export async function GET(request: NextRequest) {
           expiresAt: appExpiresAt,
         },
       });
-      logger.debug(`🔄 Updated SourceControlToken for user ${session.user.id} on ${githubOwner}`, "callback/route");
+      logger.debug(`🔄 Updated SourceControlToken for user ${session.user.id} on ${githubOwner}`);
     } else {
       // Create new token
       await db.sourceControlToken.create({
@@ -342,7 +342,7 @@ export async function GET(request: NextRequest) {
           expiresAt: appExpiresAt,
         },
       });
-      logger.debug(`✅ Created SourceControlToken for user ${session.user.id} on ${githubOwner}`, "callback/route");
+      logger.debug(`✅ Created SourceControlToken for user ${session.user.id} on ${githubOwner}`);
     }
 
     // Clear the GitHub state from the session after successful validation
@@ -355,7 +355,7 @@ export async function GET(request: NextRequest) {
     let repositoryAccessStatus = "unknown";
 
     if (setupAction === "install" || setupAction === "update" || !setupAction) {
-      logger.debug(`Linking workspace ${workspaceSlug} to SourceControlOrg ${githubOwner}`, "callback/route");
+      logger.debug(`Linking workspace ${workspaceSlug} to SourceControlOrg ${githubOwner}`);
 
       // Find the workspace and link it to the source control org
       const result = await db.workspace.updateMany({
@@ -363,7 +363,7 @@ export async function GET(request: NextRequest) {
         data: { sourceControlOrgId: sourceControlOrg.id },
       });
 
-      logger.debug(`✅ Linked ${result.count} workspace(s) to SourceControlOrg ${githubOwner}`, "callback/route");
+      logger.debug(`✅ Linked ${result.count} workspace(s) to SourceControlOrg ${githubOwner}`);
 
       // Check repository access after linking
       const workspace = await db.workspace.findUnique({
@@ -391,34 +391,34 @@ export async function GET(request: NextRequest) {
           // If we stored repositoryUrl in state, use it (we should enhance the install route to include this)
           targetRepositoryUrl = stateData.repositoryUrl;
         } catch (error) {
-          logger.debug("Could not extract repository URL from state", "callback/route", { error });
+          logger.debug("Could not extract repository URL from state", { error });
         }
       }
 
       if (targetRepositoryUrl) {
         try {
 
-          logger.debug("checking repository access for", "callback/route", { targetRepositoryUrl })
+          logger.debug("checking repository access for", { targetRepositoryUrl })
           const repositoryAccess = await checkRepositoryAccess(userAccessToken, targetRepositoryUrl);
 
 
-          logger.debug("repositoryAccess", "callback/route", { repositoryAccess })
+          logger.debug("repositoryAccess", { repositoryAccess })
 
           if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
-            logger.debug(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`, "callback/route");
+            logger.debug(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);
             repositoryAccessStatus = "accessible";
           } else if (repositoryAccess.hasAccess && !repositoryAccess.canPush) {
-            logger.debug(`❌ GitHub App has read-only access to repository: ${targetRepositoryUrl}`, "callback/route");
+            logger.debug(`❌ GitHub App has read-only access to repository: ${targetRepositoryUrl}`);
             console.log("🚫 Blocking swarm setup - push permissions required");
             repositoryAccessStatus = "read_only_blocked";
           } else {
-            logger.debug(`❌ GitHub App does not have access to repository: ${targetRepositoryUrl}`, "callback/route");
-            logger.debug(`Error: ${repositoryAccess.error}`, "callback/route");
+            logger.debug(`❌ GitHub App does not have access to repository: ${targetRepositoryUrl}`);
+            logger.debug(`Error: ${repositoryAccess.error}`);
             console.log("🚫 Blocking swarm setup - no repository access");
             repositoryAccessStatus = repositoryAccess.error || "no_access";
           }
         } catch (error) {
-          logger.error("Error checking repository access:", "callback/route", { error });
+          logger.error("Error checking repository access:", { error });
           console.log("🚫 Blocking swarm setup - permission check failed");
           repositoryAccessStatus = "check_failed";
         }
@@ -428,7 +428,7 @@ export async function GET(request: NextRequest) {
         repositoryAccessStatus = "no_repository_url";
       }
     } else if (setupAction === "uninstall") {
-      logger.debug(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`, "callback/route");
+      logger.debug(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`);
 
       // Unlink the workspace from source control org
       const result = await db.workspace.updateMany({
@@ -436,7 +436,7 @@ export async function GET(request: NextRequest) {
         data: { sourceControlOrgId: null },
       });
 
-      logger.debug(`🔗 Unlinked ${result.count} workspace(s) from SourceControlOrg`, "callback/route");
+      logger.debug(`🔗 Unlinked ${result.count} workspace(s) from SourceControlOrg`);
     }
 
     // Redirect to the workspace page with setup action and repository access status
@@ -448,7 +448,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    logger.error("GitHub App callback error:", "callback/route", { error });
+    logger.error("GitHub App callback error:", { error });
     return NextResponse.redirect(new URL("/?error=github_app_callback_error", request.url));
   }
 }

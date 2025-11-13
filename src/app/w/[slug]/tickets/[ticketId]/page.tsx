@@ -112,7 +112,7 @@ export default function TicketDetailPage() {
 
       handleBackClick();
     } catch (error) {
-      logger.error("Failed to delete ticket:", "[ticketId]/page", { error });
+      logger.error("Failed to delete ticket:", { error });
     }
   };
 

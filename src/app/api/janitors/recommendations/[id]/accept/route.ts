@@ -19,7 +19,7 @@ export async function POST(
     console.log("Accept route called");
     const session = await getServerSession(authOptions);
     const userId = (session?.user as { id?: string })?.id;
-    logger.debug("Session user ID:", "accept/route", { userId });
+    logger.debug("Session user ID:", { userId });
 
     if (!userId) {
       console.log("No user ID found, returning unauthorized");
@@ -46,7 +46,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    logger.error("Error accepting recommendation:", "accept/route", { error });
+    logger.error("Error accepting recommendation:", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

@@ -44,7 +44,7 @@ export function PoolStatusWidget() {
         setPoolStatus(result.data);
       }
     } catch (error) {
-      logger.error("Failed to fetch pool status:", "pool-status-widget/index", { error });
+      logger.error("Failed to fetch pool status:", { error });
     } finally {
       setLoading(false);
     }

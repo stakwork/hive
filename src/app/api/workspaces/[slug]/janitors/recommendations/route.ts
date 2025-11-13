@@ -84,7 +84,7 @@ export async function GET(
       pagination
     });
   } catch (error) {
-    logger.error("Error fetching janitor recommendations:", "recommendations/route", { error });
+    logger.error("Error fetching janitor recommendations:", { error });
     
     return NextResponse.json(
       { error: "Internal server error" },

@@ -79,12 +79,12 @@ const GraphComponentInner = ({
       const response = await fetch(`/api/swarm/jarvis/schema?id=${workspaceId}`);
       const data: SchemaResponse = await response.json();
 
-      logger.debug("schema data", "knowledge-graph/index", { data });
+      logger.debug("schema data", { data });
       if (data.data) {
 
         setSchemas(data.data.schemas.filter((schema) => !schema.is_deleted))
         if (!data.success) throw new Error("Failed to fetch schema data");
-        logger.debug("schema data", "knowledge-graph/index", { data });
+        logger.debug("schema data", { data });
       };
     };
     fetchSchema();
@@ -119,7 +119,7 @@ const GraphComponentInner = ({
 
         }
       } catch (err) {
-        logger.error("Failed to load nodes:", "knowledge-graph/index", { err });
+        logger.error("Failed to load nodes:", { err });
       } finally {
         setNodesLoading(false);
       }

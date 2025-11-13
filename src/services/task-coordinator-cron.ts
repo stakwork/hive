@@ -24,7 +24,7 @@ async function processTicketSweep(
   workspaceSlug: string,
   ownerId: string
 ): Promise<boolean> {
-  logger.debug(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`, "task-coordinator-cron");
+  logger.debug(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`);
 
   // Query for eligible tickets: TODO status, TASK_COORDINATOR assignee, no dependencies
   const eligibleTasks = await db.task.findMany({
@@ -64,12 +64,12 @@ async function processTicketSweep(
   });
 
   if (eligibleTasks.length === 0) {
-    logger.debug(`[TaskCoordinator] No eligible tickets found for workspace ${workspaceSlug}`, "task-coordinator-cron");
+    logger.debug(`[TaskCoordinator] No eligible tickets found for workspace ${workspaceSlug}`);
     return false;
   }
 
   const task = eligibleTasks[0];
-  logger.debug(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`, "task-coordinator-cron");
+  logger.debug(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
   try {
     // Start workflow for this task (automatically builds message and feature context)
@@ -79,7 +79,7 @@ async function processTicketSweep(
       mode: "live", // Use production workflow for automated task coordinator
     });
 
-    logger.debug(`[TaskCoordinator] Successfully processed ticket ${task.id}`, "task-coordinator-cron");
+    logger.debug(`[TaskCoordinator] Successfully processed ticket ${task.id}`);
     return true;
   } catch (error) {
     console.error(`[TaskCoordinator] Error processing ticket ${task.id}:`, error);
@@ -138,7 +138,7 @@ export async function haltStaleAgentTasks(): Promise<{
       },
     });
 
-    logger.debug(`[HaltStaleAgentTasks] Found ${staleTasks.length} stale agent tasks`, "task-coordinator-cron");
+    logger.debug(`[HaltStaleAgentTasks] Found ${staleTasks.length} stale agent tasks`);
 
     // Update each task to HALTED status using the shared haltTask function
     for (const task of staleTasks) {
@@ -146,7 +146,7 @@ export async function haltStaleAgentTasks(): Promise<{
         await haltTask(task.id);
 
         tasksHalted++;
-        logger.debug(`[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`, "task-coordinator-cron");
+        logger.debug(`[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[HaltStaleAgentTasks] Error halting task ${task.id}:`, errorMessage);
@@ -167,7 +167,7 @@ export async function haltStaleAgentTasks(): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error("[HaltStaleAgentTasks] Critical error during execution:", "task-coordinator-cron", { errorMessage });
+    logger.error("[HaltStaleAgentTasks] Critical error during execution:", { errorMessage });
 
     return {
       success: false,
@@ -194,12 +194,12 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
   let tasksCreated = 0;
 
   try {
-    logger.debug("[TaskCoordinator] Starting execution at", "task-coordinator-cron", { startTime.toISOString( }));
+    logger.debug("[TaskCoordinator] Starting execution at", { startTime.toISOString( }));
 
     // First, halt any stale agent tasks (IN_PROGRESS for >24 hours)
     try {
       const haltResult = await haltStaleAgentTasks();
-      logger.debug(`[TaskCoordinator] Halted ${haltResult.tasksHalted} stale agent tasks`, "task-coordinator-cron");
+      logger.debug(`[TaskCoordinator] Halted ${haltResult.tasksHalted} stale agent tasks`);
       if (!haltResult.success) {
         haltResult.errors.forEach(error => {
           errors.push({
@@ -210,7 +210,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error("[TaskCoordinator] Error halting stale tasks:", "task-coordinator-cron", { errorMessage });
+      logger.error("[TaskCoordinator] Error halting stale tasks:", { errorMessage });
       errors.push({
         workspaceSlug: "SYSTEM",
         error: `Failed to halt stale tasks: ${errorMessage}`
@@ -240,16 +240,16 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       }
     });
 
-    logger.debug(`[TaskCoordinator] Found ${enabledWorkspaces.length} workspaces with Task Coordinator Sweeps enabled`, "task-coordinator-cron");
+    logger.debug(`[TaskCoordinator] Found ${enabledWorkspaces.length} workspaces with Task Coordinator Sweeps enabled`);
 
     for (const workspace of enabledWorkspaces) {
       try {
         workspacesProcessed++;
-        logger.debug(`[TaskCoordinator] Processing workspace: ${workspace.slug}`, "task-coordinator-cron");
+        logger.debug(`[TaskCoordinator] Processing workspace: ${workspace.slug}`);
 
         // Skip if no swarm or pool API key
         if (!workspace.swarm?.id || !workspace.swarm?.poolApiKey) {
-          logger.debug(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`, "task-coordinator-cron");
+          logger.debug(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`);
           continue;
         }
 
@@ -263,7 +263,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         );
 
         const availablePods = poolStatusResponse.status.unusedVms;
-        logger.debug(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`, "task-coordinator-cron");
+        logger.debug(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
 
         if (availablePods <= 1) {
           logger.debug(`[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`, "task-coordinator-cron");
@@ -282,7 +282,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
             );
             if (itemProcessed) {
               tasksCreated++;
-              logger.debug(`[TaskCoordinator] Processed ticket sweep for workspace ${workspace.slug}`, "task-coordinator-cron");
+              logger.debug(`[TaskCoordinator] Processed ticket sweep for workspace ${workspace.slug}`);
             }
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -329,12 +329,12 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
               take: 1 // Only process one recommendation at a time
             });
 
-            logger.debug(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`, "task-coordinator-cron");
+            logger.debug(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
 
             // Accept recommendations while reserving 1 pod (only processes when 2+ pods available)
             for (const recommendation of pendingRecommendations) {
               try {
-                logger.debug(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`, "task-coordinator-cron");
+                logger.debug(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`);
 
                 // Use the existing acceptJanitorRecommendation service
                 const { acceptJanitorRecommendation } = await import("@/services/janitor");
@@ -349,7 +349,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
                 tasksCreated++;
                 itemProcessed = true;
-                logger.debug(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`, "task-coordinator-cron");
+                logger.debug(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`);
 
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
@@ -396,7 +396,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error("[TaskCoordinator] Critical error during execution:", "task-coordinator-cron", { errorMessage });
+    logger.error("[TaskCoordinator] Critical error during execution:", { errorMessage });
 
     return {
       success: false,

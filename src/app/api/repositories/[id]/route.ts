@@ -52,7 +52,7 @@ export async function PUT(
 
     return NextResponse.json(updatedRepository);
   } catch (error) {
-    logger.error("Error updating repository:", "[id]/route", { error });
+    logger.error("Error updating repository:", { error });
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

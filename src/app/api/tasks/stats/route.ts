@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching task statistics:", "stats/route", { error });
+    logger.error("Error fetching task statistics:", { error });
     return NextResponse.json(
       { error: "Failed to fetch task statistics" },
       { status: 500 },

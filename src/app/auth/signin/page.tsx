@@ -73,13 +73,13 @@ function SignInContent() {
       });
 
       if (result?.error) {
-        logger.error("Sign in error:", "signin/page", { result.error });
+        logger.error("Sign in error:", { result.error });
         // Reset signing in state on error
         setIsSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
-      logger.error("Unexpected sign in error:", "signin/page", { error });
+      logger.error("Unexpected sign in error:", { error });
       setIsSigningIn(false);
     }
   };
@@ -94,12 +94,12 @@ function SignInContent() {
       });
 
       if (result?.error) {
-        logger.error("Mock sign in error:", "signin/page", { result.error });
+        logger.error("Mock sign in error:", { result.error });
         setIsMockSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
-      logger.error("Unexpected mock sign in error:", "signin/page", { error });
+      logger.error("Unexpected mock sign in error:", { error });
       setIsMockSigningIn(false);
     }
   };

@@ -54,7 +54,7 @@ export const useProjectLogWebSocket = (
         if (data.type === "ping") return;
 
         if (isVerboseLoggingEnabled) {
-          logger.debug("Hive Chat Data message", "useProjectLogWebSocket", { data });
+          logger.debug("Hive Chat Data message", { data });
         }
 
         const messageData = data?.message;
@@ -77,12 +77,12 @@ export const useProjectLogWebSocket = (
           };
 
           addLogEntry(logEntry);
-          logger.debug("Project Log:", "useProjectLogWebSocket", { logEntry });
+          logger.debug("Project Log:", { logEntry });
         }
       };
 
       ws.onerror = (error: Event) =>
-        logger.error("WebSocket error123:", "useProjectLogWebSocket", { error });
+        logger.error("WebSocket error123:", { error });
 
       ws.onclose = () => {
         console.log("WebSocket connection closed");

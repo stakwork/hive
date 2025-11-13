@@ -161,7 +161,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching task:", "[taskId]/route", { error });
+    logger.error("Error fetching task:", { error });
     return NextResponse.json({ error: "Failed to fetch task" }, { status: 500 });
   }
 }

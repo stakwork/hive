@@ -72,7 +72,7 @@ export function FileDropZone({
           const content = await file.text();
           onFileContent(content, file.name);
         } catch (error) {
-          logger.error("Error reading file:", "ui/file-drop-zone", { error });
+          logger.error("Error reading file:", { error });
         }
       }
     }

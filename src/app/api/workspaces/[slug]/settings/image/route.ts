@@ -26,7 +26,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    logger.error("Error removing workspace logo:", "image/route", { error })
+    logger.error("Error removing workspace logo:", { error })
 
     if (error instanceof Error) {
       if (error.message.includes('not found')) {

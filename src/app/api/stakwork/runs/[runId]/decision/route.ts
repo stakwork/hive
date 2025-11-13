@@ -78,7 +78,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error updating decision:", "decision/route", { error });
+    logger.error("Error updating decision:", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to update decision";

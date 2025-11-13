@@ -50,7 +50,7 @@ export async function fetchSwarmDetails(swarmId: string): Promise<{ ok: boolean;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      logger.debug(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`, "api/swarm");
+      logger.debug(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`);
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
       const response = await fetch(url, {
@@ -73,7 +73,7 @@ export async function fetchSwarmDetails(swarmId: string): Promise<{ ok: boolean;
         return { ok: false, data, status: response.status };
       }
     } catch (error) {
-      logger.error("fetchSwarmDetails network error:", "api/swarm", { error });
+      logger.error("fetchSwarmDetails network error:", { error });
       lastError = { ok: false, status: 500 };
     }
 
@@ -123,7 +123,7 @@ export async function swarmApiRequest({
     try {
       responseData = JSON.parse(responseText);
     } catch (error) {
-      logger.error("swarmApiRequest JSON error", "api/swarm", { responseText, error });
+      logger.error("swarmApiRequest JSON error", { responseText, error });
       responseData = undefined;
     }
     return {
@@ -132,7 +132,7 @@ export async function swarmApiRequest({
       status: response.status,
     };
   } catch (error) {
-    logger.error("swarmApiRequest", "api/swarm", { error });
+    logger.error("swarmApiRequest", { error });
     return { ok: false, status: 500 };
   }
 }
@@ -182,12 +182,12 @@ export async function swarmApiRequestAuth({
     try {
       responseData = await response.json();
     } catch (error) {
-      logger.error("swarmApiRequest error parsing JSON", "api/swarm", { error });
+      logger.error("swarmApiRequest error parsing JSON", { error });
     }
 
     return { ok: response.ok, data: responseData, status: response.status };
   } catch (error) {
-    logger.error("swarmApiRequest", "api/swarm", { error });
+    logger.error("swarmApiRequest", { error });
     return { ok: false, status: 500 };
   }
 }

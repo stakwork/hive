@@ -151,7 +151,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolState: params.poolState || PoolState.NOT_STARTED,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
-    logger.debug("[saveOrUpdateSwarm] Create data:", "swarm/db", { createData });
+    logger.debug("[saveOrUpdateSwarm] Create data:", { createData });
     swarm = await db.swarm.create({
       data: createData,
       select,

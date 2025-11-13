@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       total_count: response.data.total_count,
     });
   } catch (error: unknown) {
-    logger.error("Error searching GitHub users:", "search/route", { error });
+    logger.error("Error searching GitHub users:", { error });
 
     if (
       error &&

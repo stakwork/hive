@@ -83,7 +83,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         setNewPhaseName("");
       }
     } catch (error) {
-      logger.error("Failed to create phase:", "features/PhaseSection", { error });
+      logger.error("Failed to create phase:", { error });
     } finally {
       setCreatingPhase(false);
     }
@@ -112,7 +112,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         onUpdate(updatedPhases);
       }
     } catch (error) {
-      logger.error("Failed to update phase:", "features/PhaseSection", { error });
+      logger.error("Failed to update phase:", { error });
       throw error;
     }
   };
@@ -130,7 +130,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
       const updatedPhases = phases.filter((p) => p.id !== phaseId);
       onUpdate(updatedPhases);
     } catch (error) {
-      logger.error("Failed to delete phase:", "features/PhaseSection", { error });
+      logger.error("Failed to delete phase:", { error });
       throw error;
     }
   };
@@ -176,7 +176,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
           throw new Error("Failed to reorder phases");
         }
       } catch (error) {
-        logger.error("Failed to reorder phases:", "features/PhaseSection", { error });
+        logger.error("Failed to reorder phases:", { error });
         // On error, could refetch to restore correct order
         // For now, the optimistic update stays
       }
@@ -214,7 +214,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         setAiSuggestion(null);
       }
     } catch (error) {
-      logger.error("Failed to accept AI suggestion:", "features/PhaseSection", { error });
+      logger.error("Failed to accept AI suggestion:", { error });
     } finally {
       setAccepting(false);
     }

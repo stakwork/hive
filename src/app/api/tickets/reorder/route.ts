@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error reordering tickets:", "reorder/route", { error });
+    logger.error("Error reordering tickets:", { error });
     const message = error instanceof Error ? error.message : "Failed to reorder tickets";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

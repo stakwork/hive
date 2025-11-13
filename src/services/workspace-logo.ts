@@ -135,7 +135,7 @@ export class WorkspaceLogoService {
       try {
         await this.s3Service.deleteObject(workspace.logoKey)
       } catch (error) {
-        logger.warn("Failed to delete old logo:", "workspace-logo", { error })
+        logger.warn("Failed to delete old logo:", { error })
       }
     }
 
@@ -183,7 +183,7 @@ export class WorkspaceLogoService {
     try {
       await this.s3Service.deleteObject(workspace.logoKey)
     } catch (error) {
-      logger.warn("Failed to delete logo from S3:", "workspace-logo", { error })
+      logger.warn("Failed to delete logo from S3:", { error })
     }
 
     await db.workspace.update({

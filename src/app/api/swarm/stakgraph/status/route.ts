@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ apiResult }, { status: apiResult.status });
   } catch (error) {
-    logger.error("Error getting stakgraph status:", "status/route", { error });
+    logger.error("Error getting stakgraph status:", { error });
     return NextResponse.json({ success: false, message: "Failed to get status" }, { status: 500 });
   }
 }

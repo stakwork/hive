@@ -20,7 +20,7 @@ export class StakgraphWebhookService {
     try {
       const { request_id } = payload;
       if (!request_id) {
-        logger.error("[StakgraphWebhookService] Missing request_id in payload", "swarm/StakgraphWebhookService");
+        logger.error("[StakgraphWebhookService] Missing request_id in payload");
         return {
           success: false,
           status: 400,

@@ -34,7 +34,7 @@ export function useGitVisualizer({
 
     try {
       const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
-      logger.debug("start GitVisualizer", "useGitVisualizer", { owner, repo });
+      logger.debug("start GitVisualizer", { owner, repo });
 
       const swarmUrlObj = new URL(swarmUrl);
       let gitseeUrl = `https://${swarmUrlObj.hostname}:3355`;
@@ -55,7 +55,7 @@ export function useGitVisualizer({
         viz?.visualize(owner, repo);
       }, 100);
     } catch (error) {
-      logger.error("Failed to visualize repository", "useGitVisualizer", { error });
+      logger.error("Failed to visualize repository", { error });
     }
 
     return () => {

@@ -215,7 +215,7 @@ describe('Logger', () => {
       });
 
       it('should format error messages correctly', () => {
-        logger.error('test error', 'TEST_CONTEXT', { key: 'value' });
+        logger.error('test error', { key: 'value' });
 
         expect(mockConsole.error).toHaveBeenCalledWith(
           JSON.stringify({
@@ -241,7 +241,7 @@ describe('Logger', () => {
       });
 
       it('should sanitize metadata', () => {
-        logger.info('test message', 'CONTEXT', {
+        logger.info('test message', {
           access_token: 'sensitive_token',
           username: 'testuser'
         });

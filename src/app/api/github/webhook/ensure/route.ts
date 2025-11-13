@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Debug output", "ensure/route", { error });
+    logger.error("Debug output", { error });
     return NextResponse.json(
       { success: false, message: "Failed to ensure webhook" },
       { status: 500 },

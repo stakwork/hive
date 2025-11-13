@@ -236,7 +236,7 @@ const SynchronizedGraphComponentInner = ({
           if (!data.success) throw new Error("Failed to fetch schema data");
         }
       } catch (err) {
-        logger.error("Failed to load schema:", "calls/SynchronizedGraphComponent", { err });
+        logger.error("Failed to load schema:", { err });
       }
     };
 
@@ -287,7 +287,7 @@ const SynchronizedGraphComponentInner = ({
           });
         }
       } catch (err) {
-        logger.error("Failed to load nodes:", "calls/SynchronizedGraphComponent", { err });
+        logger.error("Failed to load nodes:", { err });
       } finally {
         setNodesLoading(false);
       }

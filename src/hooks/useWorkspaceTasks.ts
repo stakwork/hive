@@ -145,7 +145,7 @@ export function useWorkspaceTasks(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch tasks";
       setError(errorMessage);
-      logger.error("Error fetching workspace tasks:", "useWorkspaceTasks", { err });
+      logger.error("Error fetching workspace tasks:", { err });
     } finally {
       setLoading(false);
     }
@@ -201,7 +201,7 @@ export function useWorkspaceTasks(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to restore tasks from storage";
       setError(errorMessage);
-      logger.error("Error restoring workspace tasks from storage:", "useWorkspaceTasks", { err });
+      logger.error("Error restoring workspace tasks from storage:", { err });
       // Clear invalid stored state and fallback to normal fetch
       clearStoredPage(workspaceId);
       await fetchTasks(1, true, includeLatestMessage);

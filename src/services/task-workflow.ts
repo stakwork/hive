@@ -121,7 +121,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     try {
       featureContext = await buildFeatureContext(task.featureId, task.phaseId);
     } catch (error) {
-      logger.error("Error building feature context:", "task-workflow", { error });
+      logger.error("Error building feature context:", { error });
       // Continue without feature context if it fails
     }
   }
@@ -272,7 +272,7 @@ export async function startTaskWorkflow(params: {
     try {
       featureContext = await buildFeatureContext(task.featureId, task.phaseId);
     } catch (error) {
-      logger.error("Error building feature context:", "task-workflow", { error });
+      logger.error("Error building feature context:", { error });
       // Continue without feature context if it fails
     }
   }
@@ -394,7 +394,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
         } else {
-          logger.warn("No project_id found in Stakwork response:", "task-workflow", { stakworkData });
+          logger.warn("No project_id found in Stakwork response:", { stakworkData });
         }
 
         // Update task status to IN_PROGRESS if it's currently TODO
@@ -418,7 +418,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         });
       }
     } catch (error) {
-      logger.error("Error calling Stakwork:", "task-workflow", { error });
+      logger.error("Error calling Stakwork:", { error });
       await db.task.update({
         where: { id: taskId },
         data: { workflowStatus: "FAILED" },
@@ -557,7 +557,7 @@ export async function callStakworkAPI(params: {
   });
 
   if (!response.ok) {
-    logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "task-workflow");
+    logger.error(`Failed to send message to Stakwork: ${response.statusText}`);
     return { success: false, error: response.statusText };
   }
 

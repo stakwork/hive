@@ -43,7 +43,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    logger.error("Error dismissing recommendation:", "dismiss/route", { error });
+    logger.error("Error dismissing recommendation:", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

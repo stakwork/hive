@@ -22,7 +22,7 @@ export default function StepNode({ data: rawData }: NodeProps) {
   const data = rawData as unknown as StepNodeData;
 
   const onChange = useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
-    logger.debug("Debug output", "workflow/StepNode", { evt.target.value });
+    logger.debug("Debug output", { evt.target.value });
   }, []);
 
   const sourceConnections = useHandleConnections({

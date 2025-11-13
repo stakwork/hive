@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    logger.error("Error generating presigned URL:", "presigned-url/route", { error })
+    logger.error("Error generating presigned URL:", { error })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

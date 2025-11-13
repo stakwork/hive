@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (error) {
-      logger.error("❌ Mock error sending response:", "chat/route", { error });
+      logger.error("❌ Mock error sending response:", { error });
     }
 
     return NextResponse.json({
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       message: "Message received, response will be generated shortly",
     });
   } catch (error) {
-    logger.error(" Mock error processing message:", "chat/route", { error });
+    logger.error(" Mock error processing message:", { error });
     return NextResponse.json(
       { error: "Failed to process message" },
       { status: 500 },

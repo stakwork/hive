@@ -44,7 +44,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
     try {
       await onUpdate(phase.id, { status });
     } catch (error) {
-      logger.error("Failed to update phase status:", "features/PhaseItem", { error });
+      logger.error("Failed to update phase status:", { error });
       throw error;
     }
   };
@@ -53,7 +53,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
     try {
       await onDelete(phase.id);
     } catch (error) {
-      logger.error("Failed to delete phase:", "features/PhaseItem", { error });
+      logger.error("Failed to delete phase:", { error });
     }
   };
 

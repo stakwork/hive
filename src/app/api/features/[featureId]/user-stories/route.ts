@@ -110,7 +110,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error fetching user stories:", "user-stories/route", { error });
+    logger.error("Error fetching user stories:", { error });
     return NextResponse.json(
       { error: "Failed to fetch user stories" },
       { status: 500 }
@@ -140,7 +140,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    logger.error("Error creating user story:", "user-stories/route", { error });
+    logger.error("Error creating user story:", { error });
     const message = error instanceof Error ? error.message : "Failed to create user story";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

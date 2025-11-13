@@ -113,7 +113,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           if (result.success && result.data) {
             const settings = result.data;
 
-            logger.debug("result.data>>>>", "useStakgraphStore", { result.data });
+            logger.debug("result.data>>>>", { result.data });
 
             const files = Object.entries(settings.containerFiles || {}).reduce(
               (acc, curr) => {
@@ -141,7 +141,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
               webhookEnsured: Boolean(settings.webhookEnsured),
             };
 
-            logger.debug("newFormData", "useStakgraphStore", { newFormData });
+            logger.debug("newFormData", { newFormData });
 
             set({ formData: newFormData });
 
@@ -159,13 +159,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
           // No swarm found - this is expected for workspaces without swarms
           console.log("No swarm found for this workspace yet");
         } else {
-          logger.error("Failed to load stakgraph settings", "useStakgraphStore");
+          logger.error("Failed to load stakgraph settings");
         }
       } catch (error) {
         if (isAbortError(error)) {
           return;
         }
-        logger.error("Error loading stakgraph settings:", "useStakgraphStore", { error });
+        logger.error("Error loading stakgraph settings:", { error });
       } finally {
         if (requestManager.isAborted() || get().currentWorkspaceSlug !== slug) {
           return;
@@ -334,7 +334,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           });
         }
       } catch (error) {
-        logger.error("Failed to save configuration:", "useStakgraphStore", { error });
+        logger.error("Failed to save configuration:", { error });
         set({
           errors: {
             general: "Failed to save configuration. Please try again.",
@@ -442,7 +442,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
     handleServicesChange: (services: ServiceDataConfig[]) => {
       const state = get();
-      logger.debug("Store receiving services:", "useStakgraphStore", { services }); // Debug log
+      logger.debug("Store receiving services:", { services }); // Debug log
       set({
         formData: { ...state.formData, services: services },
         saved: false,

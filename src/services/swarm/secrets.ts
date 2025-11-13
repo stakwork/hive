@@ -41,7 +41,7 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
     where: { id },
     select: { swarmId: true } as { swarmId: true },
   });
-  logger.debug(">>>> swarm", "swarm/secrets", { swarm });
+  logger.debug(">>>> swarm", { swarm });
 
   const loginData = await loginResponse.json();
 
@@ -82,8 +82,8 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
     });
   } catch (error) {
     console.log("updateSwarmPoolApiKeyFor");
-    logger.debug("Debug output", "swarm/secrets", { error });
+    logger.debug("Debug output", { error });
     console.log("updateSwarmPoolApiKeyFor");
-    logger.error("Debug output", "swarm/secrets", { error });
+    logger.error("Debug output", { error });
   }
 }

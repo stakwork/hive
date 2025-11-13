@@ -39,7 +39,7 @@ function extractRepoNameFromUrl(url: string): string | null {
     }
     return null;
   } catch (error) {
-    logger.error("Error extracting repo name from URL:", "project-name-setup/index", { error });
+    logger.error("Error extracting repo name from URL:", { error });
     return null;
   }
 }
@@ -108,10 +108,10 @@ export function ProjectNameSetupStep() {
             setInfoMessage("");
           }
         } else {
-          logger.error("Failed to check slug availability:", "project-name-setup/index", { data.error });
+          logger.error("Failed to check slug availability:", { data.error });
         }
       } catch (error) {
-        logger.error("Error checking slug availability:", "project-name-setup/index", { error });
+        logger.error("Error checking slug availability:", { error });
       }
     };
 
@@ -147,7 +147,7 @@ export function ProjectNameSetupStep() {
 
         // 2. Check GitHub App status for this workspace/repository
         const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
-        logger.debug("statusResponse", "project-name-setup/index", { statusResponse });
+        logger.debug("statusResponse", { statusResponse });
         const statusData = await statusResponse.json();
 
         if (statusData.hasPushAccess) {

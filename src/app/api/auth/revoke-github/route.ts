@@ -58,11 +58,11 @@ export async function POST() {
         );
 
         if (!response.ok) {
-          logger.error("Failed to revoke GitHub token:", "revoke-github/route", { response.status,
+          logger.error("Failed to revoke GitHub token:", { response.status,
             response.statusText, });
         }
       } catch (error) {
-        logger.error("Error revoking GitHub token:", "revoke-github/route", { error });
+        logger.error("Error revoking GitHub token:", { error });
       }
     }
 
@@ -89,12 +89,12 @@ export async function POST() {
         },
       });
     } catch (error) {
-      logger.error("Sessions already deleted or error deleting sessions:", "revoke-github/route", { error, });
+      logger.error("Sessions already deleted or error deleting sessions:", { error, });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("Error revoking GitHub access:", "revoke-github/route", { error });
+    logger.error("Error revoking GitHub access:", { error });
     return NextResponse.json(
       { error: "Failed to revoke GitHub access" },
       { status: 500 },

@@ -19,6 +19,6 @@ export async function retryWithDelay<T>(
       }
     }
   }
-  logger.error(`❌ All ${maxAttempts} attempts failed`, "retry");
+  logger.error(`❌ All ${maxAttempts} attempts failed`);
   throw lastError;
 }

@@ -125,7 +125,7 @@ export default function CallPage() {
         setTranscript(transcriptSegments);
 
       } catch (err) {
-        logger.error("Error fetching call data:", "[ref_id]/page", { err });
+        logger.error("Error fetching call data:", { err });
         setError(err instanceof Error ? err.message : "Failed to load call data");
       } finally {
         setLoading(false);

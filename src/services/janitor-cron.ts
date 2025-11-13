@@ -73,11 +73,11 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     timestamp: new Date()
   };
 
-  logger.debug(`[JanitorCron] Starting scheduled janitor execution at ${result.timestamp.toISOString()}`, "janitor-cron");
+  logger.debug(`[JanitorCron] Starting scheduled janitor execution at ${result.timestamp.toISOString()}`);
 
   try {
     const workspaces = await getWorkspacesWithEnabledJanitors();
-    logger.debug(`[JanitorCron] Found ${workspaces.length} workspaces with enabled janitors`, "janitor-cron");
+    logger.debug(`[JanitorCron] Found ${workspaces.length} workspaces with enabled janitors`);
 
     result.workspacesProcessed = workspaces.length;
 
@@ -85,17 +85,17 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       const { slug, name, ownerId, janitorConfig } = workspace;
       
       if (!janitorConfig) {
-        logger.debug(`[JanitorCron] Skipping workspace ${slug}: no janitor config`, "janitor-cron");
+        logger.debug(`[JanitorCron] Skipping workspace ${slug}: no janitor config`);
         continue;
       }
 
-      logger.debug(`[JanitorCron] Processing workspace: ${name} (${slug})`, "janitor-cron");
+      logger.debug(`[JanitorCron] Processing workspace: ${name} (${slug})`);
 
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
           try {
-            logger.debug(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`, "janitor-cron");
+            logger.debug(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
             await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
             result.runsCreated++;
           } catch (error) {

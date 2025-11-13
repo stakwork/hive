@@ -32,15 +32,15 @@ class WorkflowEdit {
   };
 
   private connected = (): void => {
-    logger.debug(`Workflow ${this.workflowId} connected`, "channels/WorkflowEdit");
+    logger.debug(`Workflow ${this.workflowId} connected`);
   };
 
   private disconnected = (): void => {
-    logger.warn(`Workflow ${this.workflowId} was disconnected.`, "channels/WorkflowEdit");
+    logger.warn(`Workflow ${this.workflowId} was disconnected.`);
   };
 
   private rejected = (): void => {
-    logger.warn("I was rejected! :(", "channels/WorkflowEdit");
+    logger.warn("I was rejected! :(");
   };
 }
 

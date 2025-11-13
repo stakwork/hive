@@ -37,7 +37,7 @@ export function SmartLayoutButton({ onNodesChange }: SmartLayoutButtonProps) {
         }, 50);
       }
     } catch (error) {
-      logger.error("Failed to apply layout:", "workflow/SmartLayoutButton", { error });
+      logger.error("Failed to apply layout:", { error });
     } finally {
       setIsProcessing(false);
     }
@@ -58,7 +58,7 @@ export function SmartLayoutButton({ onNodesChange }: SmartLayoutButtonProps) {
 
     // Call onNodesChange with these changes to trigger saving
     if (nodeChanges.length > 0) {
-      logger.debug("Saving positions for", "workflow/SmartLayoutButton", { nodeChanges.length, 'nodes' });
+      logger.debug("Saving positions for", { nodeChanges.length, 'nodes' });
       onNodesChange(nodeChanges);
     }
   };

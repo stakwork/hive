@@ -54,7 +54,7 @@ export function useTranscriptChunking({
           }),
         });
       } catch (error) {
-        logger.error("Error sending transcript chunk:", "useTranscriptChunking", { error });
+        logger.error("Error sending transcript chunk:", { error });
       }
     },
     [workspaceSlug]

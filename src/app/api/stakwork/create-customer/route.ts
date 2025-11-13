@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   } catch (error) {
-    logger.error("Error creating Stakwork customer:", "create-customer/route", { error });
+    logger.error("Error creating Stakwork customer:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

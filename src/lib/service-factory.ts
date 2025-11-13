@@ -16,9 +16,9 @@ export class ServiceFactory {
     if (!this.instances.has(serviceName)) {
       const config = getServiceConfig(serviceName);
 
-      logger.debug("--------------------------------config--------------------------------", "service-factory", {  });
-      logger.debug("Debug output", "service-factory", { config });
-      logger.debug("--------------------------------config--------------------------------", "service-factory", {  });
+      logger.debug("--------------------------------config--------------------------------", {  });
+      logger.debug("Debug output", { config });
+      logger.debug("--------------------------------config--------------------------------", {  });
 
       switch (serviceName) {
         case "stakwork":

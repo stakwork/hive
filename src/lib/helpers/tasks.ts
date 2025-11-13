@@ -125,11 +125,11 @@ export async function extractPrArtifact(
                 }
               }
             } catch (error) {
-              logger.error("Error checking PR status:", "helpers/tasks", { error });
+              logger.error("Error checking PR status:", { error });
             }
           }
         } else {
-          logger.error("No PR URL found for task:", "helpers/tasks", { task.id });
+          logger.error("No PR URL found for task:", { task.id });
         }
 
         return { id: prArt.id, type: prArt.type, content };

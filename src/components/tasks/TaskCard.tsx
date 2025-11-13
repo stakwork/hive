@@ -43,7 +43,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         throw new Error("Failed to update task");
       }
     } catch (error) {
-      logger.error("Error updating task:", "tasks/TaskCard", { error });
+      logger.error("Error updating task:", { error });
     } finally {
       setIsUpdating(false);
     }

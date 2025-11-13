@@ -42,7 +42,7 @@ export async function GET(
 
     return NextResponse.json({ workspace });
   } catch (error) {
-    logger.error("Error fetching workspace by slug:", "[slug]/route", { error });
+    logger.error("Error fetching workspace by slug:", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -76,7 +76,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("Error deleting workspace:", "[slug]/route", { error });
+    logger.error("Error deleting workspace:", { error });
 
     const message =
       error instanceof Error ? error.message : "Internal server error";
@@ -129,7 +129,7 @@ export async function PUT(
       slugChanged: validatedData.slug !== slug ? validatedData.slug : null
     });
   } catch (error) {
-    logger.error("Error updating workspace:", "[slug]/route", { error });
+    logger.error("Error updating workspace:", { error });
 
     // Handle validation errors
     if (error && typeof error === "object" && "issues" in error) {

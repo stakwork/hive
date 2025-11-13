@@ -75,7 +75,7 @@ export async function resolveUserWorkspaceRedirect(
       defaultWorkspaceSlug: fallbackWorkspace.slug,
     };
   } catch (error) {
-    logger.error("Error resolving workspace redirect:", "auth/workspace-resolver", { error });
+    logger.error("Error resolving workspace redirect:", { error });
 
     // On error, redirect to onboarding to be safe
     return {
@@ -120,7 +120,7 @@ export async function validateUserWorkspaceAccess(
 
     return hasAccess ? requestedSlug : null;
   } catch (error) {
-    logger.error("Error validating workspace access:", "auth/workspace-resolver", { error });
+    logger.error("Error validating workspace access:", { error });
     return null;
   }
 }

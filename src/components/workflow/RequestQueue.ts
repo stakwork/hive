@@ -94,7 +94,7 @@ class RequestQueue {
 
       nextRequest.resolve(response);
     } catch (error) {
-      logger.error("Error processing request:", "workflow/RequestQueue", { error });
+      logger.error("Error processing request:", { error });
       nextRequest.reject(error);
     } finally {
       // Remove the processed request

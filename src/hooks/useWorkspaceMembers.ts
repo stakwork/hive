@@ -67,7 +67,7 @@ export function useWorkspaceMembers(
 
       setMembers(allMembers);
     } catch (err) {
-      logger.error("Error fetching workspace members:", "useWorkspaceMembers", { err });
+      logger.error("Error fetching workspace members:", { err });
       setError(err instanceof Error ? err.message : "Failed to load members");
     } finally {
       setLoading(false);

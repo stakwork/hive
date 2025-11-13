@@ -78,7 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    logger.debug("🔍 Claim pod for real: workspaceId:", "[workspaceId]/route", { workspaceId,
+    logger.debug("🔍 Claim pod for real: workspaceId:", { workspaceId,
       "shouldUpdateToLatest:",
       shouldUpdateToLatest,
       "shouldIncludeGoose:",
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           try {
             await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
           } catch (error) {
-            logger.error("Error updating pod repositories:", "[workspaceId]/route", { error });
+            logger.error("Error updating pod repositories:", { error });
           }
         } else {
           console.log(">>> No repositories to update");
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
         if (!anthropicApiKey) {
-          logger.error("ANTHROPIC_API_KEY not found in environment", "[workspaceId]/route");
+          logger.error("ANTHROPIC_API_KEY not found in environment");
         } else {
           goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey);
         }
@@ -186,9 +186,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           },
         });
 
-        logger.debug(`✅ Stored agent credentials for task ${taskId}`, "[workspaceId]/route");
+        logger.debug(`✅ Stored agent credentials for task ${taskId}`);
       } catch (error) {
-        logger.error("Failed to store agent credentials:", "[workspaceId]/route", { error });
+        logger.error("Failed to store agent credentials:", { error });
         // Don't fail the request, but log the error
       }
     }
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error claiming pod:", "[workspaceId]/route", { error });
+    logger.error("Error claiming pod:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

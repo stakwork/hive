@@ -90,7 +90,7 @@ export async function verifyCookie(signedValue: string): Promise<boolean> {
     // Constant-time comparison
     return constantTimeCompare(signature, expectedSignature);
   } catch (error) {
-    logger.error("Error verifying landing cookie:", "auth/landing-cookie", { error });
+    logger.error("Error verifying landing cookie:", { error });
     return false;
   }
 }

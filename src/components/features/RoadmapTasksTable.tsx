@@ -213,7 +213,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
       // Navigate to task page
       router.push(`/w/${workspaceSlug}/task/${task.id}`);
     } catch (error) {
-      logger.error("Failed to start task:", "features/RoadmapTasksTable", { error });
+      logger.error("Failed to start task:", { error });
       setStartingTaskId(null);
     }
   };
@@ -240,7 +240,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
         onTasksReordered(tasks.filter((t) => t.id !== taskId));
       }
     } catch (error) {
-      logger.error("Failed to delete task:", "features/RoadmapTasksTable", { error });
+      logger.error("Failed to delete task:", { error });
     }
   };
 

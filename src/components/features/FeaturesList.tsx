@@ -398,7 +398,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
 
       setFeatures((prev) => prev.map((f) => (f.id === featureId ? { ...f, status } : f)));
     } catch (error) {
-      logger.error("Failed to update status:", "features/FeaturesList", { error });
+      logger.error("Failed to update status:", { error });
       throw error;
     }
   };
@@ -418,7 +418,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       // Refetch to get updated assignee data
       await fetchFeatures(1);
     } catch (error) {
-      logger.error("Failed to update assignee:", "features/FeaturesList", { error });
+      logger.error("Failed to update assignee:", { error });
       throw error;
     }
   };
@@ -438,7 +438,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         throw new Error("Failed to update feature status");
       }
     } catch (error) {
-      logger.error("Failed to update feature status:", "features/FeaturesList", { error });
+      logger.error("Failed to update feature status:", { error });
       // Revert on error
       await fetchFeatures(1);
     }
@@ -473,7 +473,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         router.push(`/w/${workspaceSlug}/roadmap/${result.data.id}`);
       }
     } catch (error) {
-      logger.error("Failed to create feature:", "features/FeaturesList", { error });
+      logger.error("Failed to create feature:", { error });
       // TODO: Show error toast
     } finally {
       setCreating(false);
@@ -501,7 +501,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       // Remove from local state
       setFeatures((prev) => prev.filter((f) => f.id !== featureId));
     } catch (error) {
-      logger.error("Failed to delete feature:", "features/FeaturesList", { error });
+      logger.error("Failed to delete feature:", { error });
     }
   };
 

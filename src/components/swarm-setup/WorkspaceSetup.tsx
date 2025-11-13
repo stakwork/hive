@@ -32,9 +32,9 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Log component mount/unmount for debugging
   useEffect(() => {
-    logger.debug(`WorkspaceSetup component mounted`, "swarm-setup/WorkspaceSetup");
+    logger.debug(`WorkspaceSetup component mounted`);
     return () => {
-      logger.debug(`WorkspaceSetup component unmounted`, "swarm-setup/WorkspaceSetup");
+      logger.debug(`WorkspaceSetup component unmounted`);
     };
   }, []);
 
@@ -59,7 +59,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     ingestionStarted.current = true;
 
     try {
-      logger.debug("Starting code ingestion for workspace:", "swarm-setup/WorkspaceSetup", { workspaceId });
+      logger.debug("Starting code ingestion for workspace:", { workspaceId });
 
       const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
         method: "POST",
@@ -74,7 +74,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       const ingestData = await ingestRes.json();
       updateWorkspace({ ingestRefId: ingestData.data.request_id });
     } catch (error) {
-      logger.error("Failed to start ingestion:", "swarm-setup/WorkspaceSetup", { error });
+      logger.error("Failed to start ingestion:", { error });
       setError(error instanceof Error ? error.message : "Failed to start code ingestion");
       toast({
         title: "Ingestion Error",
@@ -101,7 +101,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     customerCreationStarted.current = true;
 
     try {
-      logger.debug("Creating Stakwork customer for workspace:", "swarm-setup/WorkspaceSetup", { workspaceId });
+      logger.debug("Creating Stakwork customer for workspace:", { workspaceId });
 
       const customerRes = await fetch("/api/stakwork/create-customer", {
         method: "POST",
@@ -115,7 +115,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
       updateWorkspace({ hasKey: true });
     } catch (error) {
-      logger.error("Failed to create customer:", "swarm-setup/WorkspaceSetup", { error });
+      logger.error("Failed to create customer:", { error });
       setError(error instanceof Error ? error.message : "Failed to create customer");
       toast({
         title: "Customer Creation Error",
@@ -148,7 +148,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
         // Secondary guard: prevent duplicate calls within same lifecycle
         if (swarmCreationStarted.current) {
-          logger.debug(`Swarm creation skipped (already started)`, "swarm-setup/WorkspaceSetup");
+          logger.debug(`Swarm creation skipped (already started)`);
           return;
         }
 
@@ -165,7 +165,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
             throw new Error("Could not determine repository default branch");
           }
 
-          logger.debug(`About to call /api/swarm - creating new swarm`, "swarm-setup/WorkspaceSetup");
+          logger.debug(`About to call /api/swarm - creating new swarm`);
           const swarmRes = await fetch("/api/swarm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -222,7 +222,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
       performSwarmCreation();
     } else if (!shouldCreateSwarm) {
-      logger.debug(`❌ Conditions not met for swarm creation`, "swarm-setup/WorkspaceSetup");
+      logger.debug(`❌ Conditions not met for swarm creation`);
     } else {
       logger.debug(`ℹ️ Conditions still true, but already handled`, "swarm-setup/WorkspaceSetup");
     }
@@ -294,7 +294,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       setupServicesDone.current = true;
 
       try {
-        logger.debug("Setting up services for swarmId:", "swarm-setup/WorkspaceSetup", { swarmId });
+        logger.debug("Setting up services for swarmId:", { swarmId });
 
         // Notify that services have started
         onServicesStarted?.(true);
@@ -310,7 +310,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         }
 
         const servicesData = await servicesRes.json();
-        logger.debug("services response:", "swarm-setup/WorkspaceSetup", { servicesData });
+        logger.debug("services response:", { servicesData });
 
         // Handle async agent processing with SSE
         if (servicesData.status === "PROCESSING") {
@@ -322,12 +322,12 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
           eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            logger.debug("SSE message:", "swarm-setup/WorkspaceSetup", { data });
+            logger.debug("SSE message:", { data });
           };
 
           eventSource.addEventListener("completed", (event) => {
             const data = JSON.parse(event.data);
-            logger.debug("Agent completed successfully:", "swarm-setup/WorkspaceSetup", { data });
+            logger.debug("Agent completed successfully:", { data });
             eventSource.close();
             // Services are now set up - update frontend state to match database
             updateWorkspace({ containerFilesSetUp: true });
@@ -335,14 +335,14 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
           eventSource.addEventListener("error", (event) => {
             const data = JSON.parse((event as MessageEvent).data);
-            logger.error("Agent processing failed:", "swarm-setup/WorkspaceSetup", { data });
+            logger.error("Agent processing failed:", { data });
             eventSource.close();
             // Don't fail the setup, just log the error
             console.log("Agent failed, but setup will continue with fallback if needed");
           });
 
           eventSource.onerror = (error) => {
-            logger.error("SSE connection error:", "swarm-setup/WorkspaceSetup", { error });
+            logger.error("SSE connection error:", { error });
             eventSource.close();
             // Don't fail the setup, just log the error
             console.log("SSE connection failed, but setup will continue");
@@ -357,7 +357,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
           updateWorkspace({ containerFilesSetUp: true });
         }
       } catch (error) {
-        logger.error("Failed to setup services:", "swarm-setup/WorkspaceSetup", { error });
+        logger.error("Failed to setup services:", { error });
         toast({
           title: "Services Setup Error",
           description: error instanceof Error ? error.message : "Failed to setup services",
@@ -383,9 +383,9 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
 
   console.log('setup-status')
-  logger.debug("swarmId", "swarm-setup/WorkspaceSetup", { swarmId });
-  logger.debug("hasStakworkCustomer", "swarm-setup/WorkspaceSetup", { hasStakworkCustomer });
-  logger.debug("ingestRefId", "swarm-setup/WorkspaceSetup", { ingestRefId });
+  logger.debug("swarmId", { swarmId });
+  logger.debug("hasStakworkCustomer", { hasStakworkCustomer });
+  logger.debug("ingestRefId", { ingestRefId });
   console.log('setup-status')
 
   // Show loading state during workspace setup

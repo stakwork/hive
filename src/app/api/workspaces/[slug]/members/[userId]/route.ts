@@ -50,7 +50,7 @@ export async function PATCH(
     const updatedMember = await updateWorkspaceMemberRole(access.workspace.id, targetUserId, role);
     return NextResponse.json({ member: updatedMember });
   } catch (error: unknown) {
-    logger.error("Error updating workspace member role:", "[userId]/route", { error });
+    logger.error("Error updating workspace member role:", { error });
     
     if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json({ error: "Member not found" }, { status: 404 });
@@ -98,7 +98,7 @@ export async function DELETE(
     await removeWorkspaceMember(access.workspace.id, targetUserId);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    logger.error("Error removing workspace member:", "[userId]/route", { error });
+    logger.error("Error removing workspace member:", { error });
     
     if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json({ error: "Member not found" }, { status: 404 });

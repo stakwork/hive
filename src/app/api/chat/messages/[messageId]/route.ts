@@ -85,7 +85,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error fetching message by id:", "[messageId]/route", { error });
+    logger.error("Error fetching message by id:", { error });
     return NextResponse.json(
       { error: "Failed to fetch message" },
       { status: 500 },

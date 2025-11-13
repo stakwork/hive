@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       { role: "user", content: question },
     ];
 
-    logger.debug("🤖 Creating generateText with:", "quick/route", { {
+    logger.debug("🤖 Creating generateText with:", { {
       model: model?.modelId,
       toolsCount: Object.keys(tools }).length,
       messagesCount: messages.length,
@@ -121,10 +121,10 @@ function logStep(contents: unknown) {
   if (!Array.isArray(contents)) return;
   for (const content of contents) {
     if (content.type === "tool-call") {
-      logger.debug("TOOL CALL:", "quick/route", { content.toolName, ":", content.input });
+      logger.debug("TOOL CALL:", { content.toolName, ":", content.input });
     }
     if (content.type === "tool-result") {
-      logger.debug("TOOL RESULT:", "quick/route", { content.toolName, ":", content.output });
+      logger.debug("TOOL RESULT:", { content.toolName, ":", content.output });
     }
   }
 }

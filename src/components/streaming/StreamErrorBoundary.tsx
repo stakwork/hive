@@ -24,7 +24,7 @@ export class StreamErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    logger.error("StreamErrorBoundary caught error:", "streaming/StreamErrorBoundary", { error, errorInfo });
+    logger.error("StreamErrorBoundary caught error:", { error, errorInfo });
   }
 
   render() {

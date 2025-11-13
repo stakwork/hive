@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
  */
 export async function GET(request: NextRequest) {
   console.log("Task Coordinator GET called");
-  logger.debug("Debug output", "task-coordinator/route", { request });
+  logger.debug("Debug output", { request });
 
   try {
     // Check if task coordinator is enabled
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
       // Log individual errors
       result.errors.forEach((error, index) => {
-        logger.error(`[TaskCoordinatorCron] Error ${index + 1}: ${error.workspaceSlug} - ${error.error}`, "task-coordinator/route");
+        logger.error(`[TaskCoordinatorCron] Error ${index + 1}: ${error.workspaceSlug} - ${error.error}`);
       });
     }
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error("[TaskCoordinatorCron] Unhandled error:", "task-coordinator/route", { errorMessage });
+    logger.error("[TaskCoordinatorCron] Unhandled error:", { errorMessage });
 
     return NextResponse.json(
       {

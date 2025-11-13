@@ -88,7 +88,7 @@ export async function POST(
 
     return NextResponse.json({ url: callUrl });
   } catch (error) {
-    logger.error("Error generating call link:", "generate-link/route", { error });
+    logger.error("Error generating call link:", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

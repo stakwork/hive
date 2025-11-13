@@ -84,7 +84,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
       };
     }
   } catch (error) {
-    logger.error("Error checking repository permissions:", "permissions/route", { error });
+    logger.error("Error checking repository permissions:", { error });
     return {
       hasAccess: false,
       canPush: false,
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    logger.error("Error checking repository permissions:", "permissions/route", { error });
+    logger.error("Error checking repository permissions:", { error });
     return NextResponse.json({
       success: false,
       error: "internal_server_error"

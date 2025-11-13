@@ -630,7 +630,7 @@ export async function deleteWorkspaceBySlug(
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
 
       if (decryptedApiKey) {
-        logger.debug(`Attempting to delete pool: ${poolName} for workspace: ${slug}`, "workspace");
+        logger.debug(`Attempting to delete pool: ${poolName} for workspace: ${slug}`);
         const response = await fetch(`${poolManagerUrl}/pools/${poolName}`, {
           method: "DELETE",
           headers: {
@@ -639,7 +639,7 @@ export async function deleteWorkspaceBySlug(
           },
         });
 
-        logger.debug(`Delete pool response status: ${response.status}`, "workspace");
+        logger.debug(`Delete pool response status: ${response.status}`);
 
         if (!response.ok) {
           // 401 means the pool API key is invalid/expired, 404 means pool doesn't exist
@@ -652,10 +652,10 @@ export async function deleteWorkspaceBySlug(
             throw new Error(`Pool deletion failed with status ${response.status}`);
           }
         } else {
-          logger.debug(`Successfully deleted pool ${poolName}`, "workspace");
+          logger.debug(`Successfully deleted pool ${poolName}`);
         }
       } else {
-        logger.debug(`No valid pool API key found for pool ${poolName}`, "workspace");
+        logger.debug(`No valid pool API key found for pool ${poolName}`);
       }
     } catch (error) {
       // Log error but don't block workspace deletion
@@ -665,7 +665,7 @@ export async function deleteWorkspaceBySlug(
     // Delete the pool user using admin authentication
     if (swarm.name) {
       try {
-        logger.debug(`Attempting to delete pool user: ${swarm.name} for workspace: ${slug}`, "workspace");
+        logger.debug(`Attempting to delete pool user: ${swarm.name} for workspace: ${slug}`);
 
         // First authenticate with Pool Manager admin credentials
         const authResponse = await fetch(`${poolManagerUrl}/auth/login`, {
@@ -693,20 +693,20 @@ export async function deleteWorkspaceBySlug(
             });
 
             if (!deleteResponse.ok && deleteResponse.status !== 404) {
-              logger.error(`Pool user deletion returned status ${deleteResponse.status}`, "workspace");
+              logger.error(`Pool user deletion returned status ${deleteResponse.status}`);
               throw new Error(`Pool user deletion failed with status ${deleteResponse.status}`);
             }
 
             if (deleteResponse.ok) {
-              logger.debug(`Successfully deleted pool user ${swarm.name}`, "workspace");
+              logger.debug(`Successfully deleted pool user ${swarm.name}`);
             } else if (deleteResponse.status === 404) {
               logger.debug(`Pool user ${swarm.name} not found, proceeding with workspace deletion`, "workspace");
             }
           } else {
-            logger.error(`Pool Manager authentication failed`, "workspace");
+            logger.error(`Pool Manager authentication failed`);
           }
         } else {
-          logger.error(`Pool Manager authentication request failed with status: ${authResponse.status}`, "workspace");
+          logger.error(`Pool Manager authentication request failed with status: ${authResponse.status}`);
         }
       } catch (error) {
         // Log error but don't block workspace deletion
@@ -718,7 +718,7 @@ export async function deleteWorkspaceBySlug(
   // Deletes the ec2 instance
   if (swarm?.ec2Id) {
     try {
-      logger.debug(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`, "workspace");
+      logger.debug(`Attempting to delete ec2 instance: ${swarm.ec2Id} for workspace: ${slug}`);
 
       const swarmConfig = getServiceConfig("swarm");
       const swarmService = new SwarmService(swarmConfig);
@@ -730,7 +730,7 @@ export async function deleteWorkspaceBySlug(
         throw new Error(`EC2 instance ${swarm.ec2Id} failed to delete`);
       }
 
-      logger.debug(`Successfully deleted EC2 instance ${swarm.ec2Id}`, "workspace");
+      logger.debug(`Successfully deleted EC2 instance ${swarm.ec2Id}`);
     } catch (error) {
       // Log error but don't block workspace deletion
       console.error(`Failed to delete ec2 instance ${swarm.ec2Id} for workspace ${slug}:`, error);

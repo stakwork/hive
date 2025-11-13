@@ -108,7 +108,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           document.body.removeChild(portalContainer);
         }
       } catch (error) {
-        logger.warn("Error removing portal container:", "workflow/ImportNodeModal", { error });
+        logger.warn("Error removing portal container:", { error });
       }
     };
   }, [portalContainer]);
@@ -248,7 +248,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           document.head.removeChild(style);
         }
       } catch (error) {
-        logger.warn("Error removing style element:", "workflow/ImportNodeModal", { error });
+        logger.warn("Error removing style element:", { error });
       }
     };
   }, []);
@@ -294,7 +294,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
 
         const responseData = await response.json();
 
-        logger.debug("responseData", "workflow/ImportNodeModal", { responseData });
+        logger.debug("responseData", { responseData });
 
         if (responseData.data.valid) {
           setSubmitStatus({ type: 'success', message: 'Node imported successfully!' });
@@ -310,7 +310,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           setSubmitStatus({ type: 'error', message: responseData.data.errors });
         }
       } catch (fetchError: any) {
-        logger.debug("fetchError", "workflow/ImportNodeModal", { fetchError });
+        logger.debug("fetchError", { fetchError });
         setSubmitStatus({
           type: 'error',
           message: `Failed to submit: ${fetchError.message}`

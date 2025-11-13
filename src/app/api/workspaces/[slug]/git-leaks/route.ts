@@ -116,7 +116,7 @@ export async function GET(
     });
 
     if (!response.ok) {
-      logger.error(`Git leaks scan failed with status ${response.status}`, "git-leaks/route");
+      logger.error(`Git leaks scan failed with status ${response.status}`);
       console.error(`Git leaks response data:`, response.data);
       return NextResponse.json(
         {
@@ -137,7 +137,7 @@ export async function GET(
       scannedAt: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("Error running git leaks scan:", "git-leaks/route", { error });
+    logger.error("Error running git leaks scan:", { error });
 
     if (error instanceof Error) {
       if (error.name === "TimeoutError" || error.message.includes("timeout")) {

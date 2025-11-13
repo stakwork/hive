@@ -174,9 +174,9 @@ export async function PATCH(
           );
         }
 
-        logger.debug(`Task status updated and broadcasted: ${taskId}`, "[taskId]/route");
+        logger.debug(`Task status updated and broadcasted: ${taskId}`);
       } catch (error) {
-        logger.error("Error broadcasting status update to Pusher:", "[taskId]/route", { error });
+        logger.error("Error broadcasting status update to Pusher:", { error });
         // Don't fail the request if Pusher fails
       }
 
@@ -198,7 +198,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    logger.error("Error updating task:", "[taskId]/route", { error });
+    logger.error("Error updating task:", { error });
     return NextResponse.json(
       { error: "Failed to update task" },
       { status: 500 }

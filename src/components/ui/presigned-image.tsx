@@ -73,7 +73,7 @@ export function PresignedImage({
         setHasError(true);
       }
     } catch (error) {
-      logger.error("Error refetching presigned URL:", "ui/presigned-image", { error });
+      logger.error("Error refetching presigned URL:", { error });
       setHasError(true);
     } finally {
       setIsLoading(false);

@@ -77,7 +77,7 @@ export function useReorderRoadmapTasks({
           throw new Error("Failed to reorder roadmap tasks");
         }
       } catch (error) {
-        logger.error("Failed to reorder roadmap tasks:", "useReorderRoadmapTasks", { error });
+        logger.error("Failed to reorder roadmap tasks:", { error });
         // TODO: Could add error rollback callback here
       }
     }

@@ -26,7 +26,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    logger.error("Error creating ticket:", "tickets/route", { error });
+    logger.error("Error creating ticket:", { error });
     const message = error instanceof Error ? error.message : "Failed to create ticket";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

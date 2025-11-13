@@ -23,7 +23,7 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{
     const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`);
     const statusData = await statusResponse.json();
 
-    logger.debug("statusData", "swarm-setup/GitHubAccessManager", { statusData });
+    logger.debug("statusData", { statusData });
 
     // If there's an error, treat it as no access
     if (statusData.error) {
@@ -38,7 +38,7 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{
 
     return { hasAccess: statusData.hasPushAccess === true };
   } catch (error) {
-    logger.error("Failed to check repository access:", "swarm-setup/GitHubAccessManager", { error });
+    logger.error("Failed to check repository access:", { error });
     return { hasAccess: false, error: "Failed to check repository access" };
   }
 };
@@ -78,7 +78,7 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
           setError(result.error || null);
         }
       } catch (error) {
-        logger.error("Error checking repository access:", "swarm-setup/GitHubAccessManager", { error });
+        logger.error("Error checking repository access:", { error });
         setAccessState('no-access');
         onAccessError(true);
         setError("Failed to check repository access");
@@ -93,7 +93,7 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
   // Get GitHub App installation link
   const getInstallationLink = useCallback(async () => {
     if (!workspace?.slug) {
-      logger.error("No workspace slug available for GitHub App installation", "swarm-setup/GitHubAccessManager");
+      logger.error("No workspace slug available for GitHub App installation");
       return;
     }
 
@@ -119,7 +119,7 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
         throw new Error(installData.message || "Failed to generate GitHub App installation link");
       }
     } catch (error) {
-      logger.error("Failed to get GitHub App installation link:", "swarm-setup/GitHubAccessManager", { error });
+      logger.error("Failed to get GitHub App installation link:", { error });
       onAccessError(true);
     }
   }, [repositoryUrl, workspace?.slug, installationId, errorType, onAccessError]);

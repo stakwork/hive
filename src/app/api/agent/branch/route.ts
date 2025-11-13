@@ -19,13 +19,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: taskId" }, { status: 400 });
     }
 
-    logger.debug(">>> Generating commit message and branch name for task:", "branch/route", { taskId });
+    logger.debug(">>> Generating commit message and branch name for task:", { taskId });
 
     // Generate commit message and branch name using AI from task conversation
     const { commit_message, branch_name } = await generateCommitMessage(taskId);
 
-    logger.debug(">>> Generated commit message:", "branch/route", { commit_message });
-    logger.debug(">>> Generated branch name:", "branch/route", { branch_name });
+    logger.debug(">>> Generated commit message:", { commit_message });
+    logger.debug(">>> Generated branch name:", { branch_name });
 
     return NextResponse.json(
       {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error generating commit message:", "branch/route", { error });
+    logger.error("Error generating commit message:", { error });
 
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to generate commit message" },

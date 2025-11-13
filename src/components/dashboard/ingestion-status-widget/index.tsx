@@ -14,8 +14,8 @@ export function IngestionStatusWidget({ centered = false }: IngestionStatusWidge
     return null;
   }
 
-  logger.debug("isIngesting---isIngesting--->", "ingestion-status-widget/index", { isIngesting });
-  logger.debug("statusMessage---statusMessage--->", "ingestion-status-widget/index", { statusMessage });
+  logger.debug("isIngesting---isIngesting--->", { isIngesting });
+  logger.debug("statusMessage---statusMessage--->", { statusMessage });
 
   const positionClasses = centered
     ? "relative"

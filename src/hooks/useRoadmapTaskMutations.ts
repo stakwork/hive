@@ -63,7 +63,7 @@ export function useRoadmapTaskMutations() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      logger.error("Failed to create roadmap task:", "useRoadmapTaskMutations", { err });
+      logger.error("Failed to create roadmap task:", { err });
       return null;
     } finally {
       setLoading(false);
@@ -95,7 +95,7 @@ export function useRoadmapTaskMutations() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      logger.error("Failed to update roadmap task:", "useRoadmapTaskMutations", { err });
+      logger.error("Failed to update roadmap task:", { err });
       return null;
     } finally {
       setLoading(false);

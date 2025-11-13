@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
-    logger.error("Error creating Stakwork project:", "create-project/route", { error });
+    logger.error("Error creating Stakwork project:", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

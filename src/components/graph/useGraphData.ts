@@ -89,7 +89,7 @@ export function useGraphData({
         setNodes(transformed.nodes);
         setEdges(transformed.edges);
       } catch (err) {
-        logger.error("Error fetching graph data:", "graph/useGraphData", { err });
+        logger.error("Error fetching graph data:", { err });
         setError(err instanceof Error ? err.message : "Failed to fetch graph data");
         setNodes([]);
         setEdges([]);

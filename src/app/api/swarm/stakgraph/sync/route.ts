@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       pat = creds.token;
     }
 
-    logger.debug("[Sync] GitHub credentials", "sync/route", { {
+    logger.debug("[Sync] GitHub credentials", { {
       workspaceId: swarm.workspaceId,
       hasCredentials: !!(username && pat }),
     });
@@ -90,11 +90,11 @@ export async function POST(request: NextRequest) {
         data: { status: RepositoryStatus.PENDING },
       });
     } catch (e) {
-      logger.error("Repository not found or failed to set PENDING before sync", "sync/route", { e });
+      logger.error("Repository not found or failed to set PENDING before sync", { e });
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
-    logger.debug("[Sync] Triggering async sync", "sync/route", { {
+    logger.debug("[Sync] Triggering async sync", { {
       workspaceId: swarm.workspaceId,
       swarmId: swarm.id,
       swarmName: swarm.name,

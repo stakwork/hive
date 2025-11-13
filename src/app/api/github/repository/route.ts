@@ -91,7 +91,7 @@ export async function GET(request: Request) {
       }, { status: 403 });
     }
   } catch (error: unknown) {
-    logger.error("Error fetching repositories:", "repository/route", { error });
+    logger.error("Error fetching repositories:", { error });
 
     if (
       error &&

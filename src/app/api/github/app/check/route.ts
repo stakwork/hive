@@ -44,13 +44,13 @@ export async function GET(request: Request) {
 
     const [, owner, repo] = githubMatch;
 
-    logger.debug("owner", "check/route", { owner })
-    logger.debug("repo", "check/route", { repo })
+    logger.debug("owner", { owner })
+    logger.debug("repo", { repo })
 
     // Get access token for the specific GitHub owner
     const tokens = await getUserAppTokens(session.user.id, owner);
 
-    logger.debug("tokens", "check/route", { tokens })
+    logger.debug("tokens", { tokens })
     if (!tokens?.accessToken) {
       return NextResponse.json({
         hasPushAccess: false,
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
 
 
     console.log('installationReposUrl')
-    logger.debug("installationReposUrl", "check/route", { installationReposUrl })
+    logger.debug("installationReposUrl", { installationReposUrl })
     console.log(tokens.accessToken, installationId)
     console.log('installationReposUrl')
 
@@ -90,7 +90,7 @@ export async function GET(request: Request) {
     });
 
     if (!response.ok) {
-      logger.error(`[REPO CHECK] GitHub API error: ${response.status} ${response.statusText}`, "check/route");
+      logger.error(`[REPO CHECK] GitHub API error: ${response.status} ${response.statusText}`);
 
       let errorMessage = "Failed to access installation repositories";
       let requiresReauth = false;
@@ -125,7 +125,7 @@ export async function GET(request: Request) {
     );
 
     if (!repositoryAccess) {
-      logger.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`, "check/route");
+      logger.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`);
       console.warn(`[REPO CHECK] Available repositories:`, installationData.repositories?.map((r: { full_name: string }) => r.full_name) || []);
 
       return NextResponse.json({
@@ -148,7 +148,7 @@ export async function GET(request: Request) {
     }, { status: 200 });
 
   } catch (error) {
-    logger.error("[REPO CHECK] Error during repository check:", "check/route", { error });
+    logger.error("[REPO CHECK] Error during repository check:", { error });
     return NextResponse.json({
       hasPushAccess: false,
       error: "Internal server error"

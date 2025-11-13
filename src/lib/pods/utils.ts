@@ -51,7 +51,7 @@ export async function getWorkspaceFromPool(poolName: string, poolApiKey: string)
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`Pool Manager API error: ${response.status} - ${errorText}`, "pods/utils");
+    logger.error(`Pool Manager API error: ${response.status} - ${errorText}`);
     throw new Error(`Failed to get workspace from pool: ${response.status}`);
   }
 
@@ -72,7 +72,7 @@ export async function getPodFromPool(podId: string, poolApiKey: string): Promise
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`Pool Manager API error: ${response.status} - ${errorText}`, "pods/utils");
+    logger.error(`Pool Manager API error: ${response.status} - ${errorText}`);
     throw new Error(`Failed to get workspace from pool: ${response.status}`);
   }
 
@@ -83,7 +83,7 @@ export async function getPodFromPool(podId: string, poolApiKey: string): Promise
 async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
   const markUsedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
 
-  logger.debug(`>>> Marking workspace as used: POST ${markUsedUrl}`, "pods/utils");
+  logger.debug(`>>> Marking workspace as used: POST ${markUsedUrl}`);
 
   const response = await fetch(markUsedUrl, {
     method: "POST",
@@ -96,7 +96,7 @@ async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolAp
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`Failed to mark workspace as used: ${response.status} - ${errorText}`, "pods/utils");
+    logger.error(`Failed to mark workspace as used: ${response.status} - ${errorText}`);
     throw new Error(`Failed to mark workspace as used: ${response.status}`);
   }
 
@@ -107,7 +107,7 @@ async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolAp
 async function markWorkspaceAsUnused(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
   const markUnusedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-unused`;
 
-  logger.debug(`>>> Marking workspace as unused: POST ${markUnusedUrl}`, "pods/utils");
+  logger.debug(`>>> Marking workspace as unused: POST ${markUnusedUrl}`);
 
   const response = await fetch(markUnusedUrl, {
     method: "POST",
@@ -120,7 +120,7 @@ async function markWorkspaceAsUnused(poolName: string, workspaceId: string, pool
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`Failed to drop pod: ${response.status} - ${errorText}`, "pods/utils");
+    logger.error(`Failed to drop pod: ${response.status} - ${errorText}`);
     throw new Error(`Failed to drop pod: ${response.status}`);
   }
 
@@ -139,12 +139,12 @@ async function getProcessList(controlPortUrl: string, password: string): Promise
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`Failed to get process list: ${response.status} - ${errorText}`, "pods/utils");
+    logger.error(`Failed to get process list: ${response.status} - ${errorText}`);
     throw new Error(`Failed to get process list: ${response.status}`);
   }
 
   const processList: ProcessInfo[] = await response.json();
-  logger.debug(">>> Process list", "pods/utils", { processList });
+  logger.debug(">>> Process list", { processList });
 
   return processList;
 }
@@ -156,7 +156,7 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
     throw new Error("Frontend process not found or has no port");
   }
 
-  logger.debug(">>> Frontend process", "pods/utils", { frontendProcess });
+  logger.debug(">>> Frontend process", { frontendProcess });
 
   const frontend = portMappings[frontendProcess.port];
 
@@ -164,7 +164,7 @@ function getFrontendUrl(processList: ProcessInfo[], portMappings: Record<string,
     throw new Error(`Frontend port ${frontendProcess.port} not found in port mappings`);
   }
 
-  logger.debug(">>> frontend", "pods/utils", { frontend });
+  logger.debug(">>> frontend", { frontend });
 
   return frontend;
 }
@@ -189,7 +189,7 @@ export async function claimPodAndGetFrontend(
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
 
-  logger.debug(">>> workspace data", "pods/utils", { workspace });
+  logger.debug(">>> workspace data", { workspace });
 
   // Mark the workspace as used
   await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
@@ -203,9 +203,9 @@ export async function claimPodAndGetFrontend(
   if (controlPortUrl) {
     try {
       processList = await getProcessList(controlPortUrl, workspace.password);
-      logger.debug(`>>> Successfully fetched process list with ${processList.length} processes`, "pods/utils");
+      logger.debug(`>>> Successfully fetched process list with ${processList.length} processes`);
     } catch (error) {
-      logger.error(">>> Failed to fetch process list:", "pods/utils", { error });
+      logger.error(">>> Failed to fetch process list:", { error });
     }
   }
 
@@ -215,7 +215,7 @@ export async function claimPodAndGetFrontend(
       const frontendService = services.find((svc) => svc.name === "frontend");
 
       if (frontendService?.port) {
-        logger.debug(`>>> Found frontend port ${frontendService.port} from services array`, "pods/utils");
+        logger.debug(`>>> Found frontend port ${frontendService.port} from services array`);
 
         // Try to find the port in port mappings
         frontend = workspace.portMappings[frontendService.port.toString()];
@@ -266,7 +266,7 @@ export async function claimPodAndGetFrontend(
         const frontendProcess = processList.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
         if (frontendProcess?.port) {
           frontendPort = frontendProcess.port;
-          logger.debug(`>>> Found frontend process on port ${frontendPort} from process list`, "pods/utils");
+          logger.debug(`>>> Found frontend process on port ${frontendPort} from process list`);
         }
       }
 
@@ -310,7 +310,7 @@ export async function updatePodRepositories(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`Failed to update pod repositories: ${response.status} - ${errorText}`, "pods/utils");
+    logger.error(`Failed to update pod repositories: ${response.status} - ${errorText}`);
     throw new Error(`Failed to update pod repositories: ${response.status}`);
   }
 
@@ -337,7 +337,7 @@ export async function startGoose(
   anthropicApiKey: string,
   // portMappings: Record<string, string>,
 ): Promise<string | null> {
-  logger.debug(`🚀 Starting Goose service via control port (${POD_PORTS.CONTROL})...`, "pods/utils");
+  logger.debug(`🚀 Starting Goose service via control port (${POD_PORTS.CONTROL})...`);
 
   try {
     // Start goose_web service via control port
@@ -355,7 +355,7 @@ export async function startGoose(
 
     if (!startGooseResponse.ok) {
       const errorText = await startGooseResponse.text();
-      logger.error("Failed to start goose service:", "pods/utils", { startGooseResponse.status, errorText });
+      logger.error("Failed to start goose service:", { startGooseResponse.status, errorText });
       return null;
     }
 
@@ -363,7 +363,7 @@ export async function startGoose(
 
     // Poll to check if goose process is running
     for (let attempt = 1; attempt <= GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS; attempt++) {
-      logger.debug(`🔍 Polling for Goose process (attempt ${attempt}/${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS})...`, "pods/utils");
+      logger.debug(`🔍 Polling for Goose process (attempt ${attempt}/${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS})...`);
 
       await new Promise((resolve) => setTimeout(resolve, GOOSE_CONFIG.POLLING_INTERVAL_MS));
 
@@ -384,10 +384,10 @@ export async function startGoose(
       }
     }
 
-    logger.warn(`⚠️ Goose service did not start after ${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS} attempts`, "pods/utils");
+    logger.warn(`⚠️ Goose service did not start after ${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS} attempts`);
     return null;
   } catch (error) {
-    logger.error("Error starting goose service:", "pods/utils", { error });
+    logger.error("Error starting goose service:", { error });
     return null;
   }
 }
@@ -400,23 +400,23 @@ export async function startGoose(
  */
 export function getPortFromPM2Config(pm2ConfigContent: string | undefined, serviceName = "frontend"): number | null {
   if (!pm2ConfigContent) {
-    logger.error("No PM2 config content provided", "pods/utils");
+    logger.error("No PM2 config content provided");
     return null;
   }
 
   try {
     const services = parsePM2Content(pm2ConfigContent);
-    logger.debug(">>> services", "pods/utils", { JSON.stringify(services, null, 2 }));
+    logger.debug(">>> services", { JSON.stringify(services, null, 2 }));
     const service = services.find((svc) => svc.name === serviceName);
 
     if (!service) {
-      logger.error(`Service "${serviceName}" not found in PM2 config`, "pods/utils");
+      logger.error(`Service "${serviceName}" not found in PM2 config`);
       return null;
     }
 
     return service.port;
   } catch (error) {
-    logger.error("Error parsing PM2 config:", "pods/utils", { error });
+    logger.error("Error parsing PM2 config:", { error });
     return null;
   }
 }

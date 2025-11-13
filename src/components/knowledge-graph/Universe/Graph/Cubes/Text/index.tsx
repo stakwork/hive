@@ -45,7 +45,7 @@ export const TextNode = memo(
       const loader = new TextureLoader()
 
       loader.load(node.properties.image_url, setTexture, undefined, () =>
-        logger.error(`Failed to load texture: ${node?.properties?.image_url}`, "Text/index"),
+        logger.error(`Failed to load texture: ${node?.properties?.image_url}`),
       )
     }, [node?.properties?.image_url])
 
@@ -58,7 +58,7 @@ export const TextNode = memo(
         console.error(`Failed to load icon texture: ${iconName}.svg`, error)
         // Fallback: try to load a default icon
         loader.load('/svg-icons/NodesIcon.svg', setIconTexture, undefined, () => {
-          logger.error("Failed to load fallback icon", "Text/index")
+          logger.error("Failed to load fallback icon")
         })
       })
     }, [iconName])

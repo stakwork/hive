@@ -114,9 +114,9 @@ export async function PUT(
         );
       }
 
-      logger.debug(`Task title updated and broadcasted: ${taskId} -> "${updatedTask.title}"`, "title/route");
+      logger.debug(`Task title updated and broadcasted: ${taskId} -> "${updatedTask.title}"`);
     } catch (error) {
-      logger.error("Error broadcasting title update to Pusher:", "title/route", { error });
+      logger.error("Error broadcasting title update to Pusher:", { error });
       // Don't fail the request if Pusher fails
     }
 
@@ -128,7 +128,7 @@ export async function PUT(
       { status: 200 },
     );
   } catch (error) {
-    logger.error("Error updating task title:", "title/route", { error });
+    logger.error("Error updating task title:", { error });
 
     // Handle case where task doesn't exist
     if (

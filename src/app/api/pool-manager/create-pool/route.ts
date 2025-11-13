@@ -21,7 +21,7 @@ async function withRetry<T>(
 ): Promise<T> {
 
   for (let i = 0; i <= retries; i++) {
-    logger.debug("withRetry-start", "create-pool/route", { delay })
+    logger.debug("withRetry-start", { delay })
 
     try {
       return await fn();
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
-    logger.error("Error creating Pool Manager pool:", "create-pool/route", { error });
+    logger.error("Error creating Pool Manager pool:", { error });
     const { workspaceId } = body;
 
     saveOrUpdateSwarm({

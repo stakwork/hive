@@ -57,7 +57,7 @@ export function DependenciesCombobox({
       await onUpdate(localDependencies);
       setOpen(false);
     } catch (error) {
-      logger.error("Failed to update dependencies:", "DependenciesCombobox/index", { error });
+      logger.error("Failed to update dependencies:", { error });
       // Revert to original state on error
       setLocalDependencies(selectedDependencyIds || []);
     } finally {
@@ -77,7 +77,7 @@ export function DependenciesCombobox({
       setUpdating(true);
       await onUpdate(newDependencies);
     } catch (error) {
-      logger.error("Failed to remove dependency:", "DependenciesCombobox/index", { error });
+      logger.error("Failed to remove dependency:", { error });
     } finally {
       setUpdating(false);
     }

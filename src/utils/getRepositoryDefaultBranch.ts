@@ -10,15 +10,15 @@ export const getRepositoryDefaultBranch = async (repositoryUrl: string, workspac
     if (response.ok) {
       const repoData = await response.json();
       if (repoData.data?.default_branch) {
-        logger.debug(`Repository default branch: ${repoData.data.default_branch}`, "getRepositoryDefaultBranch");
+        logger.debug(`Repository default branch: ${repoData.data.default_branch}`);
         return repoData.data.default_branch;
       }
     }
 
-    logger.error("Could not fetch repository default branch - setup cannot continue", "getRepositoryDefaultBranch");
+    logger.error("Could not fetch repository default branch - setup cannot continue");
     return null;
   } catch (error) {
-    logger.error("Error fetching repository default branch:", "getRepositoryDefaultBranch", { error });
+    logger.error("Error fetching repository default branch:", { error });
     return null;
   }
 };

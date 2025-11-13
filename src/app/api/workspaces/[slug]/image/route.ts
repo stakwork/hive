@@ -29,7 +29,7 @@ export async function GET(
       expiresIn: 3600,
     })
   } catch (error) {
-    logger.error("Error retrieving workspace logo:", "image/route", { error })
+    logger.error("Error retrieving workspace logo:", { error })
 
     if (error instanceof Error) {
       if (error.message.includes('not found')) {

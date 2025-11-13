@@ -60,7 +60,7 @@ export async function GET() {
       total_count: repositories.length,
     });
   } catch (error: unknown) {
-    logger.error("Error fetching repositories:", "repositories/route", { error });
+    logger.error("Error fetching repositories:", { error });
 
     if (
       error &&

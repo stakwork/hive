@@ -55,11 +55,11 @@ export default function ContextMenu({
         document.body.removeChild(script);
       })
       .catch(error => {
-        logger.error("Error adding node:", "workflow/ContextMenu", { error });
+        logger.error("Error adding node:", { error });
       });
   }, [workflowId, workflowVersionId, position]);
 
-  logger.debug("position", "workflow/ContextMenu", { position });
+  logger.debug("position", { position });
 
   return (
     <div

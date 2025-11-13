@@ -148,8 +148,8 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    logger.error("Error uploading screenshot:", "upload/route", { error })
-    logger.error("Error stack:", "upload/route", { error instanceof Error ? error.stack : 'No stack trace' })
+    logger.error("Error uploading screenshot:", { error })
+    logger.error("Error stack:", { error instanceof Error ? error.stack : 'No stack trace' })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

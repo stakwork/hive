@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    logger.error("Learnings API proxy error:", "learnings/route", { error });
+    logger.error("Learnings API proxy error:", { error });
     return NextResponse.json({ error: "Failed to fetch learnings data" }, { status: 500 });
   }
 }
@@ -119,16 +119,16 @@ export async function POST(request: NextRequest) {
     })
       .then((response) => {
         if (!response.ok) {
-          logger.error(`Swarm seed_stories error: ${response.status}`, "learnings/route");
+          logger.error(`Swarm seed_stories error: ${response.status}`);
         }
       })
       .catch((error) => {
-        logger.error("Seed stories request failed:", "learnings/route", { error });
+        logger.error("Seed stories request failed:", { error });
       });
 
     return NextResponse.json({ success: true, message: "Seed knowledge request initiated" });
   } catch (error) {
-    logger.error("Seed stories API proxy error:", "learnings/route", { error });
+    logger.error("Seed stories API proxy error:", { error });
     return NextResponse.json({ error: "Failed to seed stories" }, { status: 500 });
   }
 }

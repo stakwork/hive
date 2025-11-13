@@ -106,6 +106,41 @@ function sanitizeData(data: any): any {
 }
 
 /**
+ * Extracts the calling file and function from the stack trace
+ */
+function getCallerContext(): string | undefined {
+  const error = new Error();
+  const stack = error.stack?.split('\n');
+  
+  if (!stack || stack.length < 4) {
+    return undefined;
+  }
+  
+  // Stack typically looks like:
+  // Error
+  //   at getCallerContext
+  //   at formatMessage
+  //   at error/warn/info/debug
+  //   at <actual caller>
+  const callerLine = stack[4];
+  
+  // Extract file path from stack trace
+  const match = callerLine.match(/\((.+):(\d+):(\d+)\)/) || callerLine.match(/at (.+):(\d+):(\d+)/);
+  
+  if (match) {
+    const fullPath = match[1];
+    // Extract just the filename with parent directory for better context
+    const pathParts = fullPath.split('/');
+    if (pathParts.length >= 2) {
+      return `${pathParts[pathParts.length - 2]}/${pathParts[pathParts.length - 1]}`;
+    }
+    return pathParts[pathParts.length - 1];
+  }
+  
+  return undefined;
+}
+
+/**
  * Structured logger class with sanitization
  */
 class StructuredLogger {
@@ -119,8 +154,9 @@ class StructuredLogger {
     return level <= this.currentLevel;
   }
 
-  private formatMessage(level: string, message: string, context?: string, metadata?: any): void {
+  private formatMessage(level: string, message: string, metadata?: any): void {
     const timestamp = new Date().toISOString();
+    const context = getCallerContext();
     const logEntry = {
       timestamp,
       level,
@@ -148,27 +184,27 @@ class StructuredLogger {
     }
   }
 
-  error(message: string, context?: string, metadata?: any): void {
+  error(message: string, metadata?: any): void {
     if (this.shouldLog(LogLevel.ERROR)) {
-      this.formatMessage('ERROR', message, context, metadata);
+      this.formatMessage('ERROR', message, metadata);
     }
   }
 
-  warn(message: string, context?: string, metadata?: any): void {
+  warn(message: string, metadata?: any): void {
     if (this.shouldLog(LogLevel.WARN)) {
-      this.formatMessage('WARN', message, context, metadata);
+      this.formatMessage('WARN', message, metadata);
     }
   }
 
-  info(message: string, context?: string, metadata?: any): void {
+  info(message: string, metadata?: any): void {
     if (this.shouldLog(LogLevel.INFO)) {
-      this.formatMessage('INFO', message, context, metadata);
+      this.formatMessage('INFO', message, metadata);
     }
   }
 
-  debug(message: string, context?: string, metadata?: any): void {
+  debug(message: string, metadata?: any): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
-      this.formatMessage('DEBUG', message, context, metadata);
+      this.formatMessage('DEBUG', message, metadata);
     }
   }
 

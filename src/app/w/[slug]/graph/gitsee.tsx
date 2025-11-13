@@ -16,7 +16,7 @@ export const Gitsee = () => {
   }, [slug, loadSettings]);
 
     const primaryRepoUrl = formData.repositories?.[0]?.repositoryUrl || "";
-    logger.debug("=====>", "graph/gitsee", { workspaceId, primaryRepoUrl, formData.swarmUrl });
+    logger.debug("=====>", { workspaceId, primaryRepoUrl, formData.swarmUrl });
     useGitVisualizer({ workspaceId, repositoryUrl: primaryRepoUrl, swarmUrl: formData.swarmUrl });
 
   return (
