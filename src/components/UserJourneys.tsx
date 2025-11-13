@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
+import { Check, Copy, ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, Plus, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 
@@ -29,6 +29,14 @@ interface UserJourneyTask {
     repositoryUrl: string;
     branch: string;
   };
+  prArtifact?: {
+    id: string;
+    type: string;
+    content: {
+      url: string;
+      status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+    };
+  } | null;
 }
 
 interface E2eTestNode {
@@ -44,6 +52,17 @@ interface E2eTestNode {
     end: number;
     token_count: number;
   };
+}
+
+interface UserJourneyRow {
+  id: string;
+  title: string;
+  type: "GRAPH_NODE" | "TASK";
+  testFilePath: string | null;
+  testFileUrl: string | null;
+  createdAt: string;
+  task?: UserJourneyTask;
+  graphNode?: E2eTestNode;
 }
 
 export default function UserJourneys() {
@@ -68,7 +87,7 @@ export default function UserJourneys() {
 
     try {
       setFetchingTasks(true);
-      const response = await fetch(`/api/tasks?workspaceId=${id}&sourceType=USER_JOURNEY&limit=100`);
+      const response = await fetch(`/api/tasks?workspaceId=${id}&sourceType=USER_JOURNEY&limit=100&includeLatestMessage=true`);
 
       if (!response.ok) {
         console.error("Failed to fetch user journey tasks");
@@ -113,10 +132,54 @@ export default function UserJourneys() {
     }
   }, [frontend, fetchUserJourneyTasks, fetchE2eTestsFromGraph]);
 
-  // Filter tasks based on hidePending toggle
-  const filteredTasks = hidePending
-    ? userJourneyTasks.filter(task => task.status === "DONE")
-    : userJourneyTasks;
+  // Helper to construct GitHub URL for graph node files
+  const getGithubUrlForGraphNode = (node: E2eTestNode): string | null => {
+    const repo = workspace?.repositories?.[0];
+    if (!repo) return null;
+    const branch = repo.branch || 'main';
+    return `${repo.repositoryUrl}/blob/${branch}/${node.properties.file}`;
+  };
+
+  // Filter out tasks with merged PRs (they'll appear as graph nodes instead)
+  const pendingTasks = userJourneyTasks.filter(task =>
+    !task.prArtifact?.content ||
+    task.prArtifact.content.status !== "DONE"
+  );
+
+  // Convert graph nodes to rows (always show as "Live")
+  const graphRows: UserJourneyRow[] = e2eTestsGraph.map(node => ({
+    id: node.ref_id,
+    title: node.properties.name,
+    type: "GRAPH_NODE" as const,
+    testFilePath: node.properties.file,
+    testFileUrl: getGithubUrlForGraphNode(node),
+    createdAt: new Date().toISOString(), // Graph nodes don't have timestamps
+    graphNode: node,
+  }));
+
+  // Convert pending tasks to rows
+  const taskRows: UserJourneyRow[] = pendingTasks.map(task => ({
+    id: task.id,
+    title: task.title,
+    type: "TASK" as const,
+    testFilePath: task.testFilePath,
+    testFileUrl: task.testFileUrl,
+    createdAt: task.createdAt,
+    task: task,
+  }));
+
+  // Combine and sort by created date (newest first)
+  const allRows = [...graphRows, ...taskRows].sort((a, b) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  // Apply hide pending filter
+  const filteredRows = hidePending
+    ? allRows.filter(row =>
+        row.type === "GRAPH_NODE" || // Always show graph nodes
+        row.task?.status === "DONE"   // Only show completed tasks
+      )
+    : allRows;
 
   // Shared function to drop the pod
   const dropPod = useCallback(
@@ -170,18 +233,25 @@ export default function UserJourneys() {
     };
   }, [frontend, dropPod]);
 
-  const handleCopyCode = async (task: UserJourneyTask) => {
-    // Find matching test in graph by file path
-    const graphTest = e2eTestsGraph.find(
-      (t) =>
-        t.properties.file === task.testFilePath ||
-        t.properties.file.endsWith(task.testFilePath || "")
-    );
+  const handleCopyCode = async (row: UserJourneyRow) => {
+    let code: string;
 
-    // Copy test body if found, otherwise fall back to title
-    const code = graphTest?.properties.body || task.title;
+    if (row.type === "GRAPH_NODE") {
+      // For graph nodes, use the test body directly
+      code = row.graphNode!.properties.body;
+    } else {
+      // For tasks, try to find matching test in graph first
+      const graphTest = e2eTestsGraph.find(
+        (t) =>
+          t.properties.file === row.task!.testFilePath ||
+          t.properties.file.endsWith(row.task!.testFilePath || "")
+      );
+      // Fall back to task title if not found in graph
+      code = graphTest?.properties.body || row.task!.title;
+    }
+
     await navigator.clipboard.writeText(code);
-    setCopiedId(task.id);
+    setCopiedId(row.id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -316,7 +386,7 @@ export default function UserJourneys() {
     }
   };
 
-  const handleReplay = async (task: UserJourneyTask) => {
+  const handleReplay = async (row: UserJourneyRow) => {
     // Check if services are set up
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
@@ -324,10 +394,19 @@ export default function UserJourneys() {
     }
 
     try {
-      setIsReplayingTask(task.id);
+      setIsReplayingTask(row.id);
 
-      // Step 1: Fetch test code
-      const testCode = await fetchTestCode(task);
+      // Step 1: Get test code
+      let testCode: string | null = null;
+
+      if (row.type === "GRAPH_NODE") {
+        // For graph nodes, use the test body directly
+        testCode = row.graphNode!.properties.body;
+      } else {
+        // For tasks, fetch test code
+        testCode = await fetchTestCode(row.task!);
+      }
+
       if (!testCode) {
         toast({
           variant: "destructive",
@@ -361,7 +440,7 @@ export default function UserJourneys() {
       // Step 3: Set state to trigger replay
       if (data.frontend) {
         setReplayTestCode(testCode);
-        setReplayTitle(task.title);
+        setReplayTitle(row.title);
         setFrontend(data.frontend);
         setClaimedPodId(data.podId);
       }
@@ -439,25 +518,77 @@ export default function UserJourneys() {
     }
   };
 
-  const getStatusBadge = (status: string, workflowStatus: string | null) => {
-    // Use workflowStatus to show automatic updates from Stakwork webhooks
-
-    // Green: Workflow completed successfully (test deployed to graph)
-    if (workflowStatus === "COMPLETED") {
-      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Merged</Badge>;
+  const getStatusBadge = (row: UserJourneyRow) => {
+    // Graph nodes always show "Live" badge
+    if (row.type === "GRAPH_NODE") {
+      return (
+        <Badge
+          variant="secondary"
+          className="h-5 border-[#10b981]/30"
+          style={{ backgroundColor: "#10b981", color: "white" }}
+        >
+          Live
+        </Badge>
+      );
     }
 
-    // Red: Workflow failed (permanent failure, error, or halted)
-    if (workflowStatus === "FAILED" || workflowStatus === "HALTED" || workflowStatus === "ERROR") {
+    // For tasks, show PR or workflow badges
+    const task = row.task!;
+
+    // Show PR badge if available
+    if (task.prArtifact?.content) {
+      const prStatus = task.prArtifact.content.status;
+      return (
+        <a
+          href={task.prArtifact.content.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Badge
+            variant="secondary"
+            className={`gap-1 h-5 ${
+              prStatus === "IN_PROGRESS"
+                ? "border-[#238636]/30"
+                : prStatus === "CANCELLED"
+                  ? "border-[#6e7681]/30"
+                  : "bg-gray-100 text-gray-800 border-gray-200"
+            }`}
+            style={
+              prStatus === "IN_PROGRESS"
+                ? { backgroundColor: "#238636", color: "white" }
+                : prStatus === "CANCELLED"
+                  ? { backgroundColor: "#6e7681", color: "white" }
+                  : undefined
+            }
+          >
+            {prStatus === "CANCELLED" ? (
+              <GitPullRequestClosed className="w-3 h-3" />
+            ) : (
+              <GitPullRequest className="w-3 h-3" />
+            )}
+            {prStatus === "IN_PROGRESS"
+              ? "Open"
+              : "Closed"}
+            <ExternalLink className="w-3 h-3 ml-0.5" />
+          </Badge>
+        </a>
+      );
+    }
+
+    // Fallback to workflow status badge
+    if (task.workflowStatus === "COMPLETED") {
+      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Completed</Badge>;
+    }
+
+    if (task.workflowStatus === "FAILED" || task.workflowStatus === "HALTED" || task.workflowStatus === "ERROR") {
       return <Badge variant="default" className="bg-red-600 hover:bg-red-700">Failed</Badge>;
     }
 
-    // Yellow: Workflow in progress (pending or actively running)
-    if (workflowStatus === "IN_PROGRESS" || workflowStatus === "PENDING") {
+    if (task.workflowStatus === "IN_PROGRESS" || task.workflowStatus === "PENDING") {
       return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">In Progress</Badge>;
     }
 
-    // Default: No workflow status yet (shouldn't happen with new code)
     return <Badge variant="secondary">Pending</Badge>;
   };
 
@@ -527,7 +658,7 @@ export default function UserJourneys() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : filteredTasks.length > 0 ? (
+              ) : filteredRows.length > 0 ? (
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader className="bg-muted/50">
@@ -541,59 +672,57 @@ export default function UserJourneys() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredTasks.map((task) => (
-                        <TableRow key={task.id}>
-                          <TableCell className="font-medium">{task.title}</TableCell>
+                      {filteredRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-medium">{row.title}</TableCell>
                           <TableCell>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleReplay(task)}
-                              disabled={isReplayingTask === task.id}
+                              onClick={() => handleReplay(row)}
+                              disabled={isReplayingTask === row.id}
                               className="h-8 w-8 p-0"
                               title="Replay test"
                             >
-                              {isReplayingTask === task.id ? (
+                              {isReplayingTask === row.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <Play className="h-4 w-4" />
                               )}
                             </Button>
                           </TableCell>
-                          <TableCell>{getStatusBadge(task.status, task.workflowStatus)}</TableCell>
+                          <TableCell>{getStatusBadge(row)}</TableCell>
                           <TableCell>
-                            {task.workflowStatus === "COMPLETED" && task.testFileUrl ? (
+                            {row.type === "GRAPH_NODE" || row.testFileUrl ? (
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => window.open(task.testFileUrl!, "_blank")}
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </Button>
+                                <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                                {row.testFileUrl && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => window.open(row.testFileUrl!, "_blank")}
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Button>
+                                )}
                               </div>
-                            ) : task.testFileUrl ? (
-                              <span className="text-sm text-muted-foreground italic">
-                                Pending merge - link not available
-                              </span>
                             ) : (
-                              <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
+                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {new Date(task.createdAt).toLocaleDateString()}
+                            {new Date(row.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCopyCode(task)}
+                              onClick={() => handleCopyCode(row)}
                               className="h-8 w-8 p-0"
                               title="Copy test code"
                             >
-                              {copiedId === task.id ? (
+                              {copiedId === row.id ? (
                                 <Check className="h-4 w-4 text-green-500" />
                               ) : (
                                 <Copy className="h-4 w-4" />
@@ -608,9 +737,9 @@ export default function UserJourneys() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    {hidePending && userJourneyTasks.length > 0
-                      ? "No merged tests to display. Toggle off to see pending recordings."
-                      : "No user journey tests yet. Create one to get started!"}
+                    {hidePending && allRows.length > 0
+                      ? "No completed tests to display. Toggle off to see all tests."
+                      : "No E2E tests yet. Create a user journey to get started!"}
                   </p>
                 </div>
               )}
