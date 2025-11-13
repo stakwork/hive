@@ -22,6 +22,7 @@ import { stakworkService } from "@/lib/service-factory";
 import { config as envConfig } from "@/lib/env";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { logger } from "@/lib/logger";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -189,7 +190,10 @@ export async function createJanitorRun(
     const githubCreds = await getGithubUsernameAndPAT(credentialUserId, workspaceSlug);
 
     if (!githubCreds) {
-      console.warn(`[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`);
+      logger.warn("No GitHub credentials found for janitor run", "Janitor", { 
+        credentialUserId, 
+        workspaceSlug 
+      });
     }
 
     // Get repository data from first repository
@@ -198,7 +202,9 @@ export async function createJanitorRun(
     const ignoreDirs = repository?.ignoreDirs || null;
 
     if (!repositoryUrl) {
-      console.warn(`[Janitor] No repository linked to workspace: ${workspaceSlug}`);
+      logger.warn("No repository linked to workspace for janitor run", "Janitor", { 
+        workspaceSlug 
+      });
     }
 
     // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, ignoreDirs, and GitHub context
@@ -236,7 +242,7 @@ export async function createJanitorRun(
     const projectId = (stakworkProject as any)?.data?.project_id;
 
     if (!projectId) {
-      console.error("No project_id found in Stakwork response:", stakworkProject);
+      logger.error("No project_id found in Stakwork response", "Janitor", { stakworkProject });
       throw new Error("No project ID returned from Stakwork");
     }
 
@@ -273,7 +279,7 @@ export async function createJanitorRun(
     return janitorRun;
 
   } catch (stakworkError) {
-    console.error("Failed to create Stakwork project for janitor run:", stakworkError);
+    logger.error("Failed to create Stakwork project for janitor run", "Janitor", { error: stakworkError });
     
     // Update the run status to failed
     await db.janitorRun.update({
@@ -773,7 +779,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           eventPayload,
         );
       } catch (error) {
-        console.error("Error broadcasting recommendations update to Pusher:", error);
+        logger.error("Error broadcasting recommendations update to Pusher", "Janitor", { error });
       }
     }
 
@@ -857,7 +863,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
             eventPayload,
           );
         } catch (error) {
-          console.error("Error broadcasting recommendations update to Pusher:", error);
+          logger.error("Error broadcasting recommendations update to Pusher", "Janitor", { error });
         }
       }
 

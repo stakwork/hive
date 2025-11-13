@@ -1,3 +1,5 @@
+import { logger } from "./logger";
+
 export interface HttpClientConfig {
   baseURL: string;
   defaultHeaders?: Record<string, string>;
@@ -24,7 +26,7 @@ export class HttpClient {
     service: string = "unknown",
   ): Promise<T> {
     const url = `${this.config.baseURL}${endpoint}`;
-    console.log("[HttpClient] Requesting:", url);
+    logger.debug("HTTP request initiated", "HttpClient", { url, service });
     const config: RequestInit = {
       ...options,
       headers: {
@@ -61,7 +63,11 @@ export class HttpClient {
 
       const jsonResponse = await response.json();
 
-      console.log("[HttpClient] RESPONSE:", jsonResponse);
+      logger.debug("HTTP request completed", "HttpClient", { 
+        url, 
+        service,
+        status: response.status 
+      });
 
       return jsonResponse;
     } catch (error) {
@@ -119,14 +125,7 @@ export class HttpClient {
     headers?: Record<string, string>,
     service?: string,
   ): Promise<T> {
-    console.log(
-      "--------------------------------post--------------------------------",
-    );
-    console.log(headers);
-    console.log(body);
-    console.log(
-      "--------------------------------post--------------------------------",
-    );
+    logger.debug("HTTP POST request", "HttpClient", { endpoint, hasBody: !!body });
 
     return this.request<T>(
       endpoint,
