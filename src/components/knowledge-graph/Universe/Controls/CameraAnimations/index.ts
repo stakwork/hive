@@ -82,8 +82,8 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
 
   useEffect(() => {
     // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
-    logger.debug("Controls-CameraAnimations: cameraControlsRef", { cameraControlsRef?._debugId })
-    logger.debug("CameraAnimations: isSleeping", { isSleeping, 'hasAttemptedRestoration:', hasAttemptedRestoration.current })
+    logger.debug("Controls-CameraAnimations: cameraControlsRef", { debugId: cameraControlsRef?._debugId })
+    logger.debug("CameraAnimations: isSleeping", { isSleeping, hasAttemptedRestoration: hasAttemptedRestoration.current })
 
     logger.debug("CameraAnimations: cameraFocusTrigger", { cameraFocusTrigger })
     if (!selectedNode && cameraControlsRef) {

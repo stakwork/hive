@@ -58,8 +58,7 @@ export async function POST() {
         );
 
         if (!response.ok) {
-          logger.error("Failed to revoke GitHub token:", { response.status,
-            response.statusText, });
+          logger.error("Failed to revoke GitHub token:", { status: response.status, statusText: response.statusText });
         }
       } catch (error) {
         logger.error("Error revoking GitHub token:", { error });

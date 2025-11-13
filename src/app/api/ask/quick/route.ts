@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     logger.debug("🤖 Creating generateText with:", { 
       model: model?.modelId,
-      toolsCount: Object.keys(tools  }).length,
+      toolsCount: Object.keys(tools).length,
       messagesCount: messages.length,
       question: question,
     });
