@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { createUserStory } from "@/services/roadmap";
-import type {
 import { logger } from "@/lib/logger";
+import type {
   CreateUserStoryRequest,
   UserStoryListResponse,
   UserStoryResponse,

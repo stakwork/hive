@@ -92,10 +92,10 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
       const { cameraPosition, cameraTarget } = getStoreBundle(storeId).graph.getState()
       const { isSleeping: wasSleeping } = getStoreBundle(storeId).simulation.getState()
 
-      logger.debug("CameraAnimations: wasSleeping:", { wasSleeping, 'hasCamera:', !!cameraPosition && !!cameraTarget })
+      logger.debug("CameraAnimations: wasSleeping:", { wasSleeping, hasCamera: !!cameraPosition && !!cameraTarget })
 
       // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
-      logger.debug("CameraAnimations: camerararef", { cameraControlsRef, cameraControlsRef.camera, cameraControlsRef._debugId })
+      logger.debug("CameraAnimations: camerararef", { cameraControlsRef, camera: cameraControlsRef.camera, debugId: cameraControlsRef._debugId })
 
       // Only restore saved position if we were sleeping AND haven't already attempted restoration
       if (wasSleeping && cameraPosition && cameraTarget && !hasAttemptedRestoration.current) {

@@ -121,10 +121,10 @@ function logStep(contents: unknown) {
   if (!Array.isArray(contents)) return;
   for (const content of contents) {
     if (content.type === "tool-call") {
-      logger.debug("TOOL CALL:", { content.toolName, ":", content.input });
+      logger.debug("TOOL CALL:", { toolName: content.toolName, input: content.input });
     }
     if (content.type === "tool-result") {
-      logger.debug("TOOL RESULT:", { content.toolName, ":", content.output });
+      logger.debug("TOOL RESULT:", { toolName: content.toolName, output: content.output });
     }
   }
 }
