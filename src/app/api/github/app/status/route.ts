@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       logger.debug("[github-app-status] No authenticated user", { 
         ...logContext,
         hasSession: !!session,
-        responseTime: Date.now(  }) - startTime,
+        responseTime: Date.now() - startTime,
       });
       return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });
     }
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
         logger.warn("[github-app-status] Workspace access denied", { 
           ...requestLogContext,
           workspaceExists: workspaceAccess.workspace !== null,
-          responseTime: Date.now(  }) - startTime,
+          responseTime: Date.now() - startTime,
         });
         return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
       }
@@ -181,7 +181,7 @@ export async function GET(request: Request) {
             ...requestLogContext,
             action: 'no_repo_url',
             workspaceSlug,
-            responseTime: Date.now(  }) - startTime,
+            responseTime: Date.now() - startTime,
           });
           return NextResponse.json({ hasTokens: false }, { status: 200 });
         }

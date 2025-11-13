@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       flowType = "installation";
     }
 
-    logger.debug("=> authUrl:", { authUrl, "flowType:", flowType });
+    logger.debug("=> authUrl:", { authUrl, flowType: flowType });
 
     return NextResponse.json(
       {

@@ -103,7 +103,7 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
         hasAttemptedRestoration.current = true
 
         setTimeout(() => {
-          logger.debug("CameraAnimations: restoring after timeout 2", { cameraPosition.x, cameraPosition.y, cameraPosition.z })
+          logger.debug("CameraAnimations: restoring after timeout 2", { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z })
           // cameraControlsRef.setLookAt(
           //   cameraPosition.x,
           //   cameraPosition.y,

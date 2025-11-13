@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const payload = JSON.parse(body);
 
     if (event === "github_app_authorization" && payload.action === "revoked") {
-        logger.debug("🔴 User revoked authorization:", { payload.sender.login });
+        logger.debug("🔴 User revoked authorization:", { login: payload.sender.login });
         // Delete user token from DB or cache
     }
 
