@@ -4,6 +4,7 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 // import { EncryptionService } from "@/lib/encryption";
 
 export const runtime = "nodejs";
@@ -20,15 +21,15 @@ export async function GET(request: Request) {
     userAgent: request.headers.get('user-agent'),
   };
 
-  console.log("[github-app-status] Request initiated", logContext);
+  logger.debug("[github-app-status] Request initiated", "status/route", { logContext });
 
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      console.log("[github-app-status] No authenticated user", {
+      logger.debug("[github-app-status] No authenticated user", "status/route", { {
         ...logContext,
         hasSession: !!session,
-        responseTime: Date.now() - startTime,
+        responseTime: Date.now( }) - startTime,
       });
       return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });
     }
@@ -44,29 +45,29 @@ export async function GET(request: Request) {
       repositoryUrl,
     };
 
-    console.log("[github-app-status] Processing authenticated request", requestLogContext);
+    logger.debug("[github-app-status] Processing authenticated request", "status/route", { requestLogContext });
 
     // Validate workspace access if workspaceSlug is provided
     if (workspaceSlug) {
-      console.log("[github-app-status] Validating workspace access", {
+      logger.debug("[github-app-status] Validating workspace access", "status/route", { {
         ...requestLogContext,
         action: 'validate_workspace',
-      });
+      } });
 
       const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
       if (!workspaceAccess.hasAccess) {
-        console.warn("[github-app-status] Workspace access denied", {
+        logger.warn("[github-app-status] Workspace access denied", "status/route", { {
           ...requestLogContext,
           workspaceExists: workspaceAccess.workspace !== null,
-          responseTime: Date.now() - startTime,
+          responseTime: Date.now( }) - startTime,
         });
         return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
       }
 
-      console.log("[github-app-status] Workspace access validated", {
+      logger.debug("[github-app-status] Workspace access validated", "status/route", { {
         ...requestLogContext,
         workspaceId: workspaceAccess.workspace?.id,
-      });
+      } });
     }
 
     let hasTokens = false;
@@ -76,10 +77,10 @@ export async function GET(request: Request) {
       // Check if user has tokens for this specific workspace's GitHub org
       const { db } = await import("@/lib/db");
 
-      console.log("[github-app-status] Fetching workspace data", {
+      logger.debug("[github-app-status] Fetching workspace data", "status/route", { {
         ...requestLogContext,
         action: 'fetch_workspace',
-      });
+      } });
 
       // Get workspace
       const workspace = await db.workspace.findUnique({
@@ -89,22 +90,22 @@ export async function GET(request: Request) {
         },
       });
 
-      console.log("[github-app-status] Workspace data retrieved", {
+      logger.debug("[github-app-status] Workspace data retrieved", "status/route", { {
         ...requestLogContext,
         hasWorkspace: !!workspace,
         hasSourceControlOrg: !!workspace?.sourceControlOrg,
         sourceControlOrgId: workspace?.sourceControlOrg?.id,
         githubLogin: workspace?.sourceControlOrg?.githubLogin,
         installationId: workspace?.sourceControlOrg?.githubInstallationId,
-      });
+      } });
 
       if (workspace?.sourceControlOrg) {
         // Workspace is linked to a SourceControlOrg - check if user has tokens for it
-        console.log("[github-app-status] Checking source control tokens", {
+        logger.debug("[github-app-status] Checking source control tokens", "status/route", { {
           ...requestLogContext,
           action: 'check_tokens',
           sourceControlOrgId: workspace.sourceControlOrg.id,
-        });
+        } });
 
         const sourceControlToken = await db.sourceControlToken.findUnique({
           where: {
@@ -116,11 +117,11 @@ export async function GET(request: Request) {
         });
         hasTokens = !!sourceControlToken;
 
-        console.log("[github-app-status] Source control token check result", {
+        logger.debug("[github-app-status] Source control token check result", "status/route", { {
           ...requestLogContext,
           hasTokens,
           tokenExists: !!sourceControlToken,
-        });
+        } });
 
         // Get repository URL
         let repoUrl: string | null = repositoryUrl;
@@ -135,12 +136,12 @@ export async function GET(request: Request) {
 
         // Check repository access if we have tokens and a repository URL
         if (hasTokens && repoUrl && workspace?.sourceControlOrg?.githubInstallationId) {
-          console.log("[github-app-status] Checking repository access", {
+          logger.debug("[github-app-status] Checking repository access", "status/route", { {
             ...requestLogContext,
             action: 'check_repo_access',
             installationId: workspace.sourceControlOrg.githubInstallationId,
             repoUrl,
-          });
+          } });
 
           hasRepoAccess = await checkRepositoryAccess(
             session.user.id,
@@ -148,13 +149,13 @@ export async function GET(request: Request) {
             repoUrl,
           );
 
-          console.log("[github-app-status] Repository access check completed", {
+          logger.debug("[github-app-status] Repository access check completed", "status/route", { {
             ...requestLogContext,
             hasRepoAccess,
             repoUrl,
-          });
+          } });
         } else {
-          console.log("[github-app-status] Skipping repository access check", {
+          logger.debug("[github-app-status] Skipping repository access check", "status/route", { {
             ...requestLogContext,
             action: 'skip_repo_access',
             reasons: {
@@ -164,7 +165,7 @@ export async function GET(request: Request) {
             },
             repoUrl,
             installationId: workspace?.sourceControlOrg?.githubInstallationId,
-          });
+          } });
         }
       } else {
         // Workspace not linked yet - extract GitHub org from repo URL and check
@@ -179,20 +180,20 @@ export async function GET(request: Request) {
         }
 
         if (!repoUrl) {
-          console.warn("[github-app-status] No repository URL found", {
+          logger.warn("[github-app-status] No repository URL found", "status/route", { {
             ...requestLogContext,
             action: 'no_repo_url',
             workspaceSlug,
-            responseTime: Date.now() - startTime,
+            responseTime: Date.now( }) - startTime,
           });
           return NextResponse.json({ hasTokens: false }, { status: 200 });
         }
 
-        console.log("[github-app-status] Processing unlinked workspace", {
+        logger.debug("[github-app-status] Processing unlinked workspace", "status/route", { {
           ...requestLogContext,
           action: 'process_unlinked_workspace',
           repoUrl,
-        });
+        } });
         const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
 
         if (githubMatch) {
@@ -223,13 +224,13 @@ export async function GET(request: Request) {
 
             // Check repository access if we have tokens and installation ID
             if (hasTokens && sourceControlOrg?.githubInstallationId) {
-              console.log("[github-app-status] Checking repository access for auto-linked workspace", {
+              logger.debug("[github-app-status] Checking repository access for auto-linked workspace", "status/route", { {
                 ...requestLogContext,
                 action: 'check_repo_access_auto_linked',
                 installationId: sourceControlOrg.githubInstallationId,
                 repoUrl,
                 githubOwner,
-              });
+              } });
 
               hasRepoAccess = await checkRepositoryAccess(
                 session.user.id,
@@ -237,11 +238,11 @@ export async function GET(request: Request) {
                 repoUrl,
               );
 
-              console.log("[github-app-status] Repository access result for auto-linked workspace", {
+              logger.debug("[github-app-status] Repository access result for auto-linked workspace", "status/route", { {
                 ...requestLogContext,
                 hasRepoAccess,
                 githubOwner,
-              });
+              } });
             }
           } else {
             // SourceControlOrg doesn't exist yet - user needs to go through OAuth
@@ -251,44 +252,44 @@ export async function GET(request: Request) {
       }
     } else {
       // No workspace specified - check if user has ANY GitHub App tokens
-      console.log("[github-app-status] Checking user app tokens (no workspace)", {
+      logger.debug("[github-app-status] Checking user app tokens (no workspace)", "status/route", { {
         ...requestLogContext,
         action: 'check_user_app_tokens',
-      });
+      } });
 
       const apptokens = await getUserAppTokens(session.user.id);
       hasTokens = !!apptokens?.accessToken;
 
-      console.log("[github-app-status] User app tokens check result", {
+      logger.debug("[github-app-status] User app tokens check result", "status/route", { {
         ...requestLogContext,
         hasTokens,
         hasAppTokens: !!apptokens,
-      });
+      } });
     }
 
     // if (hasTokens) {
     //   const encryptionService = EncryptionService.getInstance();
     //   const accessToken = encryptionService.decryptField("app_access_token", apptokens.accessToken as string);
-    //   console.log("=> accessToken", accessToken);
+    //   logger.debug("=> accessToken", "status/route", { accessToken });
     // }
 
     const responseTime = Date.now() - startTime;
 
-    console.log("[github-app-status] Request completed successfully", {
+    logger.debug("[github-app-status] Request completed successfully", "status/route", { {
       ...requestLogContext,
       hasTokens,
       hasRepoAccess,
       responseTime,
       status: 'success',
-    });
+    } });
 
     return NextResponse.json({ hasTokens, hasRepoAccess }, { status: 200 });
   } catch (error) {
     const responseTime = Date.now() - startTime;
 
-    console.error("[github-app-status] Request failed", {
+    logger.error("[github-app-status] Request failed", "status/route", { {
       ...logContext,
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? error.message : String(error }),
       errorStack: error instanceof Error ? error.stack : undefined,
       responseTime,
       status: 'error',

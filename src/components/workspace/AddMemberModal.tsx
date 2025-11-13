@@ -35,6 +35,7 @@ import { z } from "zod";
 import { InfoIcon, Search, UserCheck } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { AssignableMemberRoleSchema, WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
+import { logger } from "@/lib/logger";
 
 const addMemberSchema = z.object({
   githubUsername: z.string().min(1, "GitHub username is required"),
@@ -99,7 +100,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
           setSearchResults([]);
         }
       } catch (error) {
-        console.error("Search error:", error);
+        logger.error("Search error:", "workspace/AddMemberModal", { error });
         setSearchResults([]);
       } finally {
         setIsSearching(false);

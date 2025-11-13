@@ -1,13 +1,14 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
 
     console.log("🔴 Github app webhook received");
 
-    console.log("🔴 Github app webhook headers", req.headers);
+    logger.debug("🔴 Github app webhook headers", "webhook/route", { req.headers });
 
-    console.log("🔴 Github app webhook body", req);
+    logger.debug("🔴 Github app webhook body", "webhook/route", { req });
 
     const secret = process.env.GITHUB_WEBHOOK_SECRET!;
     const signature = req.headers.get("x-hub-signature-256") || "";
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
     const payload = JSON.parse(body);
 
     if (event === "github_app_authorization" && payload.action === "revoked") {
-        console.log("🔴 User revoked authorization:", payload.sender.login);
+        logger.debug("🔴 User revoked authorization:", "webhook/route", { payload.sender.login });
         // Delete user token from DB or cache
     }
 

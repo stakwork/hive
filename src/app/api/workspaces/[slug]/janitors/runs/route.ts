@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getJanitorRuns } from "@/services/janitor";
 import { parseJanitorType, parseJanitorStatus, validatePaginationParams } from "@/lib/helpers/janitor-validation";
 import { JanitorType, JanitorStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -70,7 +71,7 @@ export async function GET(
       pagination
     });
   } catch (error) {
-    console.error("Error fetching janitor runs:", error);
+    logger.error("Error fetching janitor runs:", "runs/route", { error });
     
     return NextResponse.json(
       { error: "Internal server error" },

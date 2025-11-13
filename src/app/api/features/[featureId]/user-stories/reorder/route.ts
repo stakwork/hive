@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { reorderUserStories } from "@/services/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -24,7 +25,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error reordering user stories:", error);
+    logger.error("Error reordering user stories:", "reorder/route", { error });
     const message = error instanceof Error ? error.message : "Failed to reorder user stories";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

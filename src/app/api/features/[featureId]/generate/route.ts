@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { buildFeatureContext, generateWithStreaming } from "@/lib/ai/utils";
 import { GENERATION_TYPES, GENERATION_CONFIG_MAP, GenerationType } from "@/lib/ai/generation-config";
+import { logger } from "@/lib/logger";
 
 type Provider = "anthropic" | "openai";
 
@@ -101,7 +102,7 @@ export async function POST(
       type
     );
   } catch (error) {
-    console.error("Error generating content:", error);
+    logger.error("Error generating content:", "generate/route", { error });
     return NextResponse.json(
       { error: "Failed to generate content" },
       { status: 500 }

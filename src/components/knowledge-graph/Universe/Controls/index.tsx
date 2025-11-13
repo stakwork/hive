@@ -3,6 +3,7 @@ import { useGraphStore } from '@/stores/useStores'
 import { CameraControls } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
 import { useCameraAnimations } from './CameraAnimations'
+import { logger } from "@/lib/logger";
 
 type Props = {
   disableAnimations?: boolean
@@ -40,11 +41,11 @@ export const Controls = ({ disableAnimations, enableRotation = false }: Props) =
       ref={(ref) => {
         if (ref && !isCameraControlsRefSet.current) {
           isCameraControlsRefSet.current = true
-          console.log('Controls: setting camera controls ref', ref)
+          logger.debug("Controls: setting camera controls ref", "Controls/index", { ref })
           const randomId = Math.random().toString(36).slice(2, 6)
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
           ref._debugId = `cameraControlsRefSetter_${randomId}`
-          console.log('Controls-CameraAnimations: randomId', randomId)
+          logger.debug("Controls-CameraAnimations: randomId", "Controls/index", { randomId })
           setCameraControlsRef(ref)
         }
       }}

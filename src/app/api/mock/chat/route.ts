@@ -1,6 +1,7 @@
 import axios from "axios";
 import { generateResponseBasedOnMessage } from "./responses";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";
 
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
         const artifacts = msg.artifacts as Array<unknown> | undefined;
         return sum + (artifacts?.length || 0);
       }, 0);
-      console.log(`📜 Chat history: ${history.length} messages, ${totalArtifacts} total artifacts`);
+      logger.debug(`📜 Chat history: ${history.length} messages, ${totalArtifacts} total artifacts`, "chat/route");
     } else {
       console.log('📜 Chat history: 0 messages');
     }
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (error) {
-      console.error("❌ Mock error sending response:", error);
+      logger.error("❌ Mock error sending response:", "chat/route", { error });
     }
 
     return NextResponse.json({
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       message: "Message received, response will be generated shortly",
     });
   } catch (error) {
-    console.error(" Mock error processing message:", error);
+    logger.error(" Mock error processing message:", "chat/route", { error });
     return NextResponse.json(
       { error: "Failed to process message" },
       { status: 500 },

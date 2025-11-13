@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -221,7 +222,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    console.error("Error retrieving stakgraph settings:", error);
+    logger.error("Error retrieving stakgraph settings:", "stakgraph/route", { error });
     return NextResponse.json(
       {
         success: false,
@@ -377,7 +378,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     try {
       decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey) : "";
     } catch (error) {
-      console.error("Failed to decrypt poolApiKey:", error);
+      logger.error("Failed to decrypt poolApiKey:", "stakgraph/route", { error });
       decryptedPoolApiKey = swarmPoolApiKey;
     }
 
@@ -396,9 +397,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           repositoryName: primaryRepo.name,
         });
 
-        console.log("=====> GitHub defaultBranch:", defaultBranch, "Current branch:", primaryRepo.branch);
+        logger.debug("=====> GitHub defaultBranch:", "stakgraph/route", { defaultBranch, "Current branch:", primaryRepo.branch });
         if (defaultBranch && defaultBranch !== primaryRepo.branch) {
-          console.log("=====> Updating primary repository branch to:", defaultBranch);
+          logger.debug("=====> Updating primary repository branch to:", "stakgraph/route", { defaultBranch });
           await db.repository.update({
             where: { id: primaryRepo.id },
             data: { branch: defaultBranch },
@@ -406,7 +407,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
     } catch (err) {
-      console.error("Failed to setup repository with webhook:", err);
+      logger.error("Failed to setup repository with webhook:", "stakgraph/route", { err });
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
@@ -441,7 +442,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           );
         }
       } catch (err) {
-        console.error("Failed to update env vars in Pool Manager:", err);
+        logger.error("Failed to update env vars in Pool Manager:", "stakgraph/route", { err });
       }
     }
 
@@ -476,7 +477,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    console.error("Error saving stakgraph settings:", error);
+    logger.error("Error saving stakgraph settings:", "stakgraph/route", { error });
     return NextResponse.json(
       {
         success: false,

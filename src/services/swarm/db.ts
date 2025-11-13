@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
 import { PoolState, SwarmStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -150,7 +151,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolState: params.poolState || PoolState.NOT_STARTED,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
-    console.log("[saveOrUpdateSwarm] Create data:", createData);
+    logger.debug("[saveOrUpdateSwarm] Create data:", "swarm/db", { createData });
     swarm = await db.swarm.create({
       data: createData,
       select,

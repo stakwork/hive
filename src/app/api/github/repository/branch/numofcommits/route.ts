@@ -2,6 +2,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -114,7 +115,7 @@ export async function GET(request: Request) {
       data,
     });
   } catch (error: unknown) {
-    console.error("Error fetching repositories:", error);
+    logger.error("Error fetching repositories:", "numofcommits/route", { error });
 
     if (
       error &&

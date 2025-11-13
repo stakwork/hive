@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { StakworkRunQuerySchema } from "@/types/stakwork";
 import { getStakworkRuns } from "@/services/stakwork-run";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching AI generation runs:", error);
+    logger.error("Error fetching AI generation runs:", "runs/route", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to fetch AI generation runs";

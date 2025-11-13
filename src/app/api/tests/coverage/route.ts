@@ -7,6 +7,7 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { TestCoverageData } from "@/types/test-coverage";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -195,7 +196,7 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching test coverage:", error);
+    logger.error("Error fetching test coverage:", "coverage/route", { error });
     return NextResponse.json(
       { success: false, message: "Failed to fetch test coverage" },
       { status: 500 },

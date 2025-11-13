@@ -6,6 +6,7 @@ import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 
 // --- TYPE DEFINITIONS ---
 
@@ -235,7 +236,7 @@ const SynchronizedGraphComponentInner = ({
           if (!data.success) throw new Error("Failed to fetch schema data");
         }
       } catch (err) {
-        console.error("Failed to load schema:", err);
+        logger.error("Failed to load schema:", "calls/SynchronizedGraphComponent", { err });
       }
     };
 
@@ -286,7 +287,7 @@ const SynchronizedGraphComponentInner = ({
           });
         }
       } catch (err) {
-        console.error("Failed to load nodes:", err);
+        logger.error("Failed to load nodes:", "calls/SynchronizedGraphComponent", { err });
       } finally {
         setNodesLoading(false);
       }

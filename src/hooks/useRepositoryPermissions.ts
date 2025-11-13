@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { logger } from "@/lib/logger";
 
 interface RepositoryPermissions {
   hasAccess: boolean;
@@ -56,7 +57,7 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
         setError(result.error || result.message || 'Failed to check repository permissions');
       }
     } catch (err) {
-      console.error('Error checking repository permissions:', err);
+      logger.error("Error checking repository permissions:", "useRepositoryPermissions", { err });
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
     } finally {
       setLoading(false);

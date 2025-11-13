@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
       total_count: response.data.total_count,
     });
   } catch (error: unknown) {
-    console.error("Error searching GitHub users:", error);
+    logger.error("Error searching GitHub users:", "search/route", { error });
 
     if (
       error &&

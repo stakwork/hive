@@ -13,6 +13,7 @@ import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { logger } from "@/lib/logger";
 
 export function GithubAuthStep() {
   const { data: session, status } = useSession();
@@ -68,13 +69,13 @@ export function GithubAuthStep() {
       });
 
       if (result?.error) {
-        console.error("Sign in error:", result.error);
+        logger.error("Sign in error:", "github-auth-step/index", { result.error });
         // Reset signing in state on error
         setIsSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
-      console.error("Unexpected sign in error:", error);
+      logger.error("Unexpected sign in error:", "github-auth-step/index", { error });
       setIsSigningIn(false);
     }
   };

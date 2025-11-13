@@ -4,6 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { PoolManagerService } from "../pool-manager";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -40,7 +41,7 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
     where: { id },
     select: { swarmId: true } as { swarmId: true },
   });
-  console.log(">>>> swarm", swarm);
+  logger.debug(">>>> swarm", "swarm/secrets", { swarm });
 
   const loginData = await loginResponse.json();
 
@@ -81,8 +82,8 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
     });
   } catch (error) {
     console.log("updateSwarmPoolApiKeyFor");
-    console.log(error);
+    logger.debug("Debug output", "swarm/secrets", { error });
     console.log("updateSwarmPoolApiKeyFor");
-    console.error(error);
+    logger.error("Debug output", "swarm/secrets", { error });
   }
 }

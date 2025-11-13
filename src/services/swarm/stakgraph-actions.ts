@@ -1,4 +1,5 @@
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
+import { logger } from "@/lib/logger";
 
 type Creds = { username?: string; pat?: string };
 
@@ -67,7 +68,7 @@ export async function triggerIngestAsync(
   callbackUrl?: string,
   useLsp: boolean = false,
 ) {
-  console.log("===Trigger IngestAsync was hit. useLsp:", useLsp);
+  logger.debug("===Trigger IngestAsync was hit. useLsp:", "swarm/stakgraph-actions", { useLsp });
   const stakgraphUrl = `https://${swarmName}:7799`;
   const data: Record<string, string | boolean> = {
     repo_url: repoUrl,

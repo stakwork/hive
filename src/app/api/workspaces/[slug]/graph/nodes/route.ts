@@ -5,6 +5,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -107,7 +108,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching graph nodes:", error);
+    logger.error("Error fetching graph nodes:", "nodes/route", { error });
     return NextResponse.json(
       { success: false, message: "Failed to fetch graph nodes" },
       { status: 500 },

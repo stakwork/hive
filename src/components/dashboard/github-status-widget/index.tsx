@@ -13,6 +13,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
 import { ExternalLink, Github, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { logger } from "@/lib/logger";
 
 export function GitHubStatusWidget() {
   const { workspace, slug } = useWorkspace();
@@ -46,7 +47,7 @@ export function GitHubStatusWidget() {
         });
       }
     } catch (error) {
-      console.error("Failed to install GitHub App:", error);
+      logger.error("Failed to install GitHub App:", "github-status-widget/index", { error });
       setIsInstalling(false);
       toast({
         title: "Installation Failed",

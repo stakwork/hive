@@ -24,6 +24,7 @@ import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import type { TicketListItem } from "@/types/roadmap";
 import type { TaskStatus, Priority } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 interface RoadmapTasksTableProps {
   phaseId: string;
@@ -212,7 +213,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
       // Navigate to task page
       router.push(`/w/${workspaceSlug}/task/${task.id}`);
     } catch (error) {
-      console.error("Failed to start task:", error);
+      logger.error("Failed to start task:", "features/RoadmapTasksTable", { error });
       setStartingTaskId(null);
     }
   };
@@ -239,7 +240,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
         onTasksReordered(tasks.filter((t) => t.id !== taskId));
       }
     } catch (error) {
-      console.error("Failed to delete task:", error);
+      logger.error("Failed to delete task:", "features/RoadmapTasksTable", { error });
     }
   };
 

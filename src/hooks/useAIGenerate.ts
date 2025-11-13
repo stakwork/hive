@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { logger } from "@/lib/logger";
 
 interface UseAIGenerateResult<T> {
   generating: boolean;
@@ -63,14 +64,14 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
           throw new Error("Unexpected response format");
         }
       } catch (parseError) {
-        console.error("Failed to parse AI response:", text);
-        console.error("Parse error details:", parseError);
+        logger.error("Failed to parse AI response:", "useAIGenerate", { text });
+        logger.error("Parse error details:", "useAIGenerate", { parseError });
         throw new Error("Failed to parse AI response");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      console.error("AI generation error:", err);
+      logger.error("AI generation error:", "useAIGenerate", { err });
     } finally {
       setGenerating(false);
     }

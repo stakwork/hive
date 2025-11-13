@@ -7,6 +7,7 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { learnToolProcessors, ASK_QUESTION_TOOL, type AskQuestionResponse } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { logger } from "@/lib/logger";
 
 interface LearnChatProps {
   workspaceSlug: string;
@@ -129,7 +130,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
         setMessages((prev) => [...prev, assistantMessage]);
       }
     } catch (error) {
-      console.error("Error calling ask API:", error);
+      logger.error("Error calling ask API:", "LearnChat", { error });
       const errorMessage: LearnMessage = {
         id: (Date.now() + 1).toString(),
         content: "I'm sorry, but I encountered an error while processing your question. Please try again later.",

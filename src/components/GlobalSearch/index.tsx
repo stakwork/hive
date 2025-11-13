@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { SearchResponse, SearchResult } from "@/types/search";
 import type { TaskStatus, FeatureStatus, PhaseStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 const ENTITY_CONFIG = {
   task: {
@@ -102,11 +103,11 @@ export function GlobalSearch() {
           const data: SearchResponse = await response.json();
           setResults(data.data);
         } else {
-          console.error("Search failed:", response.statusText);
+          logger.error("Search failed:", "GlobalSearch/index", { response.statusText });
           setResults(null);
         }
       } catch (error) {
-        console.error("Search error:", error);
+        logger.error("Search error:", "GlobalSearch/index", { error });
         setResults(null);
       } finally {
         setLoading(false);

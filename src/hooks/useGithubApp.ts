@@ -2,6 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { logger } from "@/lib/logger";
 
 interface GithubAppStatus {
   hasTokens: boolean;
@@ -33,12 +34,12 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
         setIsLoading(true);
         setError(null);
 
-        console.log('workspaceSlug-is-here-in-useGithubApp', workspaceSlug);
+        logger.debug("workspaceSlug-is-here-in-useGithubApp", "useGithubApp", { workspaceSlug });
 
 
         const url = workspaceSlug ? `/api/github/app/status?workspaceSlug=${workspaceSlug}` : "/api/github/app/status";
 
-        console.log('url-is-here-in-useGithubApp', url);
+        logger.debug("url-is-here-in-useGithubApp", "useGithubApp", { url });
 
         const response = await fetch(url, {
           method: "GET",
@@ -55,7 +56,7 @@ export function useGithubApp(workspaceSlug?: string): GithubAppStatus {
         setHasTokens(data.hasTokens || false);
         setHasRepoAccess(data.hasRepoAccess);
       } catch (err) {
-        console.error("Error checking GitHub App status:", err);
+        logger.error("Error checking GitHub App status:", "useGithubApp", { err });
         setError(err instanceof Error ? err.message : "Unknown error");
         setHasTokens(false);
       } finally {

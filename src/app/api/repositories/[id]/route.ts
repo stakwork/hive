@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 
 const updateRepositorySchema = z.object({
   testingFrameworkSetup: z.boolean().optional(),
@@ -51,7 +52,7 @@ export async function PUT(
 
     return NextResponse.json(updatedRepository);
   } catch (error) {
-    console.error("Error updating repository:", error);
+    logger.error("Error updating repository:", "[id]/route", { error });
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

@@ -7,6 +7,7 @@ import {
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
+import { logger } from "@/lib/logger";
 
 export interface WorkflowStatusUpdate {
   taskId: string;
@@ -88,7 +89,7 @@ export function usePusherConnection({
         : getWorkspaceChannelName(currentChannelIdRef.current);
 
       if (LOGS) {
-        console.log("Unsubscribing from Pusher channel:", channelName);
+        logger.debug("Unsubscribing from Pusher channel:", "usePusherConnection", { channelName });
       }
 
       // Unbind all events
@@ -125,7 +126,7 @@ export function usePusherConnection({
         // Set up event handlers
         channel.bind("pusher:subscription_succeeded", () => {
           if (LOGS) {
-            console.log("Successfully subscribed to Pusher channel:", channelName);
+            logger.debug("Successfully subscribed to Pusher channel:", "usePusherConnection", { channelName });
           }
 
           // Add a small delay to ensure Pusher is fully ready to receive messages
@@ -137,7 +138,7 @@ export function usePusherConnection({
         });
 
         channel.bind("pusher:subscription_error", (error: unknown) => {
-          console.error("Pusher subscription error:", error);
+          logger.error("Pusher subscription error:", "usePusherConnection", { error });
           setError(`Failed to connect to ${type} real-time updates`);
           setIsConnected(false);
         });
@@ -155,12 +156,12 @@ export function usePusherConnection({
                   if (onMessageRef.current) onMessageRef.current(full);
                   return;
                 } else {
-                  console.error("Failed to fetch message by id", payload);
+                  logger.error("Failed to fetch message by id", "usePusherConnection", { payload });
                   return;
                 }
               }
             } catch (err) {
-              console.error("Error handling NEW_MESSAGE event:", err);
+              logger.error("Error handling NEW_MESSAGE event:", "usePusherConnection", { err });
               return;
             }
           });
@@ -170,11 +171,11 @@ export function usePusherConnection({
             PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
             (update: WorkflowStatusUpdate) => {
               if (LOGS) {
-                console.log("Received workflow status update:", {
+                logger.debug("Received workflow status update:", "usePusherConnection", { {
                   taskId: update.taskId,
                   workflowStatus: update.workflowStatus,
                   channelName,
-                });
+                } });
               }
               if (onWorkflowStatusUpdateRef.current) {
                 onWorkflowStatusUpdateRef.current(update);
@@ -187,12 +188,12 @@ export function usePusherConnection({
             PUSHER_EVENTS.TASK_TITLE_UPDATE,
             (update: TaskTitleUpdateEvent) => {
               if (LOGS) {
-                console.log("Received task title update:", {
+                logger.debug("Received task title update:", "usePusherConnection", { {
                   taskId: update.taskId,
                   newTitle: update.newTitle,
                   previousTitle: update.previousTitle,
                   channelName,
-                });
+                } });
               }
               if (onTaskTitleUpdateRef.current) {
                 onTaskTitleUpdateRef.current(update);
@@ -207,12 +208,12 @@ export function usePusherConnection({
             PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
             (update: RecommendationsUpdatedEvent) => {
               if (LOGS) {
-                console.log("Received recommendations update:", {
+                logger.debug("Received recommendations update:", "usePusherConnection", { {
                   workspaceSlug: update.workspaceSlug,
                   newRecommendationCount: update.newRecommendationCount,
                   totalRecommendationCount: update.totalRecommendationCount,
                   channelName,
-                });
+                } });
               }
               if (onRecommendationsUpdatedRef.current) {
                 onRecommendationsUpdatedRef.current(update);
@@ -225,12 +226,12 @@ export function usePusherConnection({
             PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
             (update: TaskTitleUpdateEvent) => {
               if (LOGS) {
-                console.log("Received workspace task title update:", {
+                logger.debug("Received workspace task title update:", "usePusherConnection", { {
                   taskId: update.taskId,
                   newTitle: update.newTitle,
                   previousTitle: update.previousTitle,
                   channelName,
-                });
+                } });
               }
               if (onTaskTitleUpdateRef.current) {
                 onTaskTitleUpdateRef.current(update);
@@ -243,7 +244,7 @@ export function usePusherConnection({
         currentChannelIdRef.current = targetId;
         currentChannelTypeRef.current = type;
       } catch (error) {
-        console.error("Error setting up Pusher connection:", error);
+        logger.error("Error setting up Pusher connection:", "usePusherConnection", { error });
         setError(`Failed to setup ${type} real-time connection`);
         setIsConnected(false);
       }
@@ -261,12 +262,12 @@ export function usePusherConnection({
     // Determine which connection to make
     if (taskId && taskId !== currentChannelIdRef.current) {
       if (LOGS) {
-        console.log("Connecting to Pusher channel for task:", taskId);
+        logger.debug("Connecting to Pusher channel for task:", "usePusherConnection", { taskId });
       }
       connect(taskId, 'task');
     } else if (workspaceSlug && workspaceSlug !== currentChannelIdRef.current) {
       if (LOGS) {
-        console.log("Connecting to Pusher channel for workspace:", workspaceSlug);
+        logger.debug("Connecting to Pusher channel for workspace:", "usePusherConnection", { workspaceSlug });
       }
       connect(workspaceSlug, 'workspace');
     } else if (!taskId && !workspaceSlug) {

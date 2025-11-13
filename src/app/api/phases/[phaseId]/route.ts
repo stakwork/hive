@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getPhase, updatePhase, deletePhase } from "@/services/roadmap";
 import type { UpdatePhaseRequest, PhaseResponse, PhaseWithTickets } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -25,7 +26,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching phase:", error);
+    logger.error("Error fetching phase:", "[phaseId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to fetch phase";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;
@@ -56,7 +57,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating phase:", error);
+    logger.error("Error updating phase:", "[phaseId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to update phase";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :
@@ -87,7 +88,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting phase:", error);
+    logger.error("Error deleting phase:", "[phaseId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to delete phase";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;

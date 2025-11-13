@@ -8,6 +8,7 @@ import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -104,14 +105,14 @@ async function callMock(
     });
 
     if (!response.ok) {
-      console.error(`Failed to send message to mock server: ${response.statusText}`);
+      logger.error(`Failed to send message to mock server: ${response.statusText}`, "message/route");
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: true, data: result };
   } catch (error) {
-    console.error("Error calling mock server:", error);
+    logger.error("Error calling mock server:", "message/route", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -212,14 +213,14 @@ async function callStakwork(
     });
 
     if (!response.ok) {
-      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+      logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "message/route");
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: result.success, data: result.data };
   } catch (error) {
-    console.error("Error calling Stakwork:", error);
+    logger.error("Error calling Stakwork:", "message/route", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -364,7 +365,7 @@ export async function POST(request: NextRequest) {
       attachments: chatMessage.attachments || [],
     };
 
-    console.log("clientMessage", clientMessage);
+    logger.debug("clientMessage", "message/route", { clientMessage });
 
     const useStakwork = config.STAKWORK_API_KEY && config.STAKWORK_BASE_URL && config.STAKWORK_WORKFLOW_ID;
 
@@ -458,7 +459,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Error creating chat message:", error);
+    logger.error("Error creating chat message:", "message/route", { error });
     return NextResponse.json({ error: "Failed to create chat message" }, { status: 500 });
   }
 }

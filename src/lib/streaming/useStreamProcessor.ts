@@ -7,6 +7,7 @@ import type {
 } from "@/types/streaming";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
 import { parseSSELine } from "./helpers";
+import { logger } from "@/lib/logger";
 
 interface InternalToolCall {
   toolName: string;
@@ -298,7 +299,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
               debouncedUpdate();
             }
           } catch (parseError) {
-            console.error("Failed to parse stream chunk:", parseError);
+            logger.error("Failed to parse stream chunk:", "streaming/useStreamProcessor", { parseError });
           }
         }
       }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMiddlewareContext, requireAuth } from '@/lib/middleware/utils'
 import { getWorkspaceLogoService } from '@/services/workspace-logo'
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -28,7 +29,7 @@ export async function GET(
       expiresIn: 3600,
     })
   } catch (error) {
-    console.error('Error retrieving workspace logo:', error)
+    logger.error("Error retrieving workspace logo:", "image/route", { error })
 
     if (error instanceof Error) {
       if (error.message.includes('not found')) {

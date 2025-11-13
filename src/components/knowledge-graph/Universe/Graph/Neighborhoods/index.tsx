@@ -6,6 +6,7 @@ import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { nodeSize } from '../Cubes/constants'
+import { logger } from "@/lib/logger";
 
 // Helper function to distribute neighborhoods based on node_type positioning
 const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; name?: string }[], nodeTypes: string[]) => {
@@ -32,7 +33,7 @@ const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; nam
 export const Neighbourhoods = () => {
   const [selectedNeighbourhoodId, setSelectedNeighbourhoodId] = useState<string | null>(null)
 
-  console.log(selectedNeighbourhoodId)
+  logger.debug("Debug output", "Neighborhoods/index", { selectedNeighbourhoodId })
 
   const graphStyle = useGraphStore((s) => s.graphStyle)
   const neighbourhoods = useGraphStore((s) => s.neighbourhoods)

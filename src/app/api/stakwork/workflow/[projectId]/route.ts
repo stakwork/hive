@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -28,7 +29,7 @@ export async function GET(
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    console.error("Error fetching workflow data:", error);
+    logger.error("Error fetching workflow data:", "[projectId]/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

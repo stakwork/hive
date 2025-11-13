@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority, WorkflowStatus, TaskSourceType, Prisma } from "@prisma/client";
 import { sanitizeTask, extractPrArtifact } from "@/lib/helpers/tasks";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -247,7 +248,7 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching tasks:", error);
+    logger.error("Error fetching tasks:", "tasks/route", { error });
     return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 }
@@ -455,7 +456,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Error creating task:", error);
+    logger.error("Error creating task:", "tasks/route", { error });
     return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
   }
 }

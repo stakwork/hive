@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { logger } from "@/lib/logger";
 
 export async function PUT(
   request: NextRequest,
@@ -113,9 +114,9 @@ export async function PUT(
         );
       }
 
-      console.log(`Task title updated and broadcasted: ${taskId} -> "${updatedTask.title}"`);
+      logger.debug(`Task title updated and broadcasted: ${taskId} -> "${updatedTask.title}"`, "title/route");
     } catch (error) {
-      console.error("Error broadcasting title update to Pusher:", error);
+      logger.error("Error broadcasting title update to Pusher:", "title/route", { error });
       // Don't fail the request if Pusher fails
     }
 
@@ -127,7 +128,7 @@ export async function PUT(
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error updating task title:", error);
+    logger.error("Error updating task title:", "title/route", { error });
 
     // Handle case where task doesn't exist
     if (

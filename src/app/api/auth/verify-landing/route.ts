@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+import { logger } from "@/lib/logger";
   signCookie,
   constantTimeCompare,
   LANDING_COOKIE_NAME,
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Error verifying landing page password:", error);
+    logger.error("Error verifying landing page password:", "verify-landing/route", { error });
     return NextResponse.json(
       { success: false, message: "An error occurred" },
       { status: 500 }

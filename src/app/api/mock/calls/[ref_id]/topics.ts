@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -93,7 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Error fetching topics:", error);
+    logger.error("Error fetching topics:", "[ref_id]/topics", { error });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

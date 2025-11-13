@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { openImportNodeModal } from './ImportNodeModal';
+import { logger } from "@/lib/logger";
 
 interface ContextMenuProps {
   top?: number | string;
@@ -54,11 +55,11 @@ export default function ContextMenu({
         document.body.removeChild(script);
       })
       .catch(error => {
-        console.error('Error adding node:', error);
+        logger.error("Error adding node:", "workflow/ContextMenu", { error });
       });
   }, [workflowId, workflowVersionId, position]);
 
-  console.log("position", position);
+  logger.debug("position", "workflow/ContextMenu", { position });
 
   return (
     <div

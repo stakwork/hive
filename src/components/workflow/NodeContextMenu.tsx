@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { logger } from "@/lib/logger";
 
 interface NodeContextMenuProps {
   top?: number | string;
@@ -24,22 +25,22 @@ export default function NodeContextMenu({
   ...props
 }: NodeContextMenuProps) {
   const deleteNode = useCallback(() => {
-    console.log("delete nodes", nodes);
+    logger.debug("delete nodes", "workflow/NodeContextMenu", { nodes });
     deleteCallback(nodes);
   }, [nodes, deleteCallback]);
 
   const exportNodeWR = useCallback(() => {
-    console.log("export node", nodes);
+    logger.debug("export node", "workflow/NodeContextMenu", { nodes });
     exportCallback(nodes, 'WorkflowRunner');
   }, [nodes, exportCallback]);
 
   const exportNodeFE = useCallback(() => {
-    console.log("export node", nodes);
+    logger.debug("export node", "workflow/NodeContextMenu", { nodes });
     exportCallback(nodes, 'ForEachCondition');
   }, [nodes, exportCallback]);
 
   const exportNodeWL = useCallback(() => {
-    console.log("export node", nodes);
+    logger.debug("export node", "workflow/NodeContextMenu", { nodes });
     exportCallback(nodes, 'WhileLoop');
   }, [nodes, exportCallback]);
 

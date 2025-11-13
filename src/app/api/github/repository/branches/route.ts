@@ -3,6 +3,7 @@ import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -50,7 +51,7 @@ export async function GET(request: Request) {
       total_count: branches.length,
     });
   } catch (error: unknown) {
-    console.error("Error fetching branches:", error);
+    logger.error("Error fetching branches:", "branches/route", { error });
 
     if (
       error &&

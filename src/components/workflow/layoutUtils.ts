@@ -1,5 +1,6 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { Node, Edge } from '@xyflow/react';
+import { logger } from "@/lib/logger";
 
 // Create ELK instance
 const elk = new ELK();
@@ -63,7 +64,7 @@ export const smartLayout = async (nodes: Node[], edges: Edge[]): Promise<Node[]>
     // Step 3: Ensure edges don't cross through nodes
     return optimizeEdgePaths(noOverlapNodes, edges);
   } catch (error) {
-    console.error('Smart layout error:', error);
+    logger.error("Smart layout error:", "workflow/layoutUtils", { error });
     return nodesCopy;
   }
 };

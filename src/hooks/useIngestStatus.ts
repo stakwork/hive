@@ -1,6 +1,7 @@
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 
 export function useIngestStatus() {
   const { workspace, id: workspaceId, updateWorkspace } = useWorkspace();
@@ -24,10 +25,10 @@ export function useIngestStatus() {
       }
       setIsIngesting(false);
 
-      // console.log('codeIsSynced', codeIsSynced);
-      // console.log('ingestRefId', ingestRefId);
-      // console.log('workspaceId', workspaceId);
-      // console.log('ingestError', ingestError);
+      // logger.debug("codeIsSynced", "useIngestStatus", { codeIsSynced });
+      // logger.debug("ingestRefId", "useIngestStatus", { ingestRefId });
+      // logger.debug("workspaceId", "useIngestStatus", { workspaceId });
+      // logger.debug("ingestError", "useIngestStatus", { ingestError });
       return;
     }
 
@@ -98,7 +99,7 @@ export function useIngestStatus() {
           setStatusMessage(data.update.message);
         }
       } catch (error) {
-        console.error("Failed to get ingest status:", error);
+        logger.error("Failed to get ingest status:", "useIngestStatus", { error });
         setIngestError(true);
         setIsIngesting(false);
         // Don't retry on error, let the interval handle it

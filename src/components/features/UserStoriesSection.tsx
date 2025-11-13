@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { SortableUserStory } from "./SortableUserStory";
 import { AIButton } from "@/components/ui/ai-button";
 import type { FeatureDetail } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 interface GeneratedStory {
   title: string;
@@ -136,7 +137,7 @@ export function UserStoriesSection({
         setSavedStoryId(null);
       }, 2000);
     } catch (error) {
-      console.error("Failed to update user story:", error);
+      logger.error("Failed to update user story:", "features/UserStoriesSection", { error });
       setSavedStoryId(null);
     } finally {
       setSaving(false);

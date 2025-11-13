@@ -8,6 +8,7 @@ import { EnvironmentVariable } from "@/types";
 import { isApiError } from "@/types/errors";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,7 @@ async function withRetry<T>(
 ): Promise<T> {
 
   for (let i = 0; i <= retries; i++) {
-    console.log('withRetry-start', delay)
+    logger.debug("withRetry-start", "create-pool/route", { delay })
 
     try {
       return await fn();
@@ -202,7 +203,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
-    console.error("Error creating Pool Manager pool:", error);
+    logger.error("Error creating Pool Manager pool:", "create-pool/route", { error });
     const { workspaceId } = body;
 
     saveOrUpdateSwarm({

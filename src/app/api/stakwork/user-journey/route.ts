@@ -9,6 +9,7 @@ import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getBaseUrl } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -77,14 +78,14 @@ async function callStakwork(
     });
 
     if (!response.ok) {
-      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+      logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "user-journey/route");
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: result.success, data: result.data };
   } catch (error) {
-    console.error("Error calling Stakwork:", error);
+    logger.error("Error calling Stakwork:", "user-journey/route", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -217,11 +218,11 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch (error) {
-        console.error("Error saving test code to ChatMessage:", error);
+        logger.error("Error saving test code to ChatMessage:", "user-journey/route", { error });
         // Non-fatal - task was still created successfully
       }
     } catch (error) {
-      console.error("Error creating task for user journey:", error);
+      logger.error("Error creating task for user journey:", "user-journey/route", { error });
       return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
     }
 
@@ -254,10 +255,10 @@ export async function POST(request: NextRequest) {
         });
         task.stakworkProjectId = parseInt(String(stakworkProjectId));
       } else {
-        console.warn("Task created without stakworkProjectId (Stakwork call failed)");
+        logger.warn("Task created without stakworkProjectId (Stakwork call failed)", "user-journey/route");
       }
     } catch (error) {
-      console.error("Error updating task with stakworkProjectId:", error);
+      logger.error("Error updating task with stakworkProjectId:", "user-journey/route", { error });
       // Non-fatal - task was still created successfully
     }
 
@@ -271,7 +272,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Error creating chat message:", error);
+    logger.error("Error creating chat message:", "user-journey/route", { error });
     return NextResponse.json({ error: "Failed to create chat message" }, { status: 500 });
   }
 }

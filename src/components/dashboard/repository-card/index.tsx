@@ -9,16 +9,17 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
 import { ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
+import { logger } from "@/lib/logger";
 
 export function RepositoryCard() {
 
   const { workspace, slug } = useWorkspace();
 
-  console.log('slug-is-here', slug);
-  console.log('workspace-slug-is-here', workspace?.slug);
+  logger.debug("slug-is-here", "repository-card/index", { slug });
+  logger.debug("workspace-slug-is-here", "repository-card/index", { workspace?.slug });
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
-  console.log('hasGithubAppTokens-is-here', hasGithubAppTokens);
-  console.log('isGithubAppLoading-is-here', isGithubAppLoading);
+  logger.debug("hasGithubAppTokens-is-here", "repository-card/index", { hasGithubAppTokens });
+  logger.debug("isGithubAppLoading-is-here", "repository-card/index", { isGithubAppLoading });
   const { toast } = useToast();
   const [isInstalling, setIsInstalling] = useState(false);
   // Handle GitHub App installation
@@ -51,7 +52,7 @@ export function RepositoryCard() {
         });
       }
     } catch (error) {
-      console.error("Failed to install GitHub App:", error);
+      logger.error("Failed to install GitHub App:", "repository-card/index", { error });
       setIsInstalling(false);
       toast({
         title: "Installation Failed",

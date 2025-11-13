@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Learnings } from "@/types/learn";
+import { logger } from "@/lib/logger";
 
 interface LearnSidebarProps {
   workspaceSlug: string;
@@ -41,7 +42,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
         const data = await response.json();
         setLearnings(data);
       } catch (error) {
-        console.error("Error fetching learnings:", error);
+        logger.error("Error fetching learnings:", "LearnSidebar", { error });
         setError("Failed to load learnings data");
       } finally {
         setIsLoading(false);
@@ -70,7 +71,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
       const data = await response.json();
       setLearnings(data);
     } catch (error) {
-      console.error("Error fetching learnings:", error);
+      logger.error("Error fetching learnings:", "LearnSidebar", { error });
       setError("Failed to load learnings data");
     } finally {
       setIsLoading(false);
@@ -94,11 +95,11 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
     })
       .then((response) => {
         if (!response.ok) {
-          console.error(`Failed to seed knowledge: ${response.status}`);
+          logger.error(`Failed to seed knowledge: ${response.status}`, "LearnSidebar");
         }
       })
       .catch((error) => {
-        console.error("Error seeding knowledge:", error);
+        logger.error("Error seeding knowledge:", "LearnSidebar", { error });
       });
 
     setTimeout(() => {

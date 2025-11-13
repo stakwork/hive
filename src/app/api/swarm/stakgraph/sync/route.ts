@@ -7,6 +7,7 @@ import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,37 +22,37 @@ export async function POST(request: NextRequest) {
       swarmId?: string;
     };
 
-    console.log("[Sync] Request initiated", {
+    logger.debug("[Sync] Request initiated", "sync/route", { {
       userId: session.user.id,
       workspaceId,
       swarmId,
-    });
+    } });
 
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
-      console.error("[Sync] Swarm not found or misconfigured", { workspaceId, swarmId });
+      logger.error("[Sync] Swarm not found or misconfigured", "sync/route", { { workspaceId, swarmId } });
       return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
     }
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repositoryUrl = primaryRepo?.repositoryUrl;
 
     if (!repositoryUrl) {
-      console.error("[Sync] Repository URL not set", {
+      logger.error("[Sync] Repository URL not set", "sync/route", { {
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
-      });
+      } });
       return NextResponse.json({ success: false, message: "Repository URL not set" }, { status: 400 });
     }
 
-    console.log("[Sync] Repository found", {
+    logger.debug("[Sync] Repository found", "sync/route", { {
       workspaceId: swarm.workspaceId,
       swarmId: swarm.id,
       repositoryUrl,
       swarmName: swarm.name,
-    });
+    } });
 
     let username: string | undefined;
     let pat: string | undefined;
@@ -73,9 +74,9 @@ export async function POST(request: NextRequest) {
       pat = creds.token;
     }
 
-    console.log("[Sync] GitHub credentials", {
+    logger.debug("[Sync] GitHub credentials", "sync/route", { {
       workspaceId: swarm.workspaceId,
-      hasCredentials: !!(username && pat),
+      hasCredentials: !!(username && pat }),
     });
 
     try {
@@ -89,17 +90,17 @@ export async function POST(request: NextRequest) {
         data: { status: RepositoryStatus.PENDING },
       });
     } catch (e) {
-      console.error("Repository not found or failed to set PENDING before sync", e);
+      logger.error("Repository not found or failed to set PENDING before sync", "sync/route", { e });
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
-    console.log("[Sync] Triggering async sync", {
+    logger.debug("[Sync] Triggering async sync", "sync/route", { {
       workspaceId: swarm.workspaceId,
       swarmId: swarm.id,
       swarmName: swarm.name,
       repositoryUrl,
       callbackUrl,
-      hasGithubAuth: !!(username && pat),
+      hasGithubAuth: !!(username && pat }),
     });
 
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
@@ -110,41 +111,41 @@ export async function POST(request: NextRequest) {
       callbackUrl,
     );
 
-    console.log("[Sync] Async sync response", {
+    logger.debug("[Sync] Async sync response", "sync/route", { {
       workspaceId: swarm.workspaceId,
       swarmId: swarm.id,
       ok: apiResult.ok,
       status: apiResult.status,
       hasRequestId: !!apiResult.data?.request_id,
-    });
+    } });
 
     const requestId = apiResult.data?.request_id;
     if (requestId) {
-      console.log("[Sync] Request ID received", {
+      logger.debug("[Sync] Request ID received", "sync/route", { {
         requestId,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
         repositoryUrl,
-      });
+      } });
       try {
         const updatedSwarm = await saveOrUpdateSwarm({
           workspaceId: swarm.workspaceId,
           ingestRefId: requestId,
         });
 
-        console.log("[Sync] Saved ingest reference", {
+        logger.debug("[Sync] Saved ingest reference", "sync/route", { {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
           savedIngestRefId: updatedSwarm?.ingestRefId,
-        });
+        } });
       } catch (err) {
-        console.error("[Sync] Failed to store ingestRefId", {
+        logger.error("[Sync] Failed to store ingestRefId", "sync/route", { {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
           error: err,
-        });
+        } });
         return NextResponse.json(
           { success: false, message: "Failed to store sync reference", requestId },
           { status: 500 },
@@ -152,13 +153,13 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!apiResult.ok || !requestId) {
-      console.error("[Sync] Failed to start sync", {
+      logger.error("[Sync] Failed to start sync", "sync/route", { {
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
         ok: apiResult.ok,
         hasRequestId: !!requestId,
         repositoryUrl,
-      });
+      } });
       try {
         await db.repository.update({
           where: {
@@ -169,16 +170,16 @@ export async function POST(request: NextRequest) {
           },
           data: { status: RepositoryStatus.FAILED },
         });
-        console.log("[Sync] Repository status → FAILED", {
+        logger.debug("[Sync] Repository status → FAILED", "sync/route", { {
           workspaceId: swarm.workspaceId,
           repositoryUrl,
-        });
+        } });
       } catch (e) {
-        console.error("[Sync] Failed to update repository status", {
+        logger.error("[Sync] Failed to update repository status", "sync/route", { {
           workspaceId: swarm.workspaceId,
           repositoryUrl,
           error: e,
-        });
+        } });
       }
     }
 
@@ -187,7 +188,7 @@ export async function POST(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch (error) {
-    console.error("[Sync] Unhandled error", { error });
+    logger.error("[Sync] Unhandled error", "sync/route", { { error } });
     return NextResponse.json({ success: false, message: "Failed to sync" }, { status: 500 });
   }
 }

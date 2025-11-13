@@ -1,6 +1,7 @@
 "use client";
 
 import { Component, ReactNode } from "react";
+import { logger } from "@/lib/logger";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -23,7 +24,7 @@ export class StreamErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("StreamErrorBoundary caught error:", error, errorInfo);
+    logger.error("StreamErrorBoundary caught error:", "streaming/StreamErrorBoundary", { error, errorInfo });
   }
 
   render() {

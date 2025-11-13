@@ -24,6 +24,7 @@ import {
 import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -298,7 +299,7 @@ export async function processStakworkRunWebhook(
     : WorkflowStatus.COMPLETED;
 
   if (status === null) {
-    console.warn(`Unknown status: ${project_status}`);
+    logger.warn(`Unknown status: ${project_status}`, "stakwork-run");
     return { runId: run.id, status: run.status };
   }
 
@@ -327,7 +328,7 @@ export async function processStakworkRunWebhook(
   });
 
   if (updateResult.count === 0) {
-    console.warn(`Run ${run.id} was already updated by another request`);
+    logger.warn(`Run ${run.id} was already updated by another request`, "stakwork-run");
     return { runId: run.id, status: run.status };
   }
 
@@ -342,7 +343,7 @@ export async function processStakworkRunWebhook(
       timestamp: new Date(),
     });
   } catch (error) {
-    console.error("Error broadcasting to Pusher:", error);
+    logger.error("Error broadcasting to Pusher:", "stakwork-run", { error });
     // Don't throw - webhook processing succeeded
   }
 
@@ -512,7 +513,7 @@ export async function updateStakworkRunDecision(
         break;
       // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
       default:
-        console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
+        logger.warn(`Unhandled StakworkRunType: ${updatedRun.type}`, "stakwork-run");
     }
   }
 
@@ -531,7 +532,7 @@ export async function updateStakworkRunDecision(
       }
     );
   } catch (error) {
-    console.error("Error broadcasting decision to Pusher:", error);
+    logger.error("Error broadcasting decision to Pusher:", "stakwork-run", { error });
     // Don't throw - decision update succeeded
   }
 

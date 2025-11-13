@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { CreateStakworkRunSchema } from "@/types/stakwork";
 import { createStakworkRun } from "@/services/stakwork-run";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error creating AI generation run:", error);
+    logger.error("Error creating AI generation run:", "generate/route", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to create AI generation run";

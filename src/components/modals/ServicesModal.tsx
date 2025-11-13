@@ -20,6 +20,7 @@ import {
   generatePM2Apps,
 } from "../../utils/devContainerUtils";
 import { ModalComponentProps } from "./ModlaProvider";
+import { logger } from "@/lib/logger";
 
 const getFiles = (
   repoName: string,
@@ -104,7 +105,7 @@ export default function ServicesModal({
           }
         }
       } catch (error) {
-        console.error("Failed to load settings:", error);
+        logger.error("Failed to load settings:", "modals/ServicesModal", { error });
         toast({
           title: "Error",
           description: "Failed to load settings",
@@ -146,7 +147,7 @@ export default function ServicesModal({
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
       });
     } catch (err) {
-      console.error("Failed to paste environment variables:", err);
+      logger.error("Failed to paste environment variables:", "modals/ServicesModal", { err });
       toast({
         title: "Paste failed",
         description: "Unable to read from clipboard. Please try again.",
@@ -176,7 +177,7 @@ export default function ServicesModal({
       });
       setShowImportSection(false);
     } catch (err) {
-      console.error("Failed to parse file:", err);
+      logger.error("Failed to parse file:", "modals/ServicesModal", { err });
       toast({
         title: "Import failed",
         description: "Failed to parse the file. Please check the format.",
@@ -257,7 +258,7 @@ export default function ServicesModal({
       });
       onResolve(true);
     } catch (error) {
-      console.error("Failed to save settings:", error);
+      logger.error("Failed to save settings:", "modals/ServicesModal", { error });
       toast({
         title: "Error",
         description: "Failed to save settings. Please try again.",

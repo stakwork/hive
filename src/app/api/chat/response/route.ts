@@ -9,6 +9,7 @@ import {
   type ChatMessage,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";
 
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
           chatMessage.id,
         );
       } catch (error) {
-        console.error("❌ Error broadcasting to Pusher:", error);
+        logger.error("❌ Error broadcasting to Pusher:", "response/route", { error });
       }
     }
 
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Error creating chat response:", error);
+    logger.error("Error creating chat response:", "response/route", { error });
     return NextResponse.json(
       { error: "Failed to create chat response" },
       { status: 500 },

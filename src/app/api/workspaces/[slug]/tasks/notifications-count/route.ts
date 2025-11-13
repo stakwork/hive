@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -110,7 +111,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching task notification count:", error);
+    logger.error("Error fetching task notification count:", "notifications-count/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch task notification count" },
       { status: 500 },

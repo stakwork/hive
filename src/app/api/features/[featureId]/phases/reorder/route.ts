@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { reorderPhases } from "@/services/roadmap";
 import type { ReorderPhasesRequest, PhaseListResponse } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -25,7 +26,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error reordering phases:", error);
+    logger.error("Error reordering phases:", "reorder/route", { error });
     const message = error instanceof Error ? error.message : "Failed to reorder phases";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

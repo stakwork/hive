@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
+import { logger } from "@/lib/logger";
 
 // Global state to track modal visibility
 let modalOpenCallback: ((workflowId: string, workflowVersionId: string, position: { x: number; y: number }) => void) | null = null;
@@ -107,7 +108,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           document.body.removeChild(portalContainer);
         }
       } catch (error) {
-        console.warn("Error removing portal container:", error);
+        logger.warn("Error removing portal container:", "workflow/ImportNodeModal", { error });
       }
     };
   }, [portalContainer]);
@@ -247,7 +248,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           document.head.removeChild(style);
         }
       } catch (error) {
-        console.warn("Error removing style element:", error);
+        logger.warn("Error removing style element:", "workflow/ImportNodeModal", { error });
       }
     };
   }, []);
@@ -293,7 +294,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
 
         const responseData = await response.json();
 
-        console.log("responseData", responseData);
+        logger.debug("responseData", "workflow/ImportNodeModal", { responseData });
 
         if (responseData.data.valid) {
           setSubmitStatus({ type: 'success', message: 'Node imported successfully!' });
@@ -309,7 +310,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           setSubmitStatus({ type: 'error', message: responseData.data.errors });
         }
       } catch (fetchError: any) {
-        console.log("fetchError", fetchError);
+        logger.debug("fetchError", "workflow/ImportNodeModal", { fetchError });
         setSubmitStatus({
           type: 'error',
           message: `Failed to submit: ${fetchError.message}`

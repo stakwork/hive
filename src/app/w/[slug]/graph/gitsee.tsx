@@ -3,6 +3,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useGitVisualizer } from "@/hooks/useGitVisualizer";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { useEffect } from "react";
+import { logger } from "@/lib/logger";
 
 export const Gitsee = () => {
   const { id: workspaceId, slug } = useWorkspace();
@@ -15,7 +16,7 @@ export const Gitsee = () => {
   }, [slug, loadSettings]);
 
     const primaryRepoUrl = formData.repositories?.[0]?.repositoryUrl || "";
-    console.log("=====>", workspaceId, primaryRepoUrl, formData.swarmUrl);
+    logger.debug("=====>", "graph/gitsee", { workspaceId, primaryRepoUrl, formData.swarmUrl });
     useGitVisualizer({ workspaceId, repositoryUrl: primaryRepoUrl, swarmUrl: formData.swarmUrl });
 
   return (

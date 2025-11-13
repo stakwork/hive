@@ -7,6 +7,7 @@ import {
 import { WorkflowStatus } from "@/lib/chat";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
+import { logger } from "@/lib/logger";
 
 // SessionStorage key for persisting current page across navigation
 export const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
@@ -144,7 +145,7 @@ export function useWorkspaceTasks(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch tasks";
       setError(errorMessage);
-      console.error("Error fetching workspace tasks:", err);
+      logger.error("Error fetching workspace tasks:", "useWorkspaceTasks", { err });
     } finally {
       setLoading(false);
     }
@@ -200,7 +201,7 @@ export function useWorkspaceTasks(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to restore tasks from storage";
       setError(errorMessage);
-      console.error("Error restoring workspace tasks from storage:", err);
+      logger.error("Error restoring workspace tasks from storage:", "useWorkspaceTasks", { err });
       // Clear invalid stored state and fallback to normal fetch
       clearStoredPage(workspaceId);
       await fetchTasks(1, true, includeLatestMessage);

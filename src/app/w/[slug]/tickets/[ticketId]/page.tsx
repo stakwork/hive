@@ -17,6 +17,7 @@ import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import type { TicketDetail } from "@/types/roadmap";
 import type { TaskStatus, Priority } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 export default function TicketDetailPage() {
   const router = useRouter();
@@ -111,7 +112,7 @@ export default function TicketDetailPage() {
 
       handleBackClick();
     } catch (error) {
-      console.error("Failed to delete ticket:", error);
+      logger.error("Failed to delete ticket:", "[ticketId]/page", { error });
     }
   };
 

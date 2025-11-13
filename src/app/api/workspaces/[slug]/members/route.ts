@@ -8,6 +8,7 @@ import {
   getWorkspaceBySlug,
 } from "@/services/workspace";
 import { isAssignableMemberRole } from "@/lib/auth/roles";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,7 @@ export async function GET(
     const result = await getWorkspaceMembers(workspace.id, includeSystemAssignees);
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Error fetching workspace members:", error);
+    logger.error("Error fetching workspace members:", "members/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch members" },
       { status: 500 }
@@ -88,7 +89,7 @@ export async function POST(
     const member = await addWorkspaceMember(access.workspace.id, githubUsername, role);
     return NextResponse.json({ member }, { status: 201 });
   } catch (error: unknown) {
-    console.error("Error adding workspace member:", error);
+    logger.error("Error adding workspace member:", "members/route", { error });
     
     if (error instanceof Error) {
       if (error.message.includes("not found")) {

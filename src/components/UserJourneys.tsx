@@ -12,6 +12,7 @@ import { Artifact, BrowserContent } from "@/lib/chat";
 import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
+import { logger } from "@/lib/logger";
 
 interface UserJourneyTask {
   id: string;
@@ -71,7 +72,7 @@ export default function UserJourneys() {
       const response = await fetch(`/api/tasks?workspaceId=${id}&sourceType=USER_JOURNEY&limit=100`);
 
       if (!response.ok) {
-        console.error("Failed to fetch user journey tasks");
+        logger.error("Failed to fetch user journey tasks", "UserJourneys");
         return;
       }
 
@@ -80,7 +81,7 @@ export default function UserJourneys() {
         setUserJourneyTasks(result.data);
       }
     } catch (error) {
-      console.error("Error fetching user journey tasks:", error);
+      logger.error("Error fetching user journey tasks:", "UserJourneys", { error });
     } finally {
       setFetchingTasks(false);
     }
@@ -93,7 +94,7 @@ export default function UserJourneys() {
       const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
 
       if (!response.ok) {
-        console.error("Failed to fetch E2E tests from graph");
+        logger.error("Failed to fetch E2E tests from graph", "UserJourneys");
         return;
       }
 
@@ -102,7 +103,7 @@ export default function UserJourneys() {
         setE2eTestsGraph(result.data);
       }
     } catch (error) {
-      console.error("Error fetching E2E tests from graph:", error);
+      logger.error("Error fetching E2E tests from graph:", "UserJourneys", { error });
     }
   }, [slug]);
 
@@ -140,7 +141,7 @@ export default function UserJourneys() {
           });
         }
       } catch (error) {
-        console.error("Error dropping pod:", error);
+        logger.error("Error dropping pod:", "UserJourneys", { error });
       }
     },
     [id, claimedPodId],
@@ -232,7 +233,7 @@ export default function UserJourneys() {
       );
 
       if (!graphResponse.ok) {
-        console.error("Failed to fetch E2E tests from graph");
+        logger.error("Failed to fetch E2E tests from graph", "UserJourneys");
         return null;
       }
 
@@ -247,13 +248,13 @@ export default function UserJourneys() {
           return matchingTest.properties.body;
         }
 
-        console.error("No matching test found in graph for testFilePath:", task.testFilePath);
-        console.error("Available test files:", graphResult.data.map((n: any) => n.properties?.file));
+        logger.error("No matching test found in graph for testFilePath:", "UserJourneys", { task.testFilePath });
+        logger.error("Available test files:", "UserJourneys", { graphResult.data.map((n: any }) => n.properties?.file));
       }
 
       return null;
     } catch (error) {
-      console.error("Error fetching test code:", error);
+      logger.error("Error fetching test code:", "UserJourneys", { error });
       return null;
     }
   };
@@ -287,7 +288,7 @@ export default function UserJourneys() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Failed to claim pod:", errorData);
+        logger.error("Failed to claim pod:", "UserJourneys", { errorData });
 
         // Show error message to user
         toast({
@@ -305,7 +306,7 @@ export default function UserJourneys() {
         setClaimedPodId(data.podId);
       }
     } catch (error) {
-      console.error("Error claiming pod:", error);
+      logger.error("Error claiming pod:", "UserJourneys", { error });
       toast({
         variant: "destructive",
         title: "Connection Error",
@@ -366,7 +367,7 @@ export default function UserJourneys() {
         setClaimedPodId(data.podId);
       }
     } catch (error) {
-      console.error("Error starting replay:", error);
+      logger.error("Error starting replay:", "UserJourneys", { error });
       toast({
         variant: "destructive",
         title: "Replay Error",
@@ -398,7 +399,7 @@ export default function UserJourneys() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Failed to save user journey:", errorData);
+        logger.error("Failed to save user journey:", "UserJourneys", { errorData });
         toast({
           variant: "destructive",
           title: "Failed to Save",
@@ -430,7 +431,7 @@ export default function UserJourneys() {
         handleCloseBrowser();
       }
     } catch (error) {
-      console.error("Error saving user journey:", error);
+      logger.error("Error saving user journey:", "UserJourneys", { error });
       toast({
         variant: "destructive",
         title: "Error",

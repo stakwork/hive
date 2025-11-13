@@ -3,6 +3,7 @@ import { getWorkspaceBySlug } from '@/services/workspace'
 import { db } from '@/lib/db'
 import type { WorkspaceWithAccess } from '@/types/workspace'
 import type { WorkspaceRole } from '@prisma/client'
+import { logger } from "@/lib/logger";
 
 const ALLOWED_ROLES: WorkspaceRole[] = ['OWNER', 'ADMIN']
 const MAX_FILE_SIZE = 1024 * 1024 // 1MB
@@ -134,7 +135,7 @@ export class WorkspaceLogoService {
       try {
         await this.s3Service.deleteObject(workspace.logoKey)
       } catch (error) {
-        console.warn('Failed to delete old logo:', error)
+        logger.warn("Failed to delete old logo:", "workspace-logo", { error })
       }
     }
 
@@ -182,7 +183,7 @@ export class WorkspaceLogoService {
     try {
       await this.s3Service.deleteObject(workspace.logoKey)
     } catch (error) {
-      console.warn('Failed to delete logo from S3:', error)
+      logger.warn("Failed to delete logo from S3:", "workspace-logo", { error })
     }
 
     await db.workspace.update({

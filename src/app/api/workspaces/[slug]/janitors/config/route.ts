@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { z } from "zod";
 import { getOrCreateJanitorConfig, updateJanitorConfig } from "@/services/janitor";
+import { logger } from "@/lib/logger";
 
 const updateJanitorConfigSchema = z.object({
   unitTestsEnabled: z.boolean().optional(),
@@ -31,7 +32,7 @@ export async function GET(
 
     return NextResponse.json({ config });
   } catch (error) {
-    console.error("Error fetching janitor config:", error);
+    logger.error("Error fetching janitor config:", "config/route", { error });
     
     if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json(
@@ -70,7 +71,7 @@ export async function PUT(
       config 
     });
   } catch (error) {
-    console.error("Error updating janitor config:", error);
+    logger.error("Error updating janitor config:", "config/route", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

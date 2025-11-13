@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
 import { 
+import { logger } from "@/lib/logger";
   createEnabledJanitorWhereConditions, 
   isJanitorEnabled 
 } from "@/lib/constants/janitor";
@@ -72,11 +73,11 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     timestamp: new Date()
   };
 
-  console.log(`[JanitorCron] Starting scheduled janitor execution at ${result.timestamp.toISOString()}`);
+  logger.debug(`[JanitorCron] Starting scheduled janitor execution at ${result.timestamp.toISOString()}`, "janitor-cron");
 
   try {
     const workspaces = await getWorkspacesWithEnabledJanitors();
-    console.log(`[JanitorCron] Found ${workspaces.length} workspaces with enabled janitors`);
+    logger.debug(`[JanitorCron] Found ${workspaces.length} workspaces with enabled janitors`, "janitor-cron");
 
     result.workspacesProcessed = workspaces.length;
 
@@ -84,17 +85,17 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       const { slug, name, ownerId, janitorConfig } = workspace;
       
       if (!janitorConfig) {
-        console.log(`[JanitorCron] Skipping workspace ${slug}: no janitor config`);
+        logger.debug(`[JanitorCron] Skipping workspace ${slug}: no janitor config`, "janitor-cron");
         continue;
       }
 
-      console.log(`[JanitorCron] Processing workspace: ${name} (${slug})`);
+      logger.debug(`[JanitorCron] Processing workspace: ${name} (${slug})`, "janitor-cron");
 
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
           try {
-            console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
+            logger.debug(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`, "janitor-cron");
             await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
             result.runsCreated++;
           } catch (error) {
@@ -111,7 +112,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       }
     }
 
-    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Errors: ${result.errors.length}`);
+    logger.debug(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Errors: ${result.errors.length}`, "janitor-cron");
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

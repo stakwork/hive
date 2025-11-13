@@ -1,4 +1,5 @@
 /**
+import { logger } from "@/lib/logger";
  * Retry a function with exponential backoff or fixed delay
  */
 export async function retryWithDelay<T>(
@@ -18,6 +19,6 @@ export async function retryWithDelay<T>(
       }
     }
   }
-  console.error(`❌ All ${maxAttempts} attempts failed`);
+  logger.error(`❌ All ${maxAttempts} attempts failed`, "retry");
   throw lastError;
 }

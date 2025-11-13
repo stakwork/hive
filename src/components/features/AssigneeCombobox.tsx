@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { logger } from "@/lib/logger";
 
 interface WorkspaceMember {
   id: string;
@@ -75,7 +76,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
         setSystemAssignees(data.systemAssignees || []);
       }
     } catch (error) {
-      console.error("Failed to fetch members:", error);
+      logger.error("Failed to fetch members:", "features/AssigneeCombobox", { error });
     } finally {
       setLoading(false);
     }
@@ -103,7 +104,7 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
         window.open(bountyUrl, "_blank", "noopener,noreferrer");
       }
     } catch (error) {
-      console.error("Failed to update assignee:", error);
+      logger.error("Failed to update assignee:", "features/AssigneeCombobox", { error });
     } finally {
       setUpdating(false);
     }

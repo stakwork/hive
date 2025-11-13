@@ -6,6 +6,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -35,14 +36,14 @@ async function processNodesMediaUrls(
 
     // Check if node has properties.media_url and if it's an S3 URL
     if (node.properties?.media_url && typeof node.properties.media_url === "string") {
-      console.log(`[Jarvis Nodes] Processing node ${node.ref_id} with media_url: ${node.properties.media_url}`);
+      logger.debug(`[Jarvis Nodes] Processing node ${node.ref_id} with media_url: ${node.properties.media_url}`, "nodes/route");
 
       // Only presign if it's a sphinx-livekit-recordings URL
       if (node.properties.media_url.includes("sphinx-livekit-recordings")) {
-        console.log(`[Jarvis Nodes] Found sphinx-livekit-recordings URL for node ${node.ref_id}`);
+        logger.debug(`[Jarvis Nodes] Found sphinx-livekit-recordings URL for node ${node.ref_id}`, "nodes/route");
         try {
           const s3Key = extractS3KeyFromUrl(node.properties.media_url);
-          console.log(`[Jarvis Nodes] Extracted S3 key for node ${node.ref_id}: "${s3Key}"`);
+          logger.debug(`[Jarvis Nodes] Extracted S3 key for node ${node.ref_id}: "${s3Key}"`, "nodes/route");
 
           // Generate presigned URL with 1 hour expiration
           const presignedUrl = await s3Service.generatePresignedDownloadUrlForBucket(
@@ -50,16 +51,16 @@ async function processNodesMediaUrls(
             s3Key,
             3600,
           );
-          console.log(`[Jarvis Nodes] Generated presigned URL for node ${node.ref_id}: ${presignedUrl}`);
+          logger.debug(`[Jarvis Nodes] Generated presigned URL for node ${node.ref_id}: ${presignedUrl}`, "nodes/route");
 
           processedNode.properties = {
             ...node.properties,
             media_url: presignedUrl,
           };
-          console.log(`[Jarvis Nodes] Successfully presigned media_url for node ${node.ref_id}`);
+          logger.debug(`[Jarvis Nodes] Successfully presigned media_url for node ${node.ref_id}`, "nodes/route");
         } catch (error) {
           console.error(`[Jarvis Nodes] Failed to presign media_url for node ${node.ref_id}:`, error);
-          console.error(`[Jarvis Nodes] Original URL was: ${node.properties.media_url}`);
+          logger.error(`[Jarvis Nodes] Original URL was: ${node.properties.media_url}`, "nodes/route");
           // Keep original URL if presigning fails
         }
       } else {
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
     const endpoint = searchParams.get("endpoint") || "graph/search/latest?limit=1000&top_node_count=500";
 
     console.log("endpoint");
-    console.log(endpoint);
+    logger.debug("Debug output", "nodes/route", { endpoint });
     console.log("endpoint-end");
 
     const where: Record<string, string> = {};
@@ -144,10 +145,10 @@ export async function GET(request: NextRequest) {
     if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
     if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
-    console.log(jarvisUrl);
-    console.log(endpoint);
+    logger.debug("Debug output", "nodes/route", { jarvisUrl });
+    logger.debug("Debug output", "nodes/route", { endpoint });
 
-    // console.log("jarvisUrl", jarvisUrl);
+    // logger.debug("jarvisUrl", "nodes/route", { jarvisUrl });
     const apiResult = await swarmApiRequest({
       swarmUrl: jarvisUrl,
       endpoint,
@@ -170,7 +171,7 @@ export async function GET(request: NextRequest) {
         console.log("[Jarvis Nodes] Successfully processed media URLs in nodes");
       }
     } catch (error) {
-      console.error("[Jarvis Nodes] Error processing media URLs:", error);
+      logger.error("[Jarvis Nodes] Error processing media URLs:", "nodes/route", { error });
       // Continue with original data if processing fails
     }
 
@@ -199,7 +200,7 @@ export async function GET(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch (error) {
-    console.error("Nodes fetch error:", error);
+    logger.error("Nodes fetch error:", "nodes/route", { error });
     return NextResponse.json({ success: false, message: "Failed to get nodes" }, { status: 500 });
   }
 }

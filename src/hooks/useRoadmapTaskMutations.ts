@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { TicketListItem } from "@/types/roadmap";
 import type { TaskStatus, Priority } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 interface CreateRoadmapTaskParams {
   featureId: string;
@@ -62,7 +63,7 @@ export function useRoadmapTaskMutations() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      console.error("Failed to create roadmap task:", err);
+      logger.error("Failed to create roadmap task:", "useRoadmapTaskMutations", { err });
       return null;
     } finally {
       setLoading(false);
@@ -94,7 +95,7 @@ export function useRoadmapTaskMutations() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      console.error("Failed to update roadmap task:", err);
+      logger.error("Failed to update roadmap task:", "useRoadmapTaskMutations", { err });
       return null;
     } finally {
       setLoading(false);

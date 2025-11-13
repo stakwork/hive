@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 201 },
     );
   } catch (error) {
-    console.error("Error saving chat message:", error);
+    logger.error("Error saving chat message:", "save/route", { error });
     return NextResponse.json({ error: "Failed to save chat message" }, { status: 500 });
   }
 }

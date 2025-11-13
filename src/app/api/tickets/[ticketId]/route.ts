@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getTicket, updateTicket, deleteTicket } from "@/services/roadmap";
 import type { UpdateTicketRequest, TicketResponse, TicketDetail } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -25,7 +26,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching ticket:", error);
+    logger.error("Error fetching ticket:", "[ticketId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to fetch ticket";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;
@@ -56,7 +57,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating ticket:", error);
+    logger.error("Error updating ticket:", "[ticketId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to update ticket";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :
@@ -91,7 +92,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting ticket:", error);
+    logger.error("Error deleting ticket:", "[ticketId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to delete ticket";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;

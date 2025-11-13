@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Database, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface RerunIngestProps {
   readonly workspaceId: string;
@@ -57,7 +58,7 @@ export function RerunIngest({
       try {
         data = await response.json();
       } catch (parseError) {
-        console.error("Failed to parse response as JSON:", parseError);
+        logger.error("Failed to parse response as JSON:", "RerunIngest", { parseError });
         throw new Error(`Server returned invalid response (${response.status})`);
       }
 
@@ -68,7 +69,7 @@ export function RerunIngest({
         });
         setIsOpen(false);
       } else {
-        console.error("Ingest API error:", { status: response.status, data });
+        logger.error("Ingest API error:", "RerunIngest", { { status: response.status, data } });
         toast({
           title: "Ingest Failed",
           description: data?.message || `Failed to start code ingestion (${response.status})`,
@@ -76,7 +77,7 @@ export function RerunIngest({
         });
       }
     } catch (error) {
-      console.error("Failed to start ingest:", error);
+      logger.error("Failed to start ingest:", "RerunIngest", { error });
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       toast({
         title: "Ingest Failed",

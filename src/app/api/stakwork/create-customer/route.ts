@@ -5,6 +5,7 @@ import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   } catch (error) {
-    console.error("Error creating Stakwork customer:", error);
+    logger.error("Error creating Stakwork customer:", "create-customer/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

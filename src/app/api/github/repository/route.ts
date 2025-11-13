@@ -3,6 +3,7 @@ import { getUserAppTokens } from "@/lib/githubApp";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
       }, { status: 403 });
     }
   } catch (error: unknown) {
-    console.error("Error fetching repositories:", error);
+    logger.error("Error fetching repositories:", "repository/route", { error });
 
     if (
       error &&

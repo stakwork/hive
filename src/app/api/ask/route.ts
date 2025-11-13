@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,9 +58,9 @@ export async function GET(request: NextRequest) {
       baseSwarmUrl = `http://localhost:3355`;
     }
 
-    console.log("baseSwarmUrl", baseSwarmUrl);
-    console.log("decryptedSwarmApiKey", decryptedSwarmApiKey);
-    console.log("question", question);
+    logger.debug("baseSwarmUrl", "ask/route", { baseSwarmUrl });
+    logger.debug("decryptedSwarmApiKey", "ask/route", { decryptedSwarmApiKey });
+    logger.debug("question", "ask/route", { question });
 
     // Proxy request to swarm /ask endpoint
     const response = await fetch(`${baseSwarmUrl}/ask?question=${encodeURIComponent(question)}`, {
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Ask API proxy error:", error);
+    logger.error("Ask API proxy error:", "ask/route", { error });
     return NextResponse.json({ error: "Failed to process question" }, { status: 500 });
   }
 }

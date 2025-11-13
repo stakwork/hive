@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/nextauth'
 import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from "@/lib/logger";
 
 const uploadRequestSchema = z.object({
   filename: z.string().min(1, 'Filename is required'),
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error generating presigned URL:', error)
+    logger.error("Error generating presigned URL:", "presigned-url/route", { error })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

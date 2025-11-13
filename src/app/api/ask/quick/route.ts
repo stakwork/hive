@@ -10,6 +10,7 @@ import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { logger } from "@/lib/logger";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
@@ -86,9 +87,9 @@ export async function GET(request: NextRequest) {
       { role: "user", content: question },
     ];
 
-    console.log("🤖 Creating generateText with:", {
+    logger.debug("🤖 Creating generateText with:", "quick/route", { {
       model: model?.modelId,
-      toolsCount: Object.keys(tools).length,
+      toolsCount: Object.keys(tools }).length,
       messagesCount: messages.length,
       question: question,
     });
@@ -120,10 +121,10 @@ function logStep(contents: unknown) {
   if (!Array.isArray(contents)) return;
   for (const content of contents) {
     if (content.type === "tool-call") {
-      console.log("TOOL CALL:", content.toolName, ":", content.input);
+      logger.debug("TOOL CALL:", "quick/route", { content.toolName, ":", content.input });
     }
     if (content.type === "tool-result") {
-      console.log("TOOL RESULT:", content.toolName, ":", content.output);
+      logger.debug("TOOL RESULT:", "quick/route", { content.toolName, ":", content.output });
     }
   }
 }

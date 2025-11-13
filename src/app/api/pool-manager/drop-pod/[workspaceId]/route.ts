@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { dropPod, getPodFromPool, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolId = workspace.swarm.id || workspace.swarm.poolName;
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    console.log(">>> Dropping pod with ID:", podId);
+    logger.debug(">>> Dropping pod with ID:", "[workspaceId]/route", { podId });
 
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
-        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`);
+        logger.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`, "[workspaceId]/route");
       } else {
         try {
           const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             console.log(">>> No repositories to reset");
           }
         } catch (error) {
-          console.error("Error resetting pod repositories:", error);
+          logger.error("Error resetting pod repositories:", "[workspaceId]/route", { error });
         }
       }
     }
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error dropping pod:", error);
+    logger.error("Error dropping pod:", "[workspaceId]/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

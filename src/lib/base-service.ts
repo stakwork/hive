@@ -1,5 +1,6 @@
 import { HttpClient } from "./http-client";
 import { BaseService, ServiceConfig, ApiError } from "@/types";
+import { logger } from "@/lib/logger";
 
 export abstract class BaseServiceClass implements BaseService {
   protected client: HttpClient;
@@ -9,13 +10,9 @@ export abstract class BaseServiceClass implements BaseService {
   constructor(config: ServiceConfig) {
     this.config = config;
 
-    console.log(
-      "--------------------------------config--------------------------------",
-    );
-    console.log(config);
-    console.log(
-      "--------------------------------config--------------------------------",
-    );
+    logger.debug("--------------------------------config--------------------------------", "base-service", {  });
+    logger.debug("Debug output", "base-service", { config });
+    logger.debug("--------------------------------config--------------------------------", "base-service", {  });
 
     this.client = new HttpClient({
       baseURL: config.baseURL,

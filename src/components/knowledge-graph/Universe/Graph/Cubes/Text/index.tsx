@@ -8,6 +8,7 @@ import { truncateText } from '@Universe/utils/truncateText'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Group, Mesh, Texture, TextureLoader } from 'three'
 import { TextWithBackground } from './TextWithBackgound'
+import { logger } from "@/lib/logger";
 
 type Props = {
   node: NodeExtended
@@ -44,7 +45,7 @@ export const TextNode = memo(
       const loader = new TextureLoader()
 
       loader.load(node.properties.image_url, setTexture, undefined, () =>
-        console.error(`Failed to load texture: ${node?.properties?.image_url}`),
+        logger.error(`Failed to load texture: ${node?.properties?.image_url}`, "Text/index"),
       )
     }, [node?.properties?.image_url])
 
@@ -57,7 +58,7 @@ export const TextNode = memo(
         console.error(`Failed to load icon texture: ${iconName}.svg`, error)
         // Fallback: try to load a default icon
         loader.load('/svg-icons/NodesIcon.svg', setIconTexture, undefined, () => {
-          console.error('Failed to load fallback icon')
+          logger.error("Failed to load fallback icon", "Text/index")
         })
       })
     }, [iconName])

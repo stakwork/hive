@@ -9,6 +9,7 @@ import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
 import { Universe } from "./Universe";
+import { logger } from "@/lib/logger";
 interface ApiResponse {
   success: boolean;
   data?: {
@@ -78,12 +79,12 @@ const GraphComponentInner = ({
       const response = await fetch(`/api/swarm/jarvis/schema?id=${workspaceId}`);
       const data: SchemaResponse = await response.json();
 
-      console.log("schema data", data);
+      logger.debug("schema data", "knowledge-graph/index", { data });
       if (data.data) {
 
         setSchemas(data.data.schemas.filter((schema) => !schema.is_deleted))
         if (!data.success) throw new Error("Failed to fetch schema data");
-        console.log("schema data", data);
+        logger.debug("schema data", "knowledge-graph/index", { data });
       };
     };
     fetchSchema();
@@ -118,7 +119,7 @@ const GraphComponentInner = ({
 
         }
       } catch (err) {
-        console.error("Failed to load nodes:", err);
+        logger.error("Failed to load nodes:", "knowledge-graph/index", { err });
       } finally {
         setNodesLoading(false);
       }

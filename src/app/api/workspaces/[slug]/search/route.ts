@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import type { SearchResponse, SearchResult } from "@/types/search";
+import { logger } from "@/lib/logger";
 
 const RESULTS_PER_TYPE = 5;
 
@@ -250,7 +251,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Error performing search:", error);
+    logger.error("Error performing search:", "search/route", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

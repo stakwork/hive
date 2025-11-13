@@ -15,6 +15,7 @@ import { createDataStore } from "./createDataStore";
 // Removed circular import - graphStore will be passed as parameter
 import { type SimulationStore } from "./useSimulationStore";
 import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNodesOnSphere';
+import { logger } from "@/lib/logger";
 
 
 const resetPosition = {
@@ -103,7 +104,7 @@ export const createSimulationStore = (
 
         simulationRestart()
       } catch (error) {
-        console.error(error)
+        logger.error("Debug output", "createSimulationStore", { error })
       }
     },
 

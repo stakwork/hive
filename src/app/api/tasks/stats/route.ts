@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@/lib/chat";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching task statistics:", error);
+    logger.error("Error fetching task statistics:", "stats/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch task statistics" },
       { status: 500 },

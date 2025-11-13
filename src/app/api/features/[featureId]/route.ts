@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -153,7 +154,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching feature:", error);
+    logger.error("Error fetching feature:", "[featureId]/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch feature" },
       { status: 500 }
@@ -183,7 +184,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating feature:", error);
+    logger.error("Error updating feature:", "[featureId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to update feature";
     const status = message.includes("Feature not found") ? 404 :
                    message.includes("denied") ? 403 :
@@ -214,7 +215,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting feature:", error);
+    logger.error("Error deleting feature:", "[featureId]/route", { error });
     const message = error instanceof Error ? error.message : "Failed to delete feature";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;

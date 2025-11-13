@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -43,13 +44,13 @@ export async function GET(request: Request) {
 
     const [, owner, repo] = githubMatch;
 
-    console.log('owner', owner)
-    console.log('repo', repo)
+    logger.debug("owner", "check/route", { owner })
+    logger.debug("repo", "check/route", { repo })
 
     // Get access token for the specific GitHub owner
     const tokens = await getUserAppTokens(session.user.id, owner);
 
-    console.log('tokens', tokens)
+    logger.debug("tokens", "check/route", { tokens })
     if (!tokens?.accessToken) {
       return NextResponse.json({
         hasPushAccess: false,
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
 
 
     console.log('installationReposUrl')
-    console.log('installationReposUrl', installationReposUrl)
+    logger.debug("installationReposUrl", "check/route", { installationReposUrl })
     console.log(tokens.accessToken, installationId)
     console.log('installationReposUrl')
 
@@ -89,7 +90,7 @@ export async function GET(request: Request) {
     });
 
     if (!response.ok) {
-      console.error(`[REPO CHECK] GitHub API error: ${response.status} ${response.statusText}`);
+      logger.error(`[REPO CHECK] GitHub API error: ${response.status} ${response.statusText}`, "check/route");
 
       let errorMessage = "Failed to access installation repositories";
       let requiresReauth = false;
@@ -124,7 +125,7 @@ export async function GET(request: Request) {
     );
 
     if (!repositoryAccess) {
-      console.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`);
+      logger.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`, "check/route");
       console.warn(`[REPO CHECK] Available repositories:`, installationData.repositories?.map((r: { full_name: string }) => r.full_name) || []);
 
       return NextResponse.json({
@@ -147,7 +148,7 @@ export async function GET(request: Request) {
     }, { status: 200 });
 
   } catch (error) {
-    console.error("[REPO CHECK] Error during repository check:", error);
+    logger.error("[REPO CHECK] Error during repository check:", "check/route", { error });
     return NextResponse.json({
       hasPushAccess: false,
       error: "Internal server error"

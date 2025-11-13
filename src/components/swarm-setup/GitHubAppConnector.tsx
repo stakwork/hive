@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCallback } from "react";
+import { logger } from "@/lib/logger";
 
 interface GitHubAppConnectorProps {
   repositoryUrl: string;
@@ -45,7 +46,7 @@ export function GitHubAppConnector({
           throw new Error(installData.message || "Failed to generate GitHub App installation link");
         }
       } catch (error) {
-        console.error("Failed to initiate GitHub App connection:", error);
+        logger.error("Failed to initiate GitHub App connection:", "swarm-setup/GitHubAppConnector", { error });
         // Could add error handling/toast here
       }
     }

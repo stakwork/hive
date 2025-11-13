@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ apiResult }, { status: apiResult.status });
   } catch (error) {
-    console.error("Error getting stakgraph status:", error);
+    logger.error("Error getting stakgraph status:", "status/route", { error });
     return NextResponse.json({ success: false, message: "Failed to get status" }, { status: 500 });
   }
 }

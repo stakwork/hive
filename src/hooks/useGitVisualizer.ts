@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { GitVisualizer } from "gitsee/client";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import { logger } from "@/lib/logger";
 
 interface UseGitVisualizerProps {
   workspaceId: string | null;
@@ -33,7 +34,7 @@ export function useGitVisualizer({
 
     try {
       const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
-      console.log("start GitVisualizer", owner, repo);
+      logger.debug("start GitVisualizer", "useGitVisualizer", { owner, repo });
 
       const swarmUrlObj = new URL(swarmUrl);
       let gitseeUrl = `https://${swarmUrlObj.hostname}:3355`;
@@ -54,7 +55,7 @@ export function useGitVisualizer({
         viz?.visualize(owner, repo);
       }, 100);
     } catch (error) {
-      console.error("Failed to visualize repository", error);
+      logger.error("Failed to visualize repository", "useGitVisualizer", { error });
     }
 
     return () => {

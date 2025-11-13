@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createPhase } from "@/services/roadmap";
 import type { CreatePhaseRequest, PhaseResponse } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -25,7 +26,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error creating phase:", error);
+    logger.error("Error creating phase:", "phases/route", { error });
     const message = error instanceof Error ? error.message : "Failed to create phase";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

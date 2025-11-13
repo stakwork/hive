@@ -1,5 +1,6 @@
 import { createConsumer } from '@anycable/web';
 import type { WorkflowTransitionData } from '@/types/stakwork/websocket';
+import { logger } from "@/lib/logger";
 
 class WorkflowTransition {
   // Configuration
@@ -37,7 +38,7 @@ class WorkflowTransition {
 
   private processImmediately = (): void => {
     if (this.pendingUpdate) {
-      console.log(`Processing update immediately: ${this.pendingUpdate.status}`);
+      logger.debug(`Processing update immediately: ${this.pendingUpdate.status}`, "channels/WorkflowTransition");
       this.onUpdate(this.pendingUpdate);
       this.lastProcessedTime = new Date().getTime();
       this.pendingUpdate = null;
@@ -56,7 +57,7 @@ class WorkflowTransition {
 
     this.updateTimeout = setTimeout(() => {
       if (this.pendingUpdate) {
-        console.log(`Processing scheduled update: ${this.pendingUpdate.status}`);
+        logger.debug(`Processing scheduled update: ${this.pendingUpdate.status}`, "channels/WorkflowTransition");
         this.onUpdate(this.pendingUpdate);
         this.lastProcessedTime = new Date().getTime();
         this.pendingUpdate = null;
@@ -79,32 +80,32 @@ class WorkflowTransition {
 
     // Case 1: If it's been a long time since our last update, process immediately
     if (timeSinceLastProcessed > this.MAX_WAIT_TIME) {
-      console.log(`It's been ${timeSinceLastProcessed}ms since last update, processing immediately`);
+      logger.debug(`It's been ${timeSinceLastProcessed}ms since last update, processing immediately`, "channels/WorkflowTransition");
       this.processImmediately();
       return;
     }
 
     // Case 2: If we have a pending timeout, let it continue (it will show the latest update)
     if (this.updateTimeout) {
-      console.log(`Update received while debouncing, replaced pending update`);
+      logger.debug(`Update received while debouncing, replaced pending update`, "channels/WorkflowTransition");
       return;
     }
 
     // Case 3: Schedule a new timeout to process this update after the debounce period
-    console.log(`Scheduling update to process in ${this.DEBOUNCE_TIME}ms`);
+    logger.debug(`Scheduling update to process in ${this.DEBOUNCE_TIME}ms`, "channels/WorkflowTransition");
     this.scheduleProcessing(this.DEBOUNCE_TIME);
   };
 
   private connected = (): void => {
-    console.log(`Run ${this.projectId} connected`);
+    logger.debug(`Run ${this.projectId} connected`, "channels/WorkflowTransition");
   };
 
   private disconnected = (): void => {
-    console.warn(`Run ${this.projectId} was disconnected.`);
+    logger.warn(`Run ${this.projectId} was disconnected.`, "channels/WorkflowTransition");
   };
 
   private rejected = (): void => {
-    console.warn(`Connection to Run ${this.projectId} was rejected.`);
+    logger.warn(`Connection to Run ${this.projectId} was rejected.`, "channels/WorkflowTransition");
   };
 
   forceUpdate = (): WorkflowTransition => {

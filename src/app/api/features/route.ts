@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
 import { FeatureStatus } from "@prisma/client";
 import type {
+import { logger } from "@/lib/logger";
   CreateFeatureRequest,
   FeatureListResponse,
   FeatureResponse,
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching features:", error);
+    logger.error("Error fetching features:", "features/route", { error });
     const message = error instanceof Error ? error.message : "Failed to fetch features";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 : 500;
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Error creating feature:", error);
+    logger.error("Error creating feature:", "features/route", { error });
     const message = error instanceof Error ? error.message : "Failed to create feature";
     const status = message.includes("denied") ? 403 :
                    message.includes("not found") || message.includes("required") || message.includes("Invalid") ? 400 : 500;

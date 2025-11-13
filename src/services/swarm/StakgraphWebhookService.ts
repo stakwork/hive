@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { computeHmacSha256Hex, timingSafeEqual, EncryptionService } from "@/lib/encryption";
 import { WebhookPayload } from "@/types";
 import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
+import { logger } from "@/lib/logger";
 
 export class StakgraphWebhookService {
   private encryptionService: EncryptionService;
@@ -19,7 +20,7 @@ export class StakgraphWebhookService {
     try {
       const { request_id } = payload;
       if (!request_id) {
-        console.error("[StakgraphWebhookService] Missing request_id in payload");
+        logger.error("[StakgraphWebhookService] Missing request_id in payload", "swarm/StakgraphWebhookService");
         return {
           success: false,
           status: 400,
@@ -27,17 +28,17 @@ export class StakgraphWebhookService {
         };
       }
 
-      console.log("[StakgraphWebhookService] Processing webhook", {
+      logger.debug("[StakgraphWebhookService] Processing webhook", "swarm/StakgraphWebhookService", { {
         requestId: request_id,
         status: payload.status,
         requestIdHeader,
-      });
+      } });
 
       const swarm = await this.lookupAndVerifySwarm(request_id, signature, rawBody);
       if (!swarm) {
-        console.error("[StakgraphWebhookService] Verification failed", {
+        logger.error("[StakgraphWebhookService] Verification failed", "swarm/StakgraphWebhookService", { {
           requestId: request_id,
-        });
+        } });
         return {
           success: false,
           status: 401,
@@ -45,27 +46,27 @@ export class StakgraphWebhookService {
         };
       }
 
-      console.log("[StakgraphWebhookService] Swarm verified", {
+      logger.debug("[StakgraphWebhookService] Swarm verified", "swarm/StakgraphWebhookService", { {
         requestId: request_id,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
-      });
+      } });
 
       await updateStakgraphStatus(swarm, payload);
 
-      console.log("[StakgraphWebhookService] Status updated", {
+      logger.debug("[StakgraphWebhookService] Status updated", "swarm/StakgraphWebhookService", { {
         requestId: request_id,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
         status: payload.status,
-      });
+      } });
 
       return { success: true, status: 200 };
     } catch (error) {
-      console.error("[StakgraphWebhookService] Processing error", {
+      logger.error("[StakgraphWebhookService] Processing error", "swarm/StakgraphWebhookService", { {
         requestId: payload.request_id,
         error,
-      });
+      } });
       return {
         success: false,
         status: 500,
@@ -92,16 +93,16 @@ export class StakgraphWebhookService {
     });
 
     if (!swarm) {
-      console.error("[StakgraphWebhookService] Swarm not found", { requestId });
+      logger.error("[StakgraphWebhookService] Swarm not found", "swarm/StakgraphWebhookService", { { requestId } });
       return null;
     }
 
     if (!swarm.swarmApiKey) {
-      console.error("[StakgraphWebhookService] Swarm missing API key", {
+      logger.error("[StakgraphWebhookService] Swarm missing API key", "swarm/StakgraphWebhookService", { {
         requestId,
         swarmId: swarm.id,
         workspaceId: swarm.workspaceId,
-      });
+      } });
       return null;
     }
 
@@ -109,12 +110,12 @@ export class StakgraphWebhookService {
     try {
       secret = this.encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     } catch (error) {
-      console.error("[StakgraphWebhookService] Failed to decrypt API key", {
+      logger.error("[StakgraphWebhookService] Failed to decrypt API key", "swarm/StakgraphWebhookService", { {
         requestId,
         swarmId: swarm.id,
         workspaceId: swarm.workspaceId,
         error,
-      });
+      } });
       return null;
     }
 
@@ -122,19 +123,19 @@ export class StakgraphWebhookService {
     const expected = computeHmacSha256Hex(secret, rawBody);
 
     if (!timingSafeEqual(expected, sigHeader)) {
-      console.error("[StakgraphWebhookService] Signature mismatch", {
+      logger.error("[StakgraphWebhookService] Signature mismatch", "swarm/StakgraphWebhookService", { {
         requestId,
         swarmId: swarm.id,
         workspaceId: swarm.workspaceId,
-      });
+      } });
       return null;
     }
 
-    console.log("[StakgraphWebhookService] Signature verified", {
+    logger.debug("[StakgraphWebhookService] Signature verified", "swarm/StakgraphWebhookService", { {
       requestId,
       swarmId: swarm.id,
       workspaceId: swarm.workspaceId,
-    });
+    } });
 
     return {
       id: swarm.id,

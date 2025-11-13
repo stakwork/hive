@@ -21,6 +21,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import type { FeatureDetail } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 export default function FeatureDetailPage() {
   const router = useRouter();
@@ -116,7 +117,7 @@ export default function FeatureDetailPage() {
         setNewStoryTitle("");
       }
     } catch (error) {
-      console.error("Failed to create user story:", error);
+      logger.error("Failed to create user story:", "[featureId]/page", { error });
     } finally {
       setCreatingStory(false);
     }
@@ -144,7 +145,7 @@ export default function FeatureDetailPage() {
         });
       }
     } catch (error) {
-      console.error("Failed to update user story:", error);
+      logger.error("Failed to update user story:", "[featureId]/page", { error });
       throw error;
     }
   };
@@ -166,7 +167,7 @@ export default function FeatureDetailPage() {
         });
       }
     } catch (error) {
-      console.error("Failed to delete user story:", error);
+      logger.error("Failed to delete user story:", "[featureId]/page", { error });
     }
   };
 
@@ -198,7 +199,7 @@ export default function FeatureDetailPage() {
         throw new Error("Failed to reorder user stories");
       }
     } catch (error) {
-      console.error("Failed to reorder user stories:", error);
+      logger.error("Failed to reorder user stories:", "[featureId]/page", { error });
       // On error, refetch to restore correct order
       const response = await fetch(`/api/features/${featureId}`);
       const result = await response.json();
@@ -228,7 +229,7 @@ export default function FeatureDetailPage() {
 
       router.push(`/w/${workspaceSlug}/roadmap`);
     } catch (error) {
-      console.error("Failed to delete feature:", error);
+      logger.error("Failed to delete feature:", "[featureId]/page", { error });
     }
   };
 
@@ -252,7 +253,7 @@ export default function FeatureDetailPage() {
         });
       }
     } catch (error) {
-      console.error("Failed to accept generated story:", error);
+      logger.error("Failed to accept generated story:", "[featureId]/page", { error });
       throw error;
     }
   };

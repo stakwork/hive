@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { batchCreatePhasesWithTickets } from "@/services/roadmap";
 import type { BatchCreatePhasesRequest, BatchCreatePhasesResponse } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -43,7 +44,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error batch creating phases and tickets:", error);
+    logger.error("Error batch creating phases and tickets:", "batch-create/route", { error });
     const message = error instanceof Error ? error.message : "Failed to batch create phases and tickets";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

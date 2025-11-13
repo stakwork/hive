@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { dismissJanitorRecommendation } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 
 const dismissRecommendationSchema = z.object({
   reason: z.string().optional(),
@@ -42,7 +43,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    console.error("Error dismissing recommendation:", error);
+    logger.error("Error dismissing recommendation:", "dismiss/route", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

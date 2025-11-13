@@ -9,6 +9,7 @@ import { StatusPopover } from "@/components/ui/status-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
 import type { PhaseListItem } from "@/types/roadmap";
 import type { PhaseStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 interface PhaseItemProps {
   phase: PhaseListItem;
@@ -43,7 +44,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
     try {
       await onUpdate(phase.id, { status });
     } catch (error) {
-      console.error("Failed to update phase status:", error);
+      logger.error("Failed to update phase status:", "features/PhaseItem", { error });
       throw error;
     }
   };
@@ -52,7 +53,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
     try {
       await onDelete(phase.id);
     } catch (error) {
-      console.error("Failed to delete phase:", error);
+      logger.error("Failed to delete phase:", "features/PhaseItem", { error });
     }
   };
 

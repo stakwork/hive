@@ -9,6 +9,7 @@ import { Vector3 } from 'three'
 import { useShallow } from 'zustand/react/shallow'
 import { nodeSize } from '../constants'
 import { GroupBadge } from './GroupBadge'
+import { logger } from "@/lib/logger";
 
 type TGroupsMap = Record<string, number>
 
@@ -44,7 +45,7 @@ export const RelevanceGroups = memo(() => {
 
     const edges = selectedNodeRelativeIds.map((id: string) => getLinksBetweenNodesInstance(storeId, id, selectedNode?.ref_id || ''))
 
-    console.log(edges)
+    logger.debug("Debug output", "RelevanceGroups/index", { edges })
 
     const groupsMap: TGroupsMap = childNodes.reduce((acc: TGroupsMap, curr: NodeExtended) => {
       acc[curr.node_type] = (acc[curr.node_type] || 0) + 1

@@ -38,6 +38,7 @@ import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/works
 import { useToast } from "@/components/ui/use-toast";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { logger } from "@/lib/logger";
 
 export function WorkspaceSettings() {
   const { workspace, refreshCurrentWorkspace } = useWorkspace();
@@ -67,7 +68,7 @@ export function WorkspaceSettings() {
           setLogoUrl(data.presignedUrl);
         }
       } catch (error) {
-        console.error("Error fetching logo URL:", error);
+        logger.error("Error fetching logo URL:", "WorkspaceSettings", { error });
       }
     };
 
@@ -87,7 +88,7 @@ export function WorkspaceSettings() {
       }
       return null;
     } catch (error) {
-      console.error("Error refetching logo URL:", error);
+      logger.error("Error refetching logo URL:", "WorkspaceSettings", { error });
       return null;
     }
   }, [workspace?.slug]);
@@ -193,7 +194,7 @@ export function WorkspaceSettings() {
       // Refresh workspace data in background (no await to prevent page flash)
       refreshCurrentWorkspace();
     } catch (error) {
-      console.error("Error uploading logo:", error);
+      logger.error("Error uploading logo:", "WorkspaceSettings", { error });
       toast({
         variant: "destructive",
         title: "Error",
@@ -237,7 +238,7 @@ export function WorkspaceSettings() {
       // Refresh workspace data in background (no await to prevent page flash)
       refreshCurrentWorkspace();
     } catch (error) {
-      console.error("Error deleting logo:", error);
+      logger.error("Error deleting logo:", "WorkspaceSettings", { error });
       toast({
         variant: "destructive",
         title: "Error",
@@ -280,7 +281,7 @@ export function WorkspaceSettings() {
         await refreshCurrentWorkspace();
       }
     } catch (error) {
-      console.error("Error updating workspace:", error);
+      logger.error("Error updating workspace:", "WorkspaceSettings", { error });
       toast({
         variant: "destructive",
         title: "Error",

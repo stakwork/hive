@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
       nodesUrl += `?ref_id=${encodeURIComponent(refId)}`;
     }
 
-    // console.log("Fetching nodes from:", nodesUrl);
+    // logger.debug("Fetching nodes from:", "subgraph/route", { nodesUrl });
 
     // Fetch nodes from swarm
     const response = await fetch(nodesUrl, {
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Nodes API proxy error:", error);
+    logger.error("Nodes API proxy error:", "subgraph/route", { error });
     return NextResponse.json({ error: "Failed to fetch nodes" }, { status: 500 });
   }
 }

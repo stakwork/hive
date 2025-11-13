@@ -12,6 +12,7 @@ import { Cubes } from './Cubes'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
+import { logger } from "@/lib/logger";
 
 export type LinkPosition = {
   sx: number
@@ -123,11 +124,11 @@ export const Graph = () => {
   // }, [removeSimulation])
 
   useEffect(() => {
-    console.log('here is simulation', {
+    logger.debug("here is simulation", "Graph/index", { {
       simulation: !!simulation,
       isSleeping,
       justWokeUp: justWokeUpRef.current
-    })
+    } })
 
     if (!simulation || isSleeping || justWokeUpRef.current) {
       return
@@ -222,7 +223,7 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  console.warn(`Missing source or target node for link: ${link?.ref_id}`)
+                  logger.warn(`Missing source or target node for link: ${link?.ref_id}`, "Graph/index")
 
                   return
                 }
@@ -334,7 +335,7 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  console.warn(`Missing source or target node for link: ${link?.ref_id}`)
+                  logger.warn(`Missing source or target node for link: ${link?.ref_id}`, "Graph/index")
 
                   return
                 }

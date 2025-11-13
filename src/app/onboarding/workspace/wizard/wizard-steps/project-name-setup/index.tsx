@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -38,7 +39,7 @@ function extractRepoNameFromUrl(url: string): string | null {
     }
     return null;
   } catch (error) {
-    console.error("Error extracting repo name from URL:", error);
+    logger.error("Error extracting repo name from URL:", "project-name-setup/index", { error });
     return null;
   }
 }
@@ -107,10 +108,10 @@ export function ProjectNameSetupStep() {
             setInfoMessage("");
           }
         } else {
-          console.error("Failed to check slug availability:", data.error);
+          logger.error("Failed to check slug availability:", "project-name-setup/index", { data.error });
         }
       } catch (error) {
-        console.error("Error checking slug availability:", error);
+        logger.error("Error checking slug availability:", "project-name-setup/index", { error });
       }
     };
 
@@ -146,7 +147,7 @@ export function ProjectNameSetupStep() {
 
         // 2. Check GitHub App status for this workspace/repository
         const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
-        console.log("statusResponse", statusResponse);
+        logger.debug("statusResponse", "project-name-setup/index", { statusResponse });
         const statusData = await statusResponse.json();
 
         if (statusData.hasPushAccess) {

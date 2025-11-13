@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
+import { logger } from "@/lib/logger";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -105,7 +106,7 @@ export async function GET(
           try {
             contextTags = JSON.parse(msg.contextTags) as ContextTag[];
           } catch (error) {
-            console.error('Error parsing contextTags for message', msg.id, ':', error, 'value:', msg.contextTags);
+            logger.error("Error parsing contextTags for message", "messages/route", { msg.id, ':', error, 'value:', msg.contextTags });
           }
         } else if (Array.isArray(msg.contextTags)) {
           contextTags = msg.contextTags as unknown as ContextTag[];
@@ -141,7 +142,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching chat messages for task:", error);
+    logger.error("Error fetching chat messages for task:", "messages/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch chat messages" },
       { status: 500 },

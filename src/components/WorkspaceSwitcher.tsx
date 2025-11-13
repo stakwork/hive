@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { logger } from "@/lib/logger";
 
 interface WorkspaceSwitcherProps {
   // Legacy props for backward compatibility
@@ -52,7 +53,7 @@ export function WorkspaceSwitcher({
       // Call optional callback for backward compatibility
       onWorkspaceChange?.(targetWorkspace);
     } catch (error) {
-      console.error("Failed to switch workspace:", error);
+      logger.error("Failed to switch workspace:", "WorkspaceSwitcher", { error });
     }
   };
 

@@ -6,6 +6,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { TestCoverageData } from "@/types";
 import { TestTube } from "lucide-react";
 import { useEffect, useState } from "react";
+import { logger } from "@/lib/logger";
 
 export function TestCoverageCard() {
   const { id: workspaceId, workspace } = useWorkspace();
@@ -27,7 +28,7 @@ export function TestCoverageCard() {
           }
         }
       } catch (error) {
-        console.error("Failed to fetch test coverage:", error);
+        logger.error("Failed to fetch test coverage:", "test-coverage-card/index", { error });
       } finally {
         setCoverageLoading(false);
       }

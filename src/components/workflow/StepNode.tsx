@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, useHandleConnections, NodeProps } from '@xyflow/react';
+import { logger } from "@/lib/logger";
 
 interface StepNodeData {
   id: string;
@@ -21,7 +22,7 @@ export default function StepNode({ data: rawData }: NodeProps) {
   const data = rawData as unknown as StepNodeData;
 
   const onChange = useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(evt.target.value);
+    logger.debug("Debug output", "workflow/StepNode", { evt.target.value });
   }, []);
 
   const sourceConnections = useHandleConnections({

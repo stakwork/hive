@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning, POD_PORTS } from "@/lib/pods";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -77,14 +78,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    console.log(
-      "🔍 Claim pod for real: workspaceId:",
-      workspaceId,
+    logger.debug("🔍 Claim pod for real: workspaceId:", "[workspaceId]/route", { workspaceId,
       "shouldUpdateToLatest:",
       shouldUpdateToLatest,
       "shouldIncludeGoose:",
-      shouldIncludeGoose,
-    );
+      shouldIncludeGoose, });
 
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
@@ -123,7 +121,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
-        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`);
+        logger.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`, "[workspaceId]/route");
       } else {
         const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
@@ -131,7 +129,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           try {
             await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
           } catch (error) {
-            console.error("Error updating pod repositories:", error);
+            logger.error("Error updating pod repositories:", "[workspaceId]/route", { error });
           }
         } else {
           console.log(">>> No repositories to update");
@@ -166,7 +164,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
         if (!anthropicApiKey) {
-          console.error("ANTHROPIC_API_KEY not found in environment");
+          logger.error("ANTHROPIC_API_KEY not found in environment", "[workspaceId]/route");
         } else {
           goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey);
         }
@@ -188,9 +186,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           },
         });
 
-        console.log(`✅ Stored agent credentials for task ${taskId}`);
+        logger.debug(`✅ Stored agent credentials for task ${taskId}`, "[workspaceId]/route");
       } catch (error) {
-        console.error("Failed to store agent credentials:", error);
+        logger.error("Failed to store agent credentials:", "[workspaceId]/route", { error });
         // Don't fail the request, but log the error
       }
     }
@@ -208,7 +206,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error claiming pod:", error);
+    logger.error("Error claiming pod:", "[workspaceId]/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

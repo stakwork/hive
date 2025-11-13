@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { poolManagerService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
+import { logger } from "@/lib/logger";
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ pool }, { status: 201 });
   } catch (error) {
-    console.error("Error deleting Pool Manager pool:", error);
+    logger.error("Error deleting Pool Manager pool:", "delete-pool/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

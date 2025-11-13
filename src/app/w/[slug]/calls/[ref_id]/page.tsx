@@ -13,6 +13,7 @@ import { CallRecording } from "@/types/calls";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { logger } from "@/lib/logger";
 
 const nodeTypes = ['-Clip', '-Episode']
 const nodeTypeParam = JSON.stringify(nodeTypes)
@@ -124,7 +125,7 @@ export default function CallPage() {
         setTranscript(transcriptSegments);
 
       } catch (err) {
-        console.error("Error fetching call data:", err);
+        logger.error("Error fetching call data:", "[ref_id]/page", { err });
         setError(err instanceof Error ? err.message : "Failed to load call data");
       } finally {
         setLoading(false);

@@ -5,6 +5,7 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { GitLeakResult } from "@/types/git-leaks";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -115,7 +116,7 @@ export async function GET(
     });
 
     if (!response.ok) {
-      console.error(`Git leaks scan failed with status ${response.status}`);
+      logger.error(`Git leaks scan failed with status ${response.status}`, "git-leaks/route");
       console.error(`Git leaks response data:`, response.data);
       return NextResponse.json(
         {
@@ -136,7 +137,7 @@ export async function GET(
       scannedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Error running git leaks scan:", error);
+    logger.error("Error running git leaks scan:", "git-leaks/route", { error });
 
     if (error instanceof Error) {
       if (error.name === "TimeoutError" || error.message.includes("timeout")) {

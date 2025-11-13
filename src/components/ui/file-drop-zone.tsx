@@ -3,6 +3,7 @@
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
 import { Upload, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 interface FileDropZoneProps {
   onFileContent: (content: string, fileName: string) => void;
@@ -71,7 +72,7 @@ export function FileDropZone({
           const content = await file.text();
           onFileContent(content, file.name);
         } catch (error) {
-          console.error("Error reading file:", error);
+          logger.error("Error reading file:", "ui/file-drop-zone", { error });
         }
       }
     }

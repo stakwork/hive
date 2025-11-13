@@ -8,6 +8,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import type { TicketListItem } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 interface DependenciesComboboxProps {
   currentTicketId: string;
@@ -56,7 +57,7 @@ export function DependenciesCombobox({
       await onUpdate(localDependencies);
       setOpen(false);
     } catch (error) {
-      console.error("Failed to update dependencies:", error);
+      logger.error("Failed to update dependencies:", "DependenciesCombobox/index", { error });
       // Revert to original state on error
       setLocalDependencies(selectedDependencyIds || []);
     } finally {
@@ -76,7 +77,7 @@ export function DependenciesCombobox({
       setUpdating(true);
       await onUpdate(newDependencies);
     } catch (error) {
-      console.error("Failed to remove dependency:", error);
+      logger.error("Failed to remove dependency:", "DependenciesCombobox/index", { error });
     } finally {
       setUpdating(false);
     }

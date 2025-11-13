@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface PresignedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src: string;
@@ -61,7 +62,7 @@ export function PresignedImage({
     retryCount.current += 1;
 
     try {
-      console.log(`Image load failed, refetching URL (attempt ${retryCount.current}/${maxRetries})`);
+      logger.debug(`Image load failed, refetching URL (attempt ${retryCount.current}/${maxRetries})`, "ui/presigned-image");
       
       const newUrl = await onRefetchUrl();
       
@@ -72,7 +73,7 @@ export function PresignedImage({
         setHasError(true);
       }
     } catch (error) {
-      console.error("Error refetching presigned URL:", error);
+      logger.error("Error refetching presigned URL:", "ui/presigned-image", { error });
       setHasError(true);
     } finally {
       setIsLoading(false);

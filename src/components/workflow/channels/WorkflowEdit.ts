@@ -1,5 +1,6 @@
 import { createConsumer } from '@anycable/web';
 import type { WorkflowEditData } from '@/types/stakwork/websocket';
+import { logger } from "@/lib/logger";
 
 class WorkflowEdit {
   private cable: ReturnType<typeof createConsumer>;
@@ -31,15 +32,15 @@ class WorkflowEdit {
   };
 
   private connected = (): void => {
-    console.log(`Workflow ${this.workflowId} connected`);
+    logger.debug(`Workflow ${this.workflowId} connected`, "channels/WorkflowEdit");
   };
 
   private disconnected = (): void => {
-    console.warn(`Workflow ${this.workflowId} was disconnected.`);
+    logger.warn(`Workflow ${this.workflowId} was disconnected.`, "channels/WorkflowEdit");
   };
 
   private rejected = (): void => {
-    console.warn('I was rejected! :(');
+    logger.warn("I was rejected! :(", "channels/WorkflowEdit");
   };
 }
 

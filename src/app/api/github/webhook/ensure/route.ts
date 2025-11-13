@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error(error);
+    logger.error("Debug output", "ensure/route", { error });
     return NextResponse.json(
       { success: false, message: "Failed to ensure webhook" },
       { status: 500 },

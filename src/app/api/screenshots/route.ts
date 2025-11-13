@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/nextauth'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { getS3Service } from '@/services/s3'
+import { logger } from "@/lib/logger";
 
 const screenshotQuerySchema = z.object({
   workspaceId: z.string().min(1, 'Workspace ID is required'),
@@ -148,7 +149,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching screenshots:', error)
+    logger.error("Error fetching screenshots:", "screenshots/route", { error })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

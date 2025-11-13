@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -83,7 +84,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
       };
     }
   } catch (error) {
-    console.error('Error checking repository permissions:', error);
+    logger.error("Error checking repository permissions:", "permissions/route", { error });
     return {
       hasAccess: false,
       canPush: false,
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error checking repository permissions:', error);
+    logger.error("Error checking repository permissions:", "permissions/route", { error });
     return NextResponse.json({
       success: false,
       error: "internal_server_error"

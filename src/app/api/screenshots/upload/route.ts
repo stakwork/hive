@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/nextauth'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { processScreenshotUpload } from '@/lib/screenshot-upload'
+import { logger } from "@/lib/logger";
 
 const screenshotUploadSchema = z.object({
   dataUrl: z.string().min(1, 'Screenshot data URL is required'),
@@ -147,8 +148,8 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error uploading screenshot:', error)
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    logger.error("Error uploading screenshot:", "upload/route", { error })
+    logger.error("Error stack:", "upload/route", { error instanceof Error ? error.stack : 'No stack trace' })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

@@ -1,5 +1,6 @@
 // RequestQueue - A class to handle sequential workflow updates
 import { AxiosResponse } from 'axios';
+import { logger } from "@/lib/logger";
 
 interface RequestMetadata {
   type: string;
@@ -93,7 +94,7 @@ class RequestQueue {
 
       nextRequest.resolve(response);
     } catch (error) {
-      console.error("Error processing request:", error);
+      logger.error("Error processing request:", "workflow/RequestQueue", { error });
       nextRequest.reject(error);
     } finally {
       // Remove the processed request

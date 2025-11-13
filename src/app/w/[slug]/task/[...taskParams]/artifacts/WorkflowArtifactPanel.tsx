@@ -4,6 +4,7 @@ import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { useEffect } from "react";
+import { logger } from "@/lib/logger";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -33,7 +34,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
 
   useEffect(() => {
     if (error) {
-      console.error("Error fetching workflow data:", error);
+      logger.error("Error fetching workflow data:", "artifacts/WorkflowArtifactPanel", { error });
     }
   }, [error]);
 

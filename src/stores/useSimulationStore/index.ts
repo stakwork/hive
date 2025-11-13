@@ -14,6 +14,7 @@ import { create } from 'zustand'
 import { useDataStore } from '../useDataStore'
 import { useGraphStore } from '../useGraphStore'
 import { distributeNodesOnSphere } from './utils/distributeNodesOnSphere'
+import { logger } from "@/lib/logger";
 
 type ForceSimulation = typeof forceSimulation
 
@@ -118,7 +119,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
       simulationRestart()
     } catch (error) {
-      console.error(error)
+      logger.error("Debug output", "useSimulationStore/index", { error })
     }
   },
 

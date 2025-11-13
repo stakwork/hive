@@ -10,6 +10,7 @@ import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
+import { logger } from "@/lib/logger";
 
 function SignInContent() {
   const { data: session, status } = useSession();
@@ -72,13 +73,13 @@ function SignInContent() {
       });
 
       if (result?.error) {
-        console.error("Sign in error:", result.error);
+        logger.error("Sign in error:", "signin/page", { result.error });
         // Reset signing in state on error
         setIsSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
-      console.error("Unexpected sign in error:", error);
+      logger.error("Unexpected sign in error:", "signin/page", { error });
       setIsSigningIn(false);
     }
   };
@@ -93,12 +94,12 @@ function SignInContent() {
       });
 
       if (result?.error) {
-        console.error("Mock sign in error:", result.error);
+        logger.error("Mock sign in error:", "signin/page", { result.error });
         setIsMockSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
-      console.error("Unexpected mock sign in error:", error);
+      logger.error("Unexpected mock sign in error:", "signin/page", { error });
       setIsMockSigningIn(false);
     }
   };

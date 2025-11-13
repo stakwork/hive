@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { TaskStatus, Prisma } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 /**
  * Task sanitization helpers
@@ -124,11 +125,11 @@ export async function extractPrArtifact(
                 }
               }
             } catch (error) {
-              console.error("Error checking PR status:", error);
+              logger.error("Error checking PR status:", "helpers/tasks", { error });
             }
           }
         } else {
-          console.error("No PR URL found for task:", task.id);
+          logger.error("No PR URL found for task:", "helpers/tasks", { task.id });
         }
 
         return { id: prArt.id, type: prArt.type, content };

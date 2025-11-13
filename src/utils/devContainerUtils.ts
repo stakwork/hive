@@ -1,5 +1,6 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { ServiceConfig } from "@/services/swarm/db";
+import { logger } from "@/lib/logger";
 
 export interface DevContainerFile {
   name: string;
@@ -213,7 +214,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
 
   // Helper function to parse pm2.config.js content to extract ServiceConfig[]
   const parsePM2ConfigToServices = (pm2Content: string): ServiceConfig[] => {
-    console.log(">>> pm2Content", pm2Content);
+    logger.debug(">>> pm2Content", "devContainerUtils", { pm2Content });
     const parsedServices: ServiceConfig[] = [];
 
     try {
@@ -301,7 +302,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         }
       }
     } catch (error) {
-      console.error("Failed to parse pm2.config.js:", error);
+      logger.error("Failed to parse pm2.config.js:", "devContainerUtils", { error });
     }
 
     return parsedServices;
@@ -315,7 +316,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
       const decoded = Buffer.from(content, "base64").toString("utf-8");
       return parsePM2ConfigToServices(decoded);
     } catch {
-      console.error("Failed to parse pm2.config.js");
+      logger.error("Failed to parse pm2.config.js", "devContainerUtils");
       return services;
     }
   }

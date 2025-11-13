@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { logger } from "@/lib/logger";
 
 interface UseAutoSaveParams<T> {
   data: T | null;

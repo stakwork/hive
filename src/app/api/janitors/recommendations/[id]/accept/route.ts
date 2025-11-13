@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { acceptJanitorRecommendation } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 
 const acceptRecommendationSchema = z.object({
   assigneeId: z.string().optional(),
@@ -18,7 +19,7 @@ export async function POST(
     console.log("Accept route called");
     const session = await getServerSession(authOptions);
     const userId = (session?.user as { id?: string })?.id;
-    console.log("Session user ID:", userId);
+    logger.debug("Session user ID:", "accept/route", { userId });
 
     if (!userId) {
       console.log("No user ID found, returning unauthorized");
@@ -45,7 +46,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    console.error("Error accepting recommendation:", error);
+    logger.error("Error accepting recommendation:", "accept/route", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

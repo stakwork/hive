@@ -1,4 +1,5 @@
 /**
+import { logger } from "@/lib/logger";
  * GitHub OAuth Repository Access Check
  * 
  * This module provides functionality to check repository access
@@ -56,7 +57,7 @@ export async function checkRepositoryAccess(
         repositoryData.permissions?.maintain === true;
 
       console.log(`Repository permissions for ${owner}/${repo}:`, repositoryData.permissions);
-      console.log(`Can push: ${canPush}`);
+      logger.debug(`Can push: ${canPush}`, "github-oauth-repository-access");
 
       return {
         hasAccess: true,
@@ -77,7 +78,7 @@ export async function checkRepositoryAccess(
       return { hasAccess: false, canPush: false, error: `http_error_${response.status}` };
     }
   } catch (error) {
-    console.error("Error checking repository access:", error);
+    logger.error("Error checking repository access:", "github-oauth-repository-access", { error });
     return { hasAccess: false, canPush: false, error: "network_error" };
   }
 }

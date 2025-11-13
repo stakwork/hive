@@ -13,6 +13,7 @@ import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { createRequestManager, isAbortError } from "@/utils/request-manager";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
+import { logger } from "@/lib/logger";
 
 const initialFormData: StakgraphSettings = {
   name: "",
@@ -112,7 +113,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           if (result.success && result.data) {
             const settings = result.data;
 
-            console.log("result.data>>>>", result.data);
+            logger.debug("result.data>>>>", "useStakgraphStore", { result.data });
 
             const files = Object.entries(settings.containerFiles || {}).reduce(
               (acc, curr) => {
@@ -140,7 +141,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
               webhookEnsured: Boolean(settings.webhookEnsured),
             };
 
-            console.log("newFormData", newFormData);
+            logger.debug("newFormData", "useStakgraphStore", { newFormData });
 
             set({ formData: newFormData });
 
@@ -158,13 +159,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
           // No swarm found - this is expected for workspaces without swarms
           console.log("No swarm found for this workspace yet");
         } else {
-          console.error("Failed to load stakgraph settings");
+          logger.error("Failed to load stakgraph settings", "useStakgraphStore");
         }
       } catch (error) {
         if (isAbortError(error)) {
           return;
         }
-        console.error("Error loading stakgraph settings:", error);
+        logger.error("Error loading stakgraph settings:", "useStakgraphStore", { error });
       } finally {
         if (requestManager.isAborted() || get().currentWorkspaceSlug !== slug) {
           return;
@@ -333,7 +334,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           });
         }
       } catch (error) {
-        console.error("Failed to save configuration:", error);
+        logger.error("Failed to save configuration:", "useStakgraphStore", { error });
         set({
           errors: {
             general: "Failed to save configuration. Please try again.",
@@ -441,7 +442,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
     handleServicesChange: (services: ServiceDataConfig[]) => {
       const state = get();
-      console.log("Store receiving services:", services); // Debug log
+      logger.debug("Store receiving services:", "useStakgraphStore", { services }); // Debug log
       set({
         formData: { ...state.formData, services: services },
         saved: false,

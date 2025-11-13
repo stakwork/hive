@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -64,7 +65,7 @@ export async function GET(
         data: poolStatus,
       });
     } catch (error) {
-      console.warn("Pool status fetch failed (pool may still be active):", error);
+      logger.warn("Pool status fetch failed (pool may still be active):", "status/route", { error });
       const message = error instanceof Error ? error.message : "Unable to fetch pool data right now";
       return NextResponse.json(
         {
@@ -75,7 +76,7 @@ export async function GET(
       );
     }
   } catch (error) {
-    console.error("Error in pool status endpoint:", error);
+    logger.error("Error in pool status endpoint:", "status/route", { error });
     return NextResponse.json(
       {
         success: false,

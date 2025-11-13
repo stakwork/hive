@@ -8,6 +8,7 @@ import type {
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+import { logger } from "@/lib/logger";
   createContext,
   ReactNode,
   useCallback,
@@ -91,7 +92,7 @@ export function WorkspaceProvider({
 
       return data.workspaces || [];
     } catch (err) {
-      console.error("Failed to fetch workspaces:", err);
+      logger.error("Failed to fetch workspaces:", "contexts/WorkspaceContext", { err });
       throw err;
     }
   }, [status]);
@@ -126,7 +127,7 @@ export function WorkspaceProvider({
         // Note: Zustand store no longer needed - WorkspaceProvider is the single source of truth
       }
     } catch (err) {
-      console.error('Failed to fetch task notifications:', err);
+      logger.error("Failed to fetch task notifications:", "contexts/WorkspaceContext", { err });
     } finally {
       setNotificationsLoading(false);
     }

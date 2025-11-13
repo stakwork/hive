@@ -8,6 +8,7 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType, NodesResponse } from "@/types/stakgraph";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -298,7 +299,7 @@ export async function GET(request: NextRequest) {
     const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset, finalIgnoreDirs, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error("Error fetching coverage nodes:", error);
+    logger.error("Error fetching coverage nodes:", "nodes/route", { error });
     return NextResponse.json({ success: false, message: "Failed to fetch coverage nodes" }, { status: 500 });
   }
 }

@@ -11,6 +11,7 @@ import { RepositoryStatus, SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   if (isFakeMode) {
@@ -32,10 +33,10 @@ export async function POST(request: NextRequest) {
 
     const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
 
-    console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, user: ${session.user.id}`);
+    logger.debug(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, user: ${session.user.id}`, "swarm/route");
 
     if (!workspaceId || !repositoryUrl) {
-      console.log(`[SWARM_CREATE] Missing required fields - workspaceId: ${!!workspaceId}, repositoryUrl: ${!!repositoryUrl}`);
+      logger.debug(`[SWARM_CREATE] Missing required fields - workspaceId: ${!!workspaceId}, repositoryUrl: ${!!repositoryUrl}`, "swarm/route");
       return NextResponse.json(
         {
           success: false,
@@ -46,15 +47,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate workspace access - ensure user has admin permissions to create swarms
-    console.log(`[SWARM_CREATE] Validating workspace access for user ${session.user.id} in workspace ${workspaceId}`);
+    logger.debug(`[SWARM_CREATE] Validating workspace access for user ${session.user.id} in workspace ${workspaceId}`, "swarm/route");
     const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
     if (!workspaceAccess.hasAccess) {
-      console.log(`[SWARM_CREATE] Access denied for user ${session.user.id} in workspace ${workspaceId}`);
+      logger.debug(`[SWARM_CREATE] Access denied for user ${session.user.id} in workspace ${workspaceId}`, "swarm/route");
       return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 403 });
     }
 
     if (!workspaceAccess.canAdmin) {
-      console.log(`[SWARM_CREATE] Admin permission denied for user ${session.user.id} in workspace ${workspaceId}`);
+      logger.debug(`[SWARM_CREATE] Admin permission denied for user ${session.user.id} in workspace ${workspaceId}`, "swarm/route");
       return NextResponse.json(
         {
           success: false,
@@ -64,23 +65,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[SWARM_CREATE] Access validated - user ${session.user.id} has admin access to workspace ${workspaceId}`);
+    logger.debug(`[SWARM_CREATE] Access validated - user ${session.user.id} has admin access to workspace ${workspaceId}`, "swarm/route");
 
     // Ensure workspace is linked to SourceControlOrg before proceeding
-    console.log(`[SWARM_CREATE] Checking workspace SourceControlOrg linkage`);
+    logger.debug(`[SWARM_CREATE] Checking workspace SourceControlOrg linkage`, "swarm/route");
     const workspaceData = await db.workspace.findUnique({
       where: { id: workspaceId },
       include: { sourceControlOrg: true },
     });
 
     if (workspaceData && !workspaceData.sourceControlOrg) {
-      console.log(`[SWARM_CREATE] Workspace not linked to SourceControlOrg, attempting to link`);
+      logger.debug(`[SWARM_CREATE] Workspace not linked to SourceControlOrg, attempting to link`, "swarm/route");
 
       // Extract GitHub owner from repository URL
       const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)/);
       if (githubMatch) {
         const githubOwner = githubMatch[1];
-        console.log(`[SWARM_CREATE] Extracted GitHub owner: ${githubOwner}`);
+        logger.debug(`[SWARM_CREATE] Extracted GitHub owner: ${githubOwner}`, "swarm/route");
 
         // Look for existing SourceControlOrg for this GitHub owner
         const sourceControlOrg = await db.sourceControlOrg.findUnique({
@@ -93,22 +94,22 @@ export async function POST(request: NextRequest) {
             where: { id: workspaceId },
             data: { sourceControlOrgId: sourceControlOrg.id },
           });
-          console.log(`[SWARM_CREATE] Successfully linked workspace ${workspaceId} to SourceControlOrg: ${sourceControlOrg.githubLogin} (ID: ${sourceControlOrg.id})`);
+          logger.debug(`[SWARM_CREATE] Successfully linked workspace ${workspaceId} to SourceControlOrg: ${sourceControlOrg.githubLogin} (ID: ${sourceControlOrg.id})`, "swarm/route");
         } else {
-          console.log(`[SWARM_CREATE] No SourceControlOrg found for GitHub owner: ${githubOwner}`);
+          logger.debug(`[SWARM_CREATE] No SourceControlOrg found for GitHub owner: ${githubOwner}`, "swarm/route");
         }
       } else {
-        console.warn(`[SWARM_CREATE] Could not extract GitHub owner from repository URL: ${repositoryUrl}`);
+        logger.warn(`[SWARM_CREATE] Could not extract GitHub owner from repository URL: ${repositoryUrl}`, "swarm/route");
       }
     } else if (workspaceData?.sourceControlOrg) {
-      console.log(`[SWARM_CREATE] Workspace already linked to SourceControlOrg: ${workspaceData.sourceControlOrg.githubLogin} (ID: ${workspaceData.sourceControlOrg.id})`);
+      logger.debug(`[SWARM_CREATE] Workspace already linked to SourceControlOrg: ${workspaceData.sourceControlOrg.githubLogin} (ID: ${workspaceData.sourceControlOrg.id})`, "swarm/route");
     }
 
     // Check for existing swarm and create placeholder in single transaction
-    console.log(`[SWARM_CREATE] Starting transaction to check/create swarm for workspace ${workspaceId}`);
+    logger.debug(`[SWARM_CREATE] Starting transaction to check/create swarm for workspace ${workspaceId}`, "swarm/route");
     const result = await db.$transaction(async (tx) => {
       // Check for existing swarm
-      console.log(`[SWARM_CREATE] Checking for existing swarm in workspace ${workspaceId}`);
+      logger.debug(`[SWARM_CREATE] Checking for existing swarm in workspace ${workspaceId}`, "swarm/route");
       const existingSwarm = await tx.swarm.findFirst({
         where: {
           workspaceId: workspaceId,
@@ -119,14 +120,14 @@ export async function POST(request: NextRequest) {
       });
 
       if (existingSwarm) {
-        console.log(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarm.id}, SwarmId: ${existingSwarm.swarmId}, Status: ${existingSwarm.status}`);
+        logger.debug(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarm.id}, SwarmId: ${existingSwarm.swarmId}, Status: ${existingSwarm.status}`, "swarm/route");
         return {
           exists: true,
           swarm: existingSwarm
         };
       }
 
-      console.log(`[SWARM_CREATE] No existing swarm found, creating placeholder for workspace ${workspaceId}`);
+      logger.debug(`[SWARM_CREATE] No existing swarm found, creating placeholder for workspace ${workspaceId}`, "swarm/route");
       // Create placeholder swarm record immediately to reserve the workspace
       const placeholderSwarm = await tx.swarm.create({
         data: {
@@ -137,11 +138,11 @@ export async function POST(request: NextRequest) {
           // Leave other fields null/empty until external API completes
         },
       });
-      console.log(`[SWARM_CREATE] Created placeholder swarm - ID: ${placeholderSwarm.id}, Status: ${placeholderSwarm.status}`);
+      logger.debug(`[SWARM_CREATE] Created placeholder swarm - ID: ${placeholderSwarm.id}, Status: ${placeholderSwarm.status}`, "swarm/route");
 
       // Create repository record in the same transaction
       if (repositoryUrl) {
-        console.log(`[SWARM_CREATE] Creating repository record for ${repositoryUrl}`);
+        logger.debug(`[SWARM_CREATE] Creating repository record for ${repositoryUrl}`, "swarm/route");
         const repoName = repositoryName || repositoryUrl.split("/").pop()?.replace(/\.git$/, "") || "repository";
         const branch = repositoryDefaultBranch || "main";
 
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
             status: RepositoryStatus.PENDING,
           },
         });
-        console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`);
+        logger.debug(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`, "swarm/route");
       }
 
       return {
@@ -162,11 +163,11 @@ export async function POST(request: NextRequest) {
         swarm: placeholderSwarm
       };
     });
-    console.log(`[SWARM_CREATE] Transaction completed - exists: ${result.exists}, swarm ID: ${result.swarm.id}`);
+    logger.debug(`[SWARM_CREATE] Transaction completed - exists: ${result.exists}, swarm ID: ${result.swarm.id}`, "swarm/route");
 
     // If swarm already exists, return it
     if (result.exists) {
-      console.log(`[SWARM_CREATE] Returning existing swarm for workspace ${workspaceId} - ID: ${result.swarm.id}, SwarmId: ${result.swarm.swarmId}, Status: ${result.swarm.status}`);
+      logger.debug(`[SWARM_CREATE] Returning existing swarm for workspace ${workspaceId} - ID: ${result.swarm.id}, SwarmId: ${result.swarm.swarmId}, Status: ${result.swarm.status}`, "swarm/route");
       return NextResponse.json({
         success: true,
         message: "Swarm already exists for this workspace",
@@ -175,16 +176,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Now make external API call with workspace already reserved
-    console.log(`[SWARM_CREATE] Starting external swarm creation for placeholder ID: ${result.swarm.id}`);
+    logger.debug(`[SWARM_CREATE] Starting external swarm creation for placeholder ID: ${result.swarm.id}`, "swarm/route");
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
     const swarmConfig = getServiceConfig("swarm");
     const swarmService = new SwarmService(swarmConfig);
     const swarmPassword = generateSecurePassword(20);
 
-    console.log(`[SWARM_CREATE] Generated password length: ${swarmPassword.length}, instance type: ${instance_type}`);
+    logger.debug(`[SWARM_CREATE] Generated password length: ${swarmPassword.length}, instance type: ${instance_type}`, "swarm/route");
 
     try {
-      console.log(`[SWARM_CREATE] Calling external SwarmService.createSwarm()`);
+      logger.debug(`[SWARM_CREATE] Calling external SwarmService.createSwarm()`, "swarm/route");
       const startTime = Date.now();
 
       // Create external swarm (this can take 5-30 seconds)
@@ -194,19 +195,19 @@ export async function POST(request: NextRequest) {
       });
 
       const apiCallDuration = Date.now() - startTime;
-      console.log(`[SWARM_CREATE] External API call completed in ${apiCallDuration}ms`);
+      logger.debug(`[SWARM_CREATE] External API call completed in ${apiCallDuration}ms`, "swarm/route");
 
       const swarm_id = apiResponse?.data?.swarm_id;
       const swarm_address = apiResponse?.data?.address;
       const x_api_key = apiResponse?.data?.x_api_key;
       const ec2_id = apiResponse?.data?.ec2_id;
 
-      console.log(`[SWARM_CREATE] API Response data - swarm_id: ${swarm_id}, address: ${swarm_address}, ec2_id: ${ec2_id}, x_api_key: ${x_api_key ? 'present' : 'missing'}`);
+      logger.debug(`[SWARM_CREATE] API Response data - swarm_id: ${swarm_id}, address: ${swarm_address}, ec2_id: ${ec2_id}, x_api_key: ${x_api_key ? 'present' : 'missing'}`, "swarm/route");
 
       // Use swarm_id directly for secret alias
       const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
-      console.log(`[SWARM_CREATE] Updating placeholder ${result.swarm.id} with external API data`);
+      logger.debug(`[SWARM_CREATE] Updating placeholder ${result.swarm.id} with external API data`, "swarm/route");
       // Update the placeholder record with real data (using saveOrUpdateSwarm for proper encryption)
       const updatedSwarm = await saveOrUpdateSwarm({
         workspaceId: workspaceId,
@@ -220,7 +221,7 @@ export async function POST(request: NextRequest) {
         swarmPassword: swarmPassword,
       });
 
-      console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm.id} to ACTIVE status with swarmId: ${swarm_id}`);
+      logger.debug(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm.id} to ACTIVE status with swarmId: ${swarm_id}`, "swarm/route");
 
       return NextResponse.json({
         success: true,
@@ -232,7 +233,7 @@ export async function POST(request: NextRequest) {
       console.error(`[SWARM_CREATE] External API call failed for placeholder ${result.swarm.id}:`, error);
 
       // If external API fails, mark the placeholder as failed
-      console.log(`[SWARM_CREATE] Marking placeholder ${result.swarm.id} as FAILED`);
+      logger.debug(`[SWARM_CREATE] Marking placeholder ${result.swarm.id} as FAILED`, "swarm/route");
       await db.swarm.update({
         where: { id: result.swarm.id },
         data: {
@@ -257,11 +258,11 @@ export async function POST(request: NextRequest) {
       const status = (error as { status: number }).status;
       const errorMessage = "message" in error ? error.message : "Failed to create swarm";
 
-      console.log(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${errorMessage}`);
+      logger.debug(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${errorMessage}`, "swarm/route");
       return NextResponse.json({ success: false, message: errorMessage }, { status });
     }
 
-    console.log(`[SWARM_CREATE] Returning generic error for workspace ${workspaceId}`);
+    logger.debug(`[SWARM_CREATE] Returning generic error for workspace ${workspaceId}`, "swarm/route");
     return NextResponse.json({ success: false, message: "Unknown error while creating swarm" }, { status: 500 });
   }
 }
@@ -324,7 +325,7 @@ export async function PUT(request: NextRequest) {
       data: { id: updatedSwarm?.id },
     });
   } catch (error) {
-    console.error("Error creating Swarm:", error);
+    logger.error("Error creating Swarm:", "swarm/route", { error });
     return NextResponse.json({ success: false, message: "Failed to create swarm" }, { status: 500 });
   }
 }

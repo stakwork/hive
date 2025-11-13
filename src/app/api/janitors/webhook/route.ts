@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { processJanitorWebhook } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 
 const stakworkWebhookSchema = z.object({
   projectId: z.number(),
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("Error processing janitor webhook:", error);
+    logger.error("Error processing janitor webhook:", "webhook/route", { error });
     
     if (error && typeof error === "object" && "issues" in error) {
       return NextResponse.json(

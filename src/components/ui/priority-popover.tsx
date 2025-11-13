@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PriorityBadge, getAllPriorityOptions } from "@/components/ui/priority-badge";
 import type { Priority } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 interface PriorityPopoverProps {
   currentPriority: Priority;
@@ -30,7 +31,7 @@ export function PriorityPopover({
       await onUpdate(priority);
       setOpen(false);
     } catch (error) {
-      console.error("Failed to update priority:", error);
+      logger.error("Failed to update priority:", "ui/priority-popover", { error });
     } finally {
       setUpdating(false);
     }

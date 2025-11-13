@@ -93,10 +93,10 @@ export async function POST(request: NextRequest) {
     // Check if first message has a sourceWebsocketID to reuse
     if (chatHistory.length > 0 && chatHistory[0].sourceWebsocketID) {
       sessionId = chatHistory[0].sourceWebsocketID;
-      console.log("🔄 Found existing session ID from database:", sessionId);
+      logger.debug("🔄 Found existing session ID from database:", "agent/route", { sessionId });
     }
   } catch (error) {
-    console.error("Error loading chat history:", error);
+    logger.error("Error loading chat history:", "agent/route", { error });
   }
 
   // Save user message with artifacts and sourceWebsocketID to database if taskId is provided
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Error saving message to database:", error);
+    logger.error("Error saving message to database:", "agent/route", { error });
   }
 
   // If CUSTOM_GOOSE_URL is set, use it as-is (it should be the full ws:// URL)
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
 
   if (process.env.CUSTOM_GOOSE_URL) {
     wsUrl = process.env.CUSTOM_GOOSE_URL;
-    console.log("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_URL:", wsUrl);
+    logger.debug("🧪 Using custom dev Goose URL from CUSTOM_GOOSE_URL:", "agent/route", { wsUrl });
   } else {
     // Use gooseUrl from task credentials (stored in database)
     if (!gooseUrl) {
@@ -138,14 +138,14 @@ export async function POST(request: NextRequest) {
     }
 
     wsUrl = gooseUrl.replace(/^https?:\/\//, "wss://").replace(/\/$/, "") + "/ws";
-    console.log("🔐 Using Goose URL from task credentials:", wsUrl);
+    logger.debug("🔐 Using Goose URL from task credentials:", "agent/route", { wsUrl });
   }
 
-  console.log("🤖 Final Goose WebSocket URL:", wsUrl);
+  logger.debug("🤖 Final Goose WebSocket URL:", "agent/route", { wsUrl });
 
   const isResumingSession = chatHistory.length > 0 && !!sessionId;
   if (isResumingSession) {
-    console.log("🔄 Resuming conversation with session ID:", sessionId);
+    logger.debug("🔄 Resuming conversation with session ID:", "agent/route", { sessionId });
   } else {
     console.log("🆕 Starting new conversation - provider will create session via REST API");
   }
@@ -188,10 +188,10 @@ export async function POST(request: NextRequest) {
     ...(logger ? { logger } : {}),
   });
 
-  console.log("✅ Session validated:", {
+  logger.debug("✅ Session validated:", "agent/route", { {
     sessionId: validatedSessionId,
     oldSessionInvalidated,
-  });
+  } });
 
   // Update database with session ID
   if (oldSessionInvalidated) {
@@ -210,9 +210,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log("✅ Saved session ID to database:", validatedSessionId);
+    logger.debug("✅ Saved session ID to database:", "agent/route", { validatedSessionId });
   } catch (error) {
-    console.error("Error saving session ID:", error);
+    logger.error("Error saving session ID:", "agent/route", { error });
   }
 
   // Build messages array
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  console.log("📝 Created placeholder assistant message:", assistantMessage.id);
+  logger.debug("📝 Created placeholder assistant message:", "agent/route", { assistantMessage.id });
 
   const result = streamText({
     model,
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
 
   // Schedule background processing using after()
   after(async () => {
-    console.log("🔄 Background processing started for message:", assistantMessage.id);
+    logger.debug("🔄 Background processing started for message:", "agent/route", { assistantMessage.id });
     let accumulatedText = "";
     let lastSaveLength = 0;
     const SAVE_INTERVAL = 200; // Save every 200 characters
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
               data: { message: accumulatedText },
             });
             lastSaveLength = accumulatedText.length;
-            console.log(`💾 Incremental save: ${accumulatedText.length} chars`);
+            logger.debug(`💾 Incremental save: ${accumulatedText.length} chars`, "agent/route");
           }
         }
       }
@@ -305,9 +305,9 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log("✅ Background processing completed, saved:", accumulatedText.length, "chars");
+      logger.debug("✅ Background processing completed, saved:", "agent/route", { accumulatedText.length, "chars" });
     } catch (error) {
-      console.error("❌ Background processing error:", error);
+      logger.error("❌ Background processing error:", "agent/route", { error });
 
       // Save partial message with ERROR status
       await db.chatMessage.update({
@@ -447,14 +447,14 @@ export async function POST(request: NextRequest) {
         // Only log and error the controller if it's still open
         try {
           if (controller.desiredSize !== null) {
-            console.error("Frontend stream error:", error);
+            logger.error("Frontend stream error:", "agent/route", { error });
             controller.error(error);
           } else {
-            console.log("⚠️ Stream error after client disconnect (expected):", error);
+            logger.debug("⚠️ Stream error after client disconnect (expected):", "agent/route", { error });
           }
         } catch {
           // Controller already closed during error handling
-          console.log("⚠️ Stream error after client disconnect:", error);
+          logger.debug("⚠️ Stream error after client disconnect:", "agent/route", { error });
         }
       }
     },

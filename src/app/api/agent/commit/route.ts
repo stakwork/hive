@@ -6,6 +6,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getPodFromPool, POD_PORTS } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -125,36 +126,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(">>> Using commit message:", commitMessage);
-    console.log(">>> Using branch name:", branchName);
+    logger.debug(">>> Using commit message:", "commit/route", { commitMessage });
+    logger.debug(">>> Using branch name:", "commit/route", { branchName });
 
     // Get GitHub access token for authentication
     let githubToken: string | undefined;
     if (workspace.sourceControlOrg) {
-      console.log(
-        ">>> Getting user app token for workspace source control org:",
-        userGithubAuth?.githubUsername,
+      logger.debug(">>> Getting user app token for workspace source control org:", "commit/route", { userGithubAuth?.githubUsername,
         ",",
-        workspace.sourceControlOrg.githubLogin,
-      );
+        workspace.sourceControlOrg.githubLogin, });
       const tokens = await getUserAppTokens(userId, workspace.sourceControlOrg.githubLogin);
       githubToken = tokens?.accessToken;
 
       if (!githubToken) {
-        console.warn("No GitHub access token found for workspace source control org");
+        logger.warn("No GitHub access token found for workspace source control org", "commit/route");
         return NextResponse.json(
           { error: "GitHub authentication required. Please reconnect your GitHub account." },
           { status: 401 },
         );
       }
     } else {
-      console.warn("Workspace has no source control org linked");
+      logger.warn("Workspace has no source control org linked", "commit/route");
       return NextResponse.json({ error: "No GitHub organization linked to this workspace" }, { status: 400 });
     }
 
     // Get GitHub username
     if (!userGithubAuth?.githubUsername) {
-      console.warn("No GitHub username found for user");
+      logger.warn("No GitHub username found for user", "commit/route");
       return NextResponse.json(
         { error: "GitHub username not found. Please reconnect your GitHub account." },
         { status: 401 },
@@ -180,8 +178,8 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    console.log(">>> Commit payload:", commitPayload);
-    console.log(">>> Posting to control port:", controlPortUrl);
+    logger.debug(">>> Commit payload:", "commit/route", { commitPayload });
+    logger.debug(">>> Posting to control port:", "commit/route", { controlPortUrl });
 
     // Check if task already has a PullRequest artifact in chat history
     const existingPullRequest = await db.artifact.findFirst({
@@ -197,7 +195,7 @@ export async function POST(request: NextRequest) {
     // If a PR already exists, stay on current branch instead of creating a new one
     const stayOnBranch = existingPullRequest ? "&stayOnCurrentBranch=true" : "";
     const pushUrl = `${controlPortUrl}/push?pr=true&commit=true${stayOnBranch}`;
-    console.log(">>> Push URL:", pushUrl, existingPullRequest ? "(staying on current branch)" : "(creating new branch)");
+    logger.debug(">>> Push URL:", "commit/route", { pushUrl, existingPullRequest ? "(staying on current branch })" : "(creating new branch)");
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {
@@ -209,7 +207,7 @@ export async function POST(request: NextRequest) {
 
     if (!pushResponse.ok) {
       const errorText = await pushResponse.text();
-      console.error(`Failed to push: ${pushResponse.status} - ${errorText}`);
+      logger.error(`Failed to push: ${pushResponse.status} - ${errorText}`, "commit/route");
       return NextResponse.json(
         { error: `Failed to push: ${pushResponse.status}`, details: errorText },
         { status: pushResponse.status },
@@ -217,7 +215,7 @@ export async function POST(request: NextRequest) {
     }
 
     const pushData = await pushResponse.json();
-    console.log(">>> Push successful:", pushData);
+    logger.debug(">>> Push successful:", "commit/route", { pushData });
 
     return NextResponse.json(
       {
@@ -230,7 +228,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error committing:", error);
+    logger.error("Error committing:", "commit/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

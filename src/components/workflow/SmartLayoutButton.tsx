@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useReactFlow, Node, NodeChange } from '@xyflow/react';
 import { smartLayout } from './layoutUtils';
+import { logger } from "@/lib/logger";
 
 interface SmartLayoutButtonProps {
   onNodesChange?: (changes: NodeChange[]) => void;
@@ -36,7 +37,7 @@ export function SmartLayoutButton({ onNodesChange }: SmartLayoutButtonProps) {
         }, 50);
       }
     } catch (error) {
-      console.error('Failed to apply layout:', error);
+      logger.error("Failed to apply layout:", "workflow/SmartLayoutButton", { error });
     } finally {
       setIsProcessing(false);
     }
@@ -57,7 +58,7 @@ export function SmartLayoutButton({ onNodesChange }: SmartLayoutButtonProps) {
 
     // Call onNodesChange with these changes to trigger saving
     if (nodeChanges.length > 0) {
-      console.log('Saving positions for', nodeChanges.length, 'nodes');
+      logger.debug("Saving positions for", "workflow/SmartLayoutButton", { nodeChanges.length, 'nodes' });
       onNodesChange(nodeChanges);
     }
   };

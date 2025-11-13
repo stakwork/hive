@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { logger } from "@/lib/logger";
 
 export interface TaskStats {
   total: number;
@@ -53,7 +54,7 @@ export function useTaskStats(workspaceId: string | null): UseTaskStatsResult {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch task statistics";
       setError(errorMessage);
-      console.error("Error fetching task statistics:", err);
+      logger.error("Error fetching task statistics:", "useTaskStats", { err });
     } finally {
       setLoading(false);
     }

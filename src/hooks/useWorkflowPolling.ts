@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { logger } from "@/lib/logger";
 
 export interface WorkflowData {
   workflowData: {
@@ -41,7 +42,7 @@ export const useWorkflowPolling = (
         intervalRef.current = null;
       }
     } catch (err) {
-      console.error("Error fetching workflow data:", err);
+      logger.error("Error fetching workflow data:", "useWorkflowPolling", { err });
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsLoading(false);

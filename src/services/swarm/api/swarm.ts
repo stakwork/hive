@@ -2,6 +2,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { env } from "@/lib/env";
 import { HttpClient } from "@/lib/http-client";
 import {
+import { logger } from "@/lib/logger";
   CreateSwarmRequest,
   CreateSwarmResponse,
   StopSwarmRequest,
@@ -49,7 +50,7 @@ export async function fetchSwarmDetails(swarmId: string): Promise<{ ok: boolean;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`);
+      logger.debug(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`, "api/swarm");
       const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
       const response = await fetch(url, {
@@ -66,13 +67,13 @@ export async function fetchSwarmDetails(swarmId: string): Promise<{ ok: boolean;
       } else if (response.status === 400) {
         // For 400 errors, retry after delay
         lastError = { ok: false, data, status: response.status };
-        console.log(`Got 400 error, will retry in ${retryDelay}ms...`);
+        logger.debug(`Got 400 error, will retry in ${retryDelay}ms...`, "api/swarm");
       } else {
         // For other errors, return immediately (don't retry)
         return { ok: false, data, status: response.status };
       }
     } catch (error) {
-      console.error("fetchSwarmDetails network error:", error);
+      logger.error("fetchSwarmDetails network error:", "api/swarm", { error });
       lastError = { ok: false, status: 500 };
     }
 
@@ -122,7 +123,7 @@ export async function swarmApiRequest({
     try {
       responseData = JSON.parse(responseText);
     } catch (error) {
-      console.error("swarmApiRequest JSON error", responseText, error);
+      logger.error("swarmApiRequest JSON error", "api/swarm", { responseText, error });
       responseData = undefined;
     }
     return {
@@ -131,7 +132,7 @@ export async function swarmApiRequest({
       status: response.status,
     };
   } catch (error) {
-    console.error("swarmApiRequest", error);
+    logger.error("swarmApiRequest", "api/swarm", { error });
     return { ok: false, status: 500 };
   }
 }
@@ -181,12 +182,12 @@ export async function swarmApiRequestAuth({
     try {
       responseData = await response.json();
     } catch (error) {
-      console.error("swarmApiRequest error parsing JSON", error);
+      logger.error("swarmApiRequest error parsing JSON", "api/swarm", { error });
     }
 
     return { ok: response.ok, data: responseData, status: response.status };
   } catch (error) {
-    console.error("swarmApiRequest", error);
+    logger.error("swarmApiRequest", "api/swarm", { error });
     return { ok: false, status: 500 };
   }
 }

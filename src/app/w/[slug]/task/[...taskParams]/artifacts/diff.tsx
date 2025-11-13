@@ -5,6 +5,7 @@ import { parseDiff, Diff, Hunk, DiffType, HunkData } from "react-diff-view";
 import { Artifact, DiffContent, Action, ActionResult } from "@/lib/chat";
 import { useTheme } from "@/hooks/use-theme";
 import "./DiffArtifact.css";
+import { logger } from "@/lib/logger";
 
 interface DiffArtifactPanelProps {
   artifacts: Artifact[];
@@ -67,7 +68,7 @@ export function DiffArtifactPanel({ artifacts, viewType = "unified", className =
           hasError: false as boolean,
         }));
       } catch (error) {
-        console.error("Failed to parse diff for file:", diff.file, error);
+        logger.error("Failed to parse diff for file:", "artifacts/diff", { diff.file, error });
         return [
           {
             fileName: diff.file,

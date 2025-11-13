@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       apiKey,
     });
 
-    // console.log('apiResult', apiResult)
+    // logger.debug("apiResult", "schema/route", { apiResult })
 
     return NextResponse.json(
       {
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
       { status: apiResult.status },
     );
   } catch (error) {
-    console.error("Schema fetch error:", error);
+    logger.error("Schema fetch error:", "schema/route", { error });
     return NextResponse.json({ success: false, message: "Failed to get schemas" }, { status: 500 });
   }
 }

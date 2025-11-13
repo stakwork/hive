@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+import { logger } from "@/lib/logger";
   Artifact,
   ArtifactType,
   BrowserContent,
@@ -139,7 +140,7 @@ export function useDebugSelection(
 
       setDebugMode(false);
     } catch (error) {
-      console.error("Failed to process debug selection:", error);
+      logger.error("Failed to process debug selection:", "useDebugSelection", { error });
 
       const bugReportContent: BugReportContent = {
         bugDescription: `Debug analysis failed at (${x}, ${y})`,
@@ -173,7 +174,7 @@ export function useDebugSelection(
           );
           setDebugMode(false);
         } catch (chatError) {
-          console.error("Failed to send fallback debug message:", chatError);
+          logger.error("Failed to send fallback debug message:", "useDebugSelection", { chatError });
         }
       }
     } finally {

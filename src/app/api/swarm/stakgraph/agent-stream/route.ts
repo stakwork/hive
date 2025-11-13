@@ -9,6 +9,7 @@ import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUt
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -19,8 +20,8 @@ export async function GET(request: NextRequest) {
 
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
-    console.log("[agent-stream] Unauthorized access attempt", {
-      timestamp: new Date().toISOString(),
+    logger.debug("[agent-stream] Unauthorized access attempt", "agent-stream/route", { {
+      timestamp: new Date( }).toISOString(),
       ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
       userAgent: request.headers.get('user-agent'),
     });
@@ -39,13 +40,13 @@ export async function GET(request: NextRequest) {
     sessionId: Math.random().toString(36).substring(7), // Unique session identifier
   };
 
-  console.log("[agent-stream] SSE connection initiated", logContext);
+  logger.debug("[agent-stream] SSE connection initiated", "agent-stream/route", { logContext });
 
   if (!requestId || !swarmId) {
-    console.warn("[agent-stream] Missing required parameters", {
+    logger.warn("[agent-stream] Missing required parameters", "agent-stream/route", { {
       ...logContext,
       missingParams: { requestId: !requestId, swarmId: !swarmId },
-    });
+    } });
     return new Response("Missing required parameters", { status: 400 });
   }
 
@@ -69,27 +70,27 @@ export async function GET(request: NextRequest) {
 
       try {
         // Get the swarm
-        console.log("[agent-stream] Fetching swarm from database", logContext);
+        logger.debug("[agent-stream] Fetching swarm from database", "agent-stream/route", { logContext });
         const swarm = await db.swarm.findFirst({
           where: { id: swarmId },
           include: { workspace: { select: { slug: true } } }
         });
 
         if (!swarm) {
-          console.error("[agent-stream] Swarm not found", {
+          logger.error("[agent-stream] Swarm not found", "agent-stream/route", { {
             ...logContext,
             error: "Swarm not found in database",
-          });
+          } });
           sendEvent({ error: "Swarm not found" }, "error");
           controller.close();
           return;
         }
 
-        console.log("[agent-stream] Swarm found, starting monitoring", {
+        logger.debug("[agent-stream] Swarm found, starting monitoring", "agent-stream/route", { {
           ...logContext,
           workspaceSlug: swarm.workspace.slug,
           swarmStatus: swarm.agentStatus,
-          swarmUrl: swarm.swarmUrl?.replace(/\/api$/, ''), // Log without sensitive parts
+          swarmUrl: swarm.swarmUrl?.replace(/\/api$/, '' }), // Log without sensitive parts
         });
 
         // Send initial status
@@ -108,10 +109,10 @@ export async function GET(request: NextRequest) {
           const maxAttempts = 120; // 10 minutes with 5-second intervals
           const pollStartTime = Date.now();
 
-          console.log("[agent-stream] Starting polling loop", {
+          logger.debug("[agent-stream] Starting polling loop", "agent-stream/route", { {
             ...logContext,
             maxAttempts,
-            timeoutMinutes: (maxAttempts * 5) / 60,
+            timeoutMinutes: (maxAttempts * 5 }) / 60,
             swarmUrl: swarmUrl.replace(/\/\/.*@/, '//***@'), // Mask credentials in URL
           });
 
@@ -125,36 +126,36 @@ export async function GET(request: NextRequest) {
                 maxAttempts
               });
 
-              console.log("[agent-stream] Polling agent progress", {
+              logger.debug("[agent-stream] Polling agent progress", "agent-stream/route", { {
                 ...logContext,
                 attempt: attempts + 1,
                 maxAttempts,
-                elapsedTime: Date.now() - pollStartTime,
+                elapsedTime: Date.now( }) - pollStartTime,
               });
 
               const agentResult = await pollAgentProgress(swarmUrl, requestId, decryptedApiKey);
 
-              console.log("[agent-stream] Agent poll result", {
+              logger.debug("[agent-stream] Agent poll result", "agent-stream/route", { {
                 ...logContext,
                 attempt: attempts + 1,
                 success: agentResult.ok,
-                pollDuration: Date.now() - attemptStartTime,
+                pollDuration: Date.now( }) - attemptStartTime,
               });
 
               if (agentResult.ok) {
                 // Agent completed successfully
-                console.log("[agent-stream] Agent completed successfully", {
+                logger.debug("[agent-stream] Agent completed successfully", "agent-stream/route", { {
                   ...logContext,
                   totalAttempts: attempts + 1,
-                  totalDuration: Date.now() - pollStartTime,
+                  totalDuration: Date.now( }) - pollStartTime,
                 });
                 sendEvent({ status: "PROCESSING", message: "Agent completed, processing results..." });
 
                 // Process the results
                 const agentFiles = agentResult.data as Record<string, string>;
-                console.log("[agent-stream] Processing agent files", {
+                logger.debug("[agent-stream] Processing agent files", "agent-stream/route", { {
                   ...logContext,
-                  fileKeys: Object.keys(agentFiles),
+                  fileKeys: Object.keys(agentFiles }),
                   fileCount: Object.keys(agentFiles).length,
                 });
 
@@ -162,10 +163,10 @@ export async function GET(request: NextRequest) {
                 const repo_url = primaryRepo?.repositoryUrl;
 
                 if (!repo_url) {
-                  console.error("[agent-stream] No repository URL found", {
+                  logger.error("[agent-stream] No repository URL found", "agent-stream/route", { {
                     ...logContext,
                     workspaceId: swarm.workspaceId,
-                  });
+                  } });
                   sendEvent({ error: "No repository URL found" }, "error");
                   controller.close();
                   return;
@@ -174,10 +175,10 @@ export async function GET(request: NextRequest) {
                 // Parse results
                 const pm2Content = agentFiles["pm2.config.js"];
                 const services = parsePM2Content(pm2Content);
-                console.log("[agent-stream] Parsed PM2 services", {
+                logger.debug("[agent-stream] Parsed PM2 services", "agent-stream/route", { {
                   ...logContext,
                   serviceCount: services?.length || 0,
-                  serviceNames: services?.map(s => s.name) || [],
+                  serviceNames: services?.map(s => s.name }) || [],
                 });
 
                 // Parse .env file
@@ -195,20 +196,20 @@ export async function GET(request: NextRequest) {
                       // Use as plain text
                     }
                     agentEnvVars = parseEnv(envText);
-                    console.log("[agent-stream] Parsed environment variables", {
+                    logger.debug("[agent-stream] Parsed environment variables", "agent-stream/route", { {
                       ...logContext,
-                      envVarCount: Object.keys(agentEnvVars).length,
+                      envVarCount: Object.keys(agentEnvVars }).length,
                       envVarKeys: Object.keys(agentEnvVars), // Log keys but not values for security
                     });
                   } catch (e) {
-                    console.error("[agent-stream] Failed to parse .env file from agent", {
+                    logger.error("[agent-stream] Failed to parse .env file from agent", "agent-stream/route", { {
                       ...logContext,
-                      error: e instanceof Error ? e.message : String(e),
+                      error: e instanceof Error ? e.message : String(e }),
                       envContentLength: envContent?.length || 0,
                     });
                   }
                 } else {
-                  console.warn("[agent-stream] No .env file found in agent results", logContext);
+                  logger.warn("[agent-stream] No .env file found in agent results", "agent-stream/route", { logContext });
                 }
 
                 // Prepare container files
@@ -226,11 +227,11 @@ export async function GET(request: NextRequest) {
                 }));
 
                 // Save to database
-                console.log("[agent-stream] Saving swarm data to database", {
+                logger.debug("[agent-stream] Saving swarm data to database", "agent-stream/route", { {
                   ...logContext,
                   serviceCount: services?.length || 0,
                   envVarCount: environmentVariables.length,
-                  containerFileCount: Object.keys(containerFiles).length,
+                  containerFileCount: Object.keys(containerFiles }).length,
                 });
 
                 await saveOrUpdateSwarm({
@@ -250,9 +251,9 @@ export async function GET(request: NextRequest) {
                   },
                 });
 
-                console.log("[agent-stream] Agent processing completed successfully", {
+                logger.debug("[agent-stream] Agent processing completed successfully", "agent-stream/route", { {
                   ...logContext,
-                  totalDuration: Date.now() - startTime,
+                  totalDuration: Date.now( }) - startTime,
                   pollDuration: Date.now() - pollStartTime,
                   finalServiceCount: services?.length || 0,
                 });
@@ -275,10 +276,10 @@ export async function GET(request: NextRequest) {
               }
 
             } catch (error) {
-              console.error("[agent-stream] Error polling agent", {
+              logger.error("[agent-stream] Error polling agent", "agent-stream/route", { {
                 ...logContext,
                 attempt: attempts + 1,
-                error: error instanceof Error ? error.message : String(error),
+                error: error instanceof Error ? error.message : String(error }),
                 errorStack: error instanceof Error ? error.stack : undefined,
                 elapsedTime: Date.now() - pollStartTime,
               });
@@ -297,11 +298,11 @@ export async function GET(request: NextRequest) {
           }
 
           // Timeout reached - clear agent status
-          console.error("[agent-stream] Agent polling timed out", {
+          logger.error("[agent-stream] Agent polling timed out", "agent-stream/route", { {
             ...logContext,
             totalAttempts: attempts,
             maxAttempts,
-            totalDuration: Date.now() - pollStartTime,
+            totalDuration: Date.now( }) - pollStartTime,
             timeoutMinutes: (maxAttempts * 5) / 60,
           });
 
@@ -322,9 +323,9 @@ export async function GET(request: NextRequest) {
 
         // Start polling in background
         pollAgent().catch((error) => {
-          console.error("[agent-stream] Critical polling error", {
+          logger.error("[agent-stream] Critical polling error", "agent-stream/route", { {
             ...logContext,
-            error: error instanceof Error ? error.message : String(error),
+            error: error instanceof Error ? error.message : String(error }),
             errorStack: error instanceof Error ? error.stack : undefined,
             totalDuration: Date.now() - startTime,
           });
@@ -333,9 +334,9 @@ export async function GET(request: NextRequest) {
         });
 
       } catch (error) {
-        console.error("[agent-stream] SSE setup error", {
+        logger.error("[agent-stream] SSE setup error", "agent-stream/route", { {
           ...logContext,
-          error: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? error.message : String(error }),
           errorStack: error instanceof Error ? error.stack : undefined,
           totalDuration: Date.now() - startTime,
         });
@@ -345,16 +346,16 @@ export async function GET(request: NextRequest) {
     },
 
     cancel() {
-      console.log("[agent-stream] SSE connection cancelled", {
+      logger.debug("[agent-stream] SSE connection cancelled", "agent-stream/route", { {
         ...logContext,
-        totalDuration: Date.now() - startTime,
+        totalDuration: Date.now( }) - startTime,
       });
     }
   });
 
-  console.log("[agent-stream] SSE stream created successfully", {
+  logger.debug("[agent-stream] SSE stream created successfully", "agent-stream/route", { {
     ...logContext,
-    setupDuration: Date.now() - startTime,
+    setupDuration: Date.now( }) - startTime,
   });
 
   return new Response(stream, { headers });

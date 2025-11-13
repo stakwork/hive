@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logger } from "@/lib/logger";
 
 interface GraphNode {
   id: string;
@@ -88,7 +89,7 @@ export function useGraphData({
         setNodes(transformed.nodes);
         setEdges(transformed.edges);
       } catch (err) {
-        console.error("Error fetching graph data:", err);
+        logger.error("Error fetching graph data:", "graph/useGraphData", { err });
         setError(err instanceof Error ? err.message : "Failed to fetch graph data");
         setNodes([]);
         setEdges([]);

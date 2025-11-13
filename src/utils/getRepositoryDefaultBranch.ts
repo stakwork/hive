@@ -1,4 +1,5 @@
 // Function to fetch repository default branch using authenticated request
+import { logger } from "@/lib/logger";
 export const getRepositoryDefaultBranch = async (repositoryUrl: string, workspaceSlug?: string): Promise<string | null> => {
   try {
     // Use our authenticated API endpoint to get repository info
@@ -9,15 +10,15 @@ export const getRepositoryDefaultBranch = async (repositoryUrl: string, workspac
     if (response.ok) {
       const repoData = await response.json();
       if (repoData.data?.default_branch) {
-        console.log(`Repository default branch: ${repoData.data.default_branch}`);
+        logger.debug(`Repository default branch: ${repoData.data.default_branch}`, "getRepositoryDefaultBranch");
         return repoData.data.default_branch;
       }
     }
 
-    console.error("Could not fetch repository default branch - setup cannot continue");
+    logger.error("Could not fetch repository default branch - setup cannot continue", "getRepositoryDefaultBranch");
     return null;
   } catch (error) {
-    console.error("Error fetching repository default branch:", error);
+    logger.error("Error fetching repository default branch:", "getRepositoryDefaultBranch", { error });
     return null;
   }
 };

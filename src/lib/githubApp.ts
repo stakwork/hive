@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 export interface AppInstallationStatus {
   installed: boolean;
@@ -96,12 +97,12 @@ export async function getUserAppTokens(
 
     // Development-only logging (localhost only)
     if (process.env.NODE_ENV === 'development' && process.env.NEXTAUTH_URL?.includes('localhost')) {
-      console.log('[DEV] GitHub App OAuth Token:', accessToken);
+      logger.debug("[DEV] GitHub App OAuth Token:", "githubApp", { accessToken });
     }
 
     return { accessToken, refreshToken };
   } catch (error) {
-    console.error("Failed to decrypt GitHub App tokens:", error);
+    logger.error("Failed to decrypt GitHub App tokens:", "githubApp", { error });
     return null;
   }
 }
@@ -169,7 +170,7 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
     // Get current tokens
     const currentTokens = await getUserAppTokens(userId);
     if (!currentTokens?.refreshToken) {
-      console.error("No refresh token found for user:", userId);
+      logger.error("No refresh token found for user:", "githubApp", { userId });
       return false;
     }
 
@@ -181,7 +182,7 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
 
     return true;
   } catch (error) {
-    console.error("Failed to refresh and update user app tokens:", error);
+    logger.error("Failed to refresh and update user app tokens:", "githubApp", { error });
     return false;
   }
 }
@@ -198,37 +199,34 @@ export async function checkRepositoryAccess(
   installationId: string,
   repositoryUrl: string,
 ): Promise<boolean> {
-  console.log("[REPO ACCESS] Starting repository access check:", {
+  logger.debug("[REPO ACCESS] Starting repository access check:", "githubApp", { {
     userId,
     installationId,
     repositoryUrl,
-  });
+  } });
 
   try {
     // Extract owner and repo name from repository URL
     const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
     if (!githubMatch) {
-      console.error("[REPO ACCESS] Invalid GitHub repository URL:", repositoryUrl);
+      logger.error("[REPO ACCESS] Invalid GitHub repository URL:", "githubApp", { repositoryUrl });
       return false;
     }
 
     const [, owner, repo] = githubMatch;
     const targetRepoFullName = `${owner}/${repo}`.toLowerCase();
-    console.log("[REPO ACCESS] Parsed repository:", { owner, repo, targetRepoFullName });
+    logger.debug("[REPO ACCESS] Parsed repository:", "githubApp", { { owner, repo, targetRepoFullName } });
 
     // Get access token for the specific GitHub owner
-    console.log("[REPO ACCESS] Getting tokens for user:", userId, "and owner:", owner);
+    logger.debug("[REPO ACCESS] Getting tokens for user:", "githubApp", { userId, "and owner:", owner });
     const tokens = await getUserAppTokens(userId, owner);
     if (!tokens?.accessToken) {
-      console.error("[REPO ACCESS] No access token available for user:", userId, "and owner:", owner);
+      logger.error("[REPO ACCESS] No access token available for user:", "githubApp", { userId, "and owner:", owner });
       return false;
     }
     console.log("[REPO ACCESS] Successfully retrieved access token");
 
-    console.log(
-      "[REPO ACCESS] Making GitHub API request to:",
-      `https://api.github.com/user/installations/${installationId}/repositories`,
-    );
+    logger.debug("[REPO ACCESS] Making GitHub API request to:", "githubApp", { `https://api.github.com/user/installations/${installationId}/repositories`, });
 
     // Fetch repositories accessible by this installation
     const response = await fetch(`https://api.github.com/user/installations/${installationId}/repositories`, {
@@ -239,12 +237,12 @@ export async function checkRepositoryAccess(
       },
     });
 
-    console.log("[REPO ACCESS] GitHub API response status:", response.status);
+    logger.debug("[REPO ACCESS] GitHub API response status:", "githubApp", { response.status });
 
     if (!response.ok) {
-      console.error("[REPO ACCESS] Failed to fetch installation repositories:", response.status, response.statusText);
+      logger.error("[REPO ACCESS] Failed to fetch installation repositories:", "githubApp", { response.status, response.statusText });
       const errorText = await response.text();
-      console.error("[REPO ACCESS] Error response body:", errorText);
+      logger.error("[REPO ACCESS] Error response body:", "githubApp", { errorText });
       return false;
     }
 
@@ -263,19 +261,19 @@ export async function checkRepositoryAccess(
         })) || [],
     });
 
-    console.log(`Looking for repository: ${targetRepoFullName}`);
+    logger.debug(`Looking for repository: ${targetRepoFullName}`, "githubApp");
 
     // Check if the target repository is in the list
     const hasAccess = data.repositories?.some(
       (repository: { full_name: string }) => repository.full_name.toLowerCase() === targetRepoFullName,
     );
 
-    console.log(`Repository access check result: ${hasAccess ? "GRANTED" : "DENIED"}`);
+    logger.debug(`Repository access check result: ${hasAccess ? "GRANTED" : "DENIED"}`, "githubApp");
 
-    console.log("[REPO ACCESS] Final result:", hasAccess ? "ACCESS GRANTED" : "ACCESS DENIED");
+    logger.debug("[REPO ACCESS] Final result:", "githubApp", { hasAccess ? "ACCESS GRANTED" : "ACCESS DENIED" });
     return !!hasAccess;
   } catch (error) {
-    console.error("[REPO ACCESS] Error during repository access check:", error);
+    logger.error("[REPO ACCESS] Error during repository access check:", "githubApp", { error });
     return false;
   }
 }

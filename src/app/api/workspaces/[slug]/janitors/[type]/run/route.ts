@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { createJanitorRun } from "@/services/janitor";
+import { logger } from "@/lib/logger";
 
 
 export async function POST(
@@ -36,7 +37,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    console.error("Error triggering janitor run:", error);
+    logger.error("Error triggering janitor run:", "run/route", { error });
     
     if (error instanceof Error) {
       if (error.message.includes("not enabled")) {

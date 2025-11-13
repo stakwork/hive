@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMiddlewareContext, requireAuth } from '@/lib/middleware/utils'
 import { getWorkspaceLogoService } from '@/services/workspace-logo'
+import { logger } from "@/lib/logger";
 
 export async function DELETE(
   request: NextRequest,
@@ -25,7 +26,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error removing workspace logo:', error)
+    logger.error("Error removing workspace logo:", "image/route", { error })
 
     if (error instanceof Error) {
       if (error.message.includes('not found')) {

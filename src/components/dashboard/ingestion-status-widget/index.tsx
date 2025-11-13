@@ -1,6 +1,7 @@
 "use client";
 
 import { useIngestStatus } from "@/hooks/useIngestStatus";
+import { logger } from "@/lib/logger";
 
 interface IngestionStatusWidgetProps {
   centered?: boolean;
@@ -13,8 +14,8 @@ export function IngestionStatusWidget({ centered = false }: IngestionStatusWidge
     return null;
   }
 
-  console.log('isIngesting---isIngesting--->', isIngesting);
-  console.log('statusMessage---statusMessage--->', statusMessage);
+  logger.debug("isIngesting---isIngesting--->", "ingestion-status-widget/index", { isIngesting });
+  logger.debug("statusMessage---statusMessage--->", "ingestion-status-widget/index", { statusMessage });
 
   const positionClasses = centered
     ? "relative"

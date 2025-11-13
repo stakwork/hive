@@ -24,6 +24,7 @@ import { PhaseItem } from "@/components/features/PhaseItem";
 import { AIButton } from "@/components/ui/ai-button";
 import type { PhaseListItem, GeneratedPhasesAndTickets } from "@/types/roadmap";
 import type { PhaseStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 interface PhaseSectionProps {
   featureId: string;
@@ -82,7 +83,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         setNewPhaseName("");
       }
     } catch (error) {
-      console.error("Failed to create phase:", error);
+      logger.error("Failed to create phase:", "features/PhaseSection", { error });
     } finally {
       setCreatingPhase(false);
     }
@@ -111,7 +112,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         onUpdate(updatedPhases);
       }
     } catch (error) {
-      console.error("Failed to update phase:", error);
+      logger.error("Failed to update phase:", "features/PhaseSection", { error });
       throw error;
     }
   };
@@ -129,7 +130,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
       const updatedPhases = phases.filter((p) => p.id !== phaseId);
       onUpdate(updatedPhases);
     } catch (error) {
-      console.error("Failed to delete phase:", error);
+      logger.error("Failed to delete phase:", "features/PhaseSection", { error });
       throw error;
     }
   };
@@ -175,7 +176,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
           throw new Error("Failed to reorder phases");
         }
       } catch (error) {
-        console.error("Failed to reorder phases:", error);
+        logger.error("Failed to reorder phases:", "features/PhaseSection", { error });
         // On error, could refetch to restore correct order
         // For now, the optimistic update stays
       }
@@ -213,7 +214,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
         setAiSuggestion(null);
       }
     } catch (error) {
-      console.error("Failed to accept AI suggestion:", error);
+      logger.error("Failed to accept AI suggestion:", "features/PhaseSection", { error });
     } finally {
       setAccepting(false);
     }

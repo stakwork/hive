@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getMiddlewareContext, requireAuth } from '@/lib/middleware/utils'
 import { getWorkspaceLogoService } from '@/services/workspace-logo'
 import { workspaceLogoUploadRequestSchema } from '@/lib/schemas/workspace'
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -33,7 +34,7 @@ export async function POST(
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Error generating presigned upload URL:', error)
+    logger.error("Error generating presigned upload URL:", "upload-url/route", { error })
 
     if (error && typeof error === 'object' && 'issues' in error) {
       return NextResponse.json(

@@ -4,6 +4,7 @@ import { WorkflowStatus } from "@prisma/client";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
+import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";
 
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     const finalTaskId = task_id || taskIdFromQuery;
 
     if (!finalTaskId) {
-      console.error("No task_id provided in webhook");
+      logger.error("No task_id provided in webhook", "webhook/route");
       return NextResponse.json(
         { error: "task_id is required" },
         { status: 400 },
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!project_status) {
-      console.error("No project_status provided in webhook");
+      logger.error("No project_status provided in webhook", "webhook/route");
       return NextResponse.json(
         { error: "project_status is required" },
         { status: 400 },
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!task) {
-      console.error(`Task not found: ${finalTaskId}`);
+      logger.error(`Task not found: ${finalTaskId}`, "webhook/route");
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
         eventPayload,
       );
     } catch (error) {
-      console.error("Error broadcasting to Pusher:", error);
+      logger.error("Error broadcasting to Pusher:", "webhook/route", { error });
     }
 
     return NextResponse.json(
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error processing Stakwork webhook:", error);
+    logger.error("Error processing Stakwork webhook:", "webhook/route", { error });
     return NextResponse.json(
       { error: "Failed to process webhook" },
       { status: 500 },

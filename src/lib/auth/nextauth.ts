@@ -485,41 +485,41 @@ export async function getGithubUsernameAndPAT(
   userId: string,
   workspaceSlug?: string,
 ): Promise<GithubUsernameAndPAT | null> {
-  console.log(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`);
+  logger.debug(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`, "auth/nextauth");
 
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
-    console.log(`[getGithubUsernameAndPAT] User not found: ${userId}`);
+    logger.debug(`[getGithubUsernameAndPAT] User not found: ${userId}`, "auth/nextauth");
     return null;
   }
 
   // Check for mock user (case insensitive, supports subdomains)
   if (user.email?.toLowerCase().includes("@mock.dev")) {
-    console.log(`[getGithubUsernameAndPAT] Mock user detected: ${user.email}, skipping GitHub auth`);
+    logger.debug(`[getGithubUsernameAndPAT] Mock user detected: ${user.email}, skipping GitHub auth`, "auth/nextauth");
     return null;
   }
 
-  console.log(`[getGithubUsernameAndPAT] User found: ${user.email}`);
+  logger.debug(`[getGithubUsernameAndPAT] User found: ${user.email}`, "auth/nextauth");
 
   // Get GitHub username from GitHubAuth
   const githubAuth = await db.gitHubAuth.findUnique({ where: { userId } });
   if (!githubAuth) {
-    console.log(`[getGithubUsernameAndPAT] No GitHubAuth record found for userId: ${userId}`);
+    logger.debug(`[getGithubUsernameAndPAT] No GitHubAuth record found for userId: ${userId}`, "auth/nextauth");
     return null;
   }
 
   // Check for valid username
   if (!githubAuth.githubUsername || githubAuth.githubUsername.trim() === "") {
-    console.log(`[getGithubUsernameAndPAT] Invalid or empty GitHub username for userId: ${userId}`);
+    logger.debug(`[getGithubUsernameAndPAT] Invalid or empty GitHub username for userId: ${userId}`, "auth/nextauth");
     return null;
   }
 
-  console.log(`[getGithubUsernameAndPAT] GitHub username found: ${githubAuth.githubUsername}`);
+  logger.debug(`[getGithubUsernameAndPAT] GitHub username found: ${githubAuth.githubUsername}`, "auth/nextauth");
 
   // If no workspace provided, use user's OAuth token from Account table
   if (!workspaceSlug) {
-    console.log(`[getGithubUsernameAndPAT] No workspace provided, using OAuth token`);
+    logger.debug(`[getGithubUsernameAndPAT] No workspace provided, using OAuth token`, "auth/nextauth");
 
     const account = await db.account.findFirst({
       where: {
@@ -529,17 +529,17 @@ export async function getGithubUsernameAndPAT(
     });
 
     if (!account?.access_token) {
-      console.log(`[getGithubUsernameAndPAT] No GitHub account or access token found for userId: ${userId}`);
+      logger.debug(`[getGithubUsernameAndPAT] No GitHub account or access token found for userId: ${userId}`, "auth/nextauth");
       return null;
     }
 
-    console.log(`[getGithubUsernameAndPAT] GitHub account found, attempting to decrypt OAuth token`);
+    logger.debug(`[getGithubUsernameAndPAT] GitHub account found, attempting to decrypt OAuth token`, "auth/nextauth");
 
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
 
-      console.log(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`);
+      logger.debug(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`, "auth/nextauth");
       return {
         username: githubAuth.githubUsername,
         token: token,
@@ -550,7 +550,7 @@ export async function getGithubUsernameAndPAT(
     }
   }
 
-  console.log(`[getGithubUsernameAndPAT] Workspace provided: ${workspaceSlug}, looking up workspace and source control org`);
+  logger.debug(`[getGithubUsernameAndPAT] Workspace provided: ${workspaceSlug}, looking up workspace and source control org`, "auth/nextauth");
 
   // Get workspace and its source control org
   const workspace = await db.workspace.findUnique({
@@ -561,12 +561,12 @@ export async function getGithubUsernameAndPAT(
   });
 
   if (!workspace) {
-    console.log(`[getGithubUsernameAndPAT] Workspace not found: ${workspaceSlug}`);
+    logger.debug(`[getGithubUsernameAndPAT] Workspace not found: ${workspaceSlug}`, "auth/nextauth");
     return null;
   }
 
   if (!workspace.sourceControlOrg) {
-    console.log(`[getGithubUsernameAndPAT] No source control org linked to workspace: ${workspaceSlug}, falling back to OAuth token`);
+    logger.debug(`[getGithubUsernameAndPAT] No source control org linked to workspace: ${workspaceSlug}, falling back to OAuth token`, "auth/nextauth");
 
     const account = await db.account.findFirst({
       where: {
@@ -576,14 +576,14 @@ export async function getGithubUsernameAndPAT(
     });
 
     if (!account?.access_token) {
-      console.log(`[getGithubUsernameAndPAT] No GitHub account or access token found for fallback, userId: ${userId}`);
+      logger.debug(`[getGithubUsernameAndPAT] No GitHub account or access token found for fallback, userId: ${userId}`, "auth/nextauth");
       return null;
     }
 
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
-      console.log(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`);
+      logger.debug(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`, "auth/nextauth");
       return {
         username: githubAuth.githubUsername,
         token: token,
@@ -594,7 +594,7 @@ export async function getGithubUsernameAndPAT(
     }
   }
 
-  console.log(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`);
+  logger.debug(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`, "auth/nextauth");
 
   // Get user's token for this source control org
   const sourceControlToken = await db.sourceControlToken.findUnique({
@@ -607,17 +607,17 @@ export async function getGithubUsernameAndPAT(
   });
 
   if (!sourceControlToken?.token) {
-    console.log(`[getGithubUsernameAndPAT] No source control token found for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`);
+    logger.debug(`[getGithubUsernameAndPAT] No source control token found for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`, "auth/nextauth");
     return null;
   }
 
-  console.log(`[getGithubUsernameAndPAT] Source control token found, attempting to decrypt`);
+  logger.debug(`[getGithubUsernameAndPAT] Source control token found, attempting to decrypt`, "auth/nextauth");
 
   try {
     const encryptionService = EncryptionService.getInstance();
     const token = encryptionService.decryptField("source_control_token", sourceControlToken.token);
 
-    console.log(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`);
+    logger.debug(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`, "auth/nextauth");
     return {
       username: githubAuth.githubUsername,
       token: token,

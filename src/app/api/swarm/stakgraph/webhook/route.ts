@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { StakgraphWebhookService } from "@/services/swarm/StakgraphWebhookService";
 import { WebhookPayload } from "@/types";
+import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";
 
@@ -9,13 +10,13 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get("x-signature");
     const requestIdHeader = request.headers.get("x-request-id") || request.headers.get("idempotency-key");
 
-    console.log("[StakgraphWebhook] Received", {
+    logger.debug("[StakgraphWebhook] Received", "webhook/route", { {
       hasSignature: !!signature,
       requestIdHeader,
-    });
+    } });
 
     if (!signature) {
-      console.error("[StakgraphWebhook] Missing signature");
+      logger.error("[StakgraphWebhook] Missing signature", "webhook/route");
       return NextResponse.json({ success: false, message: "Missing signature" }, { status: 401 });
     }
 
@@ -25,34 +26,34 @@ export async function POST(request: NextRequest) {
     try {
       payload = JSON.parse(rawBody) as WebhookPayload;
     } catch (error) {
-      console.error("[StakgraphWebhook] Invalid JSON", { error });
+      logger.error("[StakgraphWebhook] Invalid JSON", "webhook/route", { { error } });
       return NextResponse.json({ success: false, message: "Invalid JSON" }, { status: 400 });
     }
 
-    console.log("[StakgraphWebhook] Payload received", {
+    logger.debug("[StakgraphWebhook] Payload received", "webhook/route", { {
       requestId: payload.request_id,
       status: payload.status,
       requestIdHeader,
-    });
+    } });
 
     const webhookService = new StakgraphWebhookService();
     const result = await webhookService.processWebhook(signature, rawBody, payload, requestIdHeader);
 
     if (!result.success) {
-      console.error("[StakgraphWebhook] Processing failed", {
+      logger.error("[StakgraphWebhook] Processing failed", "webhook/route", { {
         requestId: payload.request_id,
         status: result.status,
         message: result.message,
-      });
+      } });
       return NextResponse.json({ success: false, message: result.message }, { status: result.status });
     }
 
-    console.log("[StakgraphWebhook] Processing succeeded", {
+    logger.debug("[StakgraphWebhook] Processing succeeded", "webhook/route", { {
       requestId: payload.request_id,
-    });
+    } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[StakgraphWebhook] Unhandled error", { error });
+    logger.error("[StakgraphWebhook] Unhandled error", "webhook/route", { { error } });
     return NextResponse.json({ success: false, message: "Failed to process webhook" }, { status: 500 });
   }
 }

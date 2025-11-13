@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { logger } from "@/lib/logger";
 
 interface SpeechRecognitionHook {
   isListening: boolean;
@@ -44,7 +45,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         };
 
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-          console.error("Speech recognition error:", event.error);
+          logger.error("Speech recognition error:", "useSpeechRecognition", { event.error });
           setIsListening(false);
         };
 
@@ -78,7 +79,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
           try {
             recognitionRef.current?.start();
           } catch (error) {
-            console.error("Error starting speech recognition:", error);
+            logger.error("Error starting speech recognition:", "useSpeechRecognition", { error });
             isStartingRef.current = false;
             return false;
           }
@@ -97,7 +98,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
           try {
             recognitionRef.current?.stop();
           } catch (error) {
-            console.error("Error stopping speech recognition:", error);
+            logger.error("Error stopping speech recognition:", "useSpeechRecognition", { error });
           }
           return false;
         }

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelativeTime } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 interface TaskCardProps {
   task: TaskData;
@@ -42,7 +43,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         throw new Error("Failed to update task");
       }
     } catch (error) {
-      console.error("Error updating task:", error);
+      logger.error("Error updating task:", "tasks/TaskCard", { error });
     } finally {
       setIsUpdating(false);
     }

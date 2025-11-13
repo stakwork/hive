@@ -17,6 +17,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Loader2, Phone } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+import { logger } from "@/lib/logger";
   Table,
   TableBody,
   TableCell,
@@ -52,7 +53,7 @@ export default function CallsPage() {
       const data = await response.json();
       window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      console.error('Error generating call link:', err);
+      logger.error("Error generating call link:", "calls/page", { err });
       alert(err instanceof Error ? err.message : 'Failed to start call');
     } finally {
       setGeneratingLink(false);
@@ -84,7 +85,7 @@ export default function CallsPage() {
         setCalls(data.calls);
         setHasMore(data.hasMore);
       } catch (err) {
-        console.error("Error fetching calls:", err);
+        logger.error("Error fetching calls:", "calls/page", { err });
         setError(
           err instanceof Error ? err.message : "Failed to load call recordings",
         );

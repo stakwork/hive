@@ -24,6 +24,7 @@ import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
 import type { PhaseWithTickets, TicketListItem } from "@/types/roadmap";
 import type { PhaseStatus, TaskStatus, Priority } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 export default function PhaseDetailPage() {
   const router = useRouter();
@@ -102,7 +103,7 @@ export default function PhaseDetailPage() {
         updatePhase(result.data);
       }
     } catch (error) {
-      console.error("Failed to update phase:", error);
+      logger.error("Failed to update phase:", "[phaseId]/page", { error });
     }
   };
 
@@ -189,7 +190,7 @@ export default function PhaseDetailPage() {
 
       handleBackClick();
     } catch (error) {
-      console.error("Failed to delete phase:", error);
+      logger.error("Failed to delete phase:", "[phaseId]/page", { error });
     }
   };
 

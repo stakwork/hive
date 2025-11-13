@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { createUserStory } from "@/services/roadmap";
 import type {
+import { logger } from "@/lib/logger";
   CreateUserStoryRequest,
   UserStoryListResponse,
   UserStoryResponse,
@@ -109,7 +110,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching user stories:", error);
+    logger.error("Error fetching user stories:", "user-stories/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch user stories" },
       { status: 500 }
@@ -139,7 +140,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error creating user story:", error);
+    logger.error("Error creating user story:", "user-stories/route", { error });
     const message = error instanceof Error ? error.message : "Failed to create user story";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

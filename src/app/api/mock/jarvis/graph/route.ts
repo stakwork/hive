@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
       data: response,
     });
   } catch (error) {
-    console.error("Error generating mock graph data:", error);
+    logger.error("Error generating mock graph data:", "graph/route", { error });
     return NextResponse.json({ success: false, message: "Failed to generate mock data" }, { status: 500 });
   }
 }

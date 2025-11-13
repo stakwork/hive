@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { logger } from "@/lib/logger";
 
 export interface WorkspaceMember {
   id: string;
@@ -66,7 +67,7 @@ export function useWorkspaceMembers(
 
       setMembers(allMembers);
     } catch (err) {
-      console.error("Error fetching workspace members:", err);
+      logger.error("Error fetching workspace members:", "useWorkspaceMembers", { err });
       setError(err instanceof Error ? err.message : "Failed to load members");
     } finally {
       setLoading(false);

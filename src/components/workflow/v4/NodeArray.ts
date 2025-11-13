@@ -3,6 +3,7 @@ import Edges from './Edges';
 import { HumanIcon, AutomatedIcon, ApiIcon, CheckBoxIcon, WarningIcon, ErrorIcon, EditIcon, TrueCheck, FalseCross } from './StakIcons';
 import moment from 'moment';
 import { WorkflowTransition } from '@/types/stakwork/workflow';
+import { logger } from "@/lib/logger";
 
 interface Position {
   x: number;
@@ -58,7 +59,7 @@ class NodeArray {
     this.connecting_edges = connecting_edges;
     this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, 'system.succeed');
 
-    console.log("connected_to_end", this.connected_to_end);
+    logger.debug("connected_to_end", "v4/NodeArray", { this.connected_to_end });
 
     this.show_only = show_only;
     this.mode = mode;

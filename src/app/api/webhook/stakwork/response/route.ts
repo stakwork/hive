@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { StakworkRunWebhookSchema } from "@/types/stakwork";
 import { processStakworkRunWebhook } from "@/services/stakwork-run";
 import { StakworkRunType } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";
 
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     const validationResult = StakworkRunWebhookSchema.safeParse(body);
 
     if (!validationResult.success) {
-      console.error("Invalid webhook payload:", validationResult.error);
+      logger.error("Invalid webhook payload:", "response/route", { validationResult.error });
       return NextResponse.json(
         {
           error: "Invalid webhook payload",
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error processing Stakwork webhook:", error);
+    logger.error("Error processing Stakwork webhook:", "response/route", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to process webhook";

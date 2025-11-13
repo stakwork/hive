@@ -7,6 +7,7 @@ import {
   updateWorkspace,
 } from "@/services/workspace";
 import { updateWorkspaceSchema } from "@/lib/schemas/workspace";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -41,7 +42,7 @@ export async function GET(
 
     return NextResponse.json({ workspace });
   } catch (error) {
-    console.error("Error fetching workspace by slug:", error);
+    logger.error("Error fetching workspace by slug:", "[slug]/route", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
@@ -75,7 +76,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting workspace:", error);
+    logger.error("Error deleting workspace:", "[slug]/route", { error });
 
     const message =
       error instanceof Error ? error.message : "Internal server error";
@@ -128,7 +129,7 @@ export async function PUT(
       slugChanged: validatedData.slug !== slug ? validatedData.slug : null
     });
   } catch (error) {
-    console.error("Error updating workspace:", error);
+    logger.error("Error updating workspace:", "[slug]/route", { error });
 
     // Handle validation errors
     if (error && typeof error === "object" && "issues" in error) {

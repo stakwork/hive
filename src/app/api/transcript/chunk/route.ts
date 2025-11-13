@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/env";
 import { StakworkWorkflowPayload } from "@/app/api/chat/message/route";
+import { logger } from "@/lib/logger";
 
 async function sendChunkToStakwork(chunk: string) {
   try {
@@ -46,14 +47,14 @@ async function sendChunkToStakwork(chunk: string) {
     });
 
     if (!response.ok) {
-      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+      logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "chunk/route");
       return { success: false, error: response.statusText };
     }
 
     const result = await response.json();
     return { success: result.success, data: result.data };
   } catch (error) {
-    console.error("Error calling Stakwork:", error);
+    logger.error("Error calling Stakwork:", "chunk/route", { error });
     return { success: false, error: String(error) };
   }
 }
@@ -64,14 +65,14 @@ export async function POST(request: NextRequest) {
     const { chunk, wordCount, workspaceSlug } = body;
 
     console.log("=== Transcript Chunk Received ===");
-    console.log(`Workspace: ${workspaceSlug}`);
-    console.log(`Word Count: ${wordCount}`);
-    console.log(`Chunk: ${chunk}`);
+    logger.debug(`Workspace: ${workspaceSlug}`, "chunk/route");
+    logger.debug(`Word Count: ${wordCount}`, "chunk/route");
+    logger.debug(`Chunk: ${chunk}`, "chunk/route");
     console.log("================================\n");
 
     const result = await sendChunkToStakwork(chunk);
     if (!result.success) {
-      console.error("Failed to send chunk to Stakwork:", result.error);
+      logger.error("Failed to send chunk to Stakwork:", "chunk/route", { result.error });
       return NextResponse.json({ error: "Failed to send chunk to Stakwork" }, { status: 500 });
     }
 
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
       received: wordCount,
     });
   } catch (error) {
-    console.error("Error processing transcript chunk:", error);
+    logger.error("Error processing transcript chunk:", "chunk/route", { error });
     return NextResponse.json({ error: "Failed to process chunk" }, { status: 500 });
   }
 }

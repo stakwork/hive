@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { UpdateStakworkRunDecisionSchema } from "@/types/stakwork";
 import { updateStakworkRunDecision } from "@/services/stakwork-run";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -77,7 +78,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating decision:", error);
+    logger.error("Error updating decision:", "decision/route", { error });
 
     const errorMessage =
       error instanceof Error ? error.message : "Failed to update decision";

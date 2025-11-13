@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { Trash2, AlertTriangle } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface DeleteWorkspaceProps {
   workspaceSlug: string;
@@ -71,7 +72,7 @@ export function DeleteWorkspace({
       router.push("/workspaces");
       router.refresh();
     } catch (error) {
-      console.error("Error deleting workspace:", error);
+      logger.error("Error deleting workspace:", "DeleteWorkspace", { error });
       toast({
         title: "Error",
         description:

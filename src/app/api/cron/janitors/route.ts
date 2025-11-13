@@ -1,5 +1,6 @@
 import { executeScheduledJanitorRuns } from "@/services/janitor-cron";
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 /**
  * GET endpoint for Vercel cron execution and health check
@@ -27,13 +28,13 @@ export async function GET() {
 
     // Log execution results
     if (result.success) {
-      console.log(`[CronAPI] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs`);
+      logger.debug(`[CronAPI] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs`, "janitors/route");
     } else {
-      console.error(`[CronAPI] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, ${result.errors.length} errors`);
+      logger.error(`[CronAPI] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, ${result.errors.length} errors`, "janitors/route");
 
       // Log individual errors
       result.errors.forEach((error, index) => {
-        console.error(`[CronAPI] Error ${index + 1}: ${error.workspaceSlug}/${error.janitorType} - ${error.error}`);
+        logger.error(`[CronAPI] Error ${index + 1}: ${error.workspaceSlug}/${error.janitorType} - ${error.error}`, "janitors/route");
       });
     }
 
@@ -48,7 +49,7 @@ export async function GET() {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[CronAPI] Unhandled error:", errorMessage);
+    logger.error("[CronAPI] Unhandled error:", "janitors/route", { errorMessage });
 
     return NextResponse.json(
       {

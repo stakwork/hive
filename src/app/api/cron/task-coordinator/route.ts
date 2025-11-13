@@ -1,5 +1,6 @@
 import { executeTaskCoordinatorRuns } from "@/services/task-coordinator-cron";
 import { NextRequest, NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 /**
  * GET endpoint for Vercel cron execution and health check
@@ -7,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   console.log("Task Coordinator GET called");
-  console.log(request);
+  logger.debug("Debug output", "task-coordinator/route", { request });
 
   try {
     // Check if task coordinator is enabled
@@ -30,13 +31,13 @@ export async function GET(request: NextRequest) {
 
     // Log execution results
     if (result.success) {
-      console.log(`[TaskCoordinatorCron] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks`);
+      logger.debug(`[TaskCoordinatorCron] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks`, "task-coordinator/route");
     } else {
-      console.error(`[TaskCoordinatorCron] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks, ${result.errors.length} errors`);
+      logger.error(`[TaskCoordinatorCron] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks, ${result.errors.length} errors`, "task-coordinator/route");
 
       // Log individual errors
       result.errors.forEach((error, index) => {
-        console.error(`[TaskCoordinatorCron] Error ${index + 1}: ${error.workspaceSlug} - ${error.error}`);
+        logger.error(`[TaskCoordinatorCron] Error ${index + 1}: ${error.workspaceSlug} - ${error.error}`, "task-coordinator/route");
       });
     }
 
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[TaskCoordinatorCron] Unhandled error:", errorMessage);
+    logger.error("[TaskCoordinatorCron] Unhandled error:", "task-coordinator/route", { errorMessage });
 
     return NextResponse.json(
       {

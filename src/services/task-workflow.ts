@@ -4,6 +4,7 @@ import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
+import { logger } from "@/lib/logger";
 
 /**
  * Create a task and immediately trigger Stakwork workflow
@@ -120,7 +121,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     try {
       featureContext = await buildFeatureContext(task.featureId, task.phaseId);
     } catch (error) {
-      console.error("Error building feature context:", error);
+      logger.error("Error building feature context:", "task-workflow", { error });
       // Continue without feature context if it fails
     }
   }
@@ -271,7 +272,7 @@ export async function startTaskWorkflow(params: {
     try {
       featureContext = await buildFeatureContext(task.featureId, task.phaseId);
     } catch (error) {
-      console.error("Error building feature context:", error);
+      logger.error("Error building feature context:", "task-workflow", { error });
       // Continue without feature context if it fails
     }
   }
@@ -393,7 +394,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         if (stakworkData.data?.project_id) {
           updateData.stakworkProjectId = stakworkData.data.project_id;
         } else {
-          console.warn("No project_id found in Stakwork response:", stakworkData);
+          logger.warn("No project_id found in Stakwork response:", "task-workflow", { stakworkData });
         }
 
         // Update task status to IN_PROGRESS if it's currently TODO
@@ -417,7 +418,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         });
       }
     } catch (error) {
-      console.error("Error calling Stakwork:", error);
+      logger.error("Error calling Stakwork:", "task-workflow", { error });
       await db.task.update({
         where: { id: taskId },
         data: { workflowStatus: "FAILED" },
@@ -556,7 +557,7 @@ export async function callStakworkAPI(params: {
   });
 
   if (!response.ok) {
-    console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+    logger.error(`Failed to send message to Stakwork: ${response.statusText}`, "task-workflow");
     return { success: false, error: response.statusText };
   }
 

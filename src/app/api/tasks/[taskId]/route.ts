@@ -5,6 +5,7 @@ import { startTaskWorkflow } from "@/services/task-workflow";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { logger } from "@/lib/logger";
 
 export async function PATCH(
   request: NextRequest,
@@ -173,9 +174,9 @@ export async function PATCH(
           );
         }
 
-        console.log(`Task status updated and broadcasted: ${taskId}`);
+        logger.debug(`Task status updated and broadcasted: ${taskId}`, "[taskId]/route");
       } catch (error) {
-        console.error("Error broadcasting status update to Pusher:", error);
+        logger.error("Error broadcasting status update to Pusher:", "[taskId]/route", { error });
         // Don't fail the request if Pusher fails
       }
 
@@ -197,7 +198,7 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating task:", error);
+    logger.error("Error updating task:", "[taskId]/route", { error });
     return NextResponse.json(
       { error: "Failed to update task" },
       { status: 500 }

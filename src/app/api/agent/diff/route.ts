@@ -7,6 +7,7 @@ import { type ApiError } from "@/types";
 import { getPodFromPool, POD_PORTS } from "@/lib/pods";
 import { ActionResult } from "@/lib/chat";
 import { ChatRole, ChatStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { podId, workspaceId, taskId } = body;
-    console.log(">>> [DIFF] Request params:", { podId, workspaceId, taskId, userId });
+    logger.debug(">>> [DIFF] Request params:", "diff/route", { { podId, workspaceId, taskId, userId } });
 
     // Validate required fields
     if (!podId) {
@@ -60,11 +61,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      console.log(">>> [DIFF] Workspace not found:", workspaceId);
+      logger.debug(">>> [DIFF] Workspace not found:", "diff/route", { workspaceId });
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    console.log(">>> [DIFF] Workspace found:", { id: workspace.id, hasSwarm: !!workspace.swarm });
+    logger.debug(">>> [DIFF] Workspace found:", "diff/route", { { id: workspace.id, hasSwarm: !!workspace.swarm } });
 
     if (process.env.MOCK_BROWSER_URL || process.env.CUSTOM_GOOSE_URL) {
       console.log(">>> [DIFF] Using mock mode");
@@ -117,7 +118,7 @@ index 1234567..abcdefg 100644
 
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
-    console.log(">>> [DIFF] Access check:", { isOwner, isMember });
+    logger.debug(">>> [DIFF] Access check:", "diff/route", { { isOwner, isMember } });
 
     if (!isOwner && !isMember) {
       console.log(">>> [DIFF] Access denied");
@@ -140,19 +141,19 @@ index 1234567..abcdefg 100644
 
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-    console.log(">>> [DIFF] Getting pod from pool, podId:", podId);
+    logger.debug(">>> [DIFF] Getting pod from pool, podId:", "diff/route", { podId });
 
     // Fetch pod details to get port mappings and password
     let podWorkspace;
     try {
       podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-      console.log(">>> [DIFF] Pod workspace retrieved:", {
+      logger.debug(">>> [DIFF] Pod workspace retrieved:", "diff/route", { {
         id: podWorkspace.id,
         state: podWorkspace.state,
         hasControlPort: !!podWorkspace.portMappings[POD_PORTS.CONTROL],
-      });
+      } });
     } catch (error) {
-      console.error(">>> [DIFF] Failed to get pod from pool:", error);
+      logger.error(">>> [DIFF] Failed to get pod from pool:", "diff/route", { error });
       throw error;
     }
 
@@ -166,7 +167,7 @@ index 1234567..abcdefg 100644
       );
     }
 
-    console.log(">>> [DIFF] Fetching diff from control port:", controlPortUrl);
+    logger.debug(">>> [DIFF] Fetching diff from control port:", "diff/route", { controlPortUrl });
 
     // GET /diff from the control port
     const diffUrl = `${controlPortUrl}/diff`;
@@ -179,7 +180,7 @@ index 1234567..abcdefg 100644
 
     if (!diffResponse.ok) {
       const errorText = await diffResponse.text();
-      console.error(`>>> [DIFF] Failed to fetch diff: ${diffResponse.status} - ${errorText}`);
+      logger.error(`>>> [DIFF] Failed to fetch diff: ${diffResponse.status} - ${errorText}`, "diff/route");
       return NextResponse.json(
         { error: `Failed to fetch diff: ${diffResponse.status}`, details: errorText },
         { status: diffResponse.status },
@@ -187,7 +188,7 @@ index 1234567..abcdefg 100644
     }
 
     const diffs: ActionResult[] = await diffResponse.json();
-    console.log(">>> [DIFF] Diff fetched successfully, count:", diffs.length);
+    logger.debug(">>> [DIFF] Diff fetched successfully, count:", "diff/route", { diffs.length });
 
     // If there are no diffs, don't create an artifact
     if (!diffs || diffs.length === 0) {
@@ -226,7 +227,7 @@ index 1234567..abcdefg 100644
       },
     });
 
-    console.log(">>> [DIFF] Chat message with DIFF artifact created:", chatMessage.id);
+    logger.debug(">>> [DIFF] Chat message with DIFF artifact created:", "diff/route", { chatMessage.id });
 
     return NextResponse.json(
       {
@@ -236,7 +237,7 @@ index 1234567..abcdefg 100644
       { status: 200 },
     );
   } catch (error) {
-    console.error(">>> [DIFF] Error fetching diff:", error);
+    logger.error(">>> [DIFF] Error fetching diff:", "diff/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

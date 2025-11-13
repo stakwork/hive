@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import {
+import { logger } from "@/lib/logger";
   CallRecording,
   CallsResponse,
   JarvisSearchResponse,
@@ -137,7 +138,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Error fetching calls:", error);
+    logger.error("Error fetching calls:", "calls/route", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

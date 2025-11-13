@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import type { WorkspaceWithRole } from "@/types/workspace";
+import { logger } from "@/lib/logger";
 
 interface WorkspaceLogosMap {
   [workspaceId: string]: string;

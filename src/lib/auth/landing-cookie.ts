@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 export const LANDING_COOKIE_NAME = "landing_verified";
 export const LANDING_COOKIE_MAX_AGE = 60 * 60 * 24; // 24 hours in seconds
 
@@ -89,7 +90,7 @@ export async function verifyCookie(signedValue: string): Promise<boolean> {
     // Constant-time comparison
     return constantTimeCompare(signature, expectedSignature);
   } catch (error) {
-    console.error("Error verifying landing cookie:", error);
+    logger.error("Error verifying landing cookie:", "auth/landing-cookie", { error });
     return false;
   }
 }

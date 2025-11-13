@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
-    console.error("Error creating Stakwork project:", error);
+    logger.error("Error creating Stakwork project:", "create-project/route", { error });
 
     // Handle ApiError specifically
     if (error && typeof error === "object" && "status" in error) {

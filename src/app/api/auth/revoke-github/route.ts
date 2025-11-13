@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -57,14 +58,11 @@ export async function POST() {
         );
 
         if (!response.ok) {
-          console.error(
-            "Failed to revoke GitHub token:",
-            response.status,
-            response.statusText,
-          );
+          logger.error("Failed to revoke GitHub token:", "revoke-github/route", { response.status,
+            response.statusText, });
         }
       } catch (error) {
-        console.error("Error revoking GitHub token:", error);
+        logger.error("Error revoking GitHub token:", "revoke-github/route", { error });
       }
     }
 
@@ -91,15 +89,12 @@ export async function POST() {
         },
       });
     } catch (error) {
-      console.error(
-        "Sessions already deleted or error deleting sessions:",
-        error,
-      );
+      logger.error("Sessions already deleted or error deleting sessions:", "revoke-github/route", { error, });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error revoking GitHub access:", error);
+    logger.error("Error revoking GitHub access:", "revoke-github/route", { error });
     return NextResponse.json(
       { error: "Failed to revoke GitHub access" },
       { status: 500 },

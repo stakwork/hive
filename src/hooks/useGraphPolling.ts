@@ -2,6 +2,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 
 interface ApiResponse {
   success: boolean;
@@ -57,13 +58,13 @@ export function useGraphPolling({
       if (latestNode?.date_added_to_graph) {
         const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
         pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
-        console.log(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`);
+        logger.debug(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`, "useGraphPolling");
       } else {
-        console.log(`Polling: No existing nodes, using base endpoint`);
+        logger.debug(`Polling: No existing nodes, using base endpoint`, "useGraphPolling");
       }
 
       const requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(pollingEndpoint)}`;
-      console.log(`Polling endpoint: ${pollingEndpoint}`);
+      logger.debug(`Polling endpoint: ${pollingEndpoint}`, "useGraphPolling");
 
       const response = await fetch(requestUrl, {
         signal: abortControllerRef.current.signal
@@ -85,13 +86,13 @@ export function useGraphPolling({
 
         // Log polling results
         if (data.data.nodes.length > 0) {
-          console.log(`Polling: Found ${data.data.nodes.length} nodes, ${data.data.edges?.length || 0} edges`);
+          logger.debug(`Polling: Found ${data.data.nodes.length} nodes, ${data.data.edges?.length || 0} edges`, "useGraphPolling");
         }
       }
     } catch (err) {
       // Don't log error if request was aborted (user navigated away)
       if (err instanceof Error && err.name !== 'AbortError') {
-        console.error("Failed to fetch latest nodes:", err);
+        logger.error("Failed to fetch latest nodes:", "useGraphPolling", { err });
       }
     } finally {
       // Always mark request as finished, even if there was an error

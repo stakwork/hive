@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const data = await mockResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Error fetching topics:", error);
+    logger.error("Error fetching topics:", "topics/route", { error });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

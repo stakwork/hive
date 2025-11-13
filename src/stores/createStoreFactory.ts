@@ -1,6 +1,7 @@
 import { createDataStore } from "./createDataStore";
 import { createGraphStore } from "./createGraphStore";
 import { createSimulationStore } from "./createSimulationStore";
+import { logger } from "@/lib/logger";
 
 type StoreBundle = {
   data: ReturnType<typeof createDataStore>;
@@ -33,8 +34,8 @@ export function getStoreRegistryInfo() {
 export function logStoreInstances() {
   const info = getStoreRegistryInfo();
   console.log('=== STORE REGISTRY INFO ===');
-  console.log(`Total instances: ${info.totalInstances}`);
-  console.log('Store IDs:', info.storeIds);
+  logger.debug(`Total instances: ${info.totalInstances}`, "createStoreFactory");
+  logger.debug("Store IDs:", "createStoreFactory", { info.storeIds });
   console.table(info.entries.map(entry => ({
     id: entry.id,
     hasStores: `${entry.hasData ? 'D' : ''}${entry.hasGraph ? 'G' : ''}${entry.hasSimulation ? 'S' : ''}`,

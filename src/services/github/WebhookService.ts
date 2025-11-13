@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { logger } from "@/lib/logger";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -111,7 +112,7 @@ export class WebhookService extends BaseServiceClass {
         throw new Error("WEBHOOK_CREATION_FAILED");
       }
     } catch (error) {
-      console.error("Failed to detect repository default branch:", error);
+      logger.error("Failed to detect repository default branch:", "github/WebhookService", { error });
     }
     return null;
   }
@@ -163,12 +164,12 @@ export class WebhookService extends BaseServiceClass {
 
       if (webhookExists) {
         const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
-        console.log("=> Using existing webhook for workspace", repoRec.id);
+        logger.debug("=> Using existing webhook for workspace", "github/WebhookService", { repoRec.id });
         return { id: webhookId, secret: storedSecret };
       }
 
       // Webhook was deleted in GitHub UI - need to create a new one
-      console.log("=> Webhook was deleted in GitHub, creating new webhook", repoRec.id);
+      logger.debug("=> Webhook was deleted in GitHub, creating new webhook", "github/WebhookService", { repoRec.id });
     }
 
     // Create a new webhook for this workspace
@@ -183,7 +184,7 @@ export class WebhookService extends BaseServiceClass {
       active,
     });
 
-    console.log("=> Creating new webhook for workspace", repoRec.id);
+    logger.debug("=> Creating new webhook for workspace", "github/WebhookService", { repoRec.id });
     await db.repository.update({
       where: { id: repoRec.id },
       data: {
@@ -253,7 +254,7 @@ export class WebhookService extends BaseServiceClass {
       });
       return res.ok;
     } catch (error) {
-      console.error("Failed to verify webhook exists:", error);
+      logger.error("Failed to verify webhook exists:", "github/WebhookService", { error });
       return false;
     }
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { logger } from "@/lib/logger";
 
 interface RepositoryAccessCheckerProps {
   repositoryUrl: string;
@@ -20,7 +21,7 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{ hasAccess: bool
 
     return { hasAccess: statusData.hasPushAccess === true };
   } catch (error) {
-    console.error("Failed to check repository access:", error);
+    logger.error("Failed to check repository access:", "swarm-setup/RepositoryAccessChecker", { error });
     return { hasAccess: false, error: "Failed to check repository access" };
   }
 };
@@ -36,7 +37,7 @@ export function RepositoryAccessChecker({ repositoryUrl, onAccessResult }: Repos
         const result = await checkRepositoryAccess(repositoryUrl);
         onAccessResult(result.hasAccess, result.error);
       } catch (error) {
-        console.error("Error checking repository access:", error);
+        logger.error("Error checking repository access:", "swarm-setup/RepositoryAccessChecker", { error });
         onAccessResult(false, "Failed to check repository access");
       }
     };

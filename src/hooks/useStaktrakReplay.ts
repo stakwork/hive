@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Screenshot } from "@/types/common";
+import { logger } from "@/lib/logger";
 
 export function usePlaywrightReplay(
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
@@ -44,7 +45,7 @@ export function usePlaywrightReplay(
 
       return true;
     } catch (error) {
-      console.error("Error previewing Playwright test:", error);
+      logger.error("Error previewing Playwright test:", "useStaktrakReplay", { error });
       return false;
     }
   };
@@ -86,7 +87,7 @@ export function usePlaywrightReplay(
 
       return true;
     } catch (error) {
-      console.error("Error starting Playwright replay:", error);
+      logger.error("Error starting Playwright replay:", "useStaktrakReplay", { error });
       setIsPlaywrightReplaying(false);
 
       const container = document.querySelector(".iframe-container");
@@ -106,7 +107,7 @@ export function usePlaywrightReplay(
       setIsPlaywrightPaused(true);
       setPlaywrightStatus("paused");
     } catch (error) {
-      console.error("Error pausing Playwright replay:", error);
+      logger.error("Error pausing Playwright replay:", "useStaktrakReplay", { error });
     }
   };
 
@@ -118,7 +119,7 @@ export function usePlaywrightReplay(
       setIsPlaywrightPaused(false);
       setPlaywrightStatus("playing");
     } catch (error) {
-      console.error("Error resuming Playwright replay:", error);
+      logger.error("Error resuming Playwright replay:", "useStaktrakReplay", { error });
     }
   };
 
@@ -138,7 +139,7 @@ export function usePlaywrightReplay(
         container.classList.remove("playwright-replaying");
       }
     } catch (error) {
-      console.error("Error stopping Playwright replay:", error);
+      logger.error("Error stopping Playwright replay:", "useStaktrakReplay", { error });
     }
   };
 
@@ -153,7 +154,7 @@ export function usePlaywrightReplay(
           break;
 
         case "staktrak-playwright-replay-preview-error":
-          console.error("Playwright preview error:", data.error);
+          logger.error("Playwright preview error:", "useStaktrakReplay", { data.error });
           setPreviewActions([]);
           break;
 
@@ -193,7 +194,7 @@ export function usePlaywrightReplay(
           ]);
 
           // Don't stop replay on error, just log it
-          console.warn("Playwright replay error:", errorMsg);
+          logger.warn("Playwright replay error:", "useStaktrakReplay", { errorMsg });
           break;
 
         case "staktrak-playwright-replay-paused":
@@ -220,7 +221,7 @@ export function usePlaywrightReplay(
           break;
 
         case "staktrak-playwright-screenshot-captured":
-          console.log('[Screenshot] Captured:', { actionIndex: data.actionIndex, url: data.url, workspaceId, taskId });
+          logger.debug("[Screenshot] Captured:", "useStaktrakReplay", { { actionIndex: data.actionIndex, url: data.url, workspaceId, taskId } });
 
           // Add screenshot to local state immediately for display
           const newScreenshot: Screenshot = {
@@ -235,7 +236,7 @@ export function usePlaywrightReplay(
 
           // Upload to S3 asynchronously (don't block replay)
           if (workspaceId && data.screenshot) {
-            console.log('[Screenshot] Starting S3 upload...', { workspaceId, taskId });
+            logger.debug("[Screenshot] Starting S3 upload...", "useStaktrakReplay", { { workspaceId, taskId } });
             fetch('/api/screenshots/upload', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -256,7 +257,7 @@ export function usePlaywrightReplay(
                 return response.json();
               })
               .then((uploaded) => {
-                console.log('[Screenshot] S3 upload successful:', uploaded);
+                logger.debug("[Screenshot] S3 upload successful:", "useStaktrakReplay", { uploaded });
                 // Update screenshot in state with S3 details
                 setReplayScreenshots((prev) =>
                   prev.map((s) =>
@@ -267,7 +268,7 @@ export function usePlaywrightReplay(
                 );
               })
               .catch((error) => {
-                console.error('[Screenshot] S3 upload failed:', error);
+                logger.error("[Screenshot] S3 upload failed:", "useStaktrakReplay", { error });
                 // Continue anyway - screenshot is still available locally via dataUrl
               });
           } else {

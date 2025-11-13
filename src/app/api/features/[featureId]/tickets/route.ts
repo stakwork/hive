@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createTicket } from "@/services/roadmap";
 import type { CreateTicketRequest, TicketResponse } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -25,7 +26,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error creating ticket:", error);
+    logger.error("Error creating ticket:", "tickets/route", { error });
     const message = error instanceof Error ? error.message : "Failed to create ticket";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

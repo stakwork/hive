@@ -7,6 +7,7 @@ import {
   validateWorkspaceAccess,
 } from "@/services/workspace";
 import { isAssignableMemberRole } from "@/lib/auth/roles";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -49,7 +50,7 @@ export async function PATCH(
     const updatedMember = await updateWorkspaceMemberRole(access.workspace.id, targetUserId, role);
     return NextResponse.json({ member: updatedMember });
   } catch (error: unknown) {
-    console.error("Error updating workspace member role:", error);
+    logger.error("Error updating workspace member role:", "[userId]/route", { error });
     
     if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json({ error: "Member not found" }, { status: 404 });
@@ -97,7 +98,7 @@ export async function DELETE(
     await removeWorkspaceMember(access.workspace.id, targetUserId);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    console.error("Error removing workspace member:", error);
+    logger.error("Error removing workspace member:", "[userId]/route", { error });
     
     if (error instanceof Error && error.message.includes("not found")) {
       return NextResponse.json({ error: "Member not found" }, { status: 404 });

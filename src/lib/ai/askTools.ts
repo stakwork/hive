@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "aieo";
+import { logger } from "@/lib/logger";
 
 async function fetchLearnings(swarmUrl: string, swarmApiKey: string, q: string, limit: number = 3) {
   const res = await fetch(`${swarmUrl}/learnings?limit=${limit}&question=${encodeURIComponent(q)}`, {
@@ -40,7 +41,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
         try {
           return await fetchLearnings(swarmUrl, swarmApiKey, question, limit || 3);
         } catch (e) {
-          console.error("Error retrieving learnings:", e);
+          logger.error("Error retrieving learnings:", "ai/askTools", { e });
           return "Could not retrieve learnings";
         }
       },
@@ -68,7 +69,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
           });
           return coms;
         } catch (e) {
-          console.error("Error retrieving recent commits:", e);
+          logger.error("Error retrieving recent commits:", "ai/askTools", { e });
           return "Could not retrieve recent commits";
         }
       },
@@ -85,7 +86,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
           const output = await analyzer.getContributorPRs(repoOwner, repoName, user, limit || 5);
           return output;
         } catch (e) {
-          console.error("Error retrieving recent contributions:", e);
+          logger.error("Error retrieving recent contributions:", "ai/askTools", { e });
           return "Could not retrieve repository map";
         }
       },

@@ -11,6 +11,7 @@ import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { logger } from "@/lib/logger";
 
 export default function StakgraphPage() {
   const { slug, id, refreshCurrentWorkspace } = useWorkspace();
@@ -107,7 +108,7 @@ export default function StakgraphPage() {
       });
       await loadSettings(slug!);
     } catch (error) {
-      console.error("Failed to ensure webhooks", error);
+      logger.error("Failed to ensure webhooks", "stakgraph/page", { error });
       toast({
         title: "Error",
         description: "Failed to add webhooks",
@@ -125,7 +126,7 @@ export default function StakgraphPage() {
   //     ? true
   //     : false;
 
-  // console.log("allFieldsFilled", allFieldsFilled);
+  // logger.debug("allFieldsFilled", "stakgraph/page", { allFieldsFilled });
 
   if (initialLoading) {
     return (

@@ -10,6 +10,7 @@ import { BookOpen, Download, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { LearnChatInput } from "./LearnChatInput";
 import { LearnChatMessage } from "./LearnChatMessage";
+import { logger } from "@/lib/logger";
 
 interface LearnChatAreaProps {
   messages: LearnMessage[];
@@ -73,7 +74,7 @@ export function LearnChatArea({
         timestamp: new Date(),
       });
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      logger.error("Error generating PDF:", "LearnChatArea", { error });
     } finally {
       setIsGeneratingPDF(false);
     }

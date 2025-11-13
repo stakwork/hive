@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
+import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";
 
@@ -84,7 +85,7 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching message by id:", error);
+    logger.error("Error fetching message by id:", "[messageId]/route", { error });
     return NextResponse.json(
       { error: "Failed to fetch message" },
       { status: 500 },

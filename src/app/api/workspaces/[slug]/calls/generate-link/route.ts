@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
@@ -87,7 +88,7 @@ export async function POST(
 
     return NextResponse.json({ url: callUrl });
   } catch (error) {
-    console.error("Error generating call link:", error);
+    logger.error("Error generating call link:", "generate-link/route", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

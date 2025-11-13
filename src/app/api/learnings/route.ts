@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { logger } from "@/lib/logger";
 
 async function getSwarmConfig(workspaceSlug: string, userId: string) {
   const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId);
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Learnings API proxy error:", error);
+    logger.error("Learnings API proxy error:", "learnings/route", { error });
     return NextResponse.json({ error: "Failed to fetch learnings data" }, { status: 500 });
   }
 }
@@ -118,16 +119,16 @@ export async function POST(request: NextRequest) {
     })
       .then((response) => {
         if (!response.ok) {
-          console.error(`Swarm seed_stories error: ${response.status}`);
+          logger.error(`Swarm seed_stories error: ${response.status}`, "learnings/route");
         }
       })
       .catch((error) => {
-        console.error("Seed stories request failed:", error);
+        logger.error("Seed stories request failed:", "learnings/route", { error });
       });
 
     return NextResponse.json({ success: true, message: "Seed knowledge request initiated" });
   } catch (error) {
-    console.error("Seed stories API proxy error:", error);
+    logger.error("Seed stories API proxy error:", "learnings/route", { error });
     return NextResponse.json({ error: "Failed to seed stories" }, { status: 500 });
   }
 }

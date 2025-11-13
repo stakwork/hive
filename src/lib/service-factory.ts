@@ -3,6 +3,7 @@ import { StakworkService } from "@/services/stakwork";
 import { PoolManagerService } from "@/services/pool-manager";
 import { WizardService } from "@/services/wizard";
 import { getServiceConfig } from "@/config/services";
+import { logger } from "@/lib/logger";
 
 // Service registry type
 export type ServiceName = "stakwork" | "poolManager" | "wizard";
@@ -15,13 +16,9 @@ export class ServiceFactory {
     if (!this.instances.has(serviceName)) {
       const config = getServiceConfig(serviceName);
 
-      console.log(
-        "--------------------------------config--------------------------------",
-      );
-      console.log(config);
-      console.log(
-        "--------------------------------config--------------------------------",
-      );
+      logger.debug("--------------------------------config--------------------------------", "service-factory", {  });
+      logger.debug("Debug output", "service-factory", { config });
+      logger.debug("--------------------------------config--------------------------------", "service-factory", {  });
 
       switch (serviceName) {
         case "stakwork":

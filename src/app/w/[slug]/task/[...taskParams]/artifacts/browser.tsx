@@ -27,6 +27,7 @@ import { useDebugSelection } from "@/hooks/useDebugSelection";
 import { ActionsList } from "@/components/ActionsList";
 import { useToast } from "@/components/ui/use-toast";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
+import { logger } from "@/lib/logger";
 
 export function BrowserArtifactPanel({
   artifacts,
@@ -99,7 +100,7 @@ export function BrowserArtifactPanel({
     (test: string, error?: string) => {
       // Show error toast if test generation failed
       if (error) {
-        console.error("[Browser] Test generation failed:", error);
+        logger.error("[Browser] Test generation failed:", "artifacts/browser", { error });
         toast({
           title: "Test Generation Failed",
           description: error,

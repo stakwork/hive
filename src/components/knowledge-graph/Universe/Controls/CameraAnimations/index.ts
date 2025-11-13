@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react'
 import { MathUtils, Vector3 } from 'three'
 import { initialCameraPosition } from './constants'
 import { useAutoNavigate } from './useAutoNavigate'
+import { logger } from "@/lib/logger";
 
 
 const autoRotateSpeed = 1
@@ -60,12 +61,12 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
           )
 
           console.log('🎥 SAVING CAMERA STATE ON UNMOUNT:')
-          console.log('  📍 Position:', { x: position.x.toFixed(1), y: position.y.toFixed(1), z: position.z.toFixed(1) })
-          console.log('  🎯 Target:', { x: target.x.toFixed(1), y: target.y.toFixed(1), z: target.z.toFixed(1) })
-          console.log('  📏 Distance between position and target:', distance.toFixed(1))
+          logger.debug("  📍 Position:", "CameraAnimations/index", { { x: position.x.toFixed(1 }), y: position.y.toFixed(1), z: position.z.toFixed(1) })
+          logger.debug("  🎯 Target:", "CameraAnimations/index", { { x: target.x.toFixed(1 }), y: target.y.toFixed(1), z: target.z.toFixed(1) })
+          logger.debug("  📏 Distance between position and target:", "CameraAnimations/index", { distance.toFixed(1 }))
 
           if (distance < 100) {
-            console.warn('⚠️  WARNING: Camera position and target are very close! This might indicate an issue.')
+            logger.warn("⚠️  WARNING: Camera position and target are very close! This might indicate an issue.", "CameraAnimations/index")
           }
 
           saveCameraState(
@@ -73,7 +74,7 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
             { x: target.x, y: target.y, z: target.z }
           )
         } catch (error) {
-          console.warn('Failed to save camera state on unmount:', error)
+          logger.warn("Failed to save camera state on unmount:", "CameraAnimations/index", { error })
         }
       }
     }
@@ -81,28 +82,28 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
 
   useEffect(() => {
     // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
-    console.log('Controls-CameraAnimations: cameraControlsRef', cameraControlsRef?._debugId)
-    console.log('CameraAnimations: isSleeping', isSleeping, 'hasAttemptedRestoration:', hasAttemptedRestoration.current)
+    logger.debug("Controls-CameraAnimations: cameraControlsRef", "CameraAnimations/index", { cameraControlsRef?._debugId })
+    logger.debug("CameraAnimations: isSleeping", "CameraAnimations/index", { isSleeping, 'hasAttemptedRestoration:', hasAttemptedRestoration.current })
 
-    console.log('CameraAnimations: cameraFocusTrigger', cameraFocusTrigger)
+    logger.debug("CameraAnimations: cameraFocusTrigger", "CameraAnimations/index", { cameraFocusTrigger })
     if (!selectedNode && cameraControlsRef) {
 
 
       const { cameraPosition, cameraTarget } = getStoreBundle(storeId).graph.getState()
       const { isSleeping: wasSleeping } = getStoreBundle(storeId).simulation.getState()
 
-      console.log('CameraAnimations: wasSleeping:', wasSleeping, 'hasCamera:', !!cameraPosition && !!cameraTarget)
+      logger.debug("CameraAnimations: wasSleeping:", "CameraAnimations/index", { wasSleeping, 'hasCamera:', !!cameraPosition && !!cameraTarget })
 
       // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
-      console.log('CameraAnimations: camerararef', cameraControlsRef, cameraControlsRef.camera, cameraControlsRef._debugId)
+      logger.debug("CameraAnimations: camerararef", "CameraAnimations/index", { cameraControlsRef, cameraControlsRef.camera, cameraControlsRef._debugId })
 
       // Only restore saved position if we were sleeping AND haven't already attempted restoration
       if (wasSleeping && cameraPosition && cameraTarget && !hasAttemptedRestoration.current) {
-        console.log('CameraAnimations: Restoring saved position after sleep', cameraPosition, cameraTarget)
+        logger.debug("CameraAnimations: Restoring saved position after sleep", "CameraAnimations/index", { cameraPosition, cameraTarget })
         hasAttemptedRestoration.current = true
 
         setTimeout(() => {
-          console.log('CameraAnimations: restoring after timeout 2', cameraPosition.x, cameraPosition.y, cameraPosition.z)
+          logger.debug("CameraAnimations: restoring after timeout 2", "CameraAnimations/index", { cameraPosition.x, cameraPosition.y, cameraPosition.z })
           // cameraControlsRef.setLookAt(
           //   cameraPosition.x,
           //   cameraPosition.y,
@@ -115,8 +116,8 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
           const randomId = Math.random().toString(36).slice(2, 6)
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
           cameraControlsRef._debugId = `cameraControlsRef_${randomId}`
-          console.log('CameraAnimations: randomId', randomId)
-          console.log(initialCameraPosition)
+          logger.debug("CameraAnimations: randomId", "CameraAnimations/index", { randomId })
+          logger.debug("Debug output", "CameraAnimations/index", { initialCameraPosition })
           cameraControlsRef.setLookAt(2000, initialCameraPosition.y, 2000, 0, 0, 0, true)
         }, 10000)
       } else if (cameraControlsRef.camera) {
@@ -124,16 +125,16 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
         // Set initial position for new sessions (no saved state)
         console.log('CameraAnimations: Setting initial position')
         hasAttemptedRestoration.current = true
-        console.log('CameraAnimations: Setting initial position', initialCameraPosition.x, initialCameraPosition.y, graphRadius + 200)
+        logger.debug("CameraAnimations: Setting initial position", "CameraAnimations/index", { initialCameraPosition.x, initialCameraPosition.y, graphRadius + 200 })
 
         setTimeout(() => {
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
-          console.log('CameraAnimations: cameraControlsRef._debugId', cameraControlsRef._debugId)
+          logger.debug("CameraAnimations: cameraControlsRef._debugId", "CameraAnimations/index", { cameraControlsRef._debugId })
 
           const randomId = Math.random().toString(36).slice(2, 6)
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
           cameraControlsRef._debugId = `cameraControlsRef_${randomId}`
-          console.log('CameraAnimations: randomId', randomId)
+          logger.debug("CameraAnimations: randomId", "CameraAnimations/index", { randomId })
           console.log('CameraAnimations: restoring after timeout')
           cameraControlsRef.setLookAt(initialCameraPosition.x, initialCameraPosition.y, graphRadius + 200, 0, 0, 0, true)
         }, 1000)

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import axios from "axios";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,7 @@ export async function GET() {
       total_count: repositories.length,
     });
   } catch (error: unknown) {
-    console.error("Error fetching repositories:", error);
+    logger.error("Error fetching repositories:", "repositories/route", { error });
 
     if (
       error &&

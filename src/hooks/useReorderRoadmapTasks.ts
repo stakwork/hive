@@ -14,6 +14,7 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import type { TicketListItem } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 interface UseReorderRoadmapTasksParams {
   tasks: TicketListItem[];
@@ -76,7 +77,7 @@ export function useReorderRoadmapTasks({
           throw new Error("Failed to reorder roadmap tasks");
         }
       } catch (error) {
-        console.error("Failed to reorder roadmap tasks:", error);
+        logger.error("Failed to reorder roadmap tasks:", "useReorderRoadmapTasks", { error });
         // TODO: Could add error rollback callback here
       }
     }

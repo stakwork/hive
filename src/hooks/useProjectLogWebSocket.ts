@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { logger } from "@/lib/logger";
 
 export interface LogEntry {
   timestamp: string;
@@ -53,7 +54,7 @@ export const useProjectLogWebSocket = (
         if (data.type === "ping") return;
 
         if (isVerboseLoggingEnabled) {
-          console.log("Hive Chat Data message", data);
+          logger.debug("Hive Chat Data message", "useProjectLogWebSocket", { data });
         }
 
         const messageData = data?.message;
@@ -76,12 +77,12 @@ export const useProjectLogWebSocket = (
           };
 
           addLogEntry(logEntry);
-          console.log("Project Log:", logEntry);
+          logger.debug("Project Log:", "useProjectLogWebSocket", { logEntry });
         }
       };
 
       ws.onerror = (error: Event) =>
-        console.error("WebSocket error123:", error);
+        logger.error("WebSocket error123:", "useProjectLogWebSocket", { error });
 
       ws.onclose = () => {
         console.log("WebSocket connection closed");

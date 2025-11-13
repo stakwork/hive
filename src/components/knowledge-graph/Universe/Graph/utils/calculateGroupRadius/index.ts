@@ -1,4 +1,5 @@
 import { Box3, Group, Sphere, Vector3 } from 'three'
+import { logger } from "@/lib/logger";
 
 export const calculateRadius = (gr: Group) => {
   const box = new Box3().setFromObject(gr)
@@ -29,7 +30,7 @@ export const calculateRadius = (gr: Group) => {
 
   // Add some padding and ensure minimum radius
   const radius = Math.max(maxDistance * 1.2, 1)
-  // console.log(`Calculated radius from children positions: ${radius}`)
+  // logger.debug(`Calculated radius from children positions: ${radius}`, "calculateGroupRadius/index")
 
   return radius
 }

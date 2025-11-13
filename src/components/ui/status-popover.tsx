@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusBadge, getAllStatusOptions, getStatusConfig } from "@/components/ui/status-badge";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 type StatusType = "feature" | "phase" | "task";
 
@@ -34,7 +35,7 @@ export function StatusPopover<T extends FeatureStatus | PhaseStatus | TaskStatus
       await onUpdate(status);
       setOpen(false);
     } catch (error) {
-      console.error("Failed to update status:", error);
+      logger.error("Failed to update status:", "ui/status-popover", { error });
     } finally {
       setUpdating(false);
     }

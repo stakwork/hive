@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { reorderTickets } from "@/services/roadmap";
 import type { ReorderTicketsRequest, TicketListResponse } from "@/types/roadmap";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error reordering tickets:", error);
+    logger.error("Error reordering tickets:", "reorder/route", { error });
     const message = error instanceof Error ? error.message : "Failed to reorder tickets";
     const status = message.includes("not found") ? 404 :
                    message.includes("denied") ? 403 :

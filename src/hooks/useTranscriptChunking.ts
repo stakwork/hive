@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { logger } from "@/lib/logger";
 
 interface UseTranscriptChunkingProps {
   transcript: string;
@@ -53,7 +54,7 @@ export function useTranscriptChunking({
           }),
         });
       } catch (error) {
-        console.error("Error sending transcript chunk:", error);
+        logger.error("Error sending transcript chunk:", "useTranscriptChunking", { error });
       }
     },
     [workspaceSlug]

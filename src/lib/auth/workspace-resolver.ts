@@ -4,6 +4,7 @@ import {
 } from "@/services/workspace";
 import { Session } from "next-auth";
 import { redirect } from "next/navigation";
+import { logger } from "@/lib/logger";
 
 export interface WorkspaceResolutionResult {
   shouldRedirect: boolean;
@@ -74,7 +75,7 @@ export async function resolveUserWorkspaceRedirect(
       defaultWorkspaceSlug: fallbackWorkspace.slug,
     };
   } catch (error) {
-    console.error("Error resolving workspace redirect:", error);
+    logger.error("Error resolving workspace redirect:", "auth/workspace-resolver", { error });
 
     // On error, redirect to onboarding to be safe
     return {
@@ -119,7 +120,7 @@ export async function validateUserWorkspaceAccess(
 
     return hasAccess ? requestedSlug : null;
   } catch (error) {
-    console.error("Error validating workspace access:", error);
+    logger.error("Error validating workspace access:", "auth/workspace-resolver", { error });
     return null;
   }
 }

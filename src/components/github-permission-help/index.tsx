@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertTriangle, ExternalLink, RefreshCw, Settings } from "lucide-react";
 import { useState } from "react";
+import { logger } from "@/lib/logger";
 
 interface GitHubPermissionHelpProps {
   repositoryUrl?: string;
@@ -54,10 +55,10 @@ export function GitHubPermissionHelp({
         // Redirect to GitHub App installation
         window.location.href = data.data.link;
       } else {
-        console.error('Failed to generate installation link:', data);
+        logger.error("Failed to generate installation link:", "github-permission-help/index", { data });
       }
     } catch (error) {
-      console.error('Error generating installation link:', error);
+      logger.error("Error generating installation link:", "github-permission-help/index", { error });
     }
   };
 
