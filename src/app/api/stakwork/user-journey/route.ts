@@ -35,13 +35,16 @@ async function callStakwork(
       throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
-    // Generate webhook URL for workflow status updates
+    // Generate webhook URLs
     const baseUrl = getBaseUrl();
+    const webhookUrl = `${baseUrl}/api/chat/response`;
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
     // stakwork workflow vars
     const vars = {
+      taskId,
       message,
+      webhookUrl,
       accessToken,
       username,
       swarmUrl,
@@ -49,7 +52,6 @@ async function callStakwork(
       poolName,
       repo2graph_url: repo2GraphUrl,
       workspaceId,
-      task_id: taskId,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
