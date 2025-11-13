@@ -78,11 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    logger.debug("🔍 Claim pod for real: workspaceId:", { workspaceId,
-      "shouldUpdateToLatest:",
-      shouldUpdateToLatest,
-      "shouldIncludeGoose:",
-      shouldIncludeGoose, });
+    logger.debug("🔍 Claim pod for real: workspaceId:", { workspaceId, shouldUpdateToLatest: shouldUpdateToLatest, shouldIncludeGoose: shouldIncludeGoose });
 
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;

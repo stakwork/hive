@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
           delivery,
           workspaceId: repository.workspaceId,
           pushedBranch,
-          allowedBranches: Array.from(allowedBranches }),
+          allowedBranches: Array.from(allowedBranches),
         });
         return NextResponse.json({ success: true }, { status: 202 });
       }

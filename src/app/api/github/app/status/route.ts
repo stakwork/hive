@@ -97,7 +97,7 @@ export async function GET(request: Request) {
         sourceControlOrgId: workspace?.sourceControlOrg?.id,
         githubLogin: workspace?.sourceControlOrg?.githubLogin,
         installationId: workspace?.sourceControlOrg?.githubInstallationId,
-      });
+          });
 
       if (workspace?.sourceControlOrg) {
         // Workspace is linked to a SourceControlOrg - check if user has tokens for it

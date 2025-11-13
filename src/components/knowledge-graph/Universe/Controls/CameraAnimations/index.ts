@@ -125,7 +125,7 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
         // Set initial position for new sessions (no saved state)
         console.log('CameraAnimations: Setting initial position')
         hasAttemptedRestoration.current = true
-        logger.debug("CameraAnimations: Setting initial position", { initialCameraPosition.x, initialCameraPosition.y, graphRadius + 200 })
+        logger.debug("CameraAnimations: Setting initial position", { x: initialCameraPosition.x, y: initialCameraPosition.y, z: graphRadius + 200 })
 
         setTimeout(() => {
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
