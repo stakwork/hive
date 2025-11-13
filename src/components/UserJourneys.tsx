@@ -417,11 +417,17 @@ export default function UserJourneys() {
 
         // Refetch tasks to show the new one
         await fetchUserJourneyTasks();
+
+        // Close the browser panel and release the pod
+        handleCloseBrowser();
       } else {
         toast({
           title: "Test Saved",
           description: "Test was saved but task creation may have failed.",
         });
+
+        // Still close the browser panel even if task creation failed
+        handleCloseBrowser();
       }
     } catch (error) {
       console.error("Error saving user journey:", error);
