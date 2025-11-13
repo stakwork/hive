@@ -525,7 +525,6 @@ export function BrowserArtifactPanel({
         }}
         generatedCode={generatedPlaywrightTest}
         errorMessage={generationError}
-        initialTab={"generated"}
         onUserJourneySave={onUserJourneySave}
       />
     </div>
