@@ -43,10 +43,10 @@ export async function GET(request: NextRequest) {
   logger.debug("[agent-stream] SSE connection initiated", { logContext });
 
   if (!requestId || !swarmId) {
-    logger.warn("[agent-stream] Missing required parameters", "agent-stream/route", { {
+    logger.warn("[agent-stream] Missing required parameters", { 
       ...logContext,
       missingParams: { requestId: !requestId, swarmId: !swarmId },
-    } });
+     });
     return new Response("Missing required parameters", { status: 400 });
   }
 
@@ -73,8 +73,7 @@ export async function GET(request: NextRequest) {
         logger.debug("[agent-stream] Fetching swarm from database", { logContext });
         const swarm = await db.swarm.findFirst({
           where: { id: swarmId },
-          include: { workspace: { select: { slug: true } } }
-        });
+          include: { workspace: { select: { slug: true  }  });
 
         if (!swarm) {
           logger.error("[agent-stream] Swarm not found", {
@@ -86,7 +85,7 @@ export async function GET(request: NextRequest) {
           return;
         }
 
-        logger.debug("[agent-stream] Swarm found, starting monitoring", "agent-stream/route", { {
+        logger.debug("[agent-stream] Swarm found, starting monitoring", "agent-stream/route", { 
           ...logContext,
           workspaceSlug: swarm.workspace.slug,
           swarmStatus: swarm.agentStatus,
@@ -191,8 +190,7 @@ export async function GET(request: NextRequest) {
                       const decoded = Buffer.from(envContent, "base64").toString("utf-8");
                       if (decoded.includes("=")) {
                         envText = decoded;
-                      }
-                    } catch {
+                       } catch {
                       // Use as plain text
                     }
                     agentEnvVars = parseEnv(envText);
@@ -207,8 +205,7 @@ export async function GET(request: NextRequest) {
                       error: e instanceof Error ? e.message : String(e  }),
                       envContentLength: envContent?.length || 0,
                     });
-                  }
-                } else {
+                   } else {
                   logger.warn("[agent-stream] No .env file found in agent results", { logContext });
                 }
 
@@ -262,8 +259,7 @@ export async function GET(request: NextRequest) {
                 sendEvent({
                   status: "COMPLETED",
                   message: "Agent processing completed successfully!",
-                  data: { services }
-                }, "completed");
+                  data: { services  }, "completed");
 
                 controller.close();
                 return;
@@ -273,9 +269,7 @@ export async function GET(request: NextRequest) {
               attempts++;
               if (attempts < maxAttempts) {
                 await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-              }
-
-            } catch (error) {
+               } catch (error) {
               logger.error("[agent-stream] Error polling agent", { 
                 ...logContext,
                 attempt: attempts + 1,
@@ -293,8 +287,7 @@ export async function GET(request: NextRequest) {
               attempts++;
               if (attempts < maxAttempts) {
                 await new Promise(resolve => setTimeout(resolve, 5000));
-              }
-            }
+               }
           }
 
           // Timeout reached - clear agent status
@@ -342,16 +335,14 @@ export async function GET(request: NextRequest) {
         });
         sendEvent({ error: error instanceof Error ? error.message : "Unknown error" }, "error");
         controller.close();
-      }
-    },
+       },
 
     cancel() {
       logger.debug("[agent-stream] SSE connection cancelled", { 
         ...logContext,
         totalDuration: Date.now(  }) - startTime,
       });
-    }
-  });
+     });
 
   logger.debug("[agent-stream] SSE stream created successfully", { 
     ...logContext,

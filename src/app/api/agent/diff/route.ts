@@ -188,7 +188,7 @@ index 1234567..abcdefg 100644
     }
 
     const diffs: ActionResult[] = await diffResponse.json();
-    logger.debug(">>> [DIFF] Diff fetched successfully, count:", "diff/route", { diffs.length });
+    logger.debug(">>> [DIFF] Diff fetched successfully, count:", "diff/route", { count: diffs.length });
 
     // If there are no diffs, don't create an artifact
     if (!diffs || diffs.length === 0) {

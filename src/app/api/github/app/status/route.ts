@@ -131,8 +131,7 @@ export async function GET(request: Request) {
           if (!repoUrl) {
             const primaryRepo = await getPrimaryRepository(workspace.id);
             repoUrl = primaryRepo?.repositoryUrl ?? null;
-          }
-        }
+           }
 
         // Check repository access if we have tokens and a repository URL
         if (hasTokens && repoUrl && workspace?.sourceControlOrg?.githubInstallationId) {
@@ -155,7 +154,7 @@ export async function GET(request: Request) {
             repoUrl,
           });
         } else {
-          logger.debug("[github-app-status] Skipping repository access check", "status/route", { {
+          logger.debug("[github-app-status] Skipping repository access check", { 
             ...requestLogContext,
             action: 'skip_repo_access',
             reasons: {
@@ -165,9 +164,8 @@ export async function GET(request: Request) {
             },
             repoUrl,
             installationId: workspace?.sourceControlOrg?.githubInstallationId,
-          } });
-        }
-      } else {
+           });
+         } else {
         // Workspace not linked yet - extract GitHub org from repo URL and check
         let repoUrl: string | null = repositoryUrl;
         if (!repoUrl && workspace) {
@@ -176,8 +174,7 @@ export async function GET(request: Request) {
           if (!repoUrl) {
             const primaryRepo = await getPrimaryRepository(workspace.id);
             repoUrl = primaryRepo?.repositoryUrl ?? null;
-          }
-        }
+           }
 
         if (!repoUrl) {
           logger.warn("[github-app-status] No repository URL found", { 
@@ -243,14 +240,11 @@ export async function GET(request: Request) {
                 hasRepoAccess,
                 githubOwner,
               });
-            }
-          } else {
+             } else {
             // SourceControlOrg doesn't exist yet - user needs to go through OAuth
             hasTokens = false;
-          }
-        }
-      }
-    } else {
+           }
+       } else {
       // No workspace specified - check if user has ANY GitHub App tokens
       logger.debug("[github-app-status] Checking user app tokens (no workspace)", {
         ...requestLogContext,
@@ -296,5 +290,4 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });
-  }
-}
+   }

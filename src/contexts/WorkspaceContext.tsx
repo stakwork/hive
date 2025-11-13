@@ -7,8 +7,8 @@ import type {
 } from "@/types/workspace";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
-import {
 import { logger } from "@/lib/logger";
+import {
   createContext,
   ReactNode,
   useCallback,

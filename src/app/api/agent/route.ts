@@ -305,7 +305,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      logger.debug("✅ Background processing completed, saved:", "agent/route", { accumulatedText.length, "chars" });
+      logger.debug("✅ Background processing completed, saved:", "agent/route", { length: accumulatedText.length, unit: "chars" });
     } catch (error) {
       logger.error("❌ Background processing error:", { error });
 

@@ -61,9 +61,9 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
           )
 
           console.log('🎥 SAVING CAMERA STATE ON UNMOUNT:')
-          logger.debug("  📍 Position:", {  x: position.x.toFixed(1  }), y: position.y.toFixed(1), z: position.z.toFixed(1) })
-          logger.debug("  🎯 Target:", {  x: target.x.toFixed(1  }), y: target.y.toFixed(1), z: target.z.toFixed(1) })
-          logger.debug("  📏 Distance between position and target:", { distance.toFixed(1 }))
+          logger.debug("  📍 Position:", {  x: position.x.toFixed(1), y: position.y.toFixed(1), z: position.z.toFixed(1) })
+          logger.debug("  🎯 Target:", {  x: target.x.toFixed(1), y: target.y.toFixed(1), z: target.z.toFixed(1) })
+          logger.debug("  📏 Distance between position and target:", { distance: distance.toFixed(1) })
 
           if (distance < 100) {
             logger.warn("⚠️  WARNING: Camera position and target are very close! This might indicate an issue.")

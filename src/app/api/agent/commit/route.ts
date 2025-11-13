@@ -132,9 +132,9 @@ export async function POST(request: NextRequest) {
     // Get GitHub access token for authentication
     let githubToken: string | undefined;
     if (workspace.sourceControlOrg) {
-      logger.debug(">>> Getting user app token for workspace source control org:", { userGithubAuth?.githubUsername,
+      logger.debug(">>> Getting user app token for workspace source control org:", { githubUsername: userGithubAuth?.githubUsername,
         ",",
-        workspace.sourceControlOrg.githubLogin, });
+        orgLogin: workspace.sourceControlOrg.githubLogin });
       const tokens = await getUserAppTokens(userId, workspace.sourceControlOrg.githubLogin);
       githubToken = tokens?.accessToken;
 

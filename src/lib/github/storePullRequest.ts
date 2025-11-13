@@ -110,19 +110,18 @@ export async function storePullRequest(
         contentLength: prDocs.length,
       });
     } catch (error) {
-      logger.error("[storePullRequest] Failed to fetch PR content, using basic info", "github/storePullRequest", { {
+      logger.error("[storePullRequest] Failed to fetch PR content, using basic info", "github/storePullRequest", { 
         workspaceId,
         prNumber: payload.number,
         error,
-      } });
+       });
       // Fallback to basic PR info
       prDocs = `# Pull Request #${payload.number}: ${pr.title}\n\nUnable to fetch detailed PR content.`;
-    }
-  } else {
-    logger.debug("[storePullRequest] No GitHub token available, using basic PR info", "github/storePullRequest", { {
+     } else {
+    logger.debug("[storePullRequest] No GitHub token available, using basic PR info", "github/storePullRequest", { 
       workspaceId,
       prNumber: payload.number,
-    } });
+     });
     // Fallback to basic PR info
     prDocs = `# Pull Request #${payload.number}: ${pr.title}\n\n${pr.body || "No description provided."}`;
   }

@@ -129,8 +129,7 @@ export async function POST(request: NextRequest) {
       const creds = await getGithubUsernameAndPAT(workspace.ownerId, workspace.slug);
       if (creds) {
         githubPat = creds.token;
-      }
-    }
+       }
 
     logger.debug("[GithubWebhook] GitHub credentials", {
       delivery,
@@ -157,7 +156,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false }, { status: 400 });
       }
       if (!allowedBranches.has(pushedBranch)) {
-        logger.debug("[GithubWebhook] Branch not in allowed list, skipping", "webhook/route", { {
+        logger.debug("[GithubWebhook] Branch not in allowed list, skipping", "webhook/route", { 
           delivery,
           workspaceId: repository.workspaceId,
           pushedBranch,
@@ -190,30 +189,29 @@ export async function POST(request: NextRequest) {
             githubPat,
           );
         } catch (error) {
-          logger.error("[GithubWebhook] Failed to store PR, continuing", "webhook/route", { {
+          logger.error("[GithubWebhook] Failed to store PR, continuing", "webhook/route", { 
             delivery,
             workspaceId: repository.workspaceId,
             prNumber: payload.number,
             error,
-          } });
-        }
-      } else {
-        logger.debug("[GithubWebhook] PR action not handled, skipping", "webhook/route", { {
+           });
+         } else {
+        logger.debug("[GithubWebhook] PR action not handled, skipping", "webhook/route", { 
           delivery,
           workspaceId: repository.workspaceId,
           action,
           merged,
-        } });
+         });
       }
 
       // For pull_request events, we don't trigger sync, so return here
       return NextResponse.json({ success: true }, { status: 202 });
     } else {
-      logger.debug("[GithubWebhook] Event type not handled, skipping", "webhook/route", { {
+      logger.debug("[GithubWebhook] Event type not handled, skipping", "webhook/route", { 
         delivery,
         event,
         workspaceId: repository.workspaceId,
-      } });
+       });
       return NextResponse.json({ success: true }, { status: 202 });
     }
 
@@ -326,8 +324,7 @@ export async function POST(request: NextRequest) {
           workspaceId: repository.workspaceId,
           swarmId: swarm.id,
         });
-      }
-    } catch (e) {
+       } catch (e) {
       logger.error("[GithubWebhook] Failed to persist ingestRefId", {
         delivery,
         workspaceId: repository.workspaceId,
@@ -340,5 +337,4 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     logger.error("[GithubWebhook] Unhandled error", { error });
     return NextResponse.json({ success: false }, { status: 500 });
-  }
-}
+   }
