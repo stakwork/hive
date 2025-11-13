@@ -174,6 +174,13 @@ export const selectors = {
     callRecordingsCard: 'text=/Call Recordings/i',
   },
 
+  // Learn
+  learn: {
+    chatArea: '[data-testid="learn-chat-area"]',
+    pageTitle: '[data-testid="learn-page-title"]',
+    welcomeMessage: 'text=/Hello! I\'m your learning assistant/i',
+  },
+
   // Common UI elements
   common: {
     loader: 'text=/Loading/i',

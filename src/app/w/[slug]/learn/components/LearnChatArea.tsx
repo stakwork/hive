@@ -80,7 +80,7 @@ export function LearnChatArea({
   };
 
   return (
-    <div className="h-full flex flex-col relative">
+    <div className="h-full flex flex-col relative" data-testid="learn-chat-area">
       {/* Header - Fixed */}
       <motion.div
         className="px-6 py-4 border-b bg-muted/20 flex-shrink-0 rounded-t-xl border shadow-sm"
@@ -92,7 +92,7 @@ export function LearnChatArea({
           <div>
             <div className="flex items-center gap-3">
               <BookOpen className="w-5 h-5 text-primary" />
-              <h1 className="text-lg font-semibold text-foreground">Learning Assistant</h1>
+              <h1 className="text-lg font-semibold text-foreground" data-testid="learn-page-title">Learning Assistant</h1>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Ask questions, get explanations, and learn new concepts

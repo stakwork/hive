@@ -41,6 +41,14 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to learn page
+   */
+  async goToLearn(): Promise<void> {
+    await this.page.locator(selectors.navigation.learnLink).first().click();
+    await this.page.waitForURL(/\/w\/.*\/learn/, { timeout: 10000 });
+  }
+
+  /**
    * Navigate to settings page
    */
   async goToSettings(): Promise<void> {
