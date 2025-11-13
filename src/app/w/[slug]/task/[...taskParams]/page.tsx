@@ -27,13 +27,11 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import { logger } from "@/lib/logger";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
 
 export default function TaskChatPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -114,7 +112,7 @@ export default function TaskChatPage() {
     (update: TaskTitleUpdateEvent) => {
       // Only update if it's for the current task
       if (update.taskId === currentTaskId) {
-        logger.debug(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
+        logger.debug(`Task title updated: "${ value: update.previousTitle }" -> "${ value: update.newTitle }"`);
         setTaskTitle(update.newTitle);
       }
     },
@@ -127,7 +125,6 @@ export default function TaskChatPage() {
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onTaskTitleUpdate: handleTaskTitleUpdate,
-  });
 
   // Show connection errors as toasts
   useEffect(() => {
@@ -148,14 +145,14 @@ export default function TaskChatPage() {
       const response = await fetch(`/api/tasks/${taskId}/messages`);
 
       if (!response.ok) {
-        throw new Error(`Failed to load messages: ${response.statusText}`);
+        throw new Error(`Failed to load messages: ${ value: response.statusText }`);
       }
 
       const result = await response.json();
 
       if (result.success && result.data.messages) {
         setMessages(result.data.messages);
-        logger.debug(`Loaded ${result.data.count} existing messages for task`);
+        logger.debug(`Loaded ${ value: result.data.count } existing messages for task`);
 
         // Set task mode from loaded task data
         if (result.data.task?.mode) {
@@ -169,7 +166,7 @@ export default function TaskChatPage() {
 
         // Set project ID for log subscription if available
         if (result.data.task?.stakworkProjectId) {
-          logger.debug("Setting project ID from task data:", { result.data.task.stakworkProjectId });
+          logger.debug("Setting project ID from task data:", { stakworkProjectId: result.data.task.stakworkProjectId });
           setProjectId(result.data.task.stakworkProjectId.toString());
           setStakworkProjectId(result.data.task.stakworkProjectId);
 
@@ -195,23 +192,18 @@ export default function TaskChatPage() {
               ),
             );
           }
-        }
 
         // Set task title from API response
         if (result.data.task?.title) {
           setTaskTitle(result.data.task.title);
-        }
-      }
     } catch (error) {
       logger.error("Error loading task messages:", { error });
       toast({
         title: "Error",
         description: "Failed to load existing messages.",
         variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -221,7 +213,6 @@ export default function TaskChatPage() {
       setStarted(true);
       // load existing chat messages for this task
       loadTaskMessages(taskIdFromUrl);
-    }
   }, [taskIdFromUrl, loadTaskMessages]);
 
   const handleStart = async (msg: string) => {
@@ -246,7 +237,7 @@ export default function TaskChatPage() {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to create task: ${response.statusText}`);
+          throw new Error(`Failed to create task: ${ value: response.statusText }`);
         }
 
         const result = await response.json();
@@ -293,16 +284,12 @@ export default function TaskChatPage() {
               title: "Warning",
               description: "Failed to claim pod. Continuing without pod integration.",
               variant: "destructive",
-            });
-          }
-        }
 
         // Set the task title from the response or fallback to the initial message
         if (result.data.title) {
           setTaskTitle(result.data.title);
         } else {
           setTaskTitle(msg); // Use the initial message as title fallback
-        }
 
         const newUrl = `/w/${slug}/task/${newTaskId}`;
         // this updates the URL WITHOUT reloading the page
@@ -313,7 +300,6 @@ export default function TaskChatPage() {
       } else {
         setStarted(true);
         await sendMessage(msg);
-      }
     } catch (error) {
       logger.error("Error in handleStart:", { error });
       setIsLoading(false);
@@ -321,9 +307,6 @@ export default function TaskChatPage() {
         title: "Error",
         description: "Failed to start task. Please try again.",
         variant: "destructive",
-      });
-    }
-  };
 
   const handleSend = async (message: string) => {
     // Allow sending if we have either text or a pending debug attachment
@@ -336,9 +319,7 @@ export default function TaskChatPage() {
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
       ...(chatWebhook && { webhook: chatWebhook }),
-    });
     setPendingDebugAttachment(null); // Clear attachment after sending
-  };
 
   const sendMessage = async (
     messageText: string,
@@ -383,7 +364,6 @@ export default function TaskChatPage() {
       status: ChatStatus.SENDING,
       replyId: options?.replyId,
       artifacts,
-    });
 
     setMessages((msgs) => [...msgs, newMessage]);
     setIsLoading(true);
@@ -418,8 +398,7 @@ export default function TaskChatPage() {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to send message: ${response.statusText}`);
-        }
+          throw new Error(`Failed to send message: ${ value: response.statusText }`);
 
         // Process the streaming response
         const assistantMessageId = generateUniqueId();
@@ -432,7 +411,6 @@ export default function TaskChatPage() {
             if (!hasReceivedContentRef.current) {
               hasReceivedContentRef.current = true;
               setIsLoading(false);
-            }
 
             // Update messages array with AgentStreamingMessage
             setMessages((prev) => {
@@ -478,16 +456,12 @@ export default function TaskChatPage() {
             } else {
               // Pod might have been released or doesn't exist anymore - just skip silently
               logger.debug("Failed to fetch diff (pod may no longer exist):", { status: diffResponse.status });
-            }
           } catch (error) {
             logger.error("Error fetching diff:", { error });
             // Silent failure - don't interrupt user flow
-          }
-        }
 
         // Note: Assistant message is saved by the backend via stream teeing (see /api/agent/route.ts)
         return;
-      }
 
       // Regular stakwork mode
       const body: { [k: string]: unknown } = {
@@ -498,26 +472,23 @@ export default function TaskChatPage() {
         ...(options?.replyId && { replyId: options.replyId }),
         ...(options?.webhook && { webhook: options.webhook }),
         ...(options?.artifact && { artifacts: [options.artifact] }),
-      };
       const response = await fetch("/api/chat/message", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-      });
 
       if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.statusText}`);
+        throw new Error(`Failed to send message: ${ value: response.statusText }`);
       }
 
       const result = await response.json();
       if (!result.success) {
         throw new Error(result.error || "Failed to send message");
-      }
 
       if (result.workflow?.project_id) {
-        logger.debug("Project ID:", { result.workflow.project_id });
+        logger.debug("Project ID:", { value: result.workflow.project_id });
         setProjectId(result.workflow.project_id);
         setStakworkProjectId(result.workflow.project_id);
         setIsChainVisible(true);
@@ -539,7 +510,6 @@ export default function TaskChatPage() {
             msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
           ),
         );
-      }
 
       // Update the temporary message status instead of replacing entirely
       // This prevents re-animation since React sees it as the same message
@@ -554,11 +524,8 @@ export default function TaskChatPage() {
         title: "Error",
         description: "Failed to send message. Please try again.",
         variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
-    }
-  };
 
   const handleArtifactAction = async (messageId: string, action: Option, webhook: string) => {
     // logger.debug("Action triggered:", { action });
@@ -572,9 +539,6 @@ export default function TaskChatPage() {
       await sendMessage(action.optionResponse, {
         replyId: originalMessage.id,
         webhook: webhook,
-      });
-    }
-  };
 
   const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
     if (debugArtifact) {
@@ -583,7 +547,6 @@ export default function TaskChatPage() {
       // Focus the input for user to add context
       // Note: This will be handled by the ChatInput component
     }
-  };
 
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
@@ -608,7 +571,6 @@ export default function TaskChatPage() {
         body: JSON.stringify({
           taskId: currentTaskId,
         }),
-      });
 
       if (!branchResponse.ok) {
         const errorData = await branchResponse.json();
@@ -627,16 +589,12 @@ export default function TaskChatPage() {
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to generate commit information.",
         variant: "destructive",
-      });
     } finally {
       setIsGeneratingCommitInfo(false);
-    }
-  };
 
   const handleConfirmCommit = async (finalCommitMessage: string, finalBranchName: string) => {
     if (!workspaceId || !currentTaskId) {
       return;
-    }
     logger.debug("🔍 Claimed pod ID:", { claimedPodId });
     // Block actual commit in local dev without a pod
     if (!claimedPodId) {
@@ -644,10 +602,8 @@ export default function TaskChatPage() {
         title: "Local Development",
         description: "Commit & Push is not available - no pod claimed",
         variant: "default",
-      });
       setShowCommitModal(false);
       return;
-    }
 
     setIsCommitting(true);
 
@@ -682,7 +638,6 @@ export default function TaskChatPage() {
         toast({
           title: "Success",
           description: "Changes committed and pushed successfully!",
-        });
 
         // Save PR URLs as PULL_REQUEST artifacts
         const artifacts = Object.entries(result.data.prs).map(([repo, prUrl]) =>
@@ -713,7 +668,6 @@ export default function TaskChatPage() {
               icon: artifact.icon,
             })),
           }),
-        });
 
         const savedMessage = await response.json();
 
@@ -725,9 +679,7 @@ export default function TaskChatPage() {
             role: ChatRole.ASSISTANT,
             status: ChatStatus.SENT,
             artifacts: savedMessage.data.artifacts,
-          });
           setMessages((msgs) => [...msgs, newMessage]);
-        }
       } else {
         // No PRs were created - show error
         toast({
@@ -735,23 +687,18 @@ export default function TaskChatPage() {
           description: "Changes were pushed but no pull requests were created.",
           variant: "destructive",
         });
-      }
       // Display success message
       toast({
         title: "Success",
         description: "Changes committed and pushed successfully! Check the chat for PR links.",
-      });
     } catch (error) {
       logger.error("Error committing:", { error });
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to commit changes.",
         variant: "destructive",
-      });
     } finally {
       setIsCommitting(false);
-    }
-  };
 
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
@@ -761,7 +708,6 @@ export default function TaskChatPage() {
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
     // TODO: rm this and only enable if ready below
-  }
   // const inputDisabled =
   //   isLoading ||
   //   !isConnected ||
@@ -976,4 +922,3 @@ export default function TaskChatPage() {
       />
     </AnimatePresence>
   );
-}

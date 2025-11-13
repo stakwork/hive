@@ -7,7 +7,6 @@ import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { fetchStakgraphServices } from "@/services/swarm/stakgraph-services";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -167,7 +166,7 @@ export async function GET(request: NextRequest) {
         });
 
         // Return immediately with request_id for SSE streaming
-        logger.debug("[stakgraph/services] Agent initiated, returning request_id for SSE streaming:", "route", { initData.request_id });
+        logger.debug("[stakgraph/services] Agent initiated, returning request_id for SSE streaming:", { requestId: initData.request_id });
 
         return NextResponse.json(
           {
@@ -180,9 +179,9 @@ export async function GET(request: NextRequest) {
           { status: 202 },
         );
       } catch (error) {
-        logger.error("[stakgraph/services] Agent mode failed, detailed error:", "route", { error });
-        logger.error("[stakgraph/services] Error stack:", { error instanceof Error ? error.stack : "No stack trace" });
-        logger.error("Agent mode failed, falling back to stakgraph services endpoint:", "route", { error });
+        logger.error("[stakgraph/services] Agent mode failed, detailed error:", { error });
+        logger.error("[stakgraph/services] Error stack:", { stack: error instanceof Error ? error.stack : "No stack trace" });
+        logger.error("Agent mode failed, falling back to stakgraph services endpoint:", { error });
         // Fall back to stakgraph services endpoint
         logger.debug("[stakgraph/services] Calling fallback stakgraph services with params:", { 
           swarmUrl,
@@ -246,7 +245,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     logger.error("[stakgraph/services] Unhandled error:", { error });
-    logger.error("[stakgraph/services] Error stack:", { error instanceof Error ? error.stack : "No stack trace" });
+    logger.error("[stakgraph/services] Error stack:", { stack: error instanceof Error ? error.stack : "No stack trace" });
     logger.error("Unhandled error:", { error });
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }

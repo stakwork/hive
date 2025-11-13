@@ -19,7 +19,6 @@ import { Building2, ChevronsUpDown, Plus, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
-import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { logger } from "@/lib/logger";
 
 interface WorkspaceSwitcherProps {

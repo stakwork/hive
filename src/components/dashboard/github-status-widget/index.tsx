@@ -12,7 +12,6 @@ import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
 import { ExternalLink, Github, Loader2 } from "lucide-react";
-import { useState } from "react";
 import { logger } from "@/lib/logger";
 
 export function GitHubStatusWidget() {

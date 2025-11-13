@@ -1,5 +1,4 @@
 import { streamObject } from "ai";
-import { z } from "zod";
 import { logger } from "@/lib/logger";
 
 export function parseOwnerRepo(repoUrl: string): { owner: string; repo: string } {

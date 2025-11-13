@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 import { logger } from "@/lib/logger";
 
 // Disable caching for real-time messaging
@@ -106,7 +105,7 @@ export async function GET(
           try {
             contextTags = JSON.parse(msg.contextTags) as ContextTag[];
           } catch (error) {
-            logger.error("Error parsing contextTags for message", { msg.id, ':', error, 'value:', msg.contextTags });
+            logger.error("Error parsing contextTags for message", { msgId: msg.id, error, contextTags: msg.contextTags });
           }
         } else if (Array.isArray(msg.contextTags)) {
           contextTags = msg.contextTags as unknown as ContextTag[];

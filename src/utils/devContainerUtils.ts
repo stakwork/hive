@@ -1,5 +1,4 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
-import { ServiceConfig } from "@/services/swarm/db";
 import { logger } from "@/lib/logger";
 
 export interface DevContainerFile {

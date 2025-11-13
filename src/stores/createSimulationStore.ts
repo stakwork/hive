@@ -14,7 +14,6 @@ import { create } from "zustand";
 import { createDataStore } from "./createDataStore";
 // Removed circular import - graphStore will be passed as parameter
 import { type SimulationStore } from "./useSimulationStore";
-import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNodesOnSphere';
 import { logger } from "@/lib/logger";
 
 

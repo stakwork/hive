@@ -1,7 +1,6 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
 import { logger } from "@/lib/logger";
 
 interface GithubAppStatus {

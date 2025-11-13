@@ -8,7 +8,6 @@ import { useFrame } from '@react-three/fiber'
 import { useNodeNavigation } from '@Universe/useNodeNavigation'
 import { GitBranch, GitMerge, Loader2, TestTube, X } from 'lucide-react'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
-import { Group, Vector3 } from 'three'
 import { logger } from "@/lib/logger";
 
 const reuseableVector3 = new Vector3()

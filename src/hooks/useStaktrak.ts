@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef } from "react";
-import { getRelativeUrl } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 
 type StaktrakMessageType =
@@ -329,7 +328,7 @@ export const useStaktrak = (
               const errorMsg = "Failed to generate test. Please try again.";
               logger.error("[useStaktrak] Test generation error", { 
                 error,
-                errorMessage: error instanceof Error ? error.message : String(error  }),
+                errorMessage: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
                 url: urlToUse,
                 initialUrl,

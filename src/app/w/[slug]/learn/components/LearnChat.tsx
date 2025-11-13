@@ -6,7 +6,6 @@ import { LearnSidebar } from "./LearnSidebar";
 import { useStreamProcessor } from "@/lib/streaming";
 import { learnToolProcessors, ASK_QUESTION_TOOL, type AskQuestionResponse } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import { logger } from "@/lib/logger";
 
 interface LearnChatProps {

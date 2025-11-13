@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { GitLeakResult } from "@/types/git-leaks";
 import { logger } from "@/lib/logger";
 
 export async function GET(

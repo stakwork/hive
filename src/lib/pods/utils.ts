@@ -5,7 +5,6 @@ import { parsePM2Content } from "@/utils/devContainerUtils";
 export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
 
 // Import for internal use
-import { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
 import { logger } from "@/lib/logger";
 
 export interface PodWorkspace {

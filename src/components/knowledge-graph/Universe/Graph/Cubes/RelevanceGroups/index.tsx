@@ -8,7 +8,6 @@ import { memo, useCallback, useMemo } from 'react'
 import { Vector3 } from 'three'
 import { useShallow } from 'zustand/react/shallow'
 import { nodeSize } from '../constants'
-import { GroupBadge } from './GroupBadge'
 import { logger } from "@/lib/logger";
 
 type TGroupsMap = Record<string, number>

@@ -43,7 +43,6 @@ const edgeTypes = {
 import ContextMenu from './ContextMenu';
 import NodeContextMenu from './NodeContextMenu';
 
-import { SmartLayoutButton } from './SmartLayoutButton';
 import { logger } from "@/lib/logger";
 
 interface SearchResult {

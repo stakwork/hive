@@ -9,7 +9,6 @@ import { motion } from "framer-motion";
 import { BookOpen, Download, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { LearnChatInput } from "./LearnChatInput";
-import { LearnChatMessage } from "./LearnChatMessage";
 import { logger } from "@/lib/logger";
 
 interface LearnChatAreaProps {

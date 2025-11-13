@@ -1,5 +1,4 @@
 import React, { useCallback } from 'react';
-import { Handle, Position, useHandleConnections, NodeProps } from '@xyflow/react';
 import { logger } from "@/lib/logger";
 
 interface StepNodeData {

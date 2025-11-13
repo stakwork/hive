@@ -3,7 +3,6 @@ import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/cl
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { buildFeatureContext } from "@/services/task-coordinator";
 import { logger } from "@/lib/logger";
 
 /**

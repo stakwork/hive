@@ -1,5 +1,4 @@
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
-import { ServiceConfig } from "@/services/swarm/db";
 import { logger } from "@/lib/logger";
 
 // Helper to call stakgraph services endpoint

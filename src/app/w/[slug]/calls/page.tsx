@@ -16,8 +16,8 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Loader2, Phone } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
 import { logger } from "@/lib/logger";
+import {
   Table,
   TableBody,
   TableCell,

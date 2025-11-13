@@ -12,7 +12,6 @@ import { StoreProvider } from "@/stores/StoreProvider";
 import { CallRecording } from "@/types/calls";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { logger } from "@/lib/logger";
 
 const nodeTypes = ['-Clip', '-Episode']

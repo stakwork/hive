@@ -1,5 +1,4 @@
 import { executeTaskCoordinatorRuns } from "@/services/task-coordinator-cron";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 /**

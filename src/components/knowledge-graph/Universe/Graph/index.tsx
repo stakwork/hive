@@ -11,7 +11,6 @@ import { Connections } from './Connections'
 import { Cubes } from './Cubes'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
-import { calculateRadius } from './utils/calculateGroupRadius'
 import { logger } from "@/lib/logger";
 
 export type LinkPosition = {

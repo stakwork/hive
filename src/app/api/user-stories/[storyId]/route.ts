@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { updateUserStory, deleteUserStory } from "@/services/roadmap";
 import { logger } from "@/lib/logger";
 
 export async function PATCH(

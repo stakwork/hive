@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { db } from "@/lib/db";
-import { WorkflowStatus } from "@/lib/chat";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {

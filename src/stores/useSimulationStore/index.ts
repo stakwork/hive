@@ -13,7 +13,6 @@ import {
 import { create } from 'zustand'
 import { useDataStore } from '../useDataStore'
 import { useGraphStore } from '../useGraphStore'
-import { distributeNodesOnSphere } from './utils/distributeNodesOnSphere'
 import { logger } from "@/lib/logger";
 
 type ForceSimulation = typeof forceSimulation

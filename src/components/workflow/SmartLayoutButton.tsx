@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useReactFlow, Node, NodeChange } from '@xyflow/react';
-import { smartLayout } from './layoutUtils';
 import { logger } from "@/lib/logger";
 
 interface SmartLayoutButtonProps {

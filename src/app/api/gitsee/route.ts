@@ -3,7 +3,6 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { validateWorkspaceAccessById } from "@/services/workspace";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {

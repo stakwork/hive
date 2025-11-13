@@ -3,7 +3,6 @@
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
-import { useEffect } from "react";
 import { logger } from "@/lib/logger";
 
 interface WorkflowArtifactPanelProps {

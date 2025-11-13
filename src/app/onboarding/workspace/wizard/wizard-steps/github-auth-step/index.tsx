@@ -12,7 +12,6 @@ import { Github, Loader2 } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { logger } from "@/lib/logger";
 
 export function GithubAuthStep() {

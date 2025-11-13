@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { logger } from "@/lib/logger";
 
 async function getSwarmConfig(workspaceSlug: string, userId: string) {

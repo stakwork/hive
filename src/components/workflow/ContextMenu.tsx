@@ -1,5 +1,4 @@
 import React, { useCallback } from 'react';
-import { openImportNodeModal } from './ImportNodeModal';
 import { logger } from "@/lib/logger";
 
 interface ContextMenuProps {

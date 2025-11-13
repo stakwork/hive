@@ -6,7 +6,6 @@ import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getPodFromPool, POD_PORTS } from "@/lib/pods";
 import { ActionResult } from "@/lib/chat";
-import { ChatRole, ChatStatus } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();

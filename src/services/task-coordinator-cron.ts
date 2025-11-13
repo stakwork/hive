@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
-import { startTaskWorkflow } from "@/services/task-workflow";
 import { logger } from "@/lib/logger";
 
 export interface TaskCoordinatorExecutionResult {

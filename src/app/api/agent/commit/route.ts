@@ -5,7 +5,6 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getPodFromPool, POD_PORTS } from "@/lib/pods";
-import { getUserAppTokens } from "@/lib/githubApp";
 import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();

@@ -7,7 +7,6 @@ import { removeLeadingMentions } from '@Universe/utils/removeLeadingMentions'
 import { truncateText } from '@Universe/utils/truncateText'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Group, Mesh, Texture, TextureLoader } from 'three'
-import { TextWithBackground } from './TextWithBackgound'
 import { logger } from "@/lib/logger";
 
 type Props = {

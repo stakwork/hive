@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { GitVisualizer } from "gitsee/client";
-import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { logger } from "@/lib/logger";
 
 interface UseGitVisualizerProps {

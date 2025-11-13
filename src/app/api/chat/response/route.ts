@@ -8,7 +8,6 @@ import {
   type Artifact,
   type ChatMessage,
 } from "@/lib/chat";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";

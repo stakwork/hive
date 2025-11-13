@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth/nextauth'
 import { db } from '@/lib/db'
 import { z } from 'zod'
-import { getS3Service } from '@/services/s3'
 import { logger } from "@/lib/logger";
 
 const screenshotQuerySchema = z.object({

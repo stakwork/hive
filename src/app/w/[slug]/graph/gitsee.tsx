@@ -2,7 +2,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useGitVisualizer } from "@/hooks/useGitVisualizer";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { useEffect } from "react";
 import { logger } from "@/lib/logger";
 
 export const Gitsee = () => {

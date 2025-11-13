@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { computeHmacSha256Hex, timingSafeEqual, EncryptionService } from "@/lib/encryption";
 import { WebhookPayload } from "@/types";
-import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
 import { logger } from "@/lib/logger";
 
 export class StakgraphWebhookService {

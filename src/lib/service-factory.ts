@@ -2,7 +2,6 @@ import { BaseServiceClass } from "./base-service";
 import { StakworkService } from "@/services/stakwork";
 import { PoolManagerService } from "@/services/pool-manager";
 import { WizardService } from "@/services/wizard";
-import { getServiceConfig } from "@/config/services";
 import { logger } from "@/lib/logger";
 
 // Service registry type

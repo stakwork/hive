@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { Octokit } from "@octokit/rest";
-import { fetchPullRequestContent } from "./pullRequestContent";
 import { logger } from "@/lib/logger";
 
 export interface PullRequestPayload {

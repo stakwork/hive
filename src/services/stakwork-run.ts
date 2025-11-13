@@ -23,7 +23,6 @@ import {
 } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
-import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
 const encryptionService = EncryptionService.getInstance();

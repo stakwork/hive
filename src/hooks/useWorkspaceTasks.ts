@@ -6,7 +6,6 @@ import {
 } from "@/hooks/usePusherConnection";
 import { WorkflowStatus } from "@/lib/chat";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
 import { logger } from "@/lib/logger";
 
 // SessionStorage key for persisting current page across navigation

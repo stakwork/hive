@@ -34,7 +34,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { InfoIcon, Search, UserCheck } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
-import { AssignableMemberRoleSchema, WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
 import { logger } from "@/lib/logger";
 
 const addMemberSchema = z.object({

@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { devtools } from "zustand/middleware";
 import { logger } from "@/lib/logger";
 
 interface Recommendation {

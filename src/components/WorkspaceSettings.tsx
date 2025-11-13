@@ -37,7 +37,6 @@ import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
 import { useToast } from "@/components/ui/use-toast";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
-import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { logger } from "@/lib/logger";
 
 export function WorkspaceSettings() {

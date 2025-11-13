@@ -1,7 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

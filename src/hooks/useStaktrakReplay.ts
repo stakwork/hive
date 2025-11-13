@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Screenshot } from "@/types/common";
 import { logger } from "@/lib/logger";
 
 export function usePlaywrightReplay(

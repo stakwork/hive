@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
-import { FeatureStatus } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import type {
   CreateFeatureRequest,

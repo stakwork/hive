@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { getJarvisUrl } from "@/lib/utils/swarm";
-import { EncryptionService } from "@/lib/encryption";
-import {
 import { logger } from "@/lib/logger";
+import {
   CallRecording,
   CallsResponse,
   JarvisSearchResponse,

@@ -5,7 +5,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { TestCoverageData } from "@/types";
 import { TestTube } from "lucide-react";
-import { useEffect, useState } from "react";
 import { logger } from "@/lib/logger";
 
 export function TestCoverageCard() {

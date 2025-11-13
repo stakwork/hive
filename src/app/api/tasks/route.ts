@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority, WorkflowStatus, TaskSourceType, Prisma } from "@prisma/client";
-import { sanitizeTask, extractPrArtifact } from "@/lib/helpers/tasks";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {

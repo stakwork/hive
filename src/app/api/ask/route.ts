@@ -3,7 +3,6 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { validateWorkspaceAccess } from "@/services/workspace";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {

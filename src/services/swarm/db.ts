@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
-import { PoolState, SwarmStatus } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();

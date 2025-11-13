@@ -1,5 +1,4 @@
 import { HttpClient } from "./http-client";
-import { BaseService, ServiceConfig, ApiError } from "@/types";
 import { logger } from "@/lib/logger";
 
 export abstract class BaseServiceClass implements BaseService {

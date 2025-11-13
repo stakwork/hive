@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { generateCommitMessage } from "@/lib/ai/commit-msg";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {

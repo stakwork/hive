@@ -11,7 +11,6 @@ import { initialCameraPosition } from './Controls/CameraAnimations/constants'
 import { CursorTooltip } from './CursorTooltip'
 import { Graph } from './Graph'
 import { Overlay } from './Overlay'
-import { colors } from './utils/colors'
 import { logger } from "@/lib/logger";
 
 const Fallback = () => (

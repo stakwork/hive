@@ -12,7 +12,6 @@ import { getPM2AppsContent } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { createRequestManager, isAbortError } from "@/utils/request-manager";
 import { create } from "zustand";
-import { devtools } from "zustand/middleware";
 import { logger } from "@/lib/logger";
 
 const initialFormData: StakgraphSettings = {

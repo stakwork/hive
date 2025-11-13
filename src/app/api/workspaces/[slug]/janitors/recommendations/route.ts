@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getJanitorRecommendations } from "@/services/janitor";
 import { parseJanitorType, parseRecommendationStatus, parsePriority, validatePaginationParams } from "@/lib/helpers/janitor-validation";
-import { JanitorType, RecommendationStatus, Priority } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 export async function GET(

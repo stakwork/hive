@@ -1,4 +1,3 @@
-import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { logger } from "@/lib/logger";
 
 type Creds = { username?: string; pat?: string };

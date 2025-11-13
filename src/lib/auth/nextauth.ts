@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
 import { PrismaAdapter } from "@auth/prisma-adapter";

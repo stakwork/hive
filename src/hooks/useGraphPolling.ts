@@ -1,7 +1,6 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 
 interface ApiResponse {

@@ -30,7 +30,6 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
-import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 import { logger } from "@/lib/logger";
 
 interface FeaturesListProps {

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Github, Unlink } from "lucide-react";
 import { logger } from "@/lib/logger";
 
 interface DisconnectAccountProps {

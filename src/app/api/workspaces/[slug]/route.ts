@@ -6,7 +6,6 @@ import {
   deleteWorkspaceBySlug,
   updateWorkspace,
 } from "@/services/workspace";
-import { updateWorkspaceSchema } from "@/lib/schemas/workspace";
 import { logger } from "@/lib/logger";
 
 export async function GET(

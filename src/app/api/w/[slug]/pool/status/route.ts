@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
-import { PoolManagerService } from "@/services/pool-manager";
 import { logger } from "@/lib/logger";
 
 export async function GET(

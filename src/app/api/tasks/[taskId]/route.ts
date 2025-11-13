@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
-import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { logger } from "@/lib/logger";
 
 export async function PATCH(

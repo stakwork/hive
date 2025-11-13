@@ -8,7 +8,6 @@ import { getWorkspaceById } from "@/services/workspace";
 import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getBaseUrl } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

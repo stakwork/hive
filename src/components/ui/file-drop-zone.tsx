@@ -2,7 +2,6 @@
 
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
 import { Upload, FileText } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 
 interface FileDropZoneProps {

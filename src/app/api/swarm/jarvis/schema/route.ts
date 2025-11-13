@@ -3,7 +3,6 @@ import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

@@ -3,7 +3,6 @@ import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 // import { EncryptionService } from "@/lib/encryption";
 
@@ -68,7 +67,6 @@ export async function GET(request: Request) {
         ...requestLogContext,
         workspaceId: workspaceAccess.workspace?.id,
       });
-    }
 
     let hasTokens = false;
     let hasRepoAccess = false;
@@ -80,7 +78,6 @@ export async function GET(request: Request) {
       logger.debug("[github-app-status] Fetching workspace data", {
         ...requestLogContext,
         action: 'fetch_workspace',
-      });
 
       // Get workspace
       const workspace = await db.workspace.findUnique({
@@ -97,7 +94,6 @@ export async function GET(request: Request) {
         sourceControlOrgId: workspace?.sourceControlOrg?.id,
         githubLogin: workspace?.sourceControlOrg?.githubLogin,
         installationId: workspace?.sourceControlOrg?.githubInstallationId,
-          });
 
       if (workspace?.sourceControlOrg) {
         // Workspace is linked to a SourceControlOrg - check if user has tokens for it
@@ -105,7 +101,6 @@ export async function GET(request: Request) {
           ...requestLogContext,
           action: 'check_tokens',
           sourceControlOrgId: workspace.sourceControlOrg.id,
-        });
 
         const sourceControlToken = await db.sourceControlToken.findUnique({
           where: {
@@ -121,7 +116,6 @@ export async function GET(request: Request) {
           ...requestLogContext,
           hasTokens,
           tokenExists: !!sourceControlToken,
-        });
 
         // Get repository URL
         let repoUrl: string | null = repositoryUrl;
@@ -131,7 +125,6 @@ export async function GET(request: Request) {
           if (!repoUrl) {
             const primaryRepo = await getPrimaryRepository(workspace.id);
             repoUrl = primaryRepo?.repositoryUrl ?? null;
-           }
 
         // Check repository access if we have tokens and a repository URL
         if (hasTokens && repoUrl && workspace?.sourceControlOrg?.githubInstallationId) {
@@ -164,9 +157,9 @@ export async function GET(request: Request) {
             },
             repoUrl,
             installationId: workspace?.sourceControlOrg?.githubInstallationId,
-           });
-         } else {
-        // Workspace not linked yet - extract GitHub org from repo URL and check
+          });
+        } else {
+          // Workspace not linked yet - extract GitHub org from repo URL and check
         let repoUrl: string | null = repositoryUrl;
         if (!repoUrl && workspace) {
           // Check repositoryDraft first, then fall back to primary repository
@@ -199,14 +192,13 @@ export async function GET(request: Request) {
           // Check if there's already a SourceControlOrg for this GitHub owner
           const sourceControlOrg = await db.sourceControlOrg.findUnique({
             where: { githubLogin: githubOwner },
-          });
 
           if (sourceControlOrg) {
             // SourceControlOrg exists - automatically link this workspace to it
             await db.workspace.update({
               where: { slug: workspaceSlug },
               data: { sourceControlOrgId: sourceControlOrg.id },
-            });
+           });
 
             // Now check if user has tokens for it
             const sourceControlToken = await db.sourceControlToken.findUnique({
@@ -216,7 +208,7 @@ export async function GET(request: Request) {
                   sourceControlOrgId: sourceControlOrg.id,
                 },
               },
-            });
+           });
             hasTokens = !!sourceControlToken;
 
             // Check repository access if we have tokens and installation ID
@@ -227,7 +219,7 @@ export async function GET(request: Request) {
                 installationId: sourceControlOrg.githubInstallationId,
                 repoUrl,
                 githubOwner,
-              });
+             });
 
               hasRepoAccess = await checkRepositoryAccess(
                 session.user.id,
@@ -239,17 +231,15 @@ export async function GET(request: Request) {
                 ...requestLogContext,
                 hasRepoAccess,
                 githubOwner,
-              });
+             });
              } else {
             // SourceControlOrg doesn't exist yet - user needs to go through OAuth
             hasTokens = false;
-           }
        } else {
       // No workspace specified - check if user has ANY GitHub App tokens
       logger.debug("[github-app-status] Checking user app tokens (no workspace)", {
         ...requestLogContext,
         action: 'check_user_app_tokens',
-      });
 
       const apptokens = await getUserAppTokens(session.user.id);
       hasTokens = !!apptokens?.accessToken;
@@ -258,8 +248,6 @@ export async function GET(request: Request) {
         ...requestLogContext,
         hasTokens,
         hasAppTokens: !!apptokens,
-      });
-    }
 
     // if (hasTokens) {
     //   const encryptionService = EncryptionService.getInstance();
@@ -275,7 +263,6 @@ export async function GET(request: Request) {
       hasRepoAccess,
       responseTime,
       status: 'success',
-    });
 
     return NextResponse.json({ hasTokens, hasRepoAccess }, { status: 200 });
   } catch (error) {
@@ -283,11 +270,10 @@ export async function GET(request: Request) {
 
     logger.error("[github-app-status] Request failed", { 
       ...logContext,
-      error: error instanceof Error ? error.message : String(error  }),
+      error: error instanceof Error ? error.message : String(error),
       errorStack: error instanceof Error ? error.stack : undefined,
       responseTime,
       status: 'error',
     });
 
     return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });
-   }

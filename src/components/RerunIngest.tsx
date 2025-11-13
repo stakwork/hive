@@ -18,7 +18,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { Database, RefreshCw } from "lucide-react";
 import { logger } from "@/lib/logger";
 
 interface RerunIngestProps {

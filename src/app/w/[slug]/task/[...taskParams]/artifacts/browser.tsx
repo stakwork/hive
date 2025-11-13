@@ -26,7 +26,6 @@ import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 import { ActionsList } from "@/components/ActionsList";
 import { useToast } from "@/components/ui/use-toast";
-import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 
 export function BrowserArtifactPanel({

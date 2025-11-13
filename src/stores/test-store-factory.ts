@@ -1,5 +1,4 @@
 // Simple test to verify the store factory works
-import { getStoreBundle, destroyStoreBundle } from './createStoreFactory'
 import { logger } from "@/lib/logger";
 
 export function testStoreFactory() {

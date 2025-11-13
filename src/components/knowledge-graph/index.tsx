@@ -8,7 +8,6 @@ import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useEffect, useState } from "react";
-import { Universe } from "./Universe";
 import { logger } from "@/lib/logger";
 interface ApiResponse {
   success: boolean;

@@ -19,7 +19,6 @@ import {
   formatPM2Apps,
   generatePM2Apps,
 } from "../../utils/devContainerUtils";
-import { ModalComponentProps } from "./ModlaProvider";
 import { logger } from "@/lib/logger";
 
 const getFiles = (

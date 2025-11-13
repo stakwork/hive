@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { UpdateStakworkRunDecisionSchema } from "@/types/stakwork";
-import { updateStakworkRunDecision } from "@/services/stakwork-run";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

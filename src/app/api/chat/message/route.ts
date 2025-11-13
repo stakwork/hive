@@ -7,7 +7,6 @@ import { ChatRole, ChatStatus, ArtifactType, type ContextTag, type Artifact, typ
 import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
-import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

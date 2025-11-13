@@ -8,7 +8,6 @@ import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
 import { ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
-import { useState } from "react";
 import { logger } from "@/lib/logger";
 
 export function RepositoryCard() {

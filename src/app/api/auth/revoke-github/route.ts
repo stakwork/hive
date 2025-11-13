@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

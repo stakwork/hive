@@ -21,7 +21,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { Trash2, AlertTriangle } from "lucide-react";
 import { logger } from "@/lib/logger";
 
 interface DeleteWorkspaceProps {

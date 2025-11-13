@@ -1,4 +1,3 @@
-import { Box3, Group, Sphere, Vector3 } from 'three'
 import { logger } from "@/lib/logger";
 
 export const calculateRadius = (gr: Group) => {

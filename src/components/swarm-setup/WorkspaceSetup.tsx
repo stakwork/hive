@@ -5,7 +5,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 
 interface WorkspaceSetupProps {

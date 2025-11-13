@@ -5,7 +5,6 @@ import { Billboard, Edges, Html } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { useMemo, useState } from 'react'
 import * as THREE from 'three'
-import { nodeSize } from '../Cubes/constants'
 import { logger } from "@/lib/logger";
 
 // Helper function to distribute neighborhoods based on node_type positioning

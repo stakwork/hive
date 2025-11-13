@@ -5,7 +5,6 @@ import { getS3Service } from "@/services/s3";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

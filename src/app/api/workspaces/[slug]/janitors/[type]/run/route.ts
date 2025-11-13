@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { createJanitorRun } from "@/services/janitor";
 import { logger } from "@/lib/logger";
 
 

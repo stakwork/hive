@@ -3,7 +3,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useCallback, useEffect, useState } from "react";
 import { logger } from "@/lib/logger";
 
 interface GitHubAccessManagerProps {

@@ -2,7 +2,6 @@ import { tool } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
-import { getProviderTool } from "aieo";
 import { logger } from "@/lib/logger";
 
 async function fetchLearnings(swarmUrl: string, swarmApiKey: string, q: string, limit: number = 3) {

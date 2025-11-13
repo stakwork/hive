@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";

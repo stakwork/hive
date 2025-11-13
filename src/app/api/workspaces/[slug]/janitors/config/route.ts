@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { z } from "zod";
-import { getOrCreateJanitorConfig, updateJanitorConfig } from "@/services/janitor";
 import { logger } from "@/lib/logger";
 
 const updateJanitorConfigSchema = z.object({

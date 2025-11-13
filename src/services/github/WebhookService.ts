@@ -5,7 +5,6 @@ import type { DeleteWebhookParams } from "@/types";
 import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { logger } from "@/lib/logger";
 
 const encryptionService = EncryptionService.getInstance();

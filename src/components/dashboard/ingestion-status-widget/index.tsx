@@ -1,6 +1,5 @@
 "use client";
 
-import { useIngestStatus } from "@/hooks/useIngestStatus";
 import { logger } from "@/lib/logger";
 
 interface IngestionStatusWidgetProps {

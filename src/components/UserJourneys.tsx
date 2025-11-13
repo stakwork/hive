@@ -11,7 +11,6 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useModal } from "./modals/ModlaProvider";
 import { logger } from "@/lib/logger";
 
 interface UserJourneyTask {

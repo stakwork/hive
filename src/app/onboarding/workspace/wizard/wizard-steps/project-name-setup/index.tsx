@@ -12,7 +12,6 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { redirect, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

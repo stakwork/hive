@@ -4,7 +4,6 @@ import { EncryptionService } from "@/lib/encryption";
 import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

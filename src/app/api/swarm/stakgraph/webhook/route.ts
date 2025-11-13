@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { StakgraphWebhookService } from "@/services/swarm/StakgraphWebhookService";
-import { WebhookPayload } from "@/types";
 import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";

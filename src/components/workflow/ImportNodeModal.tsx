@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useForm } from 'react-hook-form';
 import { logger } from "@/lib/logger";
 
 // Global state to track modal visibility

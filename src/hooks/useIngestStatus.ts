@@ -1,6 +1,5 @@
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 
 export function useIngestStatus() {

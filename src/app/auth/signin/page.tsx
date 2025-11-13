@@ -9,7 +9,6 @@ import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
 import { logger } from "@/lib/logger";
 
 function SignInContent() {

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { logger } from "@/lib/logger";
 
 interface UseAIGenerateResult<T> {

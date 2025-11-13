@@ -13,7 +13,6 @@ import { formatRelativeTime } from "@/lib/utils";
 import { Clock, Loader2, Server } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "@/components/modals/ModlaProvider";
-import { PoolStatusResponse } from "@/types";
 import { logger } from "@/lib/logger";
 
 export function PoolStatusWidget() {

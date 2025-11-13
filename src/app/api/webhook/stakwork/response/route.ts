@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { StakworkRunWebhookSchema } from "@/types/stakwork";
 import { processStakworkRunWebhook } from "@/services/stakwork-run";
-import { StakworkRunType } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";

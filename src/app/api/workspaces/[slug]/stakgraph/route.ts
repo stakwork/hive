@@ -17,7 +17,6 @@ import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
-import { z } from "zod";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -85,7 +84,6 @@ const stakgraphSettingsSchema = z.object({
     )
     .optional()
     .default([]),
-});
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
@@ -113,7 +111,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 401 },
       );
-    }
 
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
@@ -125,7 +122,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 404 },
       );
-    }
 
     const swarm = (await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
@@ -141,7 +137,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 200 },
       );
-    }
 
    await db.repository.findMany({
      where: { workspaceId: workspace.id },
@@ -166,7 +161,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         githubWebhookSecret: true,
       },
       orderBy: { createdAt: "asc" },
-    });
 
     return NextResponse.json({
       success: true,
@@ -208,7 +202,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                     );
                   } catch {
                     return environmentVariables;
-                  }
                 })()
               : environmentVariables,
         services: typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services || [],
@@ -220,7 +213,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             ? Boolean(repositories[0].githubWebhookId && repositories[0].githubWebhookSecret)
             : false,
       },
-    });
   } catch (error) {
     logger.error("Error retrieving stakgraph settings:", { error });
     return NextResponse.json(
@@ -231,8 +223,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       { status: 500 },
     );
-  }
-}
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   console.log("PUT request received");
@@ -262,7 +252,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 401 },
       );
-    }
 
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
@@ -274,7 +263,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 404 },
       );
-    }
 
     const body = await request.json();
     const validationResult = stakgraphSettingsSchema.safeParse(body);
@@ -289,7 +277,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 400 },
       );
-    }
 
     const settings = validationResult.data;
 
@@ -323,7 +310,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           name: repo.name,
         },
       });
-    }
 
     const repoIdsToDelete = existingRepoIds.filter((id) => !incomingRepoIds.includes(id));
     if (repoIdsToDelete.length > 0) {
@@ -348,7 +334,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       services: settings.services,
       environmentVariables: settings.environmentVariables,
       containerFiles: settings.containerFiles,
-    });
 
     const swarm = (await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
@@ -364,13 +349,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 404 },
       );
-    }
 
     let swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     if (!swarmPoolApiKey) {
       await updateSwarmPoolApiKeyFor(swarm.id);
       swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
-    }
 
     // Get pool API key from swarm instead of user
     let decryptedPoolApiKey: string;
@@ -380,7 +363,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } catch (error) {
       logger.error("Failed to decrypt poolApiKey:", { error });
       decryptedPoolApiKey = swarmPoolApiKey;
-    }
 
     try {
       const callbackUrl = getGithubWebhookCallbackUrl(request);
@@ -408,7 +390,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     } catch (err) {
       logger.error("Failed to setup repository with webhook:", { err });
-    }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
     if (settings.poolName && decryptedPoolApiKey && Array.isArray(settings.environmentVariables)) {
@@ -440,11 +421,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             github_pat?.token || "",
             github_pat?.username || "",
           );
-        }
       } catch (err) {
         logger.error("Failed to update env vars in Pool Manager:", { err });
-      }
-    }
 
     const typedSwarm = swarm as SwarmSelectResult & { poolApiKey?: string };
 
@@ -458,7 +436,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         name: true,
       },
       orderBy: { createdAt: "asc" },
-    });
 
     return NextResponse.json({
       success: true,
@@ -475,7 +452,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         status: typedSwarm.status,
         updatedAt: typedSwarm.updatedAt,
       },
-    });
   } catch (error) {
     logger.error("Error saving stakgraph settings:", { error });
     return NextResponse.json(
@@ -486,7 +462,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       },
       { status: 500 },
     );
-  }
-}
 
 //

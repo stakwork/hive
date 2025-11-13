@@ -6,7 +6,6 @@ import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-ac
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
@@ -76,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     logger.debug("[Sync] GitHub credentials", { 
       workspaceId: swarm.workspaceId,
-      hasCredentials: !!(username && pat  }),
+      hasCredentials: !!(username && pat),
     });
 
     try {
@@ -100,7 +99,7 @@ export async function POST(request: NextRequest) {
       swarmName: swarm.name,
       repositoryUrl,
       callbackUrl,
-      hasGithubAuth: !!(username && pat  }),
+      hasGithubAuth: !!(username && pat),
     });
 
     const apiResult: AsyncSyncResult = await triggerAsyncSync(

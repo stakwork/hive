@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { logger } from "@/lib/logger";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {

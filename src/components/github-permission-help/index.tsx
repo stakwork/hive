@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertTriangle, ExternalLink, RefreshCw, Settings } from "lucide-react";
-import { useState } from "react";
 import { logger } from "@/lib/logger";
 
 interface GitHubPermissionHelpProps {

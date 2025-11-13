@@ -2,7 +2,6 @@ import { useControlStore } from '@/stores/useControlStore'
 import { useGraphStore } from '@/stores/useStores'
 import { CameraControls } from '@react-three/drei'
 import { useEffect, useRef, useState } from 'react'
-import { useCameraAnimations } from './CameraAnimations'
 import { logger } from "@/lib/logger";
 
 type Props = {

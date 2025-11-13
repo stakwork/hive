@@ -6,7 +6,6 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
 import { MathUtils, Vector3 } from 'three'
 import { initialCameraPosition } from './constants'
-import { useAutoNavigate } from './useAutoNavigate'
 import { logger } from "@/lib/logger";
 
 

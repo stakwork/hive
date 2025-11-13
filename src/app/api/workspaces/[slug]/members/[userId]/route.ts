@@ -6,7 +6,6 @@ import {
   removeWorkspaceMember,
   validateWorkspaceAccess,
 } from "@/services/workspace";
-import { isAssignableMemberRole } from "@/lib/auth/roles";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

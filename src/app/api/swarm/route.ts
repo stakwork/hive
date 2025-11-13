@@ -10,7 +10,6 @@ import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus, SwarmStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {

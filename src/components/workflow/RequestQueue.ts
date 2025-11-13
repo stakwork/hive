@@ -1,5 +1,4 @@
 // RequestQueue - A class to handle sequential workflow updates
-import { AxiosResponse } from 'axios';
 import { logger } from "@/lib/logger";
 
 interface RequestMetadata {

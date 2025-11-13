@@ -9,7 +9,6 @@ import { askTools } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { logger } from "@/lib/logger";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";

@@ -3,7 +3,6 @@ import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
-import { StakworkStatusPayload } from "@/types";
 import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";

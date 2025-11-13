@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
-import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

@@ -11,7 +11,6 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

@@ -5,7 +5,6 @@ import { config } from "@/lib/env";
 import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

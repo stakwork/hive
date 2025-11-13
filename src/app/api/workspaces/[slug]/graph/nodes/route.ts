@@ -4,7 +4,6 @@ import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

@@ -2,7 +2,6 @@ import Nodes from './Nodes';
 import Edges from './Edges';
 import { HumanIcon, AutomatedIcon, ApiIcon, CheckBoxIcon, WarningIcon, ErrorIcon, EditIcon, TrueCheck, FalseCross } from './StakIcons';
 import moment from 'moment';
-import { WorkflowTransition } from '@/types/stakwork/workflow';
 import { logger } from "@/lib/logger";
 
 interface Position {

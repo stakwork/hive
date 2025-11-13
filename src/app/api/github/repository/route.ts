@@ -2,7 +2,6 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {

@@ -6,7 +6,6 @@ import { convertGlobsToRegex } from "@/lib/utils/glob";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
-import { TestCoverageData } from "@/types/test-coverage";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";

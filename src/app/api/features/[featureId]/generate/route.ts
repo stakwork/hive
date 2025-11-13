@@ -3,7 +3,6 @@ import { getModel, getApiKeyForProvider } from "aieo";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { buildFeatureContext, generateWithStreaming } from "@/lib/ai/utils";
-import { GENERATION_TYPES, GENERATION_CONFIG_MAP, GenerationType } from "@/lib/ai/generation-config";
 import { logger } from "@/lib/logger";
 
 type Provider = "anthropic" | "openai";

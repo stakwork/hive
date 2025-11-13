@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMiddlewareContext, requireAuth } from '@/lib/middleware/utils'
 import { getWorkspaceLogoService } from '@/services/workspace-logo'
-import { workspaceLogoConfirmSchema } from '@/lib/schemas/workspace'
 import { logger } from "@/lib/logger";
 
 export async function POST(

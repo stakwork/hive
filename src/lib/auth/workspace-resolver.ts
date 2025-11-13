@@ -3,7 +3,6 @@ import {
   getUserWorkspaces,
 } from "@/services/workspace";
 import { Session } from "next-auth";
-import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 
 export interface WorkspaceResolutionResult {

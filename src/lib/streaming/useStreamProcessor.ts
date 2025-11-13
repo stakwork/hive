@@ -6,7 +6,6 @@ import type {
   ToolCallStatus,
 } from "@/types/streaming";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
-import { parseSSELine } from "./helpers";
 import { logger } from "@/lib/logger";
 
 interface InternalToolCall {

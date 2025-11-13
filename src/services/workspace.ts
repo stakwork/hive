@@ -29,7 +29,6 @@ import {
   WorkspaceWithAccess,
   WorkspaceWithRole,
 } from "@/types/workspace";
-import { WorkspaceRole } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();

@@ -1,6 +1,5 @@
 import axios from "axios";
 import { generateResponseBasedOnMessage } from "./responses";
-import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
 export const fetchCache = "force-no-store";

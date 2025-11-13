@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processJanitorWebhook } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
-import { z } from "zod";
 import { logger } from "@/lib/logger";
 
 const stakworkWebhookSchema = z.object({

@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth/nextauth'
 import { db } from '@/lib/db'
 import { z } from 'zod'
-import { processScreenshotUpload } from '@/lib/screenshot-upload'
 import { logger } from "@/lib/logger";
 
 const screenshotUploadSchema = z.object({
@@ -149,7 +148,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     logger.error("Error uploading screenshot:", { error })
-    logger.error("Error stack:", { error instanceof Error ? error.stack : 'No stack trace' })
+    logger.error("Error stack:", { stack: error instanceof Error ? error.stack : 'No stack trace' })
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

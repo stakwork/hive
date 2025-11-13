@@ -10,7 +10,6 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { logger } from "@/lib/logger";
 
 export default function StakgraphPage() {
