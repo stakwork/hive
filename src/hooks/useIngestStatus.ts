@@ -84,6 +84,7 @@ export function useIngestStatus() {
             description: "There was an error ingesting your codebase. Please try again.",
             variant: "destructive",
           });
+          setIngestError(true);
           setIsIngesting(false);
           // Stop polling on failure
           if (pollingIntervalRef.current) {
